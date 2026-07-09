@@ -1,0 +1,1 @@
+# Módulo free_registry

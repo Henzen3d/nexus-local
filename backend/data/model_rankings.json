@@ -1,0 +1,15 @@
+{
+  "version": "2026-07",
+  "rankings": {
+    "deepseek-r1": { "quality_score": 98, "popularity_rank": 1 },
+    "deepseek-v3": { "quality_score": 92, "popularity_rank": 3 },
+    "gemini-2.0-flash": { "quality_score": 88, "popularity_rank": 2 },
+    "llama-3.3-70b": { "quality_score": 85, "popularity_rank": 4 },
+    "qwen-2.5-72b": { "quality_score": 83, "popularity_rank": 5 },
+    "gemma3-27b": { "quality_score": 81, "popularity_rank": 6 },
+    "mistral-large": { "quality_score": 84, "popularity_rank": 7 },
+    "gpt-4o-mini": { "quality_score": 79, "popularity_rank": 8 },
+    "gpt-4o": { "quality_score": 89, "popularity_rank": 9 },
+    "llama-3.1-8b": { "quality_score": 75, "popularity_rank": 10 }
+  }
+}

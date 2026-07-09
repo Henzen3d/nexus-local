@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  backend:
+    build: ./backend
+    container_name: nexus_backend
+    restart: always
+    volumes:
+      # Espelha o arquivo do banco de dados do Linux para dentro do container
+      - ./backend/nexuslocal.db:/app/backend/nexuslocal.db
+    environment:
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS}
+    networks:
+      - nexus_net
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        - VITE_API_URL=${VITE_API_URL}
+        - VITE_WS_URL=${VITE_WS_URL}
+    container_name: nexus_frontend
+    restart: always
+    depends_on:
+      - backend
+    networks:
+      - nexus_net
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: nexus_tunnel
+    restart: always
+    command: tunnel run
+    environment:
+      - TUNNEL_TOKEN=${CLOUDFLARE_TOKEN}
+    networks:
+      - nexus_net
+
+networks:
+  nexus_net:
+    driver: bridge

@@ -1,0 +1,8 @@
+/* Escala de opacidade */
+:root {
+  --opacity-primary: 1;
+  --opacity-secondary: 0.72;
+  --opacity-thinking: 0.65;
+  --opacity-meta: 0.55;
+  --opacity-disabled: 0.38;
+}

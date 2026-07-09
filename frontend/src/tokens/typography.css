@@ -1,0 +1,10 @@
+/* Scale de tipografia unificada para chat */
+:root {
+  --font-heading-chat: 20px;
+  --font-title-conversation: 16px;
+  --font-message: 16px;
+  --font-code: 14px;
+  --font-thinking: 13px;
+  --font-meta: 12px;
+  --font-placeholder: 15px;
+}

@@ -1,0 +1,30 @@
+# Banco de dados local (NexusLocal SQLite)
+backend/nexuslocal.db
+backend/nexuslocal.db-wal
+backend/nexuslocal.db-shm
+
+# Ambientes virtuais e pacotes Python
+.venv/
+venv/
+ENV/
+__pycache__/
+*.pyc
+
+# Arquivos de configurações locais / Chaves de API
+.env
+.env.local
+frontend/.env
+frontend/.env.local
+free-api.md
+
+# Dependências frontend
+frontend/node_modules/
+node_modules/
+frontend/dist/
+
+# Logs e arquivos temporários
+*.log
+.qwen/
+.planning/
+.agents/
+.gemini/

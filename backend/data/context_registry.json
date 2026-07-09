@@ -1,0 +1,1330 @@
+{
+  "version": "2026-07",
+  "note": "Registry completo de context windows. Atualizar conforme documentacao dos providers.",
+
+  "models": {
+
+    "llama-3.3-70b-versatile": {
+      "context_length": 131072,
+      "provider": "groq",
+      "source": "https://console.groq.com/docs/models",
+      "verified_at": "2026-07"
+    },
+    "llama-3.1-8b-instant": {
+      "context_length": 131072,
+      "provider": "groq",
+      "source": "https://console.groq.com/docs/models",
+      "verified_at": "2026-07"
+    },
+    "gemma2-9b-it": {
+      "context_length": 8192,
+      "provider": "groq",
+      "source": "https://console.groq.com/docs/models",
+      "verified_at": "2026-07"
+    },
+    "mixtral-8x7b-32768": {
+      "context_length": 32768,
+      "provider": "groq",
+      "source": "https://console.groq.com/docs/models",
+      "verified_at": "2026-07"
+    },
+
+    "meta-llama/llama-3.3-70b-instruct:free": {
+      "context_length": 131072,
+      "provider": "openrouter",
+      "source": "https://openrouter.ai/models",
+      "verified_at": "2026-07"
+    },
+    "qwen/qwen-2.5-72b-instruct:free": {
+      "context_length": 32768,
+      "provider": "openrouter",
+      "source": "https://openrouter.ai/models",
+      "verified_at": "2026-07"
+    },
+    "deepseek/deepseek-r1:free": {
+      "context_length": 65536,
+      "provider": "openrouter",
+      "source": "https://openrouter.ai/models",
+      "verified_at": "2026-07"
+    },
+    "google/gemma-3-27b-it:free": {
+      "context_length": 131072,
+      "provider": "openrouter",
+      "source": "https://openrouter.ai/models",
+      "verified_at": "2026-07"
+    },
+    "mistralai/mistral-7b-instruct:free": {
+      "context_length": 32768,
+      "provider": "openrouter",
+      "source": "https://openrouter.ai/models",
+      "verified_at": "2026-07"
+    },
+
+    "gemini-2.0-flash": {
+      "context_length": 1048576,
+      "provider": "gemini",
+      "source": "https://ai.google.dev/gemini-api/docs/models/gemini",
+      "verified_at": "2026-07"
+    },
+    "gemini-1.5-flash": {
+      "context_length": 1048576,
+      "provider": "gemini",
+      "source": "https://ai.google.dev/gemini-api/docs/models/gemini",
+      "verified_at": "2026-07"
+    },
+    "gemini-2.0-flash-lite": {
+      "context_length": 1048576,
+      "provider": "gemini",
+      "source": "https://ai.google.dev/gemini-api/docs/models/gemini",
+      "verified_at": "2026-07"
+    },
+
+    "llama-3.3-70b": {
+      "context_length": 131072,
+      "provider": "cerebras",
+      "source": "https://cerebras.ai/models",
+      "verified_at": "2026-07"
+    },
+    "llama3.1-8b": {
+      "context_length": 131072,
+      "provider": "cerebras",
+      "source": "https://cerebras.ai/models",
+      "verified_at": "2026-07"
+    },
+
+    "z-coder": {
+      "context_length": 128000,
+      "provider": "zai",
+      "source": "https://z.ai/docs",
+      "verified_at": "2026-07"
+    },
+    "z-chat": {
+      "context_length": 128000,
+      "provider": "zai",
+      "source": "https://z.ai/docs",
+      "verified_at": "2026-07"
+    },
+
+    "llama3": {
+      "context_length": 8192,
+      "provider": "ollama",
+      "source": "https://ollama.com/library/llama3",
+      "verified_at": "2026-07",
+      "note": "Ollama default num_ctx; modelo suporta mais com configuracao"
+    },
+    "mistral": {
+      "context_length": 32768,
+      "provider": "ollama",
+      "source": "https://ollama.com/library/mistral",
+      "verified_at": "2026-07"
+    },
+    "qwen2.5": {
+      "context_length": 32768,
+      "provider": "ollama",
+      "source": "https://ollama.com/library/qwen2.5",
+      "verified_at": "2026-07",
+      "note": "Ollama default; modelo suporta ate 128k com num_ctx"
+    },
+    "gpt-oss:120b": {
+      "context_length": 131072,
+      "provider": "ollama",
+      "source": "https://docs.ollama.com/",
+      "verified_at": "2026-07"
+    },
+    "gpt-oss:20b": {
+      "context_length": 131072,
+      "provider": "ollama",
+      "source": "https://docs.ollama.com/",
+      "verified_at": "2026-07"
+    },
+    "gemma3:12b": {
+      "context_length": 131072,
+      "provider": "ollama",
+      "source": "https://docs.ollama.com/",
+      "verified_at": "2026-07"
+    },
+    "gemma3:27b": {
+      "context_length": 131072,
+      "provider": "ollama",
+      "source": "https://docs.ollama.com/",
+      "verified_at": "2026-07"
+    },
+    "gemma3:4b": {
+      "context_length": 131072,
+      "provider": "ollama",
+      "source": "https://docs.ollama.com/",
+      "verified_at": "2026-07"
+    },
+    "gemma4:31b": {
+      "context_length": 262144,
+      "provider": "ollama",
+      "source": "https://docs.ollama.com/",
+      "verified_at": "2026-07"
+    },
+    "glm-4.7": {
+      "context_length": 204800,
+      "provider": "ollama",
+      "source": "https://docs.ollama.com/",
+      "verified_at": "2026-07"
+    },
+    "glm-5": {
+      "context_length": 256000,
+      "provider": "ollama",
+      "source": "https://docs.ollama.com/",
+      "verified_at": "2026-07"
+    },
+    "glm-5.1": {
+      "context_length": 256000,
+      "provider": "ollama",
+      "source": "https://docs.ollama.com/",
+      "verified_at": "2026-07"
+    },
+    "glm-5.2": {
+      "context_length": 256000,
+      "provider": "ollama",
+      "source": "https://docs.ollama.com/",
+      "verified_at": "2026-07"
+    },
+    "deepseek-v3.2": {
+      "context_length": 128000,
+      "provider": "ollama",
+      "source": "https://docs.ollama.com/",
+      "verified_at": "2026-07"
+    },
+    "deepseek-v4-flash": {
+      "context_length": 128000,
+      "provider": "ollama",
+      "source": "https://docs.ollama.com/",
+      "verified_at": "2026-07"
+    },
+    "deepseek-v4-pro": {
+      "context_length": 128000,
+      "provider": "ollama",
+      "source": "https://docs.ollama.com/",
+      "verified_at": "2026-07"
+    },
+    "kimi-k2.7-code": {
+      "context_length": 262144,
+      "provider": "ollama",
+      "source": "https://docs.ollama.com/",
+      "verified_at": "2026-07"
+    },
+    "kimi-k2.6": {
+      "context_length": 262144,
+      "provider": "ollama",
+      "source": "https://docs.ollama.com/",
+      "verified_at": "2026-07"
+    },
+    "kimi-k2.5": {
+      "context_length": 262144,
+      "provider": "ollama",
+      "source": "https://docs.ollama.com/",
+      "verified_at": "2026-07"
+    },
+    "gemini-3-flash-preview": {
+      "context_length": 1048576,
+      "provider": "ollama",
+      "source": "https://docs.ollama.com/",
+      "verified_at": "2026-07"
+    },
+    "ministral-3:8b": {
+      "context_length": 131072,
+      "provider": "ollama",
+      "source": "https://docs.ollama.com/",
+      "verified_at": "2026-07"
+    },
+    "ministral-3:14b": {
+      "context_length": 131072,
+      "provider": "ollama",
+      "source": "https://docs.ollama.com/",
+      "verified_at": "2026-07"
+    },
+    "ministral-3:3b": {
+      "context_length": 131072,
+      "provider": "ollama",
+      "source": "https://docs.ollama.com/",
+      "verified_at": "2026-07"
+    },
+    "devstral-2:123b": {
+      "context_length": 131072,
+      "provider": "ollama",
+      "source": "https://docs.ollama.com/",
+      "verified_at": "2026-07"
+    },
+    "devstral-small-2:24b": {
+      "context_length": 131072,
+      "provider": "ollama",
+      "source": "https://docs.ollama.com/",
+      "verified_at": "2026-07"
+    },
+    "nemotron-3-nano:30b": {
+      "context_length": 131072,
+      "provider": "ollama",
+      "source": "https://docs.ollama.com/",
+      "verified_at": "2026-07"
+    },
+    "nemotron-3-super": {
+      "context_length": 131072,
+      "provider": "ollama",
+      "source": "https://docs.ollama.com/",
+      "verified_at": "2026-07"
+    },
+    "nemotron-3-ultra": {
+      "context_length": 131072,
+      "provider": "ollama",
+      "source": "https://docs.ollama.com/",
+      "verified_at": "2026-07"
+    },
+    "minimax-m3": {
+      "context_length": 131072,
+      "provider": "ollama",
+      "source": "https://docs.ollama.com/",
+      "verified_at": "2026-07"
+    },
+    "minimax-m2.7": {
+      "context_length": 131072,
+      "provider": "ollama",
+      "source": "https://docs.ollama.com/",
+      "verified_at": "2026-07"
+    },
+    "minimax-m2.5": {
+      "context_length": 131072,
+      "provider": "ollama",
+      "source": "https://docs.ollama.com/",
+      "verified_at": "2026-07"
+    },
+    "minimax-m2.1": {
+      "context_length": 131072,
+      "provider": "ollama",
+      "source": "https://docs.ollama.com/",
+      "verified_at": "2026-07"
+    },
+    "mistral-large-3:675b": {
+      "context_length": 131072,
+      "provider": "ollama",
+      "source": "https://docs.ollama.com/",
+      "verified_at": "2026-07"
+    },
+
+    "meta-llama/Llama-3.3-70B-Instruct": {
+      "context_length": 128000,
+      "provider": "huggingface",
+      "source": "https://huggingface.co/meta-llama/Llama-3.3-70B-Instruct",
+      "verified_at": "2026-07"
+    },
+    "Qwen/Qwen2.5-Coder-32B-Instruct": {
+      "context_length": 131072,
+      "provider": "huggingface",
+      "source": "https://huggingface.co/Qwen/Qwen2.5-Coder-32B-Instruct",
+      "verified_at": "2026-07"
+    },
+
+    "@cf/meta/llama-3.3-70b-instruct-fp8-fast": {
+      "context_length": 131072,
+      "provider": "cloudflare",
+      "source": "https://developers.cloudflare.com/workers-ai/models/",
+      "verified_at": "2026-07"
+    },
+    "@cf/meta/llama-3.1-8b-instruct-fast": {
+      "context_length": 128000,
+      "provider": "cloudflare",
+      "source": "https://developers.cloudflare.com/workers-ai/models/",
+      "verified_at": "2026-07"
+    },
+    "@cf/meta/llama-3.1-8b-instruct-awq": {
+      "context_length": 128000,
+      "provider": "cloudflare",
+      "source": "https://developers.cloudflare.com/workers-ai/models/",
+      "verified_at": "2026-07"
+    },
+    "@cf/meta/llama-3.1-8b-instruct-fp8": {
+      "context_length": 128000,
+      "provider": "cloudflare",
+      "source": "https://developers.cloudflare.com/workers-ai/models/",
+      "verified_at": "2026-07"
+    },
+    "@cf/meta/llama-3.1-70b-instruct": {
+      "context_length": 131072,
+      "provider": "cloudflare",
+      "source": "https://developers.cloudflare.com/workers-ai/models/",
+      "verified_at": "2026-07"
+    },
+    "@cf/qwen/qwen2.5-coder-32b-instruct": {
+      "context_length": 32768,
+      "provider": "cloudflare",
+      "source": "https://developers.cloudflare.com/workers-ai/models/",
+      "verified_at": "2026-07"
+    },
+    "@cf/deepseek-ai/deepseek-r1-distill-qwen-32b": {
+      "context_length": 131072,
+      "provider": "cloudflare",
+      "source": "https://developers.cloudflare.com/workers-ai/models/",
+      "verified_at": "2026-07"
+    },
+    "@cf/qwen/qwq-32b": {
+      "context_length": 32768,
+      "provider": "cloudflare",
+      "source": "https://developers.cloudflare.com/workers-ai/models/",
+      "verified_at": "2026-07"
+    },
+    "@cf/qwen/qwen3-30b-a3b-fp8": {
+      "context_length": 32768,
+      "provider": "cloudflare",
+      "source": "https://developers.cloudflare.com/workers-ai/models/",
+      "verified_at": "2026-07"
+    },
+    "@cf/meta/llama-3.2-1b-instruct": {
+      "context_length": 131072,
+      "provider": "cloudflare",
+      "source": "https://developers.cloudflare.com/workers-ai/models/",
+      "verified_at": "2026-07"
+    },
+    "@cf/meta/llama-3.2-3b-instruct": {
+      "context_length": 131072,
+      "provider": "cloudflare",
+      "source": "https://developers.cloudflare.com/workers-ai/models/",
+      "verified_at": "2026-07"
+    },
+    "@cf/meta/llama-3.2-11b-vision-instruct": {
+      "context_length": 131072,
+      "provider": "cloudflare",
+      "source": "https://developers.cloudflare.com/workers-ai/models/",
+      "verified_at": "2026-07"
+    },
+    "@cf/meta/llama-4-scout-17b-16e-instruct": {
+      "context_length": 131072,
+      "provider": "cloudflare",
+      "source": "https://developers.cloudflare.com/workers-ai/models/",
+      "verified_at": "2026-07"
+    },
+    "@cf/google/gemma-3-12b-it": {
+      "context_length": 131072,
+      "provider": "cloudflare",
+      "source": "https://developers.cloudflare.com/workers-ai/models/",
+      "verified_at": "2026-07"
+    },
+    "@cf/google/gemma-4-26b-a4b-it": {
+      "context_length": 256000,
+      "provider": "cloudflare",
+      "source": "https://developers.cloudflare.com/workers-ai/models/",
+      "verified_at": "2026-07"
+    },
+    "@cf/moonshotai/kimi-k2.7-code": {
+      "context_length": 262144,
+      "provider": "cloudflare",
+      "source": "https://developers.cloudflare.com/workers-ai/models/",
+      "verified_at": "2026-07"
+    },
+    "@cf/moonshotai/kimi-k2.6": {
+      "context_length": 262144,
+      "provider": "cloudflare",
+      "source": "https://developers.cloudflare.com/workers-ai/models/",
+      "verified_at": "2026-07"
+    },
+    "@cf/moonshotai/kimi-k2.5": {
+      "context_length": 256000,
+      "provider": "cloudflare",
+      "source": "https://developers.cloudflare.com/workers-ai/models/",
+      "verified_at": "2026-07"
+    },
+    "@cf/zai-org/glm-4.7-flash": {
+      "context_length": 131072,
+      "provider": "cloudflare",
+      "source": "https://developers.cloudflare.com/workers-ai/models/",
+      "verified_at": "2026-07"
+    },
+    "@cf/zai-org/glm-5.2": {
+      "context_length": 262144,
+      "provider": "cloudflare",
+      "source": "https://developers.cloudflare.com/workers-ai/models/",
+      "verified_at": "2026-07"
+    },
+    "@cf/openai/gpt-oss-120b": {
+      "context_length": 131072,
+      "provider": "cloudflare",
+      "source": "https://developers.cloudflare.com/workers-ai/models/",
+      "verified_at": "2026-07"
+    },
+    "@cf/openai/gpt-oss-20b": {
+      "context_length": 128000,
+      "provider": "cloudflare",
+      "source": "https://developers.cloudflare.com/workers-ai/models/",
+      "verified_at": "2026-07"
+    },
+    "@cf/nvidia/nemotron-3-120b-a12b": {
+      "context_length": 256000,
+      "provider": "cloudflare",
+      "source": "https://developers.cloudflare.com/workers-ai/models/",
+      "verified_at": "2026-07"
+    },
+    "@cf/mistralai/mistral-small-3.1-24b-instruct": {
+      "context_length": 131072,
+      "provider": "cloudflare",
+      "source": "https://developers.cloudflare.com/workers-ai/models/",
+      "verified_at": "2026-07"
+    },
+    "@cf/ibm-granite/granite-4.0-h-micro": {
+      "context_length": 131072,
+      "provider": "cloudflare",
+      "source": "https://developers.cloudflare.com/workers-ai/models/",
+      "verified_at": "2026-07"
+    },
+    "@cf/aisingapore/gemma-sea-lion-v4-27b-it": {
+      "context_length": 128000,
+      "provider": "cloudflare",
+      "source": "https://developers.cloudflare.com/workers-ai/models/",
+      "verified_at": "2026-07"
+    },
+    "@hf/meta-llama/meta-llama-3-8b-instruct": {
+      "context_length": 8192,
+      "provider": "cloudflare",
+      "source": "https://developers.cloudflare.com/workers-ai/models/",
+      "verified_at": "2026-07",
+      "note": "Limite da plataforma Cloudflare HF, nao do modelo"
+    },
+    "@hf/mistral/mistral-7b-instruct-v0.2": {
+      "context_length": 32768,
+      "provider": "cloudflare",
+      "source": "https://developers.cloudflare.com/workers-ai/models/",
+      "verified_at": "2026-07"
+    },
+    "@hf/google/gemma-7b-it": {
+      "context_length": 8192,
+      "provider": "cloudflare",
+      "source": "https://developers.cloudflare.com/workers-ai/models/",
+      "verified_at": "2026-07"
+    },
+    "@hf/nousresearch/hermes-2-pro-mistral-7b": {
+      "context_length": 32768,
+      "provider": "cloudflare",
+      "source": "https://developers.cloudflare.com/workers-ai/models/",
+      "verified_at": "2026-07"
+    },
+    "@cf/microsoft/phi-2": {
+      "context_length": 2048,
+      "provider": "cloudflare",
+      "source": "https://developers.cloudflare.com/workers-ai/models/",
+      "verified_at": "2026-07"
+    },
+    "@cf/defog/sqlcoder-7b-2": {
+      "context_length": 10000,
+      "provider": "cloudflare",
+      "source": "https://developers.cloudflare.com/workers-ai/models/",
+      "verified_at": "2026-07"
+    },
+    "@cf/meta/llama-2-7b-chat-fp16": {
+      "context_length": 4096,
+      "provider": "cloudflare",
+      "source": "https://developers.cloudflare.com/workers-ai/models/",
+      "verified_at": "2026-07"
+    },
+    "@cf/meta/llama-2-7b-chat-int8": {
+      "context_length": 4096,
+      "provider": "cloudflare",
+      "source": "https://developers.cloudflare.com/workers-ai/models/",
+      "verified_at": "2026-07"
+    },
+    "@cf/mistral/mistral-7b-instruct-v0.1": {
+      "context_length": 8192,
+      "provider": "cloudflare",
+      "source": "https://developers.cloudflare.com/workers-ai/models/",
+      "verified_at": "2026-07",
+      "note": "v0.1 tem contexto menor que v0.2"
+    },
+    "@cf/meta/llama-3-8b-instruct": {
+      "context_length": 8192,
+      "provider": "cloudflare",
+      "source": "https://developers.cloudflare.com/workers-ai/models/",
+      "verified_at": "2026-07"
+    },
+    "@cf/meta/llama-3-8b-instruct-awq": {
+      "context_length": 8192,
+      "provider": "cloudflare",
+      "source": "https://developers.cloudflare.com/workers-ai/models/",
+      "verified_at": "2026-07"
+    },
+    "@cf/meta/llama-3.1-8b-instruct": {
+      "context_length": 128000,
+      "provider": "cloudflare",
+      "source": "https://developers.cloudflare.com/workers-ai/models/",
+      "verified_at": "2026-07"
+    },
+
+    "meta/llama-3.1-405b-instruct": {
+      "context_length": 131072,
+      "provider": "nvidia",
+      "source": "https://build.nvidia.com/meta/llama-3_1-405b-instruct",
+      "verified_at": "2026-07"
+    },
+    "nv-mistralai/mistral-nemo-12b-instruct": {
+      "context_length": 128000,
+      "provider": "nvidia",
+      "source": "https://build.nvidia.com/mistralai/mistral-nemo-12b-instruct",
+      "verified_at": "2026-07"
+    },
+    "nvidia/llama-3.1-nemotron-70b-instruct": {
+      "context_length": 131072,
+      "provider": "nvidia",
+      "source": "https://build.nvidia.com/nvidia/llama-3_1-nemotron-70b-instruct",
+      "verified_at": "2026-07"
+    },
+
+    "Meta-Llama-3.3-70B-Instruct": {
+      "context_length": 131072,
+      "provider": "sambanova",
+      "source": "https://sambanova.ai/models",
+      "verified_at": "2026-07"
+    },
+    "Meta-Llama-3.2-1B-Instruct": {
+      "context_length": 16384,
+      "provider": "sambanova",
+      "source": "https://sambanova.ai/models",
+      "verified_at": "2026-07"
+    },
+
+    "deepseek-ai/DeepSeek-R1": {
+      "context_length": 131072,
+      "provider": "siliconflow",
+      "source": "https://siliconflow.cn/models",
+      "verified_at": "2026-07"
+    },
+    "deepseek-ai/DeepSeek-V3": {
+      "context_length": 131072,
+      "provider": "siliconflow",
+      "source": "https://siliconflow.cn/models",
+      "verified_at": "2026-07"
+    },
+    "deepseek-ai/DeepSeek-V3.1": {
+      "context_length": 131072,
+      "provider": "siliconflow",
+      "source": "https://siliconflow.cn/models",
+      "verified_at": "2026-07"
+    },
+    "deepseek-ai/DeepSeek-V3.1-Terminus": {
+      "context_length": 131072,
+      "provider": "siliconflow",
+      "source": "https://siliconflow.cn/models",
+      "verified_at": "2026-07"
+    },
+    "deepseek-ai/DeepSeek-V3.2": {
+      "context_length": 131072,
+      "provider": "siliconflow",
+      "source": "https://siliconflow.cn/models",
+      "verified_at": "2026-07"
+    },
+    "deepseek-ai/DeepSeek-V3.2-Exp": {
+      "context_length": 131072,
+      "provider": "siliconflow",
+      "source": "https://siliconflow.cn/models",
+      "verified_at": "2026-07"
+    },
+    "deepseek-ai/DeepSeek-V4-Pro": {
+      "context_length": 131072,
+      "provider": "siliconflow",
+      "source": "https://siliconflow.cn/models",
+      "verified_at": "2026-07"
+    },
+    "deepseek-ai/DeepSeek-V4-Flash": {
+      "context_length": 131072,
+      "provider": "siliconflow",
+      "source": "https://siliconflow.cn/models",
+      "verified_at": "2026-07"
+    },
+    "Qwen/Qwen3.6-35B-A3B": {
+      "context_length": 131072,
+      "provider": "siliconflow",
+      "source": "https://siliconflow.cn/models",
+      "verified_at": "2026-07"
+    },
+    "Qwen/Qwen3.6-27B": {
+      "context_length": 131072,
+      "provider": "siliconflow",
+      "source": "https://siliconflow.cn/models",
+      "verified_at": "2026-07"
+    },
+    "Qwen/Qwen3.5-397B-A17B": {
+      "context_length": 131072,
+      "provider": "siliconflow",
+      "source": "https://siliconflow.cn/models",
+      "verified_at": "2026-07"
+    },
+    "Qwen/Qwen3.5-122B-A10B": {
+      "context_length": 131072,
+      "provider": "siliconflow",
+      "source": "https://siliconflow.cn/models",
+      "verified_at": "2026-07"
+    },
+    "Qwen/Qwen3.5-35B-A3B": {
+      "context_length": 131072,
+      "provider": "siliconflow",
+      "source": "https://siliconflow.cn/models",
+      "verified_at": "2026-07"
+    },
+    "Qwen/Qwen3.5-27B": {
+      "context_length": 131072,
+      "provider": "siliconflow",
+      "source": "https://siliconflow.cn/models",
+      "verified_at": "2026-07"
+    },
+    "Qwen/Qwen3.5-9B": {
+      "context_length": 131072,
+      "provider": "siliconflow",
+      "source": "https://siliconflow.cn/models",
+      "verified_at": "2026-07"
+    },
+    "Qwen/Qwen3-VL-32B-Instruct": {
+      "context_length": 131072,
+      "provider": "siliconflow",
+      "source": "https://siliconflow.cn/models",
+      "verified_at": "2026-07"
+    },
+    "Qwen/Qwen3-VL-32B-Thinking": {
+      "context_length": 131072,
+      "provider": "siliconflow",
+      "source": "https://siliconflow.cn/models",
+      "verified_at": "2026-07"
+    },
+    "Qwen/Qwen3-VL-8B-Instruct": {
+      "context_length": 131072,
+      "provider": "siliconflow",
+      "source": "https://siliconflow.cn/models",
+      "verified_at": "2026-07"
+    },
+    "Qwen/Qwen3-VL-30B-A3B-Instruct": {
+      "context_length": 131072,
+      "provider": "siliconflow",
+      "source": "https://siliconflow.cn/models",
+      "verified_at": "2026-07"
+    },
+    "Qwen/Qwen3-VL-30B-A3B-Thinking": {
+      "context_length": 131072,
+      "provider": "siliconflow",
+      "source": "https://siliconflow.cn/models",
+      "verified_at": "2026-07"
+    },
+    "Qwen/Qwen3-Coder-30B-A3B-Instruct": {
+      "context_length": 131072,
+      "provider": "siliconflow",
+      "source": "https://siliconflow.cn/models",
+      "verified_at": "2026-07"
+    },
+    "Qwen/Qwen3-32B": {
+      "context_length": 131072,
+      "provider": "siliconflow",
+      "source": "https://siliconflow.cn/models",
+      "verified_at": "2026-07"
+    },
+    "Qwen/Qwen3-14B": {
+      "context_length": 131072,
+      "provider": "siliconflow",
+      "source": "https://siliconflow.cn/models",
+      "verified_at": "2026-07"
+    },
+    "Qwen/Qwen3-8B": {
+      "context_length": 131072,
+      "provider": "siliconflow",
+      "source": "https://siliconflow.cn/models",
+      "verified_at": "2026-07"
+    },
+    "Qwen/Qwen2.5-72B-Instruct": {
+      "context_length": 131072,
+      "provider": "siliconflow",
+      "source": "https://siliconflow.cn/models",
+      "verified_at": "2026-07"
+    },
+    "Qwen/Qwen2.5-Coder-32B-Instruct": {
+      "context_length": 131072,
+      "provider": "siliconflow",
+      "source": "https://siliconflow.cn/models",
+      "verified_at": "2026-07"
+    },
+    "Qwen/Qwen2.5-7B-Instruct": {
+      "context_length": 32768,
+      "provider": "siliconflow",
+      "source": "https://siliconflow.cn/models",
+      "verified_at": "2026-07"
+    },
+    "meta-llama/Llama-3.3-70B-Instruct": {
+      "context_length": 131072,
+      "provider": "siliconflow",
+      "source": "https://siliconflow.cn/models",
+      "verified_at": "2026-07"
+    },
+
+    "deepseek-chat": {
+      "context_length": 64000,
+      "provider": "deepseek",
+      "source": "https://api-docs.deepseek.com/",
+      "verified_at": "2026-07"
+    },
+    "deepseek-reasoner": {
+      "context_length": 64000,
+      "provider": "deepseek",
+      "source": "https://api-docs.deepseek.com/",
+      "verified_at": "2026-07"
+    },
+
+    "qwen-plus": {
+      "context_length": 131072,
+      "provider": "qwen",
+      "source": "https://help.aliyun.com/zh/model-studio/",
+      "verified_at": "2026-07"
+    },
+    "qwen-turbo": {
+      "context_length": 131072,
+      "provider": "qwen",
+      "source": "https://help.aliyun.com/zh/model-studio/",
+      "verified_at": "2026-07"
+    },
+    "qwen-max": {
+      "context_length": 30720,
+      "provider": "qwen",
+      "source": "https://help.aliyun.com/zh/model-studio/",
+      "verified_at": "2026-07"
+    },
+
+    "gpt-4o": {
+      "context_length": 128000,
+      "provider": "openai",
+      "source": "https://platform.openai.com/docs/models",
+      "verified_at": "2026-07"
+    },
+    "gpt-4o-mini": {
+      "context_length": 128000,
+      "provider": "openai",
+      "source": "https://platform.openai.com/docs/models",
+      "verified_at": "2026-07"
+    },
+
+    "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo": {
+      "context_length": 131072,
+      "provider": "together",
+      "source": "https://docs.together.ai/docs/inference-models",
+      "verified_at": "2026-07"
+    },
+    "meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo": {
+      "context_length": 131072,
+      "provider": "together",
+      "source": "https://docs.together.ai/docs/inference-models",
+      "verified_at": "2026-07"
+    },
+
+    "codestral": {
+      "context_length": 262144,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "codestral-2508": {
+      "context_length": 262144,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "codestral-embed": {
+      "context_length": 8192,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "codestral-embed-2505": {
+      "context_length": 8192,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "codestral-latest": {
+      "context_length": 262144,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "devstral-2512": {
+      "context_length": 262144,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "devstral-latest": {
+      "context_length": 262144,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "devstral-medium-latest": {
+      "context_length": 262144,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "devstral-small-2:24b": {
+      "context_length": 262144,
+      "provider": "ollama",
+      "source": "https://docs.ollama.com/",
+      "verified_at": "2026-07"
+    },
+    "labs-leanstral-1-5": {
+      "context_length": 262144,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "labs-leanstral-1.5": {
+      "context_length": 262144,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "labs-leanstral-1-5-1": {
+      "context_length": 262144,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "labs-leanstral-1.5.1": {
+      "context_length": 262144,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "labs-leanstral-2603": {
+      "context_length": 262144,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "magistral-medium-2509": {
+      "context_length": 32768,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "magistral-medium-latest": {
+      "context_length": 32768,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "magistral-small-2509": {
+      "context_length": 32768,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "magistral-small-latest": {
+      "context_length": 32768,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "ministral-14b-2512": {
+      "context_length": 131072,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "ministral-14b-latest": {
+      "context_length": 131072,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "ministral-3:14b": {
+      "context_length": 131072,
+      "provider": "ollama",
+      "source": "https://docs.ollama.com/",
+      "verified_at": "2026-07"
+    },
+    "ministral-3b-2512": {
+      "context_length": 131072,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "ministral-3b-latest": {
+      "context_length": 131072,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "ministral-3:3b": {
+      "context_length": 131072,
+      "provider": "ollama",
+      "source": "https://docs.ollama.com/",
+      "verified_at": "2026-07"
+    },
+    "ministral-8b-2512": {
+      "context_length": 131072,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "ministral-8b-latest": {
+      "context_length": 131072,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "ministral-3:8b": {
+      "context_length": 131072,
+      "provider": "ollama",
+      "source": "https://docs.ollama.com/",
+      "verified_at": "2026-07"
+    },
+    "mistral-code-agent-latest": {
+      "context_length": 262144,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "mistral-code-fim-latest": {
+      "context_length": 262144,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "mistral-code-latest": {
+      "context_length": 262144,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "mistral-embed": {
+      "context_length": 8192,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "mistral-embed-2312": {
+      "context_length": 8192,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "mistral-large": {
+      "context_length": 131072,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "mistral-large-2512": {
+      "context_length": 131072,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "mistral-large-latest": {
+      "context_length": 131072,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "mistral-large-3:675b": {
+      "context_length": 131072,
+      "provider": "ollama",
+      "source": "https://docs.ollama.com/",
+      "verified_at": "2026-07"
+    },
+    "mistral-medium": {
+      "context_length": 32768,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "mistral-medium-2505": {
+      "context_length": 32768,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "mistral-medium-2508": {
+      "context_length": 32768,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "mistral-medium-2604": {
+      "context_length": 32768,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "mistral-medium-3": {
+      "context_length": 32768,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "mistral-medium-3-5": {
+      "context_length": 32768,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "mistral-medium-3.5": {
+      "context_length": 32768,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "mistral-medium-latest": {
+      "context_length": 32768,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "mistral-moderation-2411": {
+      "context_length": 8192,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "mistral-moderation-2603": {
+      "context_length": 8192,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "mistral-moderation-latest": {
+      "context_length": 8192,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "mistral-ocr-2512": {
+      "context_length": 8192,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "mistral-ocr-3": {
+      "context_length": 8192,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "mistral-ocr-3-0": {
+      "context_length": 8192,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "mistral-ocr-3.0": {
+      "context_length": 8192,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "mistral-ocr-4": {
+      "context_length": 8192,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "mistral-ocr-4-0": {
+      "context_length": 8192,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "mistral-ocr-4.0": {
+      "context_length": 8192,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "mistral-ocr-latest": {
+      "context_length": 8192,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "mistral-small-2506": {
+      "context_length": 32768,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "mistral-small-2603": {
+      "context_length": 32768,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "mistral-small-latest": {
+      "context_length": 32768,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "mistral-tiny-2407": {
+      "context_length": 8192,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "mistral-tiny-latest": {
+      "context_length": 8192,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "mistral-vibe-cli-fast": {
+      "context_length": 32768,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "mistral-vibe-cli-latest": {
+      "context_length": 32768,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "mistral-vibe-cli-with-tools": {
+      "context_length": 32768,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "open-mixtral-8x22b": {
+      "context_length": 64000,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "open-mixtral-8x7b": {
+      "context_length": 32768,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "open-mistral-nemo": {
+      "context_length": 131072,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "open-mistral-nemo-2407": {
+      "context_length": 131072,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "open-mistral-7b": {
+      "context_length": 32768,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "codestral-mamba": {
+      "context_length": 256000,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "pixtral-12b-2409": {
+      "context_length": 131072,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "pixtral-12b": {
+      "context_length": 131072,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "pixtral-large-latest": {
+      "context_length": 131072,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "voxtral-mini-2507": {
+      "context_length": 131072,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "voxtral-mini-2602": {
+      "context_length": 131072,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "voxtral-mini-latest": {
+      "context_length": 131072,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "voxtral-mini-realtime-2602": {
+      "context_length": 131072,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "voxtral-mini-realtime-latest": {
+      "context_length": 131072,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "voxtral-mini-transcribe-realtime-2602": {
+      "context_length": 131072,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "voxtral-mini-tts-2603": {
+      "context_length": 131072,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "voxtral-mini-tts-latest": {
+      "context_length": 131072,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "voxtral-mini-tts-mellon-greek-2606-solutions": {
+      "context_length": 131072,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "voxtral-small-2507": {
+      "context_length": 131072,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+    "voxtral-small-latest": {
+      "context_length": 131072,
+      "provider": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/",
+      "verified_at": "2026-07"
+    },
+
+    "command-r-plus": {
+      "context_length": 128000,
+      "provider": "cohere",
+      "source": "https://docs.cohere.com/docs/command-r-plus",
+      "verified_at": "2026-07"
+    },
+    "command-r": {
+      "context_length": 128000,
+      "provider": "cohere",
+      "source": "https://docs.cohere.com/docs/command-r",
+      "verified_at": "2026-07"
+    },
+    "LongCat-2.0": {
+      "context_length": 1000000,
+      "provider": "longcat",
+      "source": "https://longcat.chat",
+      "verified_at": "2026-07"
+    }
+  }
+}

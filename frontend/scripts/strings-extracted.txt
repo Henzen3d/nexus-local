@@ -1,0 +1,277 @@
+COUNT 276
+"Authorization"	api/client.ts
+"Content-Type"	api/client.ts
+"Fechar alerta"	App.tsx
+"Administrador"	components/AdminPanel.tsx
+"Apenas Modelos Pagos"	components/AdminPanel.tsx
+"Ativar"	components/AdminPanel.tsx
+"Ativo"	components/AdminPanel.tsx
+"Autom├ítico (Voz Padr├úo do Sistema)"	components/AdminPanel.tsx
+"Busca Web"	components/AdminPanel.tsx
+"Buscar modelo..."	components/AdminPanel.tsx
+"Cache Inteligente"	components/AdminPanel.tsx
+"Calibra├º├úo de Score"	components/AdminPanel.tsx
+"Capacidades"	components/AdminPanel.tsx
+"Claro"	components/AdminPanel.tsx
+"Claude Sans (Inter)"	components/AdminPanel.tsx
+"Claude Serif (Cormorant Garamond)"	components/AdminPanel.tsx
+"Claude Serif (Garamond)"	components/AdminPanel.tsx
+"Clique para editar o limite de contexto"	components/AdminPanel.tsx
+"Cobran├ºa"	components/AdminPanel.tsx
+"Cole o ID da conta Cloudflare aqui"	components/AdminPanel.tsx
+"Cole sua chave aqui"	components/AdminPanel.tsx
+"Conectores"	components/AdminPanel.tsx
+"Configura├º├Áes de Voz"	components/AdminPanel.tsx
+"Confirmado Free"	components/AdminPanel.tsx
+"Confirmar este modelo como gratuito? O sistema passar├í a trata-lo como livre."	components/AdminPanel.tsx
+"Confirmar manualmente como gratuito"	components/AdminPanel.tsx
+"Desativar"	components/AdminPanel.tsx
+"Desenvolvedor"	components/AdminPanel.tsx
+"Designer"	components/AdminPanel.tsx
+"Dispositivo"	components/AdminPanel.tsx
+"Editar Perfil"	components/AdminPanel.tsx
+"Enter"	components/AdminPanel.tsx
+"Erro ao carregar a lista de usu├írios."	components/AdminPanel.tsx
+"Erro ao confirmar modelo"	components/AdminPanel.tsx
+"Escape"	components/AdminPanel.tsx
+"Escuro"	components/AdminPanel.tsx
+"Estudante"	components/AdminPanel.tsx
+"ex.: manter explica├º├Áes breves e diretas"	components/AdminPanel.tsx
+"Excluir usu├írio"	components/AdminPanel.tsx
+"Fechar"	components/AdminPanel.tsx
+"Fechar Configura├º├Áes"	components/AdminPanel.tsx
+"Fechar modal de configura├º├Áes"	components/AdminPanel.tsx
+"Ferramentas"	components/AdminPanel.tsx
+"Free Registry"	components/AdminPanel.tsx
+"Geral"	components/AdminPanel.tsx
+"Gerente"	components/AdminPanel.tsx
+"Google Portugu├¬s (Brasil)"	components/AdminPanel.tsx
+"Inativo"	components/AdminPanel.tsx
+"Info"	components/AdminPanel.tsx
+"Informa├º├Áes"	components/AdminPanel.tsx
+"Links Compartilhados"	components/AdminPanel.tsx
+"Melhorador de Prompt"	components/AdminPanel.tsx
+"Microsoft Daniel - Portuguese (Brazil)"	components/AdminPanel.tsx
+"Microsoft Maria - Portuguese (Brazil)"	components/AdminPanel.tsx
+"Modelo confirmado como gratuito pela comunidade"	components/AdminPanel.tsx
+"Modo Fusion"	components/AdminPanel.tsx
+"Mostrar menos"	components/AdminPanel.tsx
+"N├úo foi poss├¡vel excluir o usu├írio."	components/AdminPanel.tsx
+"N├úo verificado como gratuito. Pode ser um modelo pago."	components/AdminPanel.tsx
+"NexusLocal v1.0.0 (Local-First AI Server)"	components/AdminPanel.tsx
+"Oferece Modelos Free"	components/AdminPanel.tsx
+"Outro"	components/AdminPanel.tsx
+"Parab├®ns pelo interesse! A vers├úo Pro estar├í dispon├¡vel em breve."	components/AdminPanel.tsx
+"Perfil Atualizado!"	components/AdminPanel.tsx
+"Permiss├Áes"	components/AdminPanel.tsx
+"Privacidade & Seguran├ºa"	components/AdminPanel.tsx
+"Procurar..."	components/AdminPanel.tsx
+"Providers & Modelos"	components/AdminPanel.tsx
+"Rankings de Modelos"	components/AdminPanel.tsx
+"Salvar"	components/AdminPanel.tsx
+"Salvar Prefer├¬ncias"	components/AdminPanel.tsx
+"Salvo!"	components/AdminPanel.tsx
+"Sincronizando..."	components/AdminPanel.tsx
+"Sincronizar"	components/AdminPanel.tsx
+"Sincronizar Modelos"	components/AdminPanel.tsx
+"Sincronizar Todos"	components/AdminPanel.tsx
+"Sistema"	components/AdminPanel.tsx
+"Speech Synthesis Pt-BR (Premium)"	components/AdminPanel.tsx
+"Tem certeza de que deseja limpar todos os dados em cache do localStorage? Voc├¬ ser├í deslogado."	components/AdminPanel.tsx
+"Tem certeza que deseja excluir sua conta? Todos os seus chats salvos ser├úo deletados permanentemente."	components/AdminPanel.tsx
+"Usu├írio"	components/AdminPanel.tsx
+"Usu├írios"	components/AdminPanel.tsx
+"Vision Relay"	components/AdminPanel.tsx
+"Voltar"	components/AdminPanel.tsx
+"Voltar para tela anterior"	components/AdminPanel.tsx
+"Tempo de resposta total"	components/AIMetadataDisplay.tsx
+"Tempo gasto em racioc├¡nio"	components/AIMetadataDisplay.tsx
+"Tokens de entrada (Prompt)"	components/AIMetadataDisplay.tsx
+"Tokens gerados (Completion)"	components/AIMetadataDisplay.tsx
+"Velocidade m├®dia de gera├º├úo"	components/AIMetadataDisplay.tsx
+"Cancelado"	components/AIStatusIndicator.tsx
+"Conclu├¡do"	components/AIStatusIndicator.tsx
+"Erro"	components/AIStatusIndicator.tsx
+"Pensando..."	components/AIStatusIndicator.tsx
+"Regenerando..."	components/AIStatusIndicator.tsx
+"').replace(/\\$/g, '\\\\$')}\\`);\n        \n        appendLog(\"\\\n--- Execu├º├úo Conclu├¡da ---\", \"system-msg\");\n      } catch (err) {\n        appendLog(err.message, \"error\");\n      }\n    }\n    main();\n  </script>\n</body>\n</html>"	components/ArtifactPanel.tsx
+");\n      // Eval ou execu├º├úo direta via script inserido\n      const script = document.createElement("	components/ArtifactPanel.tsx
+"Abrir em Nova Aba"	components/ArtifactPanel.tsx
+"Aguardando resposta..."	components/ArtifactPanel.tsx
+"Aplicar modifica├º├úo (Enter)"	components/ArtifactPanel.tsx
+"Baixar Arquivo"	components/ArtifactPanel.tsx
+"Code Execution Console"	components/ArtifactPanel.tsx
+"c├│digo"	components/ArtifactPanel.tsx
+"C├│digo"	components/ArtifactPanel.tsx
+"Copiar Conte├║do"	components/ArtifactPanel.tsx
+"Descreva a modifica├º├úo..."	components/ArtifactPanel.tsx
+"Executar C├│digo"	components/ArtifactPanel.tsx
+"Fechar Painel"	components/ArtifactPanel.tsx
+"Fragment"	components/ArtifactPanel.tsx
+"Markdown"	components/ArtifactPanel.tsx
+"Parar Execu├º├úo"	components/ArtifactPanel.tsx
+"Pr├│xima vers├úo"	components/ArtifactPanel.tsx
+"React"	components/ArtifactPanel.tsx
+"Retorne o documento completo e atualizado dentro de um bloco de c├│digo, sem texto explicativo fora do bloco.\n\n"	components/ArtifactPanel.tsx
+"Suspense"	components/ArtifactPanel.tsx
+"Ver c├│digo"	components/ArtifactPanel.tsx
+"Ver pr├®via"	components/ArtifactPanel.tsx
+"Vers├úo anterior"	components/ArtifactPanel.tsx
+"Abrir menu"	components/ArtifactsPanel.tsx
+"agora h├í pouco"	components/ArtifactsPanel.tsx
+"Deseja iniciar um novo chat com o assistente local para criar novos artefatos?"	components/ArtifactsPanel.tsx
+"Os artefatos que voc├¬ gerar nas conversas com IA aparecer├úo aqui."	components/ArtifactsPanel.tsx
+"Pesquisar artefatos..."	components/ArtifactsPanel.tsx
+"placeholder-wireframe"	components/ArtifactsPanel.tsx
+"preview-placeholder-wrapper"	components/ArtifactsPanel.tsx
+"Privado"	components/ArtifactsPanel.tsx
+"Publicado"	components/ArtifactsPanel.tsx
+"Tente ajustar sua busca para encontrar o artefato."	components/ArtifactsPanel.tsx
+"Anexar arquivos (PDF, DOCX, Imagens...)"	components/AttachmentButton.tsx
+"Erro ao realizar upload do arquivo."	components/AttachmentButton.tsx
+"Selecione um modelo primeiro"	components/AttachmentButton.tsx
+"Baixar arquivo"	components/AttachmentChip.tsx
+"Baixar original"	components/AttachmentChip.tsx
+"Remover"	components/AttachmentChip.tsx
+"Apagar TODO o cache?"	components/CachePanel.tsx
+"Ativa ou desativa todo o sistema de cache"	components/CachePanel.tsx
+"Cache exato"	components/CachePanel.tsx
+"Cache global"	components/CachePanel.tsx
+"Cache sem├óntico"	components/CachePanel.tsx
+"Embedding + cosseno ÔÇö captura varia├º├Áes de prompt"	components/CachePanel.tsx
+"fastembed n├úo instalado"	components/CachePanel.tsx
+"Horas antes de uma entrada exata expirar"	components/CachePanel.tsx
+"Horas antes de uma entrada sem├óntica expirar"	components/CachePanel.tsx
+"M├¡nimo de similaridade para um hit sem├óntico (0.80ÔÇô0.99)"	components/CachePanel.tsx
+"Remover entrada"	components/CachePanel.tsx
+"SHA-256 das mensagens ÔÇö hit instant├óneo"	components/CachePanel.tsx
+"Threshold de similaridade"	components/CachePanel.tsx
+"TTL do cache sem├óntico"	components/CachePanel.tsx
+"Abrir sidebar"	components/ChatWindow.tsx
+"Aprender"	components/ChatWindow.tsx
+"Ativar Modo Fusion"	components/ChatWindow.tsx
+"Boa noite"	components/ChatWindow.tsx
+"Boa tarde"	components/ChatWindow.tsx
+"Bom dia"	components/ChatWindow.tsx
+"Brainstorm"	components/ChatWindow.tsx
+"Crie uma fun├º├úo Python que l├¬ um CSV e retorna um dicion├írio agrupado por coluna."	components/ChatWindow.tsx
+"Desativar Modo Fusion"	components/ChatWindow.tsx
+"Escrever"	components/ChatWindow.tsx
+"Explique o que ├® o protocolo MCP (Model Context Protocol) da Anthropic em 3 par├ígrafos."	components/ChatWindow.tsx
+"Me ajude a escrever um e-mail profissional solicitando um aumento de sal├írio."	components/ChatWindow.tsx
+"Me d├¬ 10 ideias criativas para features de um sistema local de integra├º├úo de LLMs."	components/ChatWindow.tsx
+"Copiado!"	components/CodeBlock.tsx
+"Copiar c├│digo"	components/CodeBlock.tsx
+"Cancelar sele├º├úo"	components/ConversationsPanel.tsx
+"Desfavoritar"	components/ConversationsPanel.tsx
+"Favoritar"	components/ConversationsPanel.tsx
+"Filtrar conversas"	components/ConversationsPanel.tsx
+"Inicie um novo bate-papo para ver suas conversas aqui."	components/ConversationsPanel.tsx
+"Pesquisar conversas"	components/ConversationsPanel.tsx
+"Selecionar chats"	components/ConversationsPanel.tsx
+"Tente ajustar sua busca ou limpar os filtros."	components/ConversationsPanel.tsx
+"Instru├º├Áes de sistema para o modelo de melhoria..."	components/EnhancerSettings.tsx
+"Salvar Configura├º├úo"	components/EnhancerSettings.tsx
+"Selecione um modelo..."	components/EnhancerSettings.tsx
+"Selecione um provedor primeiro..."	components/EnhancerSettings.tsx
+"Criada automaticamente pelo assistente."	components/FamilySettings.tsx
+"DeepSeek R1"	components/FamilySettings.tsx
+"Erro ao adicionar membro."	components/FamilySettings.tsx
+"Erro ao aplicar sugest├úo"	components/FamilySettings.tsx
+"Erro ao criar fam├¡lia"	components/FamilySettings.tsx
+"Erro ao criar fam├¡lia. Verifique se o ID j├í existe."	components/FamilySettings.tsx
+"Excluir Fam├¡lia"	components/FamilySettings.tsx
+"Modelos focados em racioc├¡nio avan├ºado..."	components/FamilySettings.tsx
+"Ordem de fallback (1 = principal)"	components/FamilySettings.tsx
+"Erro ao sincronizar. Verifique os logs."	components/FreeRegistrySettings.tsx
+"For├ºar Sincroniza├º├úo Agora"	components/FreeRegistrySettings.tsx
+"Free"	components/FreeRegistrySettings.tsx
+"Nunca"	components/FreeRegistrySettings.tsx
+"Registry j├í estava atualizado."	components/FreeRegistrySettings.tsx
+"Salvar Configura├º├Áes"	components/FreeRegistrySettings.tsx
+"Abaixo est├úo as respostas de diferentes modelos LLM para a pergunta do usu├írio. "	components/FusionSettings.tsx
+"Analise cada resposta, extraia os pontos fortes de cada uma, neutralize erros "	components/FusionSettings.tsx
+"factuais ou alucina├º├Áes e monte a resposta ideal: unificada, clara e abrangente.\n\n"	components/FusionSettings.tsx
+"Instru├º├Áes de consolida├º├úo para o modelo Juiz..."	components/FusionSettings.tsx
+"Modelo..."	components/FusionSettings.tsx
+"Responda diretamente ao usu├írio, sem mencionar que est├í consolidando respostas. "	components/FusionSettings.tsx
+"Retorne apenas a resposta final em Markdown."	components/FusionSettings.tsx
+"Selecione provedor..."	components/FusionSettings.tsx
+"Voc├¬ ├® o Agente Juiz e Consolidador do NexusLocal.\n\n"	components/FusionSettings.tsx
+"Aguardando"	components/FusionStatusCard.tsx
+"Alta"	components/FusionStatusCard.tsx
+"Analisando alega├º├Áes..."	components/FusionStatusCard.tsx
+"Baixa"	components/FusionStatusCard.tsx
+"Busca conclu├¡da"	components/FusionStatusCard.tsx
+"Consolidando..."	components/FusionStatusCard.tsx
+"Gerando..."	components/FusionStatusCard.tsx
+"M├®dia"	components/FusionStatusCard.tsx
+"Nenhuma alega├º├úo cr├¡tica"	components/FusionStatusCard.tsx
+"Pesquisando fontes..."	components/FusionStatusCard.tsx
+"[PWA] Usu├írio aceitou a instala├º├úo do NexusLocal"	components/InstallPWAButton.tsx
+"Instalar NexusLocal como aplicativo"	components/InstallPWAButton.tsx
+"Cadastre-se"	components/Login.tsx
+"Criar Conta"	components/Login.tsx
+"Entrar"	components/Login.tsx
+"Erro ao cadastrar. Talvez este usu├írio ou e-mail j├í exista."	components/Login.tsx
+"Fazer Login"	components/Login.tsx
+"J├í tem uma conta?"	components/Login.tsx
+"N├úo possui uma conta?"	components/Login.tsx
+"Por favor, insira o seu e-mail de cadastro."	components/Login.tsx
+"Por favor, preencha o nome de usu├írio e a senha."	components/Login.tsx
+"Seu usu├írio"	components/Login.tsx
+"Sua senha"	components/Login.tsx
+"Usu├írio ou senha incorretos."	components/Login.tsx
+"Desconhecido"	components/MessageBubble.tsx
+"Expandir racioc├¡nio"	components/MessageBubble.tsx
+"Recolher racioc├¡nio"	components/MessageBubble.tsx
+"Configure o Melhorador em Configura├º├Áes"	components/MessageInput.tsx
+"Enviar"	components/MessageInput.tsx
+"Erro ao melhorar prompt"	components/MessageInput.tsx
+"Escreva uma mensagem..."	components/MessageInput.tsx
+"Melhorar prompt com IA Ô£¿"	components/MessageInput.tsx
+"Parar"	components/MessageInput.tsx
+"Selecione um modelo abaixo para come├ºar..."	components/MessageInput.tsx
+"Rate limit esgotado"	components/ModelSelector.tsx
+"Selecionar modelo"	components/ModelSelector.tsx
+"Selecionar provedor"	components/ProviderSelector.tsx
+"Sem rank"	components/RankBadge.tsx
+"Aplicar Calibra├º├úo"	components/RankingsView.tsx
+"Erro ao carregar dados do ranking:"	components/RankingsView.tsx
+"Erro ao salvar pesos do ranking."	components/RankingsView.tsx
+"Filtrar modelos..."	components/RankingsView.tsx
+"Pesos Calibrados!"	components/RankingsView.tsx
+"Salvando..."	components/RankingsView.tsx
+"Score"	components/RankingsView.tsx
+"A├º├Áes"	components/Sidebar.tsx
+"Exportar como arquivo"	components/Sidebar.tsx
+"Fechar sidebar"	components/Sidebar.tsx
+"Hoje"	components/Sidebar.tsx
+"Mais antigos"	components/Sidebar.tsx
+"Mudar para tema claro"	components/Sidebar.tsx
+"Mudar para tema escuro"	components/Sidebar.tsx
+"Ontem"	components/Sidebar.tsx
+"Sair da conta"	components/Sidebar.tsx
+"├Ültimos 7 dias"	components/Sidebar.tsx
+"Calculando"	components/ToolCard.tsx
+"Chamando ferramenta"	components/ToolCard.tsx
+"Executando Python"	components/ToolCard.tsx
+"Lendo arquivo"	components/ToolCard.tsx
+"Navegando"	components/ToolCard.tsx
+"Pesquisando"	components/ToolCard.tsx
+"Degradado"	components/UsageDashboard.tsx
+"Esgotado (429)"	components/UsageDashboard.tsx
+"Rate Limit (429)"	components/UsageDashboard.tsx
+"Requisi├º├Áes"	components/UsageDashboard.tsx
+"Instru├º├Áes para guiar a descri├º├úo objetiva da imagem..."	components/VisionRelaySettings.tsx
+"Alta (Threshold: 0.25)"	components/WebSearchSettings.tsx
+"Autom├ítica"	components/WebSearchSettings.tsx
+"Baixa (Threshold: 0.60)"	components/WebSearchSettings.tsx
+"Manual"	components/WebSearchSettings.tsx
+"M├®dia (Threshold: 0.40)"	components/WebSearchSettings.tsx
+"Resultados de busca para \"{query}\":\n\n{results}\n\n---..."	components/WebSearchSettings.tsx
+"Ativar Busca Web ­ƒîÉ"	components/WebSearchToggle.tsx
+"Busca Web Ativa"	components/WebSearchToggle.tsx
+"No model selected"	hooks/useChat.ts
+"[artifact] falha ao carregar hist├│rico:"	store/useStore.ts
+"Vibration not supported or blocked:"	store/useStore.ts

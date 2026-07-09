@@ -1,0 +1,7 @@
+/* Motion e transições */
+:root {
+  --motion-fast: 120ms;
+  --motion-normal: 180ms;
+  --motion-slow: 220ms;
+  --ease-standard: ease-out;
+}

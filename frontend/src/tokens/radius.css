@@ -1,0 +1,6 @@
+/* Raios de borda (radius) */
+:root {
+  --radius-chat: 18px;
+  --radius-input: 24px;
+  --radius-card: 12px;
+}
