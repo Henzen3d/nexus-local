@@ -1,84 +1,98 @@
 # ⬡ NexusLocal
 
-Interface de chat local para modelos LLM gratuitos — Groq, Gemini, OpenRouter, Cerebras, NVIDIA NIM, SambaNova, SiliconFlow, FreeTheAI, LLM7.io e LongCat.
+> **Tired of hit-the-wall rate limits and "Wait 3 Hours" screens on Claude and ChatGPT?**  
+> NexusLocal is a local-first chat interface that aggregates and orchestrates multiple free-tier LLM APIs (Gemini, Groq, SambaNova, OpenRouter, and more) so you can keep coding and chatting without interruptions.
 
-## Stack
-- **Backend**: Python + FastAPI + WebSockets + aiosqlite
-- **Frontend**: React 18 + TypeScript + Vite + Zustand
-- **Banco**: SQLite (conversas e configurações persistidas localmente)
+---
 
-## Início Rápido
+## 🧬 Why NexusLocal?
 
-### Linux / macOS
+Commercial chat services lock you out once you reach their rigid limits. NexusLocal bypasses this restriction by using your own free API keys across various state-of-the-art providers. When one provider hits a rate limit, simply switch to another, or let NexusLocal orchestrate them in parallel.
+
+### ✦ Key Features
+
+*   **🧬 Response Fusion (🧬 Fusão)**: Query multiple LLMs in parallel (e.g. Gemini + Llama 3.3 + Groq) and let a referee model consolidate the responses into a single, high-quality answer in real-time.
+*   **✦ Prompt Enhancer (Varinha Mágica)**: Optimizes your simple queries using a secondary prompt-engineering LLM before sending it to the main model.
+*   **💻 Split-Screen Artifacts**: Renders code, HTML, SVG, and documents in an interactive split-screen panel (similar to Claude Artifacts).
+*   **🧠 Local Memory**: Persists your conversations, context, and project settings locally via an SQLite database.
+*   **⚡ Ultra-Fast Execution**: Built with WebSockets for instant streaming response delivery.
+
+---
+
+## 🛠️ Tech Stack
+
+*   **Frontend**: React 18 + TypeScript + Vite + Zustand (State Management)
+*   **Backend**: Python + FastAPI + WebSockets + aiosqlite
+*   **Database**: SQLite (Local persistence for chats and configs)
+
+---
+
+## ⚡ Supported Providers & Free Tiers
+
+| Provider | Free Tier Highlights | Key Source |
+| :--- | :--- | :--- |
+| **Google Gemini** | 1500 req/day (Generous limits) | [Google AI Studio](https://aistudio.google.com/apikey) |
+| **Groq** | ~14k req/day (Ultra-fast inference) | [Groq Console](https://console.groq.com) |
+| **OpenRouter** | 50+ free models | [OpenRouter Keys](https://openrouter.ai/keys) |
+| **SambaNova** | High-speed Llama 3.3 405B access | [SambaNova Cloud](https://cloud.sambanova.ai) |
+| **Cerebras** | Insanely fast Llama inference | [Cerebras Cloud](https://cloud.cerebras.ai) |
+| **NVIDIA NIM** | $25 initial developer credits | [NVIDIA Build](https://build.nvidia.com) |
+| **SiliconFlow** | Multi-LLM provider registry | [SiliconFlow](https://siliconflow.cn) |
+| **FreeTheAI** | 50+ models, check-in based | [FreeTheAI](https://freetheai.xyz) |
+
+---
+
+## 🚀 Quick Start
+
+### 1. Clone the repository
+```bash
+git clone https://github.com/Henzen3d/nexus-local.git
+cd nexus-local
+```
+
+### 2. Startup local servers
+
+#### Linux / macOS
 ```bash
 chmod +x start.sh
 ./start.sh
 ```
 
-### Windows
-```
+#### Windows
+Simply run:
+```cmd
 start.bat
 ```
 
-Acesse **http://localhost:5173** e vá em **Configurações** para adicionar suas chaves de API.
+### 3. Add your API Keys
+Access **`http://localhost:5173`** in your browser, go to **Settings (Configurações)**, and input your API keys to begin chatting limit-free.
 
-## Providers suportados
+---
 
-| Provider      | Free tier                          | Onde pegar chave                     |
-|---------------|------------------------------------|--------------------------------------|
-| Groq          | ~14k req/dia, ultra rápido         | console.groq.com                     |
-| OpenRouter    | 50+ modelos `:free`                | openrouter.ai/keys                   |
-| Google Gemini | 1500 req/dia (muito generoso!)     | aistudio.google.com/apikey           |
-| Cerebras      | Free tier, velocidade insana       | cloud.cerebras.ai                    |
-| NVIDIA NIM    | $25 créditos iniciais              | build.nvidia.com                     |
-| SambaNova     | Free tier com Llama 3.3 405B       | cloud.sambanova.ai                   |
-| SiliconFlow   | Free tier / Cupom com vários LLMs  | siliconflow.cn                       |
-| FreeTheAI     | 50+ modelos gratuitos, req. checkin| freetheai.xyz / discord.gg/secrets   |
-| LLM7.io       | Vários LLMs com rate limits grátis | dash.llm7.io                         |
-| LongCat       | Janela de contexto gigante (1M)    | api.longcat.chat                     |
-
-## Recursos Avançados
-
-O NexusLocal possui recursos avançados de orquestração de IA que otimizam a qualidade e a interatividade das respostas:
-
-*   **[Prompt Enhancer (Varinha Mágica ✦)](file:///j:/Arquivos%20Osmar/Multi+/DOCUMENTATION.md#41-prompt-enhancer-varinha-magica-)**: Reescreve e aprimora o seu prompt simples usando um modelo secundário de engenharia de prompt antes de enviá-lo ao modelo principal.
-*   **[Modo Fusion (🧬 Fusão)](file:///j:/Arquivos%20Osmar/Multi+/DOCUMENTATION.md#42-modo-fusion--fusao-de-respostas)**: Dispara a mesma pergunta para vários LLMs em paralelo e utiliza um modelo Juiz para consolidar a melhor resposta possível em tempo real.
-*   **[Sistema de Artifacts (Painel Split-Screen)](file:///j:/Arquivos%20Osmar/Multi+/DOCUMENTATION.md#43-sistema-de-artifacts-painel-split-screen)**: Identifica códigos, SVGs, HTML ou documentos longos e os abre de forma interativa em um painel lateral separado do chat.
-
-Para ver os esquemas de banco de dados, detalhes de arquitetura e funcionamento interno de cada recurso, consulte a **[Documentação Completa do Sistema](file:///j:/Arquivos%20Osmar/Multi+/DOCUMENTATION.md)**.
-
-## Estrutura
+## 📂 Project Structure
 
 ```
-nexuslocal/
+nexus-local/
 ├── backend/
-│   ├── main.py              ← FastAPI app
-│   ├── database.py          ← SQLite + schema
-│   ├── models.py            ← Pydantic models
+│   ├── main.py              ← FastAPI main application entry point
+│   ├── database.py          ← SQLite database initialization and schemas
+│   ├── models.py            ← Pydantic data schemas
 │   ├── providers/
-│   │   ├── base.py          ← Adapter OpenAI-compat universal
-│   │   └── registry.py      ← Roteamento por provider
-│   ├── fusion/
-│   │   ├── __init__.py
-│   │   └── orchestrator.py  ← Orquestrador do modo Fusion
-│   └── routers/
-│       ├── chat.py          ← WebSocket streaming
-│       ├── conversations.py ← CRUD histórico
-│       ├── admin.py         ← Gerenciar chaves/modelos
-│       ├── enhancer.py      ← Roteador do Prompt Enhancer
-│       ├── fusion.py        ← Roteador das configurações de Fusão
-│       └── artifacts.py     ← Roteador dos Artefatos
+│   │   ├── base.py          ← OpenAI-compatible base adapter
+│   │   └── registry.py      ← API routing logic per provider
+│   └── routers/             ← HTTP / WebSocket routes (chat, admin, artifacts)
 └── frontend/
     └── src/
-        ├── components/      ← Sidebar, Chat, Admin, ArtifactPanel, etc.
-        ├── hooks/           ← useChat (WebSocket)
-        ├── store/           ← Zustand state
-        └── api/             ← HTTP client
+        ├── components/      ← Sidebar, ChatWindow, AdminPanel, ArtifactPanel
+        ├── store/           ← Zustand global stores (useStore)
+        └── index.css        ← Semantic Design System and theme definitions
 ```
 
-## Próximos módulos planejados
-- [ ] **Self-Scaffold** — loop auto-avaliador inspirado no Ornith
-- [ ] **System Prompts** — templates de persona por conversa
-- [ ] **Export** — exportar conversa como Markdown/JSON
-- [ ] **Fase 3 do Sistema de Artifacts** — edição inline e renderização dinâmica avançada
+---
 
+## 🗺️ Roadmap
+
+*   [ ] **Self-Scaffold**: Autonomous evaluation loop inspired by Ornith.
+*   [ ] **System Prompts**: Customizable system instructions and personas per chat.
+*   [ ] **Export Mode**: Export conversations as Markdown or JSON.
+*   [ ] **Inline Editing**: Real-time editing and previewing inside the Artifact panel.

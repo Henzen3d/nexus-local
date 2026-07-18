@@ -213,7 +213,7 @@ function ProjectsListPage({
               <p>
                 {t('projects.emptyDescV2', {
                   defaultValue:
-                    'Projetos guardam instruções, arquivos e memória — e conectam chats do mesmo workspace.',
+                    'Projetos guardam instruções, arquivos e memória, e conectam chats do mesmo workspace.',
                 })}
               </p>
               <button type="button" className="claude-btn-primary" onClick={onNew}>
@@ -556,7 +556,7 @@ function ProjectDetailPage({
         await api.uploadProjectFile(projectId, file)
       }
       await refresh()
-      showToast(t('projects.fileUploaded', { defaultValue: 'Arquivo enviado — indexando…' }), 'success')
+      showToast(t('projects.fileUploaded', { defaultValue: 'Arquivo enviado: indexando…' }), 'success')
     } catch (e) {
       console.error(e)
       showToast(t('projects.uploadError', { defaultValue: 'Falha no upload' }), 'error')

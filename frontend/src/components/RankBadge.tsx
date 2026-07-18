@@ -160,7 +160,7 @@ export function RankBadge({ score, rank, popularityRank, qualityScore, internalU
               alignItems: 'center'
             }}
           >
-            <span>{t('chat.rankGeneral')} {rank ? `#${rank}` : '—'}</span>
+            <span>{t('chat.rankGeneral')} {rank ? `#${rank}` : '-'}</span>
             <span style={{ color: badgeColor, fontWeight: 700 }}>{t('common.score')}: {score.toFixed(1)}</span>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
@@ -170,7 +170,7 @@ export function RankBadge({ score, rank, popularityRank, qualityScore, internalU
                 <span style={{ fontWeight: 500 }}>
                   {qualityScore !== null && qualityScore !== undefined
                     ? t('chat.pts', { value: qualityScore.toFixed(0) })
-                    : '—'}
+                    : '-'}
                 </span>
               </div>
               <div style={{ fontSize: '10px', color: 'var(--muted)', textAlign: 'right' }}>

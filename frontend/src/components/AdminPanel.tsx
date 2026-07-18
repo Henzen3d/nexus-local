@@ -837,8 +837,8 @@ function AdminPanelMobile() {
                               onClick={() => handleToggleShareProviderKey(prov.id, !!prov.share_admin_key)}
                               title={
                                 prov.share_admin_key
-                                  ? t('settings.shareKeyOn', { defaultValue: 'Compartilhando esta chave com outros usuários — clique para desligar' })
-                                  : t('settings.shareKeyOff', { defaultValue: 'Não compartilhada — clique para compartilhar só este provedor' })
+                                  ? t('settings.shareKeyOn', { defaultValue: 'Compartilhando esta chave com outros usuários - clique para desligar' })
+                                  : t('settings.shareKeyOff', { defaultValue: 'Não compartilhada - clique para compartilhar só este provedor' })
                               }
                               aria-label={t('settings.shareThisKey', { defaultValue: 'Compartilhar chave deste provedor' })}
                               aria-pressed={!!prov.share_admin_key}
@@ -1003,8 +1003,8 @@ function AdminPanelMobile() {
                               onClick={() => handleToggleShareProviderKey(prov.id, !!prov.share_admin_key)}
                               title={
                                 prov.share_admin_key
-                                  ? t('settings.shareKeyOn', { defaultValue: 'Compartilhando esta chave com outros usuários — clique para desligar' })
-                                  : t('settings.shareKeyOff', { defaultValue: 'Não compartilhada — clique para compartilhar só este provedor' })
+                                  ? t('settings.shareKeyOn', { defaultValue: 'Compartilhando esta chave com outros usuários - clique para desligar' })
+                                  : t('settings.shareKeyOff', { defaultValue: 'Não compartilhada - clique para compartilhar só este provedor' })
                               }
                               aria-label={t('settings.shareThisKey', { defaultValue: 'Compartilhar chave deste provedor' })}
                               aria-pressed={!!prov.share_admin_key}
@@ -1367,7 +1367,7 @@ function AdminPanelMobile() {
         <div className="settings-mobile-container-view">
           <Header title={t("settings.permissions")} />
           <div className="settings-mobile-content">
-            <div className="settings-coming-soon-banner">{t('settings.comingSoonPreview', { defaultValue: 'Prévia — esta seção ainda não afeta o sistema.' })}</div>
+            <div className="settings-coming-soon-banner">{t('settings.comingSoonPreview', { defaultValue: 'Prévia: esta seção ainda não afeta o sistema.' })}</div>
             <p style={{ fontSize: '13px', color: 'var(--muted)', marginBottom: '12px', padding: '0 4px' }}>
               {t('settings.permissionsDesc')}
             </p>
@@ -1482,7 +1482,7 @@ function AdminPanelMobile() {
         <div className="settings-mobile-container-view">
           <Header title={t("settings.voiceSettings")} />
           <div className="settings-mobile-content">
-            <div className="settings-coming-soon-banner">{t('settings.comingSoonPreview', { defaultValue: 'Prévia — esta seção ainda não afeta o sistema.' })}</div>
+            <div className="settings-coming-soon-banner">{t('settings.comingSoonPreview', { defaultValue: 'Prévia: esta seção ainda não afeta o sistema.' })}</div>
             <p style={{ fontSize: '13px', color: 'var(--muted)', marginBottom: '12px', padding: '0 4px' }}>
               Selecione a voz sintetizada para leitura de mensagens e respostas de áudio do chat.
             </p>
@@ -1969,8 +1969,8 @@ function AdminPanelDesktop() {
                     }}
                     title={
                       prov.share_admin_key
-                        ? t('settings.shareKeyOn', { defaultValue: 'Compartilhando esta chave com outros usuários — clique para desligar' })
-                        : t('settings.shareKeyOff', { defaultValue: 'Não compartilhada — clique para compartilhar só este provedor' })
+                        ? t('settings.shareKeyOn', { defaultValue: 'Compartilhando esta chave com outros usuários - clique para desligar' })
+                        : t('settings.shareKeyOff', { defaultValue: 'Não compartilhada - clique para compartilhar só este provedor' })
                     }
                     aria-label={t('settings.shareThisKey', { defaultValue: 'Compartilhar chave deste provedor' })}
                     aria-pressed={!!prov.share_admin_key}
@@ -2015,7 +2015,7 @@ function AdminPanelDesktop() {
               )}
               {!prov.has_key && (
                 <p className="key-hint">
-                  🔑 Sem chave configurada — os modelos deste provider não aparecerão no seletor.
+                  🔑 Sem chave configurada: os modelos deste provider não aparecerão no seletor.
                 </p>
               )}
               {prov.id === 'freetheai' && (

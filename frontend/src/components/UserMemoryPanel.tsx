@@ -672,7 +672,7 @@ export function UserMemoryPanel() {
                   {s.scope === 'global'
                     ? t('memory.summaryGlobal')
                     : s.scope === 'project'
-                      ? `${t('memory.summaryProject')}: ${s.scope_ref || '—'}`
+                      ? `${t('memory.summaryProject')}: ${s.scope_ref || '-'}`
                       : s.scope}
                 </div>
                 <pre style={{
