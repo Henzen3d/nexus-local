@@ -1,4 +1,4 @@
-# Banco de dados local (NexusLocal SQLite)
+# ── Banco de dados local (NexusLocal SQLite) ─────────────────────────────────
 backend/nexuslocal.db
 backend/nexuslocal.db-wal
 backend/nexuslocal.db-shm
@@ -9,33 +9,84 @@ nexuslocal.db-shm
 *.db-wal
 *.db-shm
 
-# Backups e arquivos compactados
+# ── Backups e arquivos compactados ────────────────────────────────────────────
 *.rar
 *.zip
+*.tar.gz
 
-# Ambientes virtuais e pacotes Python
+# ── Ambientes virtuais e pacotes Python ───────────────────────────────────────
 .venv/
 venv/
 ENV/
 __pycache__/
 *.pyc
+*.pyo
 
-# Arquivos de configurações locais / Chaves de API
+# ── Arquivos de configuração local / Chaves de API ───────────────────────────
 .env
 .env.local
 frontend/.env
 frontend/.env.local
 free-api.md
 
-# Dependências frontend
+# ── Dependências frontend ────────────────────────────────────────────────────
 frontend/node_modules/
 node_modules/
 frontend/dist/
 
-# Logs e arquivos temporários
-*.log
+# ── Ferramentas de agente / IA (uso interno de desenvolvimento) ───────────────
+.agent/
+.agents/
 .qwen/
 .planning/
-.agents/
 .gemini/
 .impeccable/
+.playwright-mcp/
+.claude/
+
+# ── Logs e temporários ───────────────────────────────────────────────────────
+*.log
+*.tmp
+
+# ── Documentos de planejamento, rascunhos e referências de design ─────────────
+# (uso interno — não necessários para rodar o projeto)
+Referencias Design/
+FABLE5.md
+MYTHOS.md
+DESIGN.md
+BADGE-plan.md
+MELHORIAS_FUSION.md
+PLANO_SIDEBAR_CONVERSAS_ARTEFATOS.md
+AUDIT-REPORT.md
+Audit-changes-history.mb
+gap_analysis.md
+mudancas.md
+micropolimento.md
+melhorias-UX-UI.md
+context-plan.md
+Plan-*.md
+plan-*.md
+plan_*.md
+plan*.md
+PLAN_*.md
+
+# ── Scripts e arquivos de teste / depuração ───────────────────────────────────
+check_db.py
+_fable5_migration_test.py
+test-*.png
+test-*.jpg
+
+# ── Arquivos HTML de rascunho / apresentação ─────────────────────────────────
+Discurso.html
+discurso-v2.html
+antigo-config.html
+NexusLocal.html
+
+# ── Imagens de rascunho no frontend/public ───────────────────────────────────
+frontend/public/ChatGPT*
+frontend/public/Gemini_Generated*
+frontend/public/grok-image*
+frontend/public/image.jpg
+frontend/public/favicontransparente.png
+frontend/public/favorito.png
+frontend/public/favicon_ico/
