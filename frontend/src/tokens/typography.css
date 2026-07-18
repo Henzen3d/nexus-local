@@ -7,4 +7,9 @@
   --font-thinking: 13px;
   --font-meta: 12px;
   --font-placeholder: 15px;
+
+  /* Pesos de fonte */
+  --weight-title: 600;
+  --weight-menu: 500;
+  --weight-body: 400;
 }

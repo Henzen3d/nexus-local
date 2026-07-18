@@ -21,7 +21,9 @@ async def list_conversations(
             SELECT c.id, c.title, c.model_id, c.provider_id,
                       c.created_at, c.updated_at,
                       COUNT(m.id) as message_count,
-                      c.is_favorite, c.favorited_at
+                      c.is_favorite, c.favorited_at,
+                      c.project_tag,
+                      c.project_id
                FROM conversations c
                LEFT JOIN messages m ON m.conversation_id = c.id
                WHERE c.user_id = ?
@@ -57,6 +59,8 @@ async def list_conversations(
                 "updated_at": r[5], "message_count": r[6],
                 "is_favorite": bool(r[7]),
                 "favorited_at": r[8],
+                "project_tag": r[9] if len(r) > 9 else None,
+                "project_id": r[10] if len(r) > 10 else None,
             }
             for r in rows
         ]
@@ -69,7 +73,7 @@ async def get_conversation(conversation_id: str, current_user: dict = Depends(ge
     db = await get_db()
     try:
         async with db.execute(
-            "SELECT id, title, model_id, provider_id, created_at, user_id, is_favorite, favorited_at FROM conversations WHERE id = ?",
+            "SELECT id, title, model_id, provider_id, created_at, user_id, is_favorite, favorited_at, project_tag, project_id FROM conversations WHERE id = ?",
             (conversation_id,),
         ) as cur:
             conv = await cur.fetchone()
@@ -144,6 +148,8 @@ async def get_conversation(conversation_id: str, current_user: dict = Depends(ge
             "id": conv[0], "title": conv[1], "model_id": conv[2],
             "provider_id": conv[3], "created_at": conv[4],
             "is_favorite": bool(conv[6]), "favorited_at": conv[7],
+            "project_tag": conv[8] if len(conv) > 8 else None,
+            "project_id": conv[9] if len(conv) > 9 else None,
             "messages": [
                 {
                     "id": m[0],
@@ -176,12 +182,40 @@ async def update_conversation(conversation_id: str, body: ConversationUpdate, cu
         if row[0] != current_user["id"]:
             raise HTTPException(status_code=403, detail="Acesso não autorizado.")
 
-        await db.execute(
-            "UPDATE conversations SET title = ? WHERE id = ?",
-            (body.title, conversation_id),
-        )
+        fields = body.model_dump(exclude_unset=True)
+
+        if "title" in fields and body.title is not None:
+            await db.execute(
+                "UPDATE conversations SET title = ?, updated_at = datetime('now') WHERE id = ?",
+                (body.title, conversation_id),
+            )
+        if "project_tag" in fields:
+            tag = (body.project_tag or "").strip() or None
+            await db.execute(
+                "UPDATE conversations SET project_tag = ?, updated_at = datetime('now') WHERE id = ?",
+                (tag, conversation_id),
+            )
+        if "project_id" in fields:
+            # null / "" detaches chat from project
+            raw = body.project_id if isinstance(body.project_id, str) else ""
+            pid = raw.strip() or None
+            if pid:
+                async with db.execute(
+                    "SELECT id FROM projects WHERE id = ? AND user_id = ?",
+                    (pid, current_user["id"]),
+                ) as cur:
+                    if not await cur.fetchone():
+                        raise HTTPException(status_code=404, detail="Projeto não encontrado.")
+            await db.execute(
+                "UPDATE conversations SET project_id = ?, updated_at = datetime('now') WHERE id = ?",
+                (pid, conversation_id),
+            )
         await db.commit()
-        return {"ok": True}
+        return {
+            "ok": True,
+            "project_tag": fields.get("project_tag", body.project_tag),
+            "project_id": fields.get("project_id", body.project_id),
+        }
     finally:
         await db.close()
 
@@ -234,6 +268,8 @@ async def favorite_conversation(conversation_id: str, current_user: dict = Depen
 
 @router.patch("/{conversation_id}/rename")
 async def rename_conversation_route(conversation_id: str, body: ConversationUpdate, current_user: dict = Depends(get_current_user)):
+    if not body.title or not body.title.strip():
+        raise HTTPException(status_code=400, detail="Título obrigatório.")
     if len(body.title) > 100:
         raise HTTPException(status_code=400, detail="O título não pode ter mais de 100 caracteres.")
     db = await get_db()

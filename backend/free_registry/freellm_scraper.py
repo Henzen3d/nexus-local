@@ -3,6 +3,9 @@ import re
 import asyncio
 import logging
 
+from backend.logging_config import get_logger
+logger = get_logger(__name__)
+
 logger = logging.getLogger(__name__)
 
 async def fetch_freellm_models():
@@ -90,6 +93,7 @@ async def run_freellm_scraper_job(db):
 if __name__ == "__main__":
     # Teste local direto
     import logging
+
     logging.basicConfig(level=logging.INFO)
     result = asyncio.run(fetch_freellm_models())
-    print(f"Status: {result['status']}, Encontrados: {result.get('models_found')}")
+    logger.info("Status: %s, Encontrados: %s", result['status'], result.get('models_found'))

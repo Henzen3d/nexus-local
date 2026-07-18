@@ -9,6 +9,7 @@ from typing import List
 
 from backend.database import get_db
 from backend.ranking.scorer import compute_all_scores, ScoredModel
+from backend.auth import get_current_user, require_admin
 
 from pydantic import BaseModel
 
@@ -22,7 +23,7 @@ class RankingWeightsIn(BaseModel):
 
 
 @router.get("/ranking/weights")
-async def get_ranking_weights():
+async def get_ranking_weights(current_user: dict = Depends(get_current_user)):
     db = await get_db()
     try:
         from backend.ranking.scorer import load_ranking_weights
@@ -32,7 +33,7 @@ async def get_ranking_weights():
 
 
 @router.post("/ranking/weights")
-async def update_ranking_weights(body: RankingWeightsIn):
+async def update_ranking_weights(body: RankingWeightsIn, current_user: dict = Depends(require_admin)):
     # Validar que a soma dos pesos seja aproximadamente 1.0 (ou normalizar antes)
     total = body.weight_quality + body.weight_popularity + body.weight_usage
     if total <= 0:
@@ -64,7 +65,7 @@ async def update_ranking_weights(body: RankingWeightsIn):
 
 
 @router.get("/ranking", response_model=List[ScoredModel])
-async def get_ranking():
+async def get_ranking(current_user: dict = Depends(get_current_user)):
     """Retorna a lista de modelos com scores já calculados.
     
     - Se ainda não houver scores, executa o cálculo imediatamente.

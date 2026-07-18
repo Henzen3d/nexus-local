@@ -168,11 +168,11 @@ const simple = [
   [">Nome Completo</label>", '>{t("settings.fullName")}</label>'],
   [">Nome completo</label>", '>{t("settings.fullNameAlt")}</label>'],
   [">Como devemos te chamar?</label>", '>{t("settings.howToCall")}</label>'],
-  [">Como o Claude deveria te chamar?</label>", '>{t("settings.howClaudeCall")}</label>'],
+  [">Como o NexusLocal deve te chamar?</label>", '>{t("settings.howClaudeCall")}</label>'],
   [">Área de Atuação</label>", '>{t("settings.occupation")}</label>'],
   [">O que melhor descreve seu trabalho?</label>", '>{t("settings.occupationDesc")}</label>'],
   [">Instruções personalizadas</label>", '>{t("settings.customInstructions")}</label>'],
-  [">Instruções para o Claude</label>", '>{t("settings.instructionsForClaude")}</label>'],
+  [">Instruções para o NexusLocal</label>", '>{t("settings.instructionsForClaude")}</label>'],
   [">Selecionar...</option>", '>{t("common.select")}</option>'],
   [">Desenvolvedor / Engenheiro de Software</option>", '>{t("settings.occupationDev")}</option>'],
   [">Designer de Interface / UX</option>", '>{t("settings.occupationDesigner")}</option>'],
@@ -389,7 +389,7 @@ s = s.replace(
 
 // instructions hint paragraph
 s = s.replace(
-  'Essas diretrizes serão levadas em consideração nas conversas locais e interações de agente.',
+  'Essas diretrizes serão levadas em consideração nas conversas e interações com os modelos.',
   "{t('settings.instructionsHint')}"
 )
 

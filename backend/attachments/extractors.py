@@ -4,6 +4,9 @@ import docx
 import pandas as pd
 import io
 
+from backend.logging_config import get_logger
+logger = get_logger(__name__)
+
 class ExtractionError(Exception):
     pass
 
@@ -18,7 +21,7 @@ async def extract_text_from_pdf(filepath: str) -> str:
                 if t:
                     text += t + "\n"
     except Exception as e:
-        print(f"pypdf extraction failed: {e}")
+        logger.error("pypdf extraction failed:", exc_info=e)
 
     # Fallback to pdfplumber if empty
     if not text.strip():
@@ -29,7 +32,7 @@ async def extract_text_from_pdf(filepath: str) -> str:
                     if t:
                         text += t + "\n"
         except Exception as e:
-            print(f"pdfplumber extraction failed: {e}")
+            logger.error("pdfplumber extraction failed:", exc_info=e)
 
     if not text.strip():
         raise ExtractionError("PDF sem texto extraível — provavelmente escaneado. OCR necessário.")
@@ -72,6 +75,7 @@ async def extract_text_from_text_file(filepath: str) -> str:
 
 async def extract_text(filepath: str, mime_type: str) -> str:
     import os
+
     _, ext = os.path.splitext(filepath.lower())
 
     if ext == '.pdf' or 'pdf' in mime_type:

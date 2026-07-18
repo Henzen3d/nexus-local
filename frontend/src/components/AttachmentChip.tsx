@@ -89,9 +89,9 @@ export function AttachmentChip({ attachment, readonly = false, onRemove }: Props
           <div className="attachment-chip-actions">
             <button 
               type="button" 
-              className="attachment-chip-action-btn"
+              className="attachment-chip-action-btn custom-tooltip-trigger tooltip-up"
               onClick={handleDownload}
-              title={t('artifacts.download')}
+              data-tooltip={t('artifacts.download')}
             >
               <Download size={12} />
             </button>
@@ -99,12 +99,12 @@ export function AttachmentChip({ attachment, readonly = false, onRemove }: Props
         ) : (
           <button 
             type="button" 
-            className="attachment-chip-remove" 
+            className="attachment-chip-remove custom-tooltip-trigger tooltip-up" 
             onClick={(e) => {
               e.stopPropagation()
               onRemove?.()
             }}
-            title={t('common.remove')}
+            data-tooltip={t('common.remove')}
           >
             <X size={12} />
           </button>
@@ -118,10 +118,10 @@ export function AttachmentChip({ attachment, readonly = false, onRemove }: Props
             <div className="lightbox-header">
               <span className="lightbox-title">{attachment.filename}</span>
               <div className="flex gap-2">
-                <button className="icon-btn" onClick={handleDownload} title={t('artifacts.downloadOriginal')}>
+                <button className="icon-btn custom-tooltip-trigger" onClick={handleDownload} data-tooltip={t('artifacts.downloadOriginal')}>
                   <Download size={16} />
                 </button>
-                <button className="icon-btn" onClick={() => setLightboxOpen(false)} title={t('common.close')}>
+                <button className="icon-btn custom-tooltip-trigger" onClick={() => setLightboxOpen(false)} data-tooltip={t('common.close')}>
                   <X size={16} />
                 </button>
               </div>
@@ -143,10 +143,10 @@ export function AttachmentChip({ attachment, readonly = false, onRemove }: Props
                 {attachment.filename}
               </h3>
               <div className="flex gap-2">
-                <button className="icon-btn" onClick={handleDownload} title={t('artifacts.download')}>
+                <button className="icon-btn custom-tooltip-trigger" onClick={handleDownload} data-tooltip={t('artifacts.download')}>
                   <Download size={14} />
                 </button>
-                <button className="icon-btn" onClick={() => setDocPreviewOpen(false)} title={t('common.close')}>
+                <button className="icon-btn custom-tooltip-trigger" onClick={() => setDocPreviewOpen(false)} data-tooltip={t('common.close')}>
                   <X size={14} />
                 </button>
               </div>

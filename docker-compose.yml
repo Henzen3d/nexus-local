@@ -1,15 +1,21 @@
-version: '3.8'
-
 services:
   backend:
     build: ./backend
     container_name: nexus_backend
     restart: always
+    # Injeta JWT_SECRET, chaves de API e demais vars do .env no container.
+    # Sem isso o backend falha no boot (auth.py exige JWT_SECRET) e o proxy
+    # devolve 502 em /api/* e /ws/*.
+    env_file:
+      - .env
     volumes:
       # Espelha o arquivo do banco de dados do Linux para dentro do container
       - ./backend/nexuslocal.db:/app/backend/nexuslocal.db
-    environment:
-      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS}
+      - fastembed_cache:/root/.cache/fastembed
+    # NÃO declare JWT_SECRET em `environment` com ${JWT_SECRET}:
+    # se a var não existir no host, o Compose injeta string vazia e
+    # isso SOBRESCREVE o valor vindo do env_file — matando o backend.
+    # Todo o .env (JWT_SECRET, API keys, etc.) entra via env_file acima.
     networks:
       - nexus_net
 
@@ -39,3 +45,6 @@ services:
 networks:
   nexus_net:
     driver: bridge
+
+volumes:
+  fastembed_cache:

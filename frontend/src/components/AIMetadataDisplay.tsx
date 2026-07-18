@@ -57,19 +57,19 @@ export function AIMetadataDisplay({ metadata, visible = false }: AIMetadataDispl
       }}
     >
       {input_tokens !== undefined && (
-        <span title={t('chat.tokensIn')}>In: {input_tokens}</span>
+        <span className="custom-tooltip-trigger" data-tooltip={t('chat.tokensIn')}>In: {input_tokens}</span>
       )}
       {tokens_generated !== undefined && (
-        <span title={t('chat.tokensOut')}>Out: {tokens_generated}</span>
+        <span className="custom-tooltip-trigger" data-tooltip={t('chat.tokensOut')}>Out: {tokens_generated}</span>
       )}
       {total_time_ms !== undefined && (
-        <span title={t('chat.totalTime')}>Total: {(total_time_ms / 1000).toFixed(2)}s</span>
+        <span className="custom-tooltip-trigger" data-tooltip={t('chat.totalTime')}>Total: {(total_time_ms / 1000).toFixed(2)}s</span>
       )}
       {tokens_per_second !== undefined && (
-        <span style={{ fontWeight: 500 }} title={t('chat.avgSpeed')}>{tokens_per_second} t/s</span>
+        <span className="custom-tooltip-trigger" style={{ fontWeight: 500 }} data-tooltip={t('chat.avgSpeed')}>{tokens_per_second} t/s</span>
       )}
       {reasoning_time_ms !== undefined && (
-        <span title={t('chat.reasoningTime')}>🧠 {(reasoning_time_ms / 1000).toFixed(2)}s</span>
+        <span className="custom-tooltip-trigger" data-tooltip={t('chat.reasoningTime')}>🧠 {(reasoning_time_ms / 1000).toFixed(2)}s</span>
       )}
     </span>
   )

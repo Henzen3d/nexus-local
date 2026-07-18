@@ -24,7 +24,7 @@ A sidebar atual está muito larga e pesada visualmente.
 
 ### Alterações desejadas
 
-- Reduzir aproximadamente **20–25%** da largura atual.
+- Aumentar aproximadamente **15%** da largura atual.
 - Aumentar o espaçamento interno (padding).
 - Melhorar o alinhamento entre ícones e textos.
 - Diminuir o peso visual das divisórias.
@@ -486,4 +486,6 @@ O objetivo é que o NexusLocal tenha qualidade visual comparável a aplicações
 - 9.1: Gemini 3.5 Flash (Medium)
 - 9.2: Gemini 3.5 Flash (Medium)
 - 9.3: Gemini 3.5 Flash (Medium)
-- 9.4: Gemini 
+- 9.4: Gemini 3.5 Flash (Medium)
+
+

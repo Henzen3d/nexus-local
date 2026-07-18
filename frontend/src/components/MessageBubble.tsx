@@ -10,7 +10,7 @@ import { api } from '../api/client'
 import { UserAvatar, AssistantAvatar, ErrorAvatar } from './Avatars'
 import { AttachmentChip } from './AttachmentChip'
 import { AIStatusIndicator } from './AIStatusIndicator'
-import { CodeBlock } from './CodeBlock'
+import { markdownComponents } from './markdownComponents'
 import { AdapterRegistry } from '../adapters/AdapterRegistry'
 import { AIMetadataDisplay } from './AIMetadataDisplay'
 
@@ -35,10 +35,10 @@ function ThinkingBlock({ content, isThinking, durationLabel }: ThinkingBlockProp
     <div className="thinking-block">
       <button
         type="button"
-        className="thinking-header"
+        className="thinking-header custom-tooltip-trigger"
         onClick={() => setIsOpen((v) => !v)}
         aria-expanded={isOpen}
-        title={isOpen ? t('chat.collapseThinking') : t('chat.expandThinking')}
+        data-tooltip={isOpen ? t('chat.collapseThinking') : t('chat.expandThinking')}
       >
         <span className="thinking-status">
           <AIStatusIndicator
@@ -66,22 +66,26 @@ function ThinkingBlock({ content, isThinking, durationLabel }: ThinkingBlockProp
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 
-function cleanContentForArtifacts(content: string, artifacts: { type: string; title?: string }[]): string {
+function cleanContentForArtifacts(
+  content: string,
+  artifacts: { type: string; title?: string; content?: string }[]
+): string {
   let cleaned = content
 
-  artifacts.forEach(art => {
+  // Mantém fences no chat (CodeBlock). Só remove dumps enormes de HTML/SVG bare
+  // quando já existem como artefato — o card de Artefato continua disponível.
+  artifacts.forEach((art) => {
     if (art.type === 'html') {
-      cleaned = cleaned.replace(/```html\s*[\s\S]*?```/gi, '')
-      cleaned = cleaned.replace(/(<!DOCTYPE\s+html[\s\S]*?<\/html>|<html[\s\S]*?<\/html>)/gi, '')
+      // Não remove ```html — o CodeBlock exibe; remove bare HTML fora de fence se duplicar o artifact
+      if (art.content && cleaned.includes(art.content) && !/```html/i.test(cleaned)) {
+        cleaned = cleaned.split(art.content).join('')
+      }
     } else if (art.type === 'svg') {
-      cleaned = cleaned.replace(/```svg\s*[\s\S]*?```/gi, '')
-      cleaned = cleaned.replace(/(<svg[\s\S]*?<\/svg>)/gi, '')
-    } else if (art.type === 'jsx') {
-      cleaned = cleaned.replace(/```(?:jsx|tsx)\s*[\s\S]*?```/gi, '')
-    } else if (art.type === 'code') {
-      cleaned = cleaned.replace(/```(?:\w+)?\s*[\s\S]*?```/gi, '')
-    } else if (art.type === 'markdown') {
-      // Deixa o markdown ser renderizado inline no balão de chat, não o remova da resposta textual
+      if (art.content && cleaned.includes(art.content) && !/```svg/i.test(cleaned)) {
+        cleaned = cleaned.split(art.content).join('')
+      }
+    } else if (art.type === 'jsx' || art.type === 'code' || art.type === 'markdown') {
+      // Mantém o bloco no chat + card de artefato (se houver)
     }
   })
 
@@ -199,9 +203,10 @@ function WebSearchSources({ sources, query }: { sources: { title: string; url: s
           padding: '4px 8px',
           borderRadius: 'var(--radius-pill)',
           cursor: 'pointer',
-          transition: 'all 0.15s',
+          transition: 'background 120ms cubic-bezier(0.25, 1, 0.5, 1), border-color 120ms cubic-bezier(0.25, 1, 0.5, 1)',
         }}
-        title={t('chat.sourcesTitle')}
+        className="custom-tooltip-trigger"
+        data-tooltip={t('chat.sourcesTitle')}
       >
         <Globe size={12} />
         <span>🌐 {t(sources.length === 1 ? 'chat.sourcesCount_one' : 'chat.sourcesCount_other', { count: sources.length })}</span>
@@ -361,21 +366,7 @@ export function MessageBubble({ message }: Props) {
                 <div className="assistant-response">
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm]}
-                    components={{
-                      pre({ children, ...props }) {
-                        const firstChild = React.Children.toArray(children)[0]
-                        if (React.isValidElement(firstChild) && firstChild.type === 'code') {
-                          const codeProps = firstChild.props as any
-                          const language = codeProps.className
-                          const text = String(codeProps.children).replace(/\n$/, '')
-                          return <CodeBlock language={language}>{text}</CodeBlock>
-                        }
-                        return <pre {...props}>{children}</pre>
-                      },
-                      code({ className, children, node, ...props }) {
-                        return <code className="inline-code" {...props}>{children}</code>
-                      },
-                    }}
+                    components={markdownComponents}
                   >
                     {cleanedContent}
                   </ReactMarkdown>
@@ -596,22 +587,9 @@ export function StreamingBubble({ content }: { content: string }) {
             className="assistant-response streaming-content"
             style={isStale ? { opacity: 0.92 } : undefined}
           >
-            <ReactMarkdown remarkPlugins={[remarkGfm]}
-              components={{
-                pre({ children, ...props }) {
-                  const firstChild = React.Children.toArray(children)[0]
-                  if (React.isValidElement(firstChild) && firstChild.type === 'code') {
-                    const codeProps = firstChild.props as any
-                    const language = codeProps.className
-                    const text = String(codeProps.children).replace(/\n$/, '')
-                    return <CodeBlock language={language}>{text}</CodeBlock>
-                  }
-                  return <pre {...props}>{children}</pre>
-                },
-                code({ className, children, node, ...props }) {
-                  return <code className="inline-code" {...props}>{children}</code>
-                },
-              }}
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              components={markdownComponents}
             >
               {deferredResponse}
             </ReactMarkdown>

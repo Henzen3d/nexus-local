@@ -2,6 +2,16 @@
 backend/nexuslocal.db
 backend/nexuslocal.db-wal
 backend/nexuslocal.db-shm
+nexuslocal.db
+nexuslocal.db-wal
+nexuslocal.db-shm
+*.db
+*.db-wal
+*.db-shm
+
+# Backups e arquivos compactados
+*.rar
+*.zip
 
 # Ambientes virtuais e pacotes Python
 .venv/

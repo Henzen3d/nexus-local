@@ -1,6 +1,11 @@
 import aiosqlite
 import json
+import os
 from pathlib import Path
+
+from backend.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 DB_PATH = Path(__file__).parent / "nexuslocal.db"
 
@@ -15,6 +20,7 @@ CREATE TABLE IF NOT EXISTS providers (
     api_key     TEXT DEFAULT '',
     enabled     INTEGER DEFAULT 1,
     is_free     INTEGER DEFAULT 0,
+    share_admin_key INTEGER DEFAULT 0,  -- 1 = admin compartilha esta chave com outros usuários
     created_at  TEXT DEFAULT (datetime('now'))
 );
 
@@ -56,6 +62,8 @@ CREATE TABLE IF NOT EXISTS conversations (
     created_at  TEXT DEFAULT (datetime('now')),
     updated_at  TEXT DEFAULT (datetime('now'))
 );
+CREATE INDEX IF NOT EXISTS idx_conversations_user_updated ON conversations(user_id, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_conversations_user_favorite ON conversations(user_id, is_favorite, favorited_at DESC) WHERE is_favorite = 1;
 
 CREATE TABLE IF NOT EXISTS messages (
     id              TEXT PRIMARY KEY,
@@ -66,6 +74,7 @@ CREATE TABLE IF NOT EXISTS messages (
     provider        TEXT,
     created_at      TEXT DEFAULT (datetime('now'))
 );
+CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id, created_at);
 
 CREATE TABLE IF NOT EXISTS cache_exact (
     id          TEXT PRIMARY KEY,
@@ -159,6 +168,7 @@ CREATE TABLE IF NOT EXISTS artifacts (
     FOREIGN KEY (conv_id) REFERENCES conversations(id) ON DELETE CASCADE,
     FOREIGN KEY (msg_id) REFERENCES messages(id) ON DELETE CASCADE
 );
+CREATE INDEX IF NOT EXISTS idx_artifacts_conv ON artifacts(conv_id);
 
 CREATE TABLE IF NOT EXISTS attachments (
     id              TEXT PRIMARY KEY,
@@ -209,6 +219,7 @@ CREATE TABLE IF NOT EXISTS web_search_log (
     query          TEXT NOT NULL,
     trigger_type   TEXT NOT NULL,
     results_count  INTEGER,
+    user_id        TEXT,
     created_at     TEXT DEFAULT (datetime('now'))
 );
 
@@ -283,6 +294,91 @@ CREATE TABLE IF NOT EXISTS free_model_registry (
     last_synced_at  TEXT DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_registry_provider ON free_model_registry(provider_name, model_id_raw);
+
+CREATE TABLE IF NOT EXISTS user_memory (
+    id          TEXT PRIMARY KEY,
+    user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    category    TEXT NOT NULL,
+    fact        TEXT NOT NULL,
+    source_conv_id TEXT REFERENCES conversations(id) ON DELETE SET NULL,
+    confidence  REAL DEFAULT 1.0,
+    created_at  TEXT DEFAULT (datetime('now')),
+    updated_at  TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_user_memory_user ON user_memory(user_id);
+
+-- =========================================================
+-- PROJECTS MODULE (persistent context workspaces + RAG)
+-- =========================================================
+
+CREATE TABLE IF NOT EXISTS projects (
+    id                   TEXT PRIMARY KEY,
+    user_id              TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name                 TEXT NOT NULL,
+    description          TEXT DEFAULT '',
+    instructions         TEXT DEFAULT '',
+    model_default        TEXT,
+    is_favorite          INTEGER DEFAULT 0,
+    archived             INTEGER DEFAULT 0,
+    retrieval_top_k      INTEGER DEFAULT 6,
+    retrieval_threshold  REAL DEFAULT 0.42,
+    created_at           TEXT DEFAULT (datetime('now')),
+    updated_at           TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_projects_user ON projects(user_id, updated_at);
+
+CREATE TABLE IF NOT EXISTS project_files (
+    id              TEXT PRIMARY KEY,
+    project_id      TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    filename        TEXT NOT NULL,
+    mime_type       TEXT,
+    raw_path        TEXT,
+    extracted_text  TEXT,
+    size_bytes      INTEGER DEFAULT 0,
+    index_status    TEXT DEFAULT 'pending',  -- pending | indexing | ready | error
+    index_error     TEXT,
+    indexed_at      TEXT,
+    created_at      TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_project_files_project ON project_files(project_id);
+
+CREATE TABLE IF NOT EXISTS file_chunks (
+    id               TEXT PRIMARY KEY,
+    project_file_id  TEXT NOT NULL REFERENCES project_files(id) ON DELETE CASCADE,
+    chunk_text       TEXT NOT NULL,
+    chunk_index      INTEGER NOT NULL,
+    embedding        BLOB
+);
+CREATE INDEX IF NOT EXISTS idx_file_chunks_file ON file_chunks(project_file_id);
+
+CREATE TABLE IF NOT EXISTS chat_chunks (
+    id               TEXT PRIMARY KEY,
+    chat_session_id  TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+    project_id       TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    chunk_text       TEXT NOT NULL,
+    role             TEXT DEFAULT 'turn',
+    embedding        BLOB,
+    created_at       TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_chat_chunks_project ON chat_chunks(project_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_chat_chunks_session ON chat_chunks(chat_session_id);
+
+CREATE TABLE IF NOT EXISTS project_memory (
+    id                   TEXT PRIMARY KEY,
+    project_id           TEXT NOT NULL UNIQUE REFERENCES projects(id) ON DELETE CASCADE,
+    summary_text         TEXT DEFAULT '',
+    last_synthesized_at  TEXT,
+    source_chat_ids      TEXT DEFAULT '[]'
+);
+
+-- Schema reserved for a future release (no pipeline yet — decision #3)
+CREATE TABLE IF NOT EXISTS global_memory (
+    id                   TEXT PRIMARY KEY,
+    user_id              TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    summary_text         TEXT DEFAULT '',
+    last_synthesized_at  TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_global_memory_user ON global_memory(user_id);
 """
 
 DEFAULT_PROVIDERS = [
@@ -434,7 +530,6 @@ DEFAULT_PROVIDERS = [
         "id": "siliconflow",
         "name": "SiliconFlow",
         "base_url": "https://api.siliconflow.com/v1",
-        "api_key": "sk-zixgmlzccyngmdjigkioevizaftoxwlobcwgthcuoidryjvi",
         "is_free": 1,
         "models": [
             ("siliconflow/deepseek-r1", "deepseek-ai/DeepSeek-R1", "DeepSeek R1", 131072),
@@ -448,7 +543,6 @@ DEFAULT_PROVIDERS = [
         "id": "longcat",
         "name": "LongCat",
         "base_url": "https://api.longcat.chat/openai/v1",
-        "api_key": "ak_2QQ4X24FL3Dg1mO3VR0Qu8ic0jt51",
         "is_free": 1,
         "models": [
             ("longcat/longcat-2.0", "LongCat-2.0", "LongCat 2.0", 1000000),
@@ -458,7 +552,6 @@ DEFAULT_PROVIDERS = [
         "id": "freetheai",
         "name": "FreeTheAI",
         "base_url": "https://api.freetheai.xyz/v1",
-        "api_key": "sta_528389e5fbf49959aa7c4dfdd932088fdc93ea0df2ef70e8",
         "is_free": 1,
         "models": [
             ("freetheai/gpt-4o-mini", "gpt-4o-mini", "GPT-4o Mini", 128000),
@@ -470,7 +563,6 @@ DEFAULT_PROVIDERS = [
         "id": "llm7",
         "name": "LLM7.io",
         "base_url": "https://api.llm7.io/v1",
-        "api_key": "LqQQJpUz2WzOs1CTwulyBruKUhyolo4qhWYovhgyhDORjC76aYLFiw77wBfDHtme/QmI/z34+la0pb9hmc+K3210cCXPB6Al8n4nKRRIBakEnELjdSrUaF7526wWS+ii1tl6TQAndak9Y1Y=",
         "is_free": 1,
         "models": [
             ("llm7/gpt-5.5", "gpt-5.5", "GPT-5.5", 1050000),
@@ -541,11 +633,27 @@ DEFAULT_PROVIDERS = [
             ("cohere/command-r", "command-r", "Command R", 128000),
         ],
     },
+    {
+        "id": "zenmux",
+        "name": "ZenMux",
+        "base_url": "https://zenmux.ai/api/v1",
+        "api_key": "free",
+        "is_free": 1,
+        "models": [
+            ("zenmux/grok-4.5-free", "x-ai/grok-4.5-free", "Grok 4.5 Free", 131072),
+            ("zenmux/step-3.7-flash-free", "stepfun/step-3.7-flash-free", "Step 3.7 Flash Free", 131072),
+            ("zenmux/glm-4.7-flash-free", "z-ai/glm-4.7-flash-free", "GLM 4.7 Flash Free", 131072),
+            ("zenmux/glm-4.6v-flash-free", "z-ai/glm-4.6v-flash-free", "GLM 4.6v Flash Free", 131072),
+        ],
+    },
 ]
 
 
 async def get_db():
-    return await aiosqlite.connect(DB_PATH)
+    db = await aiosqlite.connect(DB_PATH)
+    await db.execute("PRAGMA foreign_keys = ON")
+    await db.commit()
+    return db
 
 
 async def init_db():
@@ -560,7 +668,7 @@ async def init_db():
             )
             await db.commit()
         except Exception as e:
-            print(f"Error migrating Ollama base_url: {e}")
+            logger.error("Error migrating Ollama base_url:", exc_info=e)
 
         # Incremental migration check for messages.provider
         try:
@@ -653,6 +761,26 @@ async def init_db():
             await db.execute("ALTER TABLE models ADD COLUMN supports_vision INTEGER DEFAULT 0")
             await db.commit()
 
+        # Per-provider admin key sharing (individualize share_admin_keys)
+        try:
+            await db.execute("SELECT share_admin_key FROM providers LIMIT 1")
+        except aiosqlite.OperationalError:
+            await db.execute(
+                "ALTER TABLE providers ADD COLUMN share_admin_key INTEGER DEFAULT 0"
+            )
+            await db.commit()
+            # Seed from global meta: if global share was on, enable all providers
+            try:
+                async with db.execute(
+                    "SELECT value FROM meta WHERE key = 'share_admin_keys'"
+                ) as cur:
+                    row = await cur.fetchone()
+                if row and row[0] == "true":
+                    await db.execute("UPDATE providers SET share_admin_key = 1")
+                    await db.commit()
+            except Exception as e:
+                logger.info("[database migration] share_admin_key seed: %s", e)
+
         # Incremental migration check for messages.relay_used / relay_model
         try:
             await db.execute("SELECT relay_used FROM messages LIMIT 1")
@@ -677,6 +805,13 @@ async def init_db():
             await db.execute("ALTER TABLE fusion_config ADD COLUMN grounding_enabled INTEGER DEFAULT 1")
             await db.commit()
 
+        # Incremental migration check for web_search_log.user_id
+        try:
+            await db.execute("SELECT user_id FROM web_search_log LIMIT 1")
+        except aiosqlite.OperationalError:
+            await db.execute("ALTER TABLE web_search_log ADD COLUMN user_id TEXT")
+            await db.commit()
+
         # Migração do prompt do juiz antigo para NULL (ativando o fallback do novo prompt completo)
         try:
             old_prompt_prefix = "Você é o Agente Juiz e Consolidador do NexusLocal.\n\nAbaixo estão as respostas de diferentes%"
@@ -686,7 +821,7 @@ async def init_db():
             )
             await db.commit()
         except Exception as e:
-            print(f"[database migration] erro ao migrar prompt do juiz: {e}")
+            logger.error("[database migration] erro ao migrar prompt do juiz:", exc_info=e)
 
         # Load context registry
         registry_path = Path(__file__).parent / "data" / "context_registry.json"
@@ -696,16 +831,24 @@ async def init_db():
                 with open(registry_path, "r", encoding="utf-8") as f:
                     registry_data = json.load(f)
             except Exception as e:
-                print(f"Error loading context registry: {e}")
+                logger.error("Error loading context registry:", exc_info=e)
 
         registry_models = registry_data.get("models", {})
 
         for prov in DEFAULT_PROVIDERS:
-            # Avoid overwriting user's custom base_url on conflict
+            # Resolve api_key from env var (e.g. SILICONFLOW_API_KEY) or leave empty
+            env_key_name = f"{prov['id'].upper().replace('-', '_')}_API_KEY"
+            resolved_api_key = os.getenv(env_key_name, "")
+            # Resolve Cloudflare account_id placeholder in base_url from env
+            resolved_base_url = prov["base_url"]
+            if "{account_id}" in resolved_base_url:
+                cf_account_id = os.getenv("CLOUDFLARE_ACCOUNT_ID", "")
+                if cf_account_id:
+                    resolved_base_url = resolved_base_url.replace("{account_id}", cf_account_id)
             await db.execute(
                 """INSERT INTO providers (id, name, base_url, api_key, is_free) VALUES (?, ?, ?, ?, ?)
                    ON CONFLICT(id) DO UPDATE SET name=excluded.name, is_free=excluded.is_free""",
-                (prov["id"], prov["name"], prov["base_url"], prov.get("api_key", ""), prov["is_free"]),
+                (prov["id"], prov["name"], resolved_base_url, resolved_api_key, prov["is_free"]),
             )
             for model_id, model_name, display_name, ctx in prov["models"]:
                 reg_info = registry_models.get(model_name)
@@ -764,6 +907,12 @@ async def init_db():
             )
         await db.commit()
 
+        # Default share_admin_keys setting
+        await db.execute(
+            "INSERT OR IGNORE INTO meta (key, value) VALUES ('share_admin_keys', 'false')"
+        )
+        await db.commit()
+
         # Default vision relay configuration
         try:
             async with db.execute("SELECT COUNT(*) FROM vision_relay_config") as cur:
@@ -776,7 +925,7 @@ async def init_db():
                 )
                 await db.commit()
         except Exception as e:
-            print(f"Error initializing vision relay config: {e}")
+            logger.error("Error initializing vision relay config:", exc_info=e)
 
         # Default web search configuration
         try:
@@ -790,7 +939,7 @@ async def init_db():
                 )
                 await db.commit()
         except Exception as e:
-            print(f"Error initializing web search config: {e}")
+            logger.error("Error initializing web search config:", exc_info=e)
 
         # Update supports_vision for vision-capable models
         try:
@@ -808,7 +957,7 @@ async def init_db():
             )
             await db.commit()
         except Exception as e:
-            print(f"Error updating vision models: {e}")
+            logger.error("Error updating vision models:", exc_info=e)
 
         # ── Migração incremental: tabelas de ranking & failover ──────────────
         # model_families — garante coluna 'description' (tabela pode já existir sem ela)
@@ -879,7 +1028,896 @@ async def init_db():
             except Exception:
                 pass
 
-        print("[OK] Ranking & Failover tables: initialized")
+        # Incremental migration check for user_memory
+        try:
+            await db.execute("SELECT id FROM user_memory LIMIT 1")
+        except aiosqlite.OperationalError:
+            try:
+                await db.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS user_memory (
+                        id             TEXT PRIMARY KEY,
+                        user_id        TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                        category       TEXT NOT NULL,
+                        fact           TEXT NOT NULL,
+                        fact_key       TEXT,
+                        is_active      INTEGER DEFAULT 1,
+                        is_pinned      INTEGER DEFAULT 0,
+                        source_conv_id TEXT REFERENCES conversations(id) ON DELETE SET NULL,
+                        confidence     REAL DEFAULT 1.0,
+                        created_at     TEXT DEFAULT (datetime('now')),
+                        updated_at     TEXT DEFAULT (datetime('now'))
+                    )
+                    """
+                )
+                await db.execute("CREATE INDEX IF NOT EXISTS idx_user_memory_user ON user_memory(user_id)")
+                await db.execute("CREATE INDEX IF NOT EXISTS idx_user_memory_key ON user_memory(user_id, fact_key) WHERE is_active = 1")
+                await db.commit()
+            except Exception as e:
+                logger.error("[database migration] erro ao migrar user_memory:", exc_info=e)
+
+        # Incremental migration: add fact_key and is_active columns if missing
+        for col_name, col_def in [
+            ("fact_key", "TEXT"),
+            ("is_active", "INTEGER DEFAULT 1"),
+            ("is_pinned", "INTEGER DEFAULT 0"),
+        ]:
+            try:
+                await db.execute(f"SELECT {col_name} FROM user_memory LIMIT 1")
+            except aiosqlite.OperationalError:
+                try:
+                    await db.execute(f"ALTER TABLE user_memory ADD COLUMN {col_name} {col_def}")
+                    await db.commit()
+                except Exception as e:
+                    logger.error("[database migration] erro ao adicionar coluna %s em user_memory:", col_name, exc_info=e)
+
+        # Phase A+: user_profiles (server-side profile + memory_enabled)
+        try:
+            await db.execute("SELECT user_id FROM user_profiles LIMIT 1")
+        except aiosqlite.OperationalError:
+            try:
+                await db.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS user_profiles (
+                        user_id              TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+                        display_name         TEXT DEFAULT '',
+                        full_name            TEXT DEFAULT '',
+                        occupation           TEXT DEFAULT '',
+                        custom_instructions  TEXT DEFAULT '',
+                        memory_enabled       INTEGER DEFAULT 1,
+                        updated_at           TEXT DEFAULT (datetime('now'))
+                    )
+                    """
+                )
+                await db.commit()
+            except Exception as e:
+                logger.error("[database migration] erro ao criar user_profiles:", exc_info=e)
+
+        # Phase C2: rolling summaries (global / project / conversation)
+        try:
+            await db.execute("SELECT id FROM user_memory_summaries LIMIT 1")
+        except aiosqlite.OperationalError:
+            try:
+                await db.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS user_memory_summaries (
+                        id          TEXT PRIMARY KEY,
+                        user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                        scope       TEXT NOT NULL CHECK(scope IN ('global', 'project', 'conversation')),
+                        scope_ref   TEXT DEFAULT '',
+                        summary_md  TEXT NOT NULL,
+                        updated_at  TEXT DEFAULT (datetime('now')),
+                        UNIQUE(user_id, scope, scope_ref)
+                    )
+                    """
+                )
+                await db.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_memory_summaries_user ON user_memory_summaries(user_id, scope)"
+                )
+                await db.commit()
+            except Exception as e:
+                logger.error("[database migration] erro ao criar user_memory_summaries:", exc_info=e)
+
+        # Phase C2: optional project tag on conversations
+        try:
+            await db.execute("SELECT project_tag FROM conversations LIMIT 1")
+        except aiosqlite.OperationalError:
+            try:
+                await db.execute("ALTER TABLE conversations ADD COLUMN project_tag TEXT DEFAULT NULL")
+                await db.commit()
+            except Exception as e:
+                logger.error("[database migration] erro ao adicionar project_tag:", exc_info=e)
+
+        # M4: last successful memory extraction timestamp per conversation
+        try:
+            await db.execute("SELECT memory_extracted_at FROM conversations LIMIT 1")
+        except aiosqlite.OperationalError:
+            try:
+                await db.execute(
+                    "ALTER TABLE conversations ADD COLUMN memory_extracted_at TEXT DEFAULT NULL"
+                )
+                await db.commit()
+            except Exception as e:
+                logger.error("[database migration] erro ao adicionar memory_extracted_at:", exc_info=e)
+
+        # Optional: embeddings on memory facts (semantic recall)
+        try:
+            await db.execute("SELECT embedding FROM user_memory LIMIT 1")
+        except aiosqlite.OperationalError:
+            try:
+                await db.execute("ALTER TABLE user_memory ADD COLUMN embedding BLOB")
+                await db.commit()
+            except Exception as e:
+                logger.error("[database migration] erro ao adicionar embedding em user_memory:", exc_info=e)
+
+        # Projects module tables (idempotent CREATE IF NOT EXISTS via SCHEMA above + safety)
+        try:
+            await db.execute("SELECT id FROM projects LIMIT 1")
+        except aiosqlite.OperationalError:
+            try:
+                await db.executescript(
+                    """
+                    CREATE TABLE IF NOT EXISTS projects (
+                        id                   TEXT PRIMARY KEY,
+                        user_id              TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                        name                 TEXT NOT NULL,
+                        description          TEXT DEFAULT '',
+                        instructions         TEXT DEFAULT '',
+                        model_default        TEXT,
+                        is_favorite          INTEGER DEFAULT 0,
+                        archived             INTEGER DEFAULT 0,
+                        retrieval_top_k      INTEGER DEFAULT 6,
+                        retrieval_threshold  REAL DEFAULT 0.42,
+                        created_at           TEXT DEFAULT (datetime('now')),
+                        updated_at           TEXT DEFAULT (datetime('now'))
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_projects_user ON projects(user_id, updated_at);
+                    CREATE TABLE IF NOT EXISTS project_files (
+                        id              TEXT PRIMARY KEY,
+                        project_id      TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+                        filename        TEXT NOT NULL,
+                        mime_type       TEXT,
+                        raw_path        TEXT,
+                        extracted_text  TEXT,
+                        size_bytes      INTEGER DEFAULT 0,
+                        index_status    TEXT DEFAULT 'pending',
+                        index_error     TEXT,
+                        indexed_at      TEXT,
+                        created_at      TEXT DEFAULT (datetime('now'))
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_project_files_project ON project_files(project_id);
+                    CREATE TABLE IF NOT EXISTS file_chunks (
+                        id               TEXT PRIMARY KEY,
+                        project_file_id  TEXT NOT NULL REFERENCES project_files(id) ON DELETE CASCADE,
+                        chunk_text       TEXT NOT NULL,
+                        chunk_index      INTEGER NOT NULL,
+                        embedding        BLOB
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_file_chunks_file ON file_chunks(project_file_id);
+                    CREATE TABLE IF NOT EXISTS chat_chunks (
+                        id               TEXT PRIMARY KEY,
+                        chat_session_id  TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+                        project_id       TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+                        chunk_text       TEXT NOT NULL,
+                        role             TEXT DEFAULT 'turn',
+                        embedding        BLOB,
+                        created_at       TEXT DEFAULT (datetime('now'))
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_chat_chunks_project ON chat_chunks(project_id, created_at);
+                    CREATE INDEX IF NOT EXISTS idx_chat_chunks_session ON chat_chunks(chat_session_id);
+                    CREATE TABLE IF NOT EXISTS project_memory (
+                        id                   TEXT PRIMARY KEY,
+                        project_id           TEXT NOT NULL UNIQUE REFERENCES projects(id) ON DELETE CASCADE,
+                        summary_text         TEXT DEFAULT '',
+                        last_synthesized_at  TEXT,
+                        source_chat_ids      TEXT DEFAULT '[]'
+                    );
+                    CREATE TABLE IF NOT EXISTS global_memory (
+                        id                   TEXT PRIMARY KEY,
+                        user_id              TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                        summary_text         TEXT DEFAULT '',
+                        last_synthesized_at  TEXT
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_global_memory_user ON global_memory(user_id);
+                    """
+                )
+                await db.commit()
+                logger.info("[OK] Projects tables: created")
+            except Exception as e:
+                logger.error("[database migration] erro ao criar tabelas de projects:", exc_info=e)
+
+        # conversations.project_id (nullable) — chat avulso when NULL
+        try:
+            await db.execute("SELECT project_id FROM conversations LIMIT 1")
+        except aiosqlite.OperationalError:
+            try:
+                await db.execute(
+                    "ALTER TABLE conversations ADD COLUMN project_id TEXT REFERENCES projects(id) ON DELETE SET NULL"
+                )
+                await db.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_conversations_project ON conversations(project_id)"
+                )
+                await db.commit()
+                logger.info("[OK] conversations.project_id: added")
+            except Exception as e:
+                logger.error("[database migration] erro ao adicionar project_id em conversations:", exc_info=e)
+
+        logger.error("[OK] Ranking & Failover tables: initialized")
+
+
+MEMORY_CATEGORIES = ('professional', 'personal', 'project', 'preference', 'identity', 'tech')
+
+# Max chars (~tokens x4) to inject into system prompt from memory block
+MEMORY_INJECT_MAX_CHARS = 4000
+
+# Max number of facts to fetch for injection (top-K by confidence + recency)
+MEMORY_INJECT_LIMIT = 30
+
+
+async def get_user_memory(user_id: str, limit: int = MEMORY_INJECT_LIMIT, active_only: bool = False) -> list[dict]:
+    """Returns up to `limit` active memory facts ordered by confidence desc, updated_at desc."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        where = "user_id = ? AND is_active = 1" if active_only else "user_id = ?"
+        async with db.execute(
+            f"""SELECT id, category, fact, fact_key, source_conv_id, confidence, is_pinned, is_active, updated_at
+                FROM user_memory
+                WHERE {where}
+                ORDER BY is_pinned DESC, confidence DESC, updated_at DESC
+                LIMIT ?""",
+            (user_id, limit),
+        ) as cur:
+            rows = await cur.fetchall()
+            return [dict(r) for r in rows]
+
+
+def _try_embed_fact(text: str):
+    """Optional embedding via cache manager embedder (fastembed)."""
+    try:
+        from backend.cache.manager import _embed_text
+        return _embed_text(text or "")
+    except Exception:
+        return None
+
+
+async def add_memory_fact(
+    user_id: str,
+    category: str,
+    fact: str,
+    fact_key: str = None,
+    source_conv_id: str = None,
+    confidence: float = 1.0,
+) -> str:
+    """Upserts a memory fact. If fact_key matches an existing active fact, updates it in-place."""
+    import uuid
+    emb = _try_embed_fact(fact)
+    async with aiosqlite.connect(DB_PATH) as db:
+        # 1. Try to match by fact_key (stable key = definitive identity of a fact)
+        if fact_key:
+            async with db.execute(
+                "SELECT id FROM user_memory WHERE user_id = ? AND fact_key = ? AND is_active = 1",
+                (user_id, fact_key),
+            ) as cur:
+                existing = await cur.fetchone()
+            if existing:
+                if emb is not None:
+                    await db.execute(
+                        """UPDATE user_memory
+                           SET fact = ?, category = ?, confidence = MAX(confidence, ?),
+                               source_conv_id = ?, embedding = ?, updated_at = datetime('now')
+                           WHERE id = ?""",
+                        (fact, category, confidence, source_conv_id, emb, existing[0]),
+                    )
+                else:
+                    await db.execute(
+                        """UPDATE user_memory
+                           SET fact = ?, category = ?, confidence = MAX(confidence, ?),
+                               source_conv_id = ?, updated_at = datetime('now')
+                           WHERE id = ?""",
+                        (fact, category, confidence, source_conv_id, existing[0]),
+                    )
+                await db.commit()
+                return existing[0]
+
+        # 2. Fallback: avoid exact text duplicates
+        async with db.execute(
+            "SELECT id FROM user_memory WHERE user_id = ? AND fact = ? AND is_active = 1",
+            (user_id, fact),
+        ) as cur:
+            dup = await cur.fetchone()
+        if dup:
+            if fact_key or emb is not None:
+                if emb is not None and fact_key:
+                    await db.execute(
+                        "UPDATE user_memory SET fact_key = ?, embedding = ?, updated_at = datetime('now') WHERE id = ?",
+                        (fact_key, emb, dup[0]),
+                    )
+                elif emb is not None:
+                    await db.execute(
+                        "UPDATE user_memory SET embedding = ?, updated_at = datetime('now') WHERE id = ?",
+                        (emb, dup[0]),
+                    )
+                else:
+                    await db.execute(
+                        "UPDATE user_memory SET fact_key = ?, updated_at = datetime('now') WHERE id = ?",
+                        (fact_key, dup[0]),
+                    )
+                await db.commit()
+            return dup[0]
+
+        # 3. Insert new fact — respect cap of 200 active facts per user
+        async with db.execute(
+            "SELECT COUNT(*) FROM user_memory WHERE user_id = ? AND is_active = 1", (user_id,)
+        ) as cur:
+            (count,) = await cur.fetchone()
+        if count >= 200:
+            # Archive the oldest, lowest-confidence non-pinned fact to make room
+            await db.execute(
+                """UPDATE user_memory SET is_active = 0 WHERE id = (
+                    SELECT id FROM user_memory
+                    WHERE user_id = ? AND is_active = 1 AND is_pinned = 0
+                    ORDER BY confidence ASC, updated_at ASC LIMIT 1
+                )""",
+                (user_id,),
+            )
+
+        fact_id = str(uuid.uuid4())
+        await db.execute(
+            """INSERT INTO user_memory
+               (id, user_id, category, fact, fact_key, source_conv_id, confidence, is_active, embedding)
+               VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)""",
+            (fact_id, user_id, category, fact, fact_key, source_conv_id, confidence, emb),
+        )
+        await db.commit()
+        return fact_id
+
+
+async def set_memory_fact_pinned(user_id: str, fact_id: str, pinned: bool) -> bool:
+    """Pin/unpin a fact belonging to user. Returns True if updated."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT id FROM user_memory WHERE id = ? AND user_id = ?",
+            (fact_id, user_id),
+        ) as cur:
+            row = await cur.fetchone()
+        if not row:
+            return False
+        await db.execute(
+            "UPDATE user_memory SET is_pinned = ?, updated_at = datetime('now') WHERE id = ?",
+            (1 if pinned else 0, fact_id),
+        )
+        await db.commit()
+        return True
+
+
+async def get_relevant_memory(
+    user_id: str,
+    query_text: str,
+    limit: int = MEMORY_INJECT_LIMIT,
+) -> list[dict]:
+    """
+    Semantic recall: pinned facts first, then top-K by embedding similarity to query.
+    Falls back to confidence order if embedder unavailable.
+    """
+    import asyncio
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        # embedding column may be missing on very old DBs mid-migration
+        try:
+            async with db.execute(
+                """SELECT id, category, fact, fact_key, source_conv_id, confidence,
+                          is_pinned, is_active, updated_at, embedding
+                   FROM user_memory
+                   WHERE user_id = ? AND is_active = 1""",
+                (user_id,),
+            ) as cur:
+                rows = [dict(r) for r in await cur.fetchall()]
+        except Exception:
+            async with db.execute(
+                """SELECT id, category, fact, fact_key, source_conv_id, confidence,
+                          is_pinned, is_active, updated_at
+                   FROM user_memory
+                   WHERE user_id = ? AND is_active = 1""",
+                (user_id,),
+            ) as cur:
+                rows = [dict(r) for r in await cur.fetchall()]
+
+    if not rows:
+        return []
+
+    pinned = [r for r in rows if r.get("is_pinned")]
+    unpinned = [r for r in rows if not r.get("is_pinned")]
+
+    # Embed query (optional fastembed)
+    query_blob = None
+    _embed_text = _blob_to_embedding = _cosine_similarity = None
+    _HAS_NUMPY = False
+    try:
+        from backend.cache.manager import (
+            _embed_text as _et,
+            _blob_to_embedding as _b2e,
+            _cosine_similarity as _cos,
+            _HAS_NUMPY as _hn,
+        )
+        _embed_text, _blob_to_embedding, _cosine_similarity, _HAS_NUMPY = _et, _b2e, _cos, _hn
+    except Exception:
+        pass
+
+    if query_text and _HAS_NUMPY and _embed_text:
+        loop = asyncio.get_event_loop()
+        try:
+            query_blob = await loop.run_in_executor(None, _embed_text, query_text[:2000])
+        except Exception:
+            query_blob = None
+
+    if query_blob is not None and unpinned and _blob_to_embedding and _cosine_similarity:
+        qvec = _blob_to_embedding(query_blob)
+        scored = []
+        for r in unpinned:
+            emb = r.get("embedding")
+            if emb:
+                try:
+                    sim = _cosine_similarity(qvec, _blob_to_embedding(emb))
+                except Exception:
+                    sim = 0.0
+            else:
+                # keyword soft score
+                qt = query_text.lower()
+                ft = (r.get("fact") or "").lower()
+                sim = 0.15 if any(w in ft for w in qt.split() if len(w) > 3) else 0.0
+            conf = float(r.get("confidence") or 0.5)
+            scored.append((0.7 * sim + 0.3 * conf, r))
+        scored.sort(key=lambda x: x[0], reverse=True)
+        ranked = [r for _, r in scored]
+    else:
+        ranked = sorted(
+            unpinned,
+            key=lambda r: (float(r.get("confidence") or 0), r.get("updated_at") or ""),
+            reverse=True,
+        )
+
+    # Merge: all pinned + ranked unpinned, cap limit
+    seen = set()
+    result = []
+    for r in pinned + ranked:
+        rid = r.get("id")
+        if rid in seen:
+            continue
+        seen.add(rid)
+        # strip heavy blob from response
+        r = {k: v for k, v in r.items() if k != "embedding"}
+        result.append(r)
+        if len(result) >= limit:
+            break
+    return result
+
+
+async def deactivate_memory_by_key(user_id: str, fact_key: str) -> None:
+    """Soft-deletes a memory fact by fact_key (action: forget from the extractor)."""
+    if not fact_key:
+        return
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE user_memory SET is_active = 0, updated_at = datetime('now') WHERE user_id = ? AND fact_key = ?",
+            (user_id, fact_key),
+        )
+        await db.commit()
+
+
+async def delete_memory_fact(fact_id: str, user_id: str = None) -> bool:
+    """Hard-delete a single fact by ID. If user_id is provided, only deletes
+    if the fact belongs to that user (prevents IDOR). Returns True if deleted."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        if user_id is not None:
+            async with db.execute(
+                "SELECT id FROM user_memory WHERE id = ? AND user_id = ?",
+                (fact_id, user_id),
+            ) as cur:
+                if not await cur.fetchone():
+                    return False
+        await db.execute("DELETE FROM user_memory WHERE id = ?", (fact_id,))
+        await db.commit()
+        return True
+
+
+async def clear_all_memory_summaries(user_id: str) -> int:
+    """Hard-deletes all rolling summaries (global + project) for a user."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute(
+            "DELETE FROM user_memory_summaries WHERE user_id = ?",
+            (user_id,),
+        )
+        await db.commit()
+        return cur.rowcount if cur.rowcount is not None else 0
+
+
+async def clear_all_memory(user_id: str) -> None:
+    """
+    Esquecer tudo: soft-delete de todos os fatos ativos + apaga resumos rolling
+    (global e por projeto). Perfil manual (nome/instruções) é preservado.
+    """
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE user_memory SET is_active = 0, updated_at = datetime('now') WHERE user_id = ? AND is_active = 1",
+            (user_id,),
+        )
+        await db.execute(
+            "DELETE FROM user_memory_summaries WHERE user_id = ?",
+            (user_id,),
+        )
+        await db.commit()
+
+
+async def get_memory_stats(user_id: str) -> dict:
+    """Local metrics for memory dashboard (Phase D)."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT COUNT(*) FROM user_memory WHERE user_id = ? AND is_active = 1",
+            (user_id,),
+        ) as cur:
+            (active_facts,) = await cur.fetchone()
+        async with db.execute(
+            "SELECT COUNT(*) FROM user_memory WHERE user_id = ? AND (is_active = 0 OR is_active IS NULL)",
+            (user_id,),
+        ) as cur:
+            (inactive_facts,) = await cur.fetchone()
+        async with db.execute(
+            """SELECT category, COUNT(*) FROM user_memory
+               WHERE user_id = ? AND is_active = 1
+               GROUP BY category""",
+            (user_id,),
+        ) as cur:
+            by_category = {row[0]: row[1] for row in await cur.fetchall()}
+        async with db.execute(
+            "SELECT COUNT(*) FROM user_memory_summaries WHERE user_id = ?",
+            (user_id,),
+        ) as cur:
+            (summaries_count,) = await cur.fetchone()
+        async with db.execute(
+            "SELECT MAX(updated_at) FROM user_memory WHERE user_id = ? AND is_active = 1",
+            (user_id,),
+        ) as cur:
+            row = await cur.fetchone()
+            last_fact_update = row[0] if row else None
+        async with db.execute(
+            "SELECT value FROM meta WHERE key = ?",
+            (f"memory_extractions_total_{user_id}",),
+        ) as cur:
+            row = await cur.fetchone()
+            extractions_total = int(row[0]) if row and str(row[0]).isdigit() else 0
+        async with db.execute(
+            "SELECT value FROM meta WHERE key = ?",
+            (f"memory_extractions_day_{user_id}",),
+        ) as cur:
+            row = await cur.fetchone()
+            day_raw = row[0] if row else None
+        extractions_today = 0
+        extractions_day_date = None
+        if day_raw and "|" in day_raw:
+            extractions_day_date, count_s = day_raw.split("|", 1)
+            try:
+                extractions_today = int(count_s)
+            except ValueError:
+                extractions_today = 0
+        from datetime import datetime, timezone
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        if extractions_day_date != today:
+            extractions_today = 0
+
+    return {
+        "active_facts": active_facts or 0,
+        "inactive_facts": inactive_facts or 0,
+        "by_category": by_category,
+        "summaries_count": summaries_count or 0,
+        "last_fact_update": last_fact_update,
+        "extractions_total": extractions_total,
+        "extractions_today": extractions_today,
+    }
+
+
+async def increment_memory_extraction_stats(user_id: str) -> None:
+    """Bump extraction counters after a successful background extract."""
+    from datetime import datetime, timezone
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    total_key = f"memory_extractions_total_{user_id}"
+    day_key = f"memory_extractions_day_{user_id}"
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT value FROM meta WHERE key = ?", (total_key,)) as cur:
+            row = await cur.fetchone()
+        total = int(row[0]) + 1 if row and str(row[0]).isdigit() else 1
+        await db.execute(
+            "INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (total_key, str(total)),
+        )
+        async with db.execute("SELECT value FROM meta WHERE key = ?", (day_key,)) as cur:
+            row = await cur.fetchone()
+        day_count = 1
+        if row and row[0] and "|" in row[0]:
+            d, c = row[0].split("|", 1)
+            if d == today:
+                try:
+                    day_count = int(c) + 1
+                except ValueError:
+                    day_count = 1
+        await db.execute(
+            "INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (day_key, f"{today}|{day_count}"),
+        )
+        await db.commit()
+
+
+async def get_user_profile(user_id: str) -> dict:
+    """Returns server-side profile or empty defaults."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            """SELECT user_id, display_name, full_name, occupation,
+                      custom_instructions, memory_enabled, updated_at
+               FROM user_profiles WHERE user_id = ?""",
+            (user_id,),
+        ) as cur:
+            row = await cur.fetchone()
+        if not row:
+            return {
+                "user_id": user_id,
+                "display_name": "",
+                "full_name": "",
+                "occupation": "",
+                "custom_instructions": "",
+                "memory_enabled": 1,
+                "updated_at": None,
+            }
+        return dict(row)
+
+
+async def get_memory_summary(user_id: str, scope: str = "global", scope_ref: str = "") -> dict | None:
+    """Returns one summary row or None."""
+    scope_ref = scope_ref or ""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            """SELECT id, user_id, scope, scope_ref, summary_md, updated_at
+               FROM user_memory_summaries
+               WHERE user_id = ? AND scope = ? AND scope_ref = ?""",
+            (user_id, scope, scope_ref),
+        ) as cur:
+            row = await cur.fetchone()
+        return dict(row) if row else None
+
+
+async def list_memory_summaries(user_id: str, scope: str | None = None) -> list[dict]:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        if scope:
+            async with db.execute(
+                """SELECT id, user_id, scope, scope_ref, summary_md, updated_at
+                   FROM user_memory_summaries
+                   WHERE user_id = ? AND scope = ?
+                   ORDER BY updated_at DESC""",
+                (user_id, scope),
+            ) as cur:
+                return [dict(r) for r in await cur.fetchall()]
+        async with db.execute(
+            """SELECT id, user_id, scope, scope_ref, summary_md, updated_at
+               FROM user_memory_summaries
+               WHERE user_id = ?
+               ORDER BY scope, updated_at DESC""",
+            (user_id,),
+        ) as cur:
+            return [dict(r) for r in await cur.fetchall()]
+
+
+async def upsert_memory_summary(
+    user_id: str,
+    scope: str,
+    summary_md: str,
+    scope_ref: str = "",
+) -> dict:
+    """Insert or replace a rolling summary for user/scope."""
+    import uuid
+
+    scope_ref = scope_ref or ""
+    summary_md = (summary_md or "").strip()
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            """SELECT id FROM user_memory_summaries
+               WHERE user_id = ? AND scope = ? AND scope_ref = ?""",
+            (user_id, scope, scope_ref),
+        ) as cur:
+            existing = await cur.fetchone()
+        if existing:
+            await db.execute(
+                """UPDATE user_memory_summaries
+                   SET summary_md = ?, updated_at = datetime('now')
+                   WHERE id = ?""",
+                (summary_md, existing[0]),
+            )
+            await db.commit()
+            sid = existing[0]
+        else:
+            sid = str(uuid.uuid4())
+            await db.execute(
+                """INSERT INTO user_memory_summaries
+                   (id, user_id, scope, scope_ref, summary_md, updated_at)
+                   VALUES (?, ?, ?, ?, ?, datetime('now'))""",
+                (sid, user_id, scope, scope_ref, summary_md),
+            )
+            await db.commit()
+    return await get_memory_summary(user_id, scope, scope_ref) or {
+        "id": sid,
+        "user_id": user_id,
+        "scope": scope,
+        "scope_ref": scope_ref,
+        "summary_md": summary_md,
+    }
+
+
+async def delete_memory_summary(user_id: str, scope: str, scope_ref: str = "") -> None:
+    scope_ref = scope_ref or ""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            """DELETE FROM user_memory_summaries
+               WHERE user_id = ? AND scope = ? AND scope_ref = ?""",
+            (user_id, scope, scope_ref),
+        )
+        await db.commit()
+
+
+async def delete_orphaned_memory_summaries(user_id: str, keep_project_refs: set[str] | None = None) -> int:
+    """
+    Remove project summaries whose scope_ref is not in keep_project_refs.
+    If keep_project_refs is empty/None, deletes all project-scoped summaries.
+    Global summary is left alone (caller handles empty global).
+    """
+    keep = { (r or "").strip().lower() for r in (keep_project_refs or set()) if (r or "").strip() }
+    async with aiosqlite.connect(DB_PATH) as db:
+        if not keep:
+            cur = await db.execute(
+                "DELETE FROM user_memory_summaries WHERE user_id = ? AND scope = 'project'",
+                (user_id,),
+            )
+        else:
+            # Delete project summaries not in keep list
+            async with db.execute(
+                "SELECT id, scope_ref FROM user_memory_summaries WHERE user_id = ? AND scope = 'project'",
+                (user_id,),
+            ) as cur:
+                rows = await cur.fetchall()
+            to_delete = [r[0] for r in rows if (r[1] or "").strip().lower() not in keep]
+            if not to_delete:
+                return 0
+            placeholders = ",".join("?" * len(to_delete))
+            cur = await db.execute(
+                f"DELETE FROM user_memory_summaries WHERE id IN ({placeholders})",
+                to_delete,
+            )
+        await db.commit()
+        return cur.rowcount if cur.rowcount is not None else 0
+
+
+async def get_conversation_project_tag(conversation_id: str) -> str | None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT project_tag FROM conversations WHERE id = ?",
+            (conversation_id,),
+        ) as cur:
+            row = await cur.fetchone()
+        if not row:
+            return None
+        tag = row[0]
+        return tag.strip() if tag and str(tag).strip() else None
+
+
+async def set_conversation_project_tag(conversation_id: str, project_tag: str | None) -> None:
+    tag = (project_tag or "").strip() or None
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE conversations SET project_tag = ?, updated_at = datetime('now') WHERE id = ?",
+            (tag, conversation_id),
+        )
+        await db.commit()
+
+
+async def mark_conversation_memory_extracted(conversation_id: str) -> None:
+    """Stamp conversation after a successful (or attempted) memory extraction pass."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE conversations SET memory_extracted_at = datetime('now') WHERE id = ?",
+            (conversation_id,),
+        )
+        await db.commit()
+
+
+# M4: idle extraction defaults (minutes / days / batch size)
+MEMORY_IDLE_MINUTES = 120          # conversation quiet for 2h
+MEMORY_IDLE_MAX_AGE_DAYS = 7       # ignore chats older than a week
+MEMORY_IDLE_BATCH = 8              # max conversations per job tick
+MEMORY_IDLE_MIN_MESSAGES = 2       # need at least user+assistant
+
+
+async def list_idle_conversations_for_memory(
+    idle_minutes: int = MEMORY_IDLE_MINUTES,
+    max_age_days: int = MEMORY_IDLE_MAX_AGE_DAYS,
+    limit: int = MEMORY_IDLE_BATCH,
+    min_messages: int = MEMORY_IDLE_MIN_MESSAGES,
+) -> list[dict]:
+    """
+    Conversations that:
+      - have enough messages
+      - have been idle for `idle_minutes` (no new activity)
+      - are not older than `max_age_days`
+      - have never been extracted OR have new activity since last extraction
+    """
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        # SQLite datetime('now') is UTC when using datetime('now')
+        async with db.execute(
+            f"""
+            SELECT c.id AS conversation_id,
+                   c.user_id AS user_id,
+                   c.model_id AS model_id,
+                   c.provider_id AS provider_id,
+                   c.updated_at AS updated_at,
+                   c.memory_extracted_at AS memory_extracted_at,
+                   COUNT(m.id) AS message_count
+            FROM conversations c
+            INNER JOIN messages m ON m.conversation_id = c.id
+            WHERE c.user_id IS NOT NULL
+              AND datetime(c.updated_at) <= datetime('now', ?)
+              AND datetime(c.updated_at) >= datetime('now', ?)
+              AND (
+                    c.memory_extracted_at IS NULL
+                 OR datetime(c.memory_extracted_at) < datetime(c.updated_at)
+              )
+            GROUP BY c.id
+            HAVING COUNT(m.id) >= ?
+            ORDER BY c.updated_at DESC
+            LIMIT ?
+            """,
+            (
+                f"-{int(idle_minutes)} minutes",
+                f"-{int(max_age_days)} days",
+                int(min_messages),
+                int(limit),
+            ),
+        ) as cur:
+            rows = await cur.fetchall()
+            return [dict(r) for r in rows]
+
+
+async def upsert_user_profile(
+    user_id: str,
+    display_name: str | None = None,
+    full_name: str | None = None,
+    occupation: str | None = None,
+    custom_instructions: str | None = None,
+    memory_enabled: int | None = None,
+) -> dict:
+    """Creates or updates user profile fields (only provided keys are changed)."""
+    current = await get_user_profile(user_id)
+    new_display = display_name if display_name is not None else current.get("display_name") or ""
+    new_full = full_name if full_name is not None else current.get("full_name") or ""
+    new_occ = occupation if occupation is not None else current.get("occupation") or ""
+    new_instr = custom_instructions if custom_instructions is not None else current.get("custom_instructions") or ""
+    new_mem = memory_enabled if memory_enabled is not None else int(current.get("memory_enabled", 1) or 1)
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            """INSERT INTO user_profiles
+               (user_id, display_name, full_name, occupation, custom_instructions, memory_enabled, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+               ON CONFLICT(user_id) DO UPDATE SET
+                 display_name = excluded.display_name,
+                 full_name = excluded.full_name,
+                 occupation = excluded.occupation,
+                 custom_instructions = excluded.custom_instructions,
+                 memory_enabled = excluded.memory_enabled,
+                 updated_at = datetime('now')""",
+            (user_id, new_display, new_full, new_occ, new_instr, int(new_mem)),
+        )
+        await db.commit()
+    return await get_user_profile(user_id)
 
 
 async def check_and_deactivate_model(model_id: str, error_msg: str, db=None) -> bool:
@@ -908,7 +1946,10 @@ async def check_and_deactivate_model(model_id: str, error_msg: str, db=None) -> 
         "model not found",
         "not_found",
         "not found",
-        "model_not_found"
+        "model_not_found",
+        # Cloudflare Workers AI: Function UUID not found
+        "function '",
+        "404 page not found",
     ]
     
     if any(trigger in error_lower for trigger in deactivate_triggers):
@@ -920,12 +1961,12 @@ async def check_and_deactivate_model(model_id: str, error_msg: str, db=None) -> 
             
             await db.execute("UPDATE models SET enabled = 0 WHERE id = ?", (model_id,))
             await db.commit()
-            print(f"🚫 Model '{model_id}' automatically disabled due to billing/subscription error: {error_msg}")
+            logger.error("🚫 Model '%s' automatically disabled due to billing/subscription error:", model_id, exc_info=error_msg)
             
             if should_close:
                 await db.close()
             return True
         except Exception as e:
-            print(f"Error auto-disabling model '{model_id}': {e}")
+            logger.error("Error auto-disabling model '%s':", model_id, exc_info=e)
     return False
 

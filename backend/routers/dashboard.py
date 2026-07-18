@@ -4,19 +4,20 @@ FastAPI router para endpoints analíticos do dashboard de uso.
 Fornece métricas de uso de modelos, logs de failover e status atual de cota.
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from typing import List, Dict, Any
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 
 from backend.database import get_db
+from backend.auth import require_admin
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
 @router.get("/stats", response_model=Dict[str, Any])
-async def get_usage_stats(days: int = 30):
+async def get_usage_stats(days: int = 30, current_user: dict = Depends(require_admin)):
     """Retorna estatísticas agregadas de uso dos modelos e providers."""
     db = await get_db()
-    cutoff_date = (datetime.utcnow() - timedelta(days=days)).strftime('%Y-%m-%d %H:%M:%S')
+    cutoff_date = (datetime.now(timezone.utc) - timedelta(days=days)).strftime('%Y-%m-%d %H:%M:%S')
 
     # Total de chamadas no período
     async with db.execute(
@@ -77,7 +78,7 @@ async def get_usage_stats(days: int = 30):
 
 
 @router.get("/failovers", response_model=List[Dict[str, Any]])
-async def get_recent_failovers(limit: int = 50):
+async def get_recent_failovers(limit: int = 50, current_user: dict = Depends(require_admin)):
     """Retorna os eventos recentes de failover, incluindo os motivos e modelos originais."""
     db = await get_db()
     async with db.execute(
@@ -105,7 +106,7 @@ async def get_recent_failovers(limit: int = 50):
 
 
 @router.get("/quotas", response_model=List[Dict[str, Any]])
-async def get_quota_status():
+async def get_quota_status(current_user: dict = Depends(require_admin)):
     """Retorna o status atual dos modelos que estão com cota esgotada ou degradados."""
     db = await get_db()
     async with db.execute(

@@ -9,24 +9,13 @@ export function WebSearchToggle() {
   return (
     <button
       type="button"
-      className={`enhance-btn ${webSearchActive ? 'active' : ''}`}
+      className={`composer-tool-btn web-search-toggle custom-tooltip-trigger tooltip-up ${webSearchActive ? 'active' : ''}`}
       onClick={() => setWebSearchActive(!webSearchActive)}
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '6px',
-        borderRadius: 'var(--radius-md)',
-        border: '1px solid',
-        borderColor: webSearchActive ? 'rgba(93, 184, 166, 0.35)' : 'var(--hairline)',
-        background: webSearchActive ? 'rgba(93, 184, 166, 0.12)' : 'transparent',
-        color: webSearchActive ? 'var(--cyan)' : 'var(--muted)',
-        cursor: 'pointer',
-        transition: 'all 0.15s ease-in-out',
-      }}
-      title={webSearchActive ? t('chat.webSearchOn') : t('chat.webSearchOff')}
+      data-tooltip={webSearchActive ? t('chat.webSearchOn') : t('chat.webSearchOff')}
+      aria-pressed={webSearchActive}
+      aria-label={webSearchActive ? t('chat.webSearchOn') : t('chat.webSearchOff')}
     >
-      <Globe size={15} />
+      <Globe size={15} strokeWidth={1.75} />
     </button>
   )
 }

@@ -1,6 +1,9 @@
 import aiosqlite
 from datetime import datetime, timedelta, timezone
 
+from backend.logging_config import get_logger
+logger = get_logger(__name__)
+
 async def get_quota_status(model_id: str, db: aiosqlite.Connection) -> dict:
     """Retorna o status de cota de um modelo."""
     async with db.execute(
@@ -63,7 +66,7 @@ async def mark_model_exhausted(
         (model_id, now_str, reset_str, error_msg)
     )
     await db.commit()
-    print(f"⚠️ Quota exhausted for model {model_id}. Reset estimated at {reset_str}")
+    logger.warning("⚠️ Quota exhausted for model %s. Reset estimated at %s", model_id, reset_str)
 
 
 async def mark_model_success(model_id: str, db: aiosqlite.Connection) -> None:
@@ -126,5 +129,5 @@ async def release_expired_quotas(db: aiosqlite.Connection) -> int:
     )
     await db.commit()
     
-    print(f"🔄 Released expired quotas for {len(model_ids)} models: {model_ids}")
+    logger.info("🔄 Released expired quotas for %s models: %s", len(model_ids), model_ids)
     return len(model_ids)

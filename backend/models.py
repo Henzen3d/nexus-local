@@ -21,16 +21,21 @@ class ConversationCreate(BaseModel):
     title: Optional[str] = "Nova conversa"
     model_id: Optional[str] = None
     provider_id: Optional[str] = None
+    project_id: Optional[str] = None
 
 
 class ConversationUpdate(BaseModel):
-    title: str
+    title: Optional[str] = None
+    project_tag: Optional[str] = None
+    project_id: Optional[str] = None
 
 
 class ProviderUpdate(BaseModel):
     api_key: Optional[str] = None
     enabled: Optional[bool] = None
     base_url: Optional[str] = None
+    # Compartilhar chave de admin deste provedor com outros usuários
+    share_admin_key: Optional[bool] = None
 
 
 class ModelToggle(BaseModel):

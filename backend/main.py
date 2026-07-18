@@ -7,6 +7,12 @@ import asyncio
 import os
 from dotenv import load_dotenv
 
+load_dotenv()
+
+from backend.logging_config import configure_logging, get_logger
+configure_logging()
+logger = get_logger(__name__)
+
 from backend.database import init_db
 from backend.routers.chat import router as chat_router
 from backend.routers.ranking import router as ranking_router
@@ -23,8 +29,8 @@ from backend.routers.families import router as families_router
 from backend.routers.dashboard import router as dashboard_router
 
 from backend.routers.auth import router as auth_router
-
-load_dotenv()
+from backend.routers.memory import router as memory_router
+from backend.routers.projects import router as projects_router
 
 app = FastAPI(title="NexusLocal", version="1.0.0")
 
@@ -48,6 +54,8 @@ app.add_middleware(
 )
 
 app.include_router(auth_router)
+app.include_router(memory_router)
+app.include_router(projects_router)
 app.include_router(chat_router)
 app.include_router(conv_router)
 app.include_router(admin_router)
@@ -74,7 +82,7 @@ async def run_auto_sync():
         try:
             await sync_provider_models(pid, conn)
         except Exception as e:
-            print(f"Failed background sync for {pid}: {e}")
+            logger.error("Failed background sync for %s", pid, exc_info=e)
         finally:
             await conn.close()
             
@@ -106,10 +114,10 @@ async def run_auto_sync():
                     should_sync = True
             
             if should_sync:
-                print(f"🌀 Auto-sync: iniciando sync em background para o provider '{provider_id}'")
+                logger.info("Auto-sync: iniciando sync em background para o provider '%s'", provider_id)
                 asyncio.create_task(sync_task(provider_id))
     except Exception as e:
-        print(f"Error initiating auto sync: {e}")
+        logger.error("Error initiating auto sync", exc_info=e)
     finally:
         await db.close()
 
@@ -125,7 +133,7 @@ async def run_quota_release_job():
             finally:
                 await db.close()
         except Exception as e:
-            print(f"Error in quota release job: {e}")
+            logger.error("Error in quota release job", exc_info=e)
         
         await asyncio.sleep(60)  # Verify every 60 seconds
 
@@ -141,7 +149,7 @@ async def run_minute_reset_job():
             finally:
                 await db.close()
         except Exception as e:
-            print(f"Error in minute reset job: {e}")
+            logger.error("Error in minute reset job", exc_info=e)
 
 async def run_day_reset_job():
     from backend.database import get_db
@@ -160,9 +168,9 @@ async def run_day_reset_job():
                 finally:
                     await db.close()
                 last_day = current_day
-                print("🌀 Auto-sync: reset_day_windows executado para novo dia UTC")
+                logger.info("Auto-sync: reset_day_windows executado para novo dia UTC")
         except Exception as e:
-            print(f"Error in day reset job: {e}")
+            logger.error("Error in day reset job", exc_info=e)
 
 
 async def run_free_registry_sync_job():
@@ -176,13 +184,13 @@ async def run_free_registry_sync_job():
     try:
         db = await get_db()
         try:
-            print("🌀 Auto-sync: Iniciando sincronização em background do Free Model Registry")
+            logger.info("Auto-sync: Iniciando sincronização em background do Free Model Registry")
             res = await sync_free_registry(db)
-            print(f"🌀 Auto-sync Free Model Registry: {res.get('status')}")
+            logger.info("Auto-sync Free Model Registry: %s", res.get('status'))
         finally:
             await db.close()
     except Exception as e:
-        print(f"Error in initial free registry sync job: {e}")
+        logger.error("Error in initial free registry sync job", exc_info=e)
         
     while True:
         # Roda a cada 24 horas
@@ -190,24 +198,84 @@ async def run_free_registry_sync_job():
         try:
             db = await get_db()
             try:
-                print("🌀 Auto-sync: Rodando sync periódico do Free Model Registry")
+                logger.info("Auto-sync: Rodando sync periódico do Free Model Registry")
                 res = await sync_free_registry(db)
-                print(f"🌀 Auto-sync Free Model Registry periódico: {res.get('status')}")
+                logger.info("Auto-sync Free Model Registry periódico: %s", res.get('status'))
             finally:
                 await db.close()
         except Exception as e:
-            print(f"Error in periodic free registry sync job: {e}")
+            logger.error("Error in periodic free registry sync job", exc_info=e)
+
+
+async def run_memory_idle_extraction_job():
+    """
+    M4: every 15 minutes, extract memory from conversations that have been
+    idle for ~2 hours and not yet processed after last activity.
+    """
+    from backend.memory import process_idle_memory_extractions
+
+    # Delay startup so DB and providers are ready
+    await asyncio.sleep(90)
+    while True:
+        try:
+            n = await process_idle_memory_extractions()
+            if n:
+                logger.info("Memory idle job: %s conversa(s) processada(s)", n)
+        except Exception as e:
+            logger.error("Error in memory idle extraction job", exc_info=e)
+        await asyncio.sleep(15 * 60)  # 15 minutes
+
+
+async def run_project_memory_synthesis_job():
+    """Periodic light cron: synthesize project_memory from recent chat_chunks."""
+    from backend.projects.memory_job import synthesize_all_active_projects
+
+    await asyncio.sleep(120)
+    while True:
+        try:
+            n = await synthesize_all_active_projects()
+            if n:
+                logger.info("Project memory job: %s projeto(s) sintetizado(s)", n)
+        except Exception as e:
+            logger.error("Error in project memory synthesis job", exc_info=e)
+        await asyncio.sleep(30 * 60)  # 30 minutes
+
+
+async def warm_up_fastembed():
+    """Load fastembed model once at boot so first request is not cold."""
+    try:
+        from backend.projects.embedder import warm_up_embedder_async
+
+        ok = await warm_up_embedder_async()
+        if ok:
+            logger.info("fastembed warm-up concluído no startup")
+        else:
+            logger.warning("fastembed warm-up não disponível (cache semântico/Projects RAG degradado)")
+    except Exception as e:
+        logger.warning("fastembed warm-up falhou", exc_info=e)
 
 
 @app.on_event("startup")
 async def startup():
     await init_db()
-    print("[OK] NexusLocal iniciado - banco de dados pronto.")
+    logger.info("NexusLocal iniciado - banco de dados pronto.")
+    # Warm-up embedder before accepting heavy traffic (background task still lets HTTP start)
+    asyncio.create_task(warm_up_fastembed())
     asyncio.create_task(run_auto_sync())
     asyncio.create_task(run_quota_release_job())
     asyncio.create_task(run_minute_reset_job())
     asyncio.create_task(run_day_reset_job())
     asyncio.create_task(run_free_registry_sync_job())
+    asyncio.create_task(run_memory_idle_extraction_job())
+    asyncio.create_task(run_project_memory_synthesis_job())
+    
+    # Warm-up do cache semântico (fastembed)
+    try:
+        from backend.cache.manager import cache_manager
+        asyncio.create_task(cache_manager.warmup())
+    except Exception as e:
+        logger.warning("Falha ao iniciar warm-up do cache", exc_info=e)
+
 
 
 @app.get("/health")

@@ -2,21 +2,21 @@ import { useState, useEffect, useRef } from 'react'
 import { MessageSquare, Plus, Search, Trash2, Star, CheckSquare, Square, X, Sliders, ListChecks, Pencil, Menu } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useStore } from '../store/useStore'
+import { useHaptic } from '../hooks/useHaptic'
 import type { Conversation } from '../types'
 
 export function ConversationsPanel() {
   const { t, i18n } = useTranslation()
-  const {
-    conversations,
-    loadConversations,
-    loadConversation,
-    startNewConversation,
-    favoriteConversation,
-    deleteConversation,
-    setSidebarOpen,
-    renameConversation,
-    sidebarOpen
-  } = useStore()
+  const haptic = useHaptic()
+  const conversations = useStore((s) => s.conversations)
+  const loadConversations = useStore((s) => s.loadConversations)
+  const loadConversation = useStore((s) => s.loadConversation)
+  const startNewConversation = useStore((s) => s.startNewConversation)
+  const favoriteConversation = useStore((s) => s.favoriteConversation)
+  const deleteConversation = useStore((s) => s.deleteConversation)
+  const setSidebarOpen = useStore((s) => s.setSidebarOpen)
+  const renameConversation = useStore((s) => s.renameConversation)
+  const sidebarOpen = useStore((s) => s.sidebarOpen)
 
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<'all' | 'favorites'>('all')
@@ -87,9 +87,7 @@ export function ConversationsPanel() {
 
     longPressTimeout.current = setTimeout(() => {
       isLongPressActive.current = true
-      if (navigator.vibrate) {
-        try { navigator.vibrate(20) } catch {}
-      }
+      haptic(20)
       setMenuState({
         id,
         title,
@@ -180,14 +178,15 @@ export function ConversationsPanel() {
   }
 
   return (
-    <div className="conversations-panel">
-      {/* Header */}
-      <header className="conversations-header">
-        <div className="panel-top-bar">
-          <div className="panel-top-bar-left">
+    <div className="conversations-panel list-panel">
+      <div className="list-panel-inner">
+        {/* Header — mesmo padrão de Projetos / Artefatos */}
+        <header className="list-panel-header">
+          <div className="list-panel-title-row">
             {!sidebarOpen && (
               <button
-                className="icon-only-btn"
+                type="button"
+                className="icon-only-btn touch-target"
                 onClick={() => setSidebarOpen(true)}
                 title={t("common.openMenu")}
                 aria-label={t("common.openMenu")}
@@ -195,197 +194,202 @@ export function ConversationsPanel() {
                 <Menu size={20} />
               </button>
             )}
-          </div>
-          <div className="panel-top-bar-right header-right-group">
-            {/* Dropdown de Filtro */}
-            <div className="filter-dropdown-container">
+            <h1>{t("conversations.title")}</h1>
+            <div className="list-panel-actions">
+              {/* Dropdown de Filtro */}
+              <div className="filter-dropdown-container">
+                <button
+                  type="button"
+                  className="icon-only-btn"
+                  onClick={() => setShowFilterDropdown(!showFilterDropdown)}
+                  title={t('conversations.filterBy', { filter: filter === 'all' ? t('conversations.all') : t('conversations.favorites') })}
+                  aria-label={t("conversations.filterConversations")}
+                >
+                  <Sliders size={18} />
+                </button>
+                {showFilterDropdown && (
+                  <div className="filter-menu-dropdown right-aligned">
+                    <button
+                      type="button"
+                      className={filter === 'all' ? 'active' : ''}
+                      onClick={() => {
+                        setFilter('all')
+                        setShowFilterDropdown(false)
+                      }}
+                    >
+                      {t('conversations.all')}
+                    </button>
+                    <button
+                      type="button"
+                      className={filter === 'favorites' ? 'active' : ''}
+                      onClick={() => {
+                        setFilter('favorites')
+                        setShowFilterDropdown(false)
+                      }}
+                    >
+                      {t('conversations.favorites')}
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Selecionar Chats */}
               <button
-                className="filter-toggle-btn icon-only-btn"
-                onClick={() => setShowFilterDropdown(!showFilterDropdown)}
-                title={t('conversations.filterBy', { filter: filter === 'all' ? t('conversations.all') : t('conversations.favorites') })}
-                aria-label={t("conversations.filterConversations")}
+                type="button"
+                className="icon-only-btn"
+                onClick={() => {
+                  setIsSelectMode(!isSelectMode)
+                  setSelectedIds([])
+                }}
+                title={isSelectMode ? t('conversations.cancelSelection') : t('conversations.selectChats')}
+                aria-label={isSelectMode ? t('conversations.cancelSelection') : t('conversations.selectChats')}
               >
-                <Sliders size={20} />
+                {isSelectMode ? <X size={18} /> : <ListChecks size={18} />}
               </button>
-              {showFilterDropdown && (
-                <div className="filter-menu-dropdown right-aligned">
-                  <button
-                    className={filter === 'all' ? 'active' : ''}
-                    onClick={() => {
-                      setFilter('all')
-                      setShowFilterDropdown(false)
-                    }}
-                  >
-                    {t('conversations.all')}
-                  </button>
-                  <button
-                    className={filter === 'favorites' ? 'active' : ''}
-                    onClick={() => {
-                      setFilter('favorites')
-                      setShowFilterDropdown(false)
-                    }}
-                  >
-                    {t('conversations.favorites')}
-                  </button>
-                </div>
-              )}
-            </div>
 
-            {/* Selecionar Chats */}
-            <button
-              className="action-link-btn icon-only-btn"
-              onClick={() => {
-                setIsSelectMode(!isSelectMode)
-                setSelectedIds([])
-              }}
-              title={isSelectMode ? t('conversations.cancelSelection') : t('conversations.selectChats')}
-              aria-label={isSelectMode ? t('conversations.cancelSelection') : t('conversations.selectChats')}
-            >
-              {isSelectMode ? <X size={20} /> : <ListChecks size={20} />}
-            </button>
-          </div>
-        </div>
-        <h1>{t("conversations.title")}</h1>
-      </header>
-
-      {/* Bulk Selection Bar */}
-      {isSelectMode && (
-        <div className="bulk-actions-bar">
-          <div className="bulk-info">
-            <button className="icon-btn-select" onClick={handleSelectAll}>
-              {selectedIds.length === conversations.length ? (
-                <CheckSquare size={16} className="text-primary" />
-              ) : (
-                <Square size={16} />
-              )}
-            </button>
-            <span>{t('conversations.selected', { count: selectedIds.length })}</span>
-          </div>
-          <div className="bulk-buttons">
-            <button
-              className="bulk-btn favorite"
-              disabled={selectedIds.length === 0}
-              onClick={handleBulkFavorite}
-            >
-              <Star size={14} />
-              <span>{t("conversations.toggleFavorites")}</span>
-            </button>
-            <button
-              className="bulk-btn delete danger"
-              disabled={selectedIds.length === 0}
-              onClick={handleBulkDelete}
-            >
-              <Trash2 size={14} />
-              <span>{t("conversations.delete")}</span>
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Search Input */}
-      <div className="search-bar-container">
-        <Search className="search-icon-field" size={15} />
-        <input
-          type="text"
-          className="search-input-field"
-          placeholder={t('conversations.searchPlaceholder')}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-        {search && (
-          <button className="clear-search-btn" onClick={() => setSearch('')}>
-            <X size={14} />
-          </button>
-        )}
-      </div>
-
-      {/* List content */}
-      <div className="conversations-content-area">
-        {conversations.length === 0 ? (
-          <div className="panel-empty-state">
-            <MessageSquare size={36} />
-            <h3>{t("conversations.emptyTitle")}</h3>
-            <p>
-              {search
-                ? t('conversations.emptySearch')
-                : t('conversations.emptyHint')}
-            </p>
-          </div>
-        ) : (
-          <div className="conversations-rows-wrapper">
-            {conversations.map((c) => {
-              const isSelected = selectedIds.includes(c.id)
-              const timeString = getRelativeTime(c.updated_at)
-              const capitalizedTime = timeString.charAt(0).toUpperCase() + timeString.slice(1)
-              return (
-                <div
-                  key={c.id}
-                  className={`conversation-row-item ${
-                    isSelectMode ? 'in-select-mode' : ''
-                  } ${isSelected ? 'row-selected' : ''}`}
-                   onTouchStart={(e) => handleTouchStart(e, c.id, c.title, !!c.is_favorite)}
-                   onTouchMove={handleTouchMove}
-                   onTouchEnd={handleTouchEnd}
-                   onMouseDown={(e) => handleMouseDown(e, c.id, c.title, !!c.is_favorite)}
-                  onMouseMove={handleMouseMove}
-                  onMouseUp={handleMouseUp}
-                  onContextMenu={(e) => e.preventDefault()}
+              {!isSelectMode && (
+                <button
+                  type="button"
+                  className="claude-btn-primary"
                   onClick={() => {
-                    if (isLongPressActive.current) {
-                      isLongPressActive.current = false
-                      return
-                    }
-                    if (isSelectMode) {
-                      toggleSelect(c.id)
-                    } else {
-                      loadConversation(c.id)
-                      if (window.innerWidth <= 768) setSidebarOpen(false)
-                    }
+                    startNewConversation()
+                    if (window.innerWidth <= 768) setSidebarOpen(false)
                   }}
                 >
-                  {isSelectMode && (
-                    <div className="row-checkbox-wrapper">
-                      {isSelected ? (
-                        <CheckSquare size={16} className="text-primary" />
-                      ) : (
-                        <Square size={16} />
-                      )}
-                    </div>
-                  )}
+                  <Plus size={16} strokeWidth={2.2} />
+                  {t('conversations.newChat', { defaultValue: 'Novo bate-papo' })}
+                </button>
+              )}
+            </div>
+          </div>
 
-                  <div className="row-content-body">
-                    <div className="row-title-container">
-                      <span className="row-conversation-title" title={c.title}>
-                        {c.title}
-                      </span>
-                      {c.is_favorite && (
-                        <Star size={11} className="fill-amber-500 text-amber-500" />
-                      )}
-                    </div>
-                    <span className="row-conversation-meta">
-                      {capitalizedTime}
-                    </span>
-                  </div>
-                </div>
-              )
-            })}
+          <div className="search-bar-container">
+            <Search className="search-icon-field" size={15} />
+            <input
+              type="text"
+              className="search-input-field"
+              placeholder={t('conversations.searchPlaceholder')}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+            {search && (
+              <button type="button" className="clear-search-btn" onClick={() => setSearch('')}>
+                <X size={14} />
+              </button>
+            )}
+          </div>
+        </header>
+
+        {/* Bulk Selection Bar */}
+        {isSelectMode && (
+          <div className="bulk-actions-bar">
+            <div className="bulk-info">
+              <button type="button" className="icon-btn-select" onClick={handleSelectAll}>
+                {selectedIds.length === conversations.length ? (
+                  <CheckSquare size={16} className="text-primary" />
+                ) : (
+                  <Square size={16} />
+                )}
+              </button>
+              <span>{t('conversations.selected', { count: selectedIds.length })}</span>
+            </div>
+            <div className="bulk-buttons">
+              <button
+                type="button"
+                className="bulk-btn favorite"
+                disabled={selectedIds.length === 0}
+                onClick={handleBulkFavorite}
+              >
+                <Star size={14} />
+                <span>{t("conversations.toggleFavorites")}</span>
+              </button>
+              <button
+                type="button"
+                className="bulk-btn delete danger"
+                disabled={selectedIds.length === 0}
+                onClick={handleBulkDelete}
+              >
+                <Trash2 size={14} />
+                <span>{t("conversations.delete")}</span>
+              </button>
+            </div>
           </div>
         )}
-      </div>
 
-      {/* Floating FAB Button */}
-      {!isSelectMode && (
-        <button
-          className="btn-primary-new floating-fab"
-          onClick={() => {
-            startNewConversation()
-            if (window.innerWidth <= 768) setSidebarOpen(false)
-          }}
-        >
-          <Plus size={16} />
-          <span>Novo bate-papo</span>
-        </button>
-      )}
+        {/* List content */}
+        <div className="conversations-content-area">
+          {conversations.length === 0 ? (
+            <div className="panel-empty-state">
+              <MessageSquare size={36} />
+              <h3>{t("conversations.emptyTitle")}</h3>
+              <p>
+                {search
+                  ? t('conversations.emptySearch')
+                  : t('conversations.emptyHint')}
+              </p>
+            </div>
+          ) : (
+            <div className="conversations-rows-wrapper">
+              {conversations.map((c) => {
+                const isSelected = selectedIds.includes(c.id)
+                const timeString = getRelativeTime(c.updated_at)
+                const capitalizedTime = timeString.charAt(0).toUpperCase() + timeString.slice(1)
+                return (
+                  <div
+                    key={c.id}
+                    className={`conversation-row-item ${
+                      isSelectMode ? 'in-select-mode' : ''
+                    } ${isSelected ? 'row-selected' : ''}`}
+                     onTouchStart={(e) => handleTouchStart(e, c.id, c.title, !!c.is_favorite)}
+                     onTouchMove={handleTouchMove}
+                     onTouchEnd={handleTouchEnd}
+                     onMouseDown={(e) => handleMouseDown(e, c.id, c.title, !!c.is_favorite)}
+                    onMouseMove={handleMouseMove}
+                    onMouseUp={handleMouseUp}
+                    onContextMenu={(e) => e.preventDefault()}
+                    onClick={() => {
+                      if (isLongPressActive.current) {
+                        isLongPressActive.current = false
+                        return
+                      }
+                      if (isSelectMode) {
+                        toggleSelect(c.id)
+                      } else {
+                        loadConversation(c.id)
+                        if (window.innerWidth <= 768) setSidebarOpen(false)
+                      }
+                    }}
+                  >
+                    {isSelectMode && (
+                      <div className="row-checkbox-wrapper">
+                        {isSelected ? (
+                          <CheckSquare size={16} className="text-primary" />
+                        ) : (
+                          <Square size={16} />
+                        )}
+                      </div>
+                    )}
+
+                    <div className="row-content-body">
+                      <div className="row-title-container">
+                        <span className="row-conversation-title" title={c.title}>
+                          {c.title}
+                        </span>
+                        {c.is_favorite && (
+                          <Star size={11} className="fill-amber-500 text-amber-500" />
+                        )}
+                      </div>
+                      <span className="row-conversation-meta">
+                        {capitalizedTime}
+                      </span>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* Floating Context Menu */}
       {menuState && (

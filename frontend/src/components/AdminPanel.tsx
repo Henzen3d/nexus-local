@@ -2,13 +2,14 @@ import { useEffect, useState } from 'react'
 import {
   Eye, EyeOff, Save, ToggleLeft, ToggleRight, Database, Sparkles, Users, Trash2, X, Monitor, Sun, Moon, Search, ChevronDown, ChevronRight,
   ChevronLeft, Info, Settings, CreditCard, Shield, Sliders, Volume2, Lock, Link2, LogOut, Check, User, Palette, Type, Smartphone, Trash, Activity,
-  Award, Languages
+  Award, Languages, Brain, Share2, ExternalLink, Key
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { api } from '../api/client'
 import { SUPPORTED_LOCALES } from '../i18n'
 import { useStore } from '../store/useStore'
 import type { Provider } from '../types'
+import { getProviderApiKeyUrl } from '../config/providerApiKeys'
 import { CachePanel } from './CachePanel'
 import { EnhancerSettings } from './EnhancerSettings'
 import { FusionSettings } from './FusionSettings'
@@ -19,22 +20,10 @@ import { FamilySettings } from './FamilySettings'
 import { UsageDashboard } from './UsageDashboard'
 import { RankingWeightsSettings } from './RankingWeightsSettings'
 import { RankingsView } from './RankingsView'
-type Tab = 'general' | 'providers' | 'rankings' | 'cache' | 'tools' | 'users' | 'dashboard'
+import { UserMemoryPanel } from './UserMemoryPanel'
+import { useIsMobile } from '../hooks/useIsMobile'
 
-// Responsive hook to detect mobile screens (< 768px)
-function useIsMobile() {
-  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' ? window.matchMedia('(max-width: 768px)').matches : false)
-  
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    const media = window.matchMedia('(max-width: 768px)')
-    const listener = (e: MediaQueryListEvent) => setIsMobile(e.matches)
-    media.addEventListener('change', listener)
-    return () => media.removeEventListener('change', listener)
-  }, [])
-  
-  return isMobile
-}
+type Tab = 'general' | 'providers' | 'rankings' | 'cache' | 'tools' | 'users' | 'dashboard' | 'memory'
 
 export function AdminPanel() {
   const isMobile = useIsMobile()
@@ -86,6 +75,7 @@ function AdminPanelMobile() {
   const [editingModelId, setEditingModelId] = useState<string | null>(null)
   const [tempCtx, setTempCtx] = useState('')
   const [showAllModels, setShowAllModels] = useState<Record<string, boolean>>({})
+  const [shareKeysEnabled, setShareKeysEnabled] = useState(false)
 
   // Users management state
   const [usersList, setUsersList] = useState<any[]>([])
@@ -108,8 +98,34 @@ function AdminPanelMobile() {
           setCfAccountId(match[1])
         }
       }
+      if (user?.role === 'admin') {
+        const shareCfg = await api.getShareConfig()
+        setShareKeysEnabled(shareCfg.share_admin_keys)
+      }
     } catch (e) {
       console.error(e)
+    }
+  }
+
+  const handleToggleShareKeys = async () => {
+    const newValue = !shareKeysEnabled
+    try {
+      await api.updateShareConfig(newValue)
+      setShareKeysEnabled(newValue)
+      await load()
+    } catch (err) {
+      console.error('Failed to update key sharing config', err)
+    }
+  }
+
+  /** Compartilhamento individual da chave de admin para um provedor */
+  const handleToggleShareProviderKey = async (providerId: string, current: boolean) => {
+    try {
+      await api.updateProvider(providerId, { share_admin_key: !current })
+      await load()
+      await loadModels()
+    } catch (err) {
+      console.error('Failed to update per-provider key sharing', err)
     }
   }
 
@@ -405,7 +421,11 @@ function AdminPanelMobile() {
                   <div>
                     <span className="settings-list-item-label">{t("settings.fontStyle")}</span>
                     <span className="settings-list-item-subtitle">
-                      {chatFont === 'sans' ? 'Claude Sans (Inter)' : chatFont === 'serif' ? 'Claude Serif (Garamond)' : 'JetBrains Mono'}
+                      {chatFont === 'sans'
+                        ? t('settings.fontSans')
+                        : chatFont === 'serif'
+                          ? t('settings.fontSerifShort')
+                          : t('settings.fontMono')}
                     </span>
                   </div>
                 </div>
@@ -491,6 +511,17 @@ function AdminPanelMobile() {
                   <ChevronRight size={16} />
                 </div>
               )}
+
+              <div className="settings-list-item" onClick={() => { pushScreen('memory'); triggerHaptic() }}>
+                <div className="settings-list-item-left">
+                  <Brain size={16} className="settings-list-item-icon" />
+                  <div>
+                    <span className="settings-list-item-label">{t("settings.memory")}</span>
+                    <span className="settings-list-item-subtitle">Contexto pessoal e fatos aprendidos</span>
+                  </div>
+                </div>
+                <ChevronRight size={16} />
+              </div>
             </div>
 
             {/* System Info & Permissions */}
@@ -501,8 +532,11 @@ function AdminPanelMobile() {
                 <div className="settings-list-item-left">
                   <Smartphone size={16} className="settings-list-item-icon" />
                   <div>
-                    <span className="settings-list-item-label">Permissões</span>
-                    <span className="settings-list-item-subtitle">Microfone, câmera e notificações</span>
+                    <span className="settings-list-item-label">
+                      {t('settings.permissions', { defaultValue: 'Permissões' })}
+                      <span className="settings-coming-soon-badge">{t('settings.comingSoon', { defaultValue: 'Em breve' })}</span>
+                    </span>
+                    <span className="settings-list-item-subtitle">{t('settings.permissionsSub', { defaultValue: 'Microfone, câmera e notificações' })}</span>
                   </div>
                 </div>
                 <ChevronRight size={16} />
@@ -512,8 +546,11 @@ function AdminPanelMobile() {
                 <div className="settings-list-item-left">
                   <Shield size={16} className="settings-list-item-icon" />
                   <div>
-                    <span className="settings-list-item-label">Privacidade & Dados</span>
-                    <span className="settings-list-item-subtitle">Persistência SQLite e telemetria</span>
+                    <span className="settings-list-item-label">
+                      {t('settings.privacyData', { defaultValue: 'Privacidade & Dados' })}
+                      <span className="settings-coming-soon-badge">{t('settings.comingSoon', { defaultValue: 'Em breve' })}</span>
+                    </span>
+                    <span className="settings-list-item-subtitle">{t('settings.privacyDataSub', { defaultValue: 'Persistência e telemetria' })}</span>
                   </div>
                 </div>
                 <ChevronRight size={16} />
@@ -523,8 +560,11 @@ function AdminPanelMobile() {
                 <div className="settings-list-item-left">
                   <Link2 size={16} className="settings-list-item-icon" />
                   <div>
-                    <span className="settings-list-item-label">Links Compartilhados</span>
-                    <span className="settings-list-item-subtitle">Lista de conversas partilhadas publicamente</span>
+                    <span className="settings-list-item-label">
+                      {t('settings.sharedLinks', { defaultValue: 'Links Compartilhados' })}
+                      <span className="settings-coming-soon-badge">{t('settings.comingSoon', { defaultValue: 'Em breve' })}</span>
+                    </span>
+                    <span className="settings-list-item-subtitle">{t('settings.sharedLinksSub', { defaultValue: 'Conversas públicas' })}</span>
                   </div>
                 </div>
                 <ChevronRight size={16} />
@@ -534,8 +574,11 @@ function AdminPanelMobile() {
                 <div className="settings-list-item-left">
                   <CreditCard size={16} className="settings-list-item-icon" />
                   <div>
-                    <span className="settings-list-item-label">Cobrança</span>
-                    <span className="settings-list-item-subtitle">Community Edition e faturamento</span>
+                    <span className="settings-list-item-label">
+                      {t('settings.billing', { defaultValue: 'Cobrança' })}
+                      <span className="settings-coming-soon-badge">{t('settings.comingSoon', { defaultValue: 'Em breve' })}</span>
+                    </span>
+                    <span className="settings-list-item-subtitle">{t('settings.billingSub', { defaultValue: 'Community Edition' })}</span>
                   </div>
                 </div>
                 <ChevronRight size={16} />
@@ -545,8 +588,11 @@ function AdminPanelMobile() {
                 <div className="settings-list-item-left">
                   <Volume2 size={16} className="settings-list-item-icon" />
                   <div>
-                    <span className="settings-list-item-label">Leitura de Voz</span>
-                    <span className="settings-list-item-subtitle">Seletor de vozes TTS do chat</span>
+                    <span className="settings-list-item-label">
+                      {t('settings.voiceSettings', { defaultValue: 'Leitura de Voz' })}
+                      <span className="settings-coming-soon-badge">{t('settings.comingSoon', { defaultValue: 'Em breve' })}</span>
+                    </span>
+                    <span className="settings-list-item-subtitle">{t('settings.voiceSettingsSub', { defaultValue: 'Vozes TTS do chat' })}</span>
                   </div>
                 </div>
                 <ChevronRight size={16} />
@@ -643,7 +689,7 @@ function AdminPanelMobile() {
 
             <div className="settings-card-section" style={{ padding: '16px' }}>
               <h4 style={{ fontWeight: 600, fontSize: '14px', color: 'var(--ink)', marginBottom: '4px' }}>{t("settings.accountActions")}</h4>
-              <p style={{ fontSize: '11px', color: 'var(--muted)', marginBottom: '12px' }}>{t("settings.accountActionsDesc")}</p>
+              <p style={{ fontSize: '12px', color: 'var(--muted)', marginBottom: '12px' }}>{t("settings.accountActionsDesc")}</p>
               <button 
                 style={{ width: '100%', padding: '10px', background: 'rgba(198,69,69,0.08)', border: '1px solid var(--error)', borderRadius: 'var(--radius-md)', color: 'var(--error)', fontSize: '13px', fontWeight: 500 }}
                 onClick={() => {
@@ -691,14 +737,64 @@ function AdminPanelMobile() {
               </div>
             </div>
 
+            {user?.role === 'admin' && (
+              <div className="settings-card-section" style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '14px 16px',
+                background: 'var(--surface-cream-weak)',
+                border: '1px solid var(--hairline)',
+                borderRadius: 'var(--radius-lg)',
+                marginBottom: '12px',
+                marginTop: '12px'
+              }}>
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flex: 1, marginRight: '8px' }}>
+                  <Share2 size={18} style={{ color: 'var(--primary)', flexShrink: 0 }} />
+                  <div>
+                    <h4 style={{ margin: 0, fontSize: '13.5px', fontWeight: 600 }}>Compartilhar chaves de API</h4>
+                    <p style={{ margin: '2px 0 0', fontSize: '12px', color: 'var(--muted)', lineHeight: '1.4' }}>
+                      Liga/desliga o compartilhamento em massa. Para um provedor só, use o ícone de chave ao lado de “Chave de API”.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  className={`toggle-btn ${shareKeysEnabled ? 'on' : 'off'}`}
+                  onClick={() => handleToggleShareKeys()}
+                  style={{ border: 'none', background: 'transparent', cursor: 'pointer' }}
+                >
+                  {shareKeysEnabled ? <ToggleRight size={26} /> : <ToggleLeft size={26} />}
+                </button>
+              </div>
+            )}
+
             <div className="settings-card-section-title" style={{ marginTop: '12px' }}>🎁 Provedores Gratuitos/Testes</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {providers.filter(p => p.is_free).map(prov => (
+              {providers.filter(p => p.is_free).map(prov => {
+                const apiKeyUrl = getProviderApiKeyUrl(prov.id)
+                return (
                 <div key={prov.id} className="settings-card-section">
                   <div style={{ display: 'flex', justifyContent: 'space-between', padding: '14px 16px', background: 'var(--surface-soft)', borderBottom: '1px solid var(--hairline)' }}>
                     <div>
-                      <h4 style={{ fontSize: '14px', fontWeight: 600, color: 'var(--ink)' }}>{prov.name}</h4>
-                      <span className="tier-badge free" style={{ marginTop: '4px', display: 'inline-block' }}>{t("settings.offersFree")}</span>
+                      <div className="provider-name-with-link">
+                        <h4 style={{ fontSize: '14px', fontWeight: 600, color: 'var(--ink)', margin: 0 }}>{prov.name}</h4>
+                        {apiKeyUrl && (
+                          <a
+                            href={apiKeyUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="provider-key-link"
+                            title={t('settings.openApiKeyPage')}
+                            aria-label={t('settings.openApiKeyPage')}
+                          >
+                            <ExternalLink size={15} />
+                          </a>
+                        )}
+                      </div>
+                      <span className="tier-badge free" style={{ marginTop: '6px' }} title={t("settings.offersFree")}>
+                        <span className="tier-badge-dot" aria-hidden="true" />
+                        <span className="tier-badge-label">{t("settings.offersFree")}</span>
+                      </span>
                     </div>
                     <button 
                       className={`toggle-btn ${prov.enabled ? 'on' : 'off'}`}
@@ -710,7 +806,7 @@ function AdminPanelMobile() {
 
                   {prov.enabled && (
                     <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                      {prov.has_key && (
+                      {prov.has_key ? (
                         <button 
                           className="sync-btn" 
                           style={{ width: '100%', justifyContent: 'center' }} 
@@ -719,14 +815,42 @@ function AdminPanelMobile() {
                         >
                           {syncing[prov.id] ? t('common.syncing') : t('settings.syncModels')}
                         </button>
-                      )}
+                      ) : apiKeyUrl ? (
+                        <a
+                          href={apiKeyUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="sync-btn get-key-btn"
+                          style={{ width: '100%', justifyContent: 'center' }}
+                        >
+                          {t('settings.getApiKey')}
+                        </a>
+                      ) : null}
                       
                       <div className="key-field" style={{ padding: 0, border: 'none' }}>
-                        <label style={{ fontSize: '11px', color: 'var(--muted)', fontWeight: 600 }}>{t("settings.apiKey")}</label>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                          <label style={{ fontSize: '12px', color: 'var(--muted)', fontWeight: 600 }}>{t("settings.apiKey")}</label>
+                          {user?.role === 'admin' && (
+                            <button
+                              type="button"
+                              className={`provider-share-key-btn ${prov.share_admin_key ? 'is-on' : ''}`}
+                              onClick={() => handleToggleShareProviderKey(prov.id, !!prov.share_admin_key)}
+                              title={
+                                prov.share_admin_key
+                                  ? t('settings.shareKeyOn', { defaultValue: 'Compartilhando esta chave com outros usuários - clique para desligar' })
+                                  : t('settings.shareKeyOff', { defaultValue: 'Não compartilhada - clique para compartilhar só este provedor' })
+                              }
+                              aria-label={t('settings.shareThisKey', { defaultValue: 'Compartilhar chave deste provedor' })}
+                              aria-pressed={!!prov.share_admin_key}
+                            >
+                              <Key size={14} strokeWidth={2} />
+                            </button>
+                          )}
+                        </div>
                         <div className="key-input-row" style={{ marginTop: '6px' }}>
                           <input 
                             type={showKey[prov.id] ? 'text' : 'password'}
-                            placeholder={prov.has_key ? '••••••••••••••••' : 'Cole sua chave aqui'}
+                            placeholder={prov.has_key ? '••••••••••••••••' : (prov.is_shared ? 'Usando chave compartilhada' : 'Cole sua chave aqui')}
                             value={keys[prov.id] ?? ''}
                             onChange={(e) => setKeys({ ...keys, [prov.id]: e.target.value })}
                             style={{ flex: 1, padding: '8px 12px', background: 'var(--surface-soft)', border: '1px solid var(--hairline)', borderRadius: 'var(--radius-sm)', color: 'var(--ink)', fontSize: '13px' }}
@@ -739,11 +863,21 @@ function AdminPanelMobile() {
                             {saved[prov.id] ? t('common.saved') : t('common.save')}
                           </button>
                         </div>
+                        {prov.is_shared && (
+                          <span style={{ fontSize: '12px', color: 'var(--primary)', marginTop: '4px', display: 'block' }}>
+                            Usando chave compartilhada do administrador
+                          </span>
+                        )}
+                        {user?.role === 'admin' && prov.share_admin_key && (
+                          <span style={{ fontSize: '12px', color: 'var(--primary)', marginTop: '4px', display: 'block' }}>
+                            {t('settings.sharingThisKey', { defaultValue: 'Chave deste provedor compartilhada com outros usuários' })}
+                          </span>
+                        )}
                       </div>
 
                       {/* Models List */}
                       <div style={{ marginTop: '6px' }}>
-                        <label style={{ fontSize: '11px', color: 'var(--muted)', fontWeight: 600, display: 'block', marginBottom: '8px' }}>{t("settings.enabledModels")}</label>
+                        <label style={{ fontSize: '12px', color: 'var(--muted)', fontWeight: 600, display: 'block', marginBottom: '8px' }}>{t("settings.enabledModels")}</label>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                           {(showAllModels[prov.id] ? prov.models : prov.models.slice(0, 6)).map(model => (
                             <div 
@@ -763,7 +897,7 @@ function AdminPanelMobile() {
                               <span style={{ color: model.enabled ? 'var(--ink)' : 'var(--muted)', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
                                 {model.display_name}
                                 {model.confirmed_free && (
-                                  <span style={{ color: 'var(--cyan)', fontSize: '10px' }} title="Confirmado Free">✓</span>
+                                  <span style={{ color: 'var(--cyan)', fontSize: '12px' }} title="Confirmado Free">✓</span>
                                 )}
                               </span>
                               <button 
@@ -799,17 +933,34 @@ function AdminPanelMobile() {
                     </div>
                   )}
                 </div>
-              ))}
+                )
+              })}
             </div>
 
             <div className="settings-card-section-title" style={{ marginTop: '12px' }}>💎 Provedores Pagos</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {providers.filter(p => !p.is_free).map(prov => (
+              {providers.filter(p => !p.is_free).map(prov => {
+                const apiKeyUrl = getProviderApiKeyUrl(prov.id)
+                return (
                 <div key={prov.id} className="settings-card-section">
                   <div style={{ display: 'flex', justifyContent: 'space-between', padding: '14px 16px', background: 'var(--surface-soft)', borderBottom: '1px solid var(--hairline)' }}>
                     <div>
-                      <h4 style={{ fontSize: '14px', fontWeight: 600, color: 'var(--ink)' }}>{prov.name}</h4>
-                      <span className="tier-badge paid" style={{ marginTop: '4px', display: 'inline-block' }}>{t("settings.paidOnly")}</span>
+                      <div className="provider-name-with-link">
+                        <h4 style={{ fontSize: '14px', fontWeight: 600, color: 'var(--ink)', margin: 0 }}>{prov.name}</h4>
+                        {apiKeyUrl && (
+                          <a
+                            href={apiKeyUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="provider-key-link"
+                            title={t('settings.openApiKeyPage')}
+                            aria-label={t('settings.openApiKeyPage')}
+                          >
+                            <ExternalLink size={15} />
+                          </a>
+                        )}
+                      </div>
+                      <span className="tier-badge paid" style={{ marginTop: '6px', display: 'inline-block' }}>{t("settings.paidOnly")}</span>
                     </div>
                     <button 
                       className={`toggle-btn ${prov.enabled ? 'on' : 'off'}`}
@@ -821,7 +972,7 @@ function AdminPanelMobile() {
 
                   {prov.enabled && (
                     <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                      {prov.has_key && (
+                      {prov.has_key ? (
                         <button 
                           className="sync-btn" 
                           style={{ width: '100%', justifyContent: 'center' }} 
@@ -830,10 +981,38 @@ function AdminPanelMobile() {
                         >
                           {syncing[prov.id] ? t('common.syncing') : t('settings.syncModels')}
                         </button>
-                      )}
+                      ) : apiKeyUrl ? (
+                        <a
+                          href={apiKeyUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="sync-btn get-key-btn"
+                          style={{ width: '100%', justifyContent: 'center' }}
+                        >
+                          {t('settings.getApiKey')}
+                        </a>
+                      ) : null}
                       
                       <div className="key-field" style={{ padding: 0, border: 'none' }}>
-                        <label style={{ fontSize: '11px', color: 'var(--muted)', fontWeight: 600 }}>{t("settings.apiKey")}</label>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                          <label style={{ fontSize: '12px', color: 'var(--muted)', fontWeight: 600 }}>{t("settings.apiKey")}</label>
+                          {user?.role === 'admin' && (
+                            <button
+                              type="button"
+                              className={`provider-share-key-btn ${prov.share_admin_key ? 'is-on' : ''}`}
+                              onClick={() => handleToggleShareProviderKey(prov.id, !!prov.share_admin_key)}
+                              title={
+                                prov.share_admin_key
+                                  ? t('settings.shareKeyOn', { defaultValue: 'Compartilhando esta chave com outros usuários - clique para desligar' })
+                                  : t('settings.shareKeyOff', { defaultValue: 'Não compartilhada - clique para compartilhar só este provedor' })
+                              }
+                              aria-label={t('settings.shareThisKey', { defaultValue: 'Compartilhar chave deste provedor' })}
+                              aria-pressed={!!prov.share_admin_key}
+                            >
+                              <Key size={14} strokeWidth={2} />
+                            </button>
+                          )}
+                        </div>
                         <div className="key-input-row" style={{ marginTop: '6px' }}>
                           <input 
                             type={showKey[prov.id] ? 'text' : 'password'}
@@ -850,11 +1029,16 @@ function AdminPanelMobile() {
                             {saved[prov.id] ? t('common.saved') : t('common.save')}
                           </button>
                         </div>
+                        {user?.role === 'admin' && prov.share_admin_key && (
+                          <span style={{ fontSize: '12px', color: 'var(--primary)', marginTop: '4px', display: 'block' }}>
+                            {t('settings.sharingThisKey', { defaultValue: 'Chave deste provedor compartilhada com outros usuários' })}
+                          </span>
+                        )}
                       </div>
 
                       {/* Models List */}
                       <div style={{ marginTop: '6px' }}>
-                        <label style={{ fontSize: '11px', color: 'var(--muted)', fontWeight: 600, display: 'block', marginBottom: '8px' }}>{t("settings.enabledModels")}</label>
+                        <label style={{ fontSize: '12px', color: 'var(--muted)', fontWeight: 600, display: 'block', marginBottom: '8px' }}>{t("settings.enabledModels")}</label>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                           {(showAllModels[prov.id] ? prov.models : prov.models.slice(0, 6)).map(model => (
                             <div 
@@ -905,7 +1089,8 @@ function AdminPanelMobile() {
                     </div>
                   )}
                 </div>
-              ))}
+                )
+              })}
             </div>
           </div>
         </div>
@@ -1102,7 +1287,7 @@ function AdminPanelMobile() {
                           {u.id === user?.id && <span className="badge-you" style={{ marginLeft: '6px' }}>Você</span>}
                         </div>
                       </div>
-                      <span className={`role-tag role-${u.role}`} style={{ fontSize: '10.5px' }}>
+                      <span className={`role-tag role-${u.role}`} style={{ fontSize: '12px' }}>
                         {u.role === 'admin' ? t('common.admin') : t('common.user')}
                       </span>
                     </div>
@@ -1110,7 +1295,7 @@ function AdminPanelMobile() {
                     <div style={{ fontSize: '12.5px', color: 'var(--body)', marginTop: '4px', display: 'flex', flexDirection: 'column', gap: '3px' }}>
                       <div>Email: {u.email || '-'}</div>
                       <div>Telefone: {u.phone || '-'}</div>
-                      <div style={{ fontSize: '11px', color: 'var(--muted)', marginTop: '4px' }}>
+                      <div style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '4px' }}>
                         Cadastrado em: {u.created_at ? new Date(u.created_at).toLocaleDateString('pt-BR') : '-'}
                       </div>
                     </div>
@@ -1144,7 +1329,10 @@ function AdminPanelMobile() {
                   <h4 style={{ fontWeight: 600, color: 'var(--ink)' }}>Plano Atual</h4>
                   <p style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '2px' }}>NexusLocal Community Edition</p>
                 </div>
-                <span className="tier-badge free">Gratuito</span>
+                <span className="tier-badge free" title="Gratuito">
+                  <span className="tier-badge-dot" aria-hidden="true" />
+                  <span className="tier-badge-label">Gratuito</span>
+                </span>
               </div>
               <div style={{ borderTop: '1px solid var(--hairline)', paddingTop: '16px' }}>
                 <h4 style={{ fontWeight: 500, fontSize: '13px', color: 'var(--muted)', marginBottom: '8px' }}>Métricas de Uso Local</h4>
@@ -1179,6 +1367,7 @@ function AdminPanelMobile() {
         <div className="settings-mobile-container-view">
           <Header title={t("settings.permissions")} />
           <div className="settings-mobile-content">
+            <div className="settings-coming-soon-banner">{t('settings.comingSoonPreview', { defaultValue: 'Prévia: esta seção ainda não afeta o sistema.' })}</div>
             <p style={{ fontSize: '13px', color: 'var(--muted)', marginBottom: '12px', padding: '0 4px' }}>
               {t('settings.permissionsDesc')}
             </p>
@@ -1293,6 +1482,7 @@ function AdminPanelMobile() {
         <div className="settings-mobile-container-view">
           <Header title={t("settings.voiceSettings")} />
           <div className="settings-mobile-content">
+            <div className="settings-coming-soon-banner">{t('settings.comingSoonPreview', { defaultValue: 'Prévia: esta seção ainda não afeta o sistema.' })}</div>
             <p style={{ fontSize: '13px', color: 'var(--muted)', marginBottom: '12px', padding: '0 4px' }}>
               Selecione a voz sintetizada para leitura de mensagens e respostas de áudio do chat.
             </p>
@@ -1320,6 +1510,17 @@ function AdminPanelMobile() {
           </div>
         </div>
       )}
+
+      {/* SCREEN 16: Memória Adaptativa Screen */}
+      {currentScreen === 'memory' && (
+        <div className="settings-mobile-container-view">
+          <Header title="Memória Adaptativa" />
+          <div className="settings-mobile-content" style={{ padding: '16px' }}>
+            <UserMemoryPanel />
+          </div>
+        </div>
+      )}
+
 
       {/* ─────────────────────────────────────────────────────────────────────────────
          BOTTOM SHEETS FOR QUICK SELECT preference rows
@@ -1416,9 +1617,9 @@ function AdminPanelMobile() {
             </div>
             <div className="bottom-sheet-options">
               {[
-                { id: 'sans' as const, label: 'Claude Sans (Inter)' },
-                { id: 'serif' as const, label: 'Claude Serif (Cormorant Garamond)' },
-                { id: 'mono' as const, label: 'JetBrains Mono' }
+                { id: 'sans' as const, label: t('settings.fontSans') },
+                { id: 'serif' as const, label: t('settings.fontSerif') },
+                { id: 'mono' as const, label: t('settings.fontMono') },
               ].map((opt) => (
                 <div 
                   key={opt.id}
@@ -1473,6 +1674,7 @@ function AdminPanelDesktop() {
   const [loadingUsers, setLoadingUsers] = useState(false)
   const [userError, setUserError] = useState('')
   const [sidebarSearch, setSidebarSearch] = useState('')
+  const [shareKeysEnabled, setShareKeysEnabled] = useState(false)
 
   const startEditing = (modelId: string, currentVal: number) => {
     setEditingModelId(modelId)
@@ -1498,6 +1700,35 @@ function AdminPanelDesktop() {
       if (match && match[1] !== '{account_id}') {
         setCfAccountId(match[1])
       }
+    }
+    if (user?.role === 'admin') {
+      try {
+        const shareCfg = await api.getShareConfig()
+        setShareKeysEnabled(shareCfg.share_admin_keys)
+      } catch (err) {
+        console.error('Failed to load key sharing config', err)
+      }
+    }
+  }
+
+  const handleToggleShareKeys = async () => {
+    const newValue = !shareKeysEnabled
+    try {
+      await api.updateShareConfig(newValue)
+      setShareKeysEnabled(newValue)
+      await load()
+    } catch (err) {
+      console.error('Failed to update key sharing config', err)
+    }
+  }
+
+  const handleToggleShareProviderKey = async (providerId: string, current: boolean) => {
+    try {
+      await api.updateProvider(providerId, { share_admin_key: !current })
+      await load()
+      await loadModels()
+    } catch (err) {
+      console.error('Failed to update per-provider key sharing', err)
     }
   }
 
@@ -1617,6 +1848,7 @@ function AdminPanelDesktop() {
     const q = (searchQueries[prov.id] || '').toLowerCase().trim()
     const freeOnly = freeFilters[prov.id] || false
     const isExpanded = expandedProviders[prov.id] || false
+    const apiKeyUrl = getProviderApiKeyUrl(prov.id)
 
     const filteredModels = prov.models.filter((m) => {
       const matchesSearch = m.display_name.toLowerCase().includes(q) || m.id.toLowerCase().includes(q)
@@ -1635,15 +1867,35 @@ function AdminPanelDesktop() {
           <div className="provider-meta">
             <div className="provider-title-row" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-              <h2>{prov.name}</h2>
-              <span className={`tier-badge ${prov.is_free ? 'free' : 'paid'}`}>
-                {prov.is_free ? t('settings.offersFree') : t('settings.paidOnly')}
-              </span>
+              <div className="provider-name-with-link">
+                <h2>{prov.name}</h2>
+                {apiKeyUrl && (
+                  <a
+                    href={apiKeyUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="provider-key-link"
+                    title={t('settings.openApiKeyPage')}
+                    aria-label={t('settings.openApiKeyPage')}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <ExternalLink size={15} />
+                  </a>
+                )}
+              </div>
+              {prov.is_free ? (
+                <span className="tier-badge free" title={t('settings.offersFree')}>
+                  <span className="tier-badge-dot" aria-hidden="true" />
+                  <span className="tier-badge-label">{t('settings.offersFree')}</span>
+                </span>
+              ) : (
+                <span className="tier-badge paid">{t('settings.paidOnly')}</span>
+              )}
             </div>
             <span className="provider-url">{prov.base_url}</span>
           </div>
           <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-            {prov.has_key && (
+            {prov.has_key ? (
               <button
                 className="sync-btn"
                 onClick={(e) => {
@@ -1654,7 +1906,17 @@ function AdminPanelDesktop() {
               >
                 {syncing[prov.id] ? t('common.syncing') : t('settings.syncModels')}
               </button>
-            )}
+            ) : apiKeyUrl ? (
+              <a
+                href={apiKeyUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="sync-btn get-key-btn"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {t('settings.getApiKey')}
+              </a>
+            ) : null}
             <button
               className={`toggle-btn ${prov.enabled ? 'on' : 'off'}`}
               onClick={(e) => {
@@ -1673,7 +1935,7 @@ function AdminPanelDesktop() {
             <div className="key-field">
               {prov.id === 'cloudflare' && (
                 <div style={{ marginBottom: '12px' }}>
-                  <label style={{ display: 'block', fontSize: '11.5px', fontWeight: 600, color: 'var(--muted)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--muted)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                     Cloudflare Account ID
                   </label>
                   <input
@@ -1695,11 +1957,32 @@ function AdminPanelDesktop() {
                   />
                 </div>
               )}
-              <label>{t("settings.apiKey")}</label>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '6px' }}>
+                <label style={{ margin: 0 }}>{t("settings.apiKey")}</label>
+                {user?.role === 'admin' && (
+                  <button
+                    type="button"
+                    className={`provider-share-key-btn ${prov.share_admin_key ? 'is-on' : ''}`}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleToggleShareProviderKey(prov.id, !!prov.share_admin_key)
+                    }}
+                    title={
+                      prov.share_admin_key
+                        ? t('settings.shareKeyOn', { defaultValue: 'Compartilhando esta chave com outros usuários - clique para desligar' })
+                        : t('settings.shareKeyOff', { defaultValue: 'Não compartilhada - clique para compartilhar só este provedor' })
+                    }
+                    aria-label={t('settings.shareThisKey', { defaultValue: 'Compartilhar chave deste provedor' })}
+                    aria-pressed={!!prov.share_admin_key}
+                  >
+                    <Key size={15} strokeWidth={2} />
+                  </button>
+                )}
+              </div>
               <div className="key-input-row">
                 <input
                   type={showKey[prov.id] ? 'text' : 'password'}
-                  placeholder={prov.has_key ? (showKey[prov.id] ? (prov.masked_key || '••••••••••••••••') : '••••••••••••••••') : 'Cole sua chave aqui'}
+                  placeholder={prov.has_key ? (showKey[prov.id] ? (prov.masked_key || '••••••••••••••••') : '••••••••••••••••') : (prov.is_shared ? 'Usando chave compartilhada' : 'Cole sua chave aqui')}
                   value={keys[prov.id] ?? ''}
                   onChange={(e) => setKeys((k) => ({ ...k, [prov.id]: e.target.value }))}
                   autoComplete="new-password"
@@ -1720,9 +2003,19 @@ function AdminPanelDesktop() {
                   {saved[prov.id] ? t('common.saved') : t('common.save')}
                 </button>
               </div>
+              {prov.is_shared && (
+                <span style={{ fontSize: '12px', color: 'var(--primary)', marginTop: '4px', display: 'block' }}>
+                  Usando chave compartilhada do administrador
+                </span>
+              )}
+              {user?.role === 'admin' && prov.share_admin_key && (
+                <span style={{ fontSize: '12px', color: 'var(--primary)', marginTop: '4px', display: 'block' }}>
+                  {t('settings.sharingThisKey', { defaultValue: 'Chave deste provedor compartilhada com outros usuários' })}
+                </span>
+              )}
               {!prov.has_key && (
                 <p className="key-hint">
-                  🔑 Sem chave configurada — os modelos deste provider não aparecerão no seletor.
+                  🔑 Sem chave configurada: os modelos deste provider não aparecerão no seletor.
                 </p>
               )}
               {prov.id === 'freetheai' && (
@@ -1748,7 +2041,7 @@ function AdminPanelDesktop() {
                   >
                     <span>💬 Realizar Check-in (/checkin)</span>
                   </a>
-                  <span style={{ fontSize: '11.5px', color: 'var(--muted)' }}>
+                  <span style={{ fontSize: '12px', color: 'var(--muted)' }}>
                     Execute o comando <code>/checkin</code> no Discord do FreeTheAI diariamente para manter a chave ativa.
                   </span>
                 </div>
@@ -1799,7 +2092,7 @@ function AdminPanelDesktop() {
                 <button
                   onClick={() => handleToggleAll(prov.id, true)}
                   style={{
-                    fontSize: '11px',
+                    fontSize: '12px',
                     fontWeight: 500,
                     padding: '4px 10px',
                     borderRadius: 'var(--radius-sm)',
@@ -1814,7 +2107,7 @@ function AdminPanelDesktop() {
                 <button
                   onClick={() => handleToggleAll(prov.id, false)}
                   style={{
-                    fontSize: '11px',
+                    fontSize: '12px',
                     fontWeight: 500,
                     padding: '4px 10px',
                     borderRadius: 'var(--radius-sm)',
@@ -1916,9 +2209,11 @@ function AdminPanelDesktop() {
     { id: 'general' as Tab, label: t('settings.general'), icon: <Monitor size={14} /> },
     { id: 'providers' as Tab, label: t('settings.providersModels'), icon: <Sparkles size={14} /> },
     { id: 'rankings' as Tab, label: t('settings.modelRankings'), icon: <Award size={14} /> },
-    { id: 'dashboard' as Tab, label: t('settings.usage'), icon: <Activity size={14} /> },
+    // Dashboard is admin-only (API uses require_admin after security phase)
+    ...(user?.role === 'admin' ? [{ id: 'dashboard' as Tab, label: t('settings.usage'), icon: <Activity size={14} /> }] : []),
     { id: 'cache' as Tab, label: t('settings.smartCache'), icon: <Database size={14} /> },
     { id: 'tools' as Tab, label: t('settings.tools'), icon: <Sparkles size={14} /> },
+    { id: 'memory' as Tab, label: t('settings.memory'), icon: <Brain size={14} /> },
     ...(user?.role === 'admin' ? [{ id: 'users' as Tab, label: t('settings.users'), icon: <Users size={14} /> }] : [])
   ]
 
@@ -2255,6 +2550,37 @@ function AdminPanelDesktop() {
                   </button>
                 </div>
 
+                {user?.role === 'admin' && (
+                  <div className="admin-share-card" style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '16px',
+                    borderRadius: 'var(--radius-lg)',
+                    background: 'var(--surface-cream-weak)',
+                    border: '1px solid var(--hairline)',
+                    marginBottom: '20px',
+                    marginTop: '12px'
+                  }}>
+                    <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                      <Share2 size={20} style={{ color: 'var(--primary)', flexShrink: 0 }} />
+                      <div>
+                        <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 600 }}>Compartilhar chaves de API do administrador</h4>
+                        <p style={{ margin: '2px 0 0', fontSize: '12.5px', color: 'var(--muted)' }}>
+                          Liga/desliga o compartilhamento em massa. Para um provedor só, use o ícone de chave ao lado de “Chave de API”.
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      className={`toggle-btn ${shareKeysEnabled ? 'on' : 'off'}`}
+                      onClick={() => handleToggleShareKeys()}
+                      style={{ border: 'none', background: 'transparent', cursor: 'pointer' }}
+                    >
+                      {shareKeysEnabled ? <ToggleRight size={28} /> : <ToggleLeft size={28} />}
+                    </button>
+                  </div>
+                )}
+
                 <div className="providers-wrapper" style={{ display: 'flex', flexDirection: 'column', gap: '24px', marginTop: '16px' }}>
                   <div className="admin-section">
                     <h3 className="section-title">🎁 {t('settings.providersFreeSection')}</h3>
@@ -2383,6 +2709,11 @@ function AdminPanelDesktop() {
             {/* 7. Rankings Tab */}
             {tab === 'rankings' && (
               <RankingsView />
+            )}
+
+            {/* 8. Memory Tab */}
+            {tab === 'memory' && (
+              <UserMemoryPanel />
             )}
 
           </div>

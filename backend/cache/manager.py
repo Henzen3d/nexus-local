@@ -11,6 +11,10 @@ Depende de fastembed (opcional).
 Se fastembed não estiver instalado, apenas o cache exato funciona.
 """
 
+from backend.logging_config import get_logger
+
+logger = get_logger(__name__)
+
 import asyncio
 import hashlib
 import json
@@ -29,61 +33,51 @@ try:
 except ImportError:
     _HAS_NUMPY = False
 
-# ── fastembed é opcional ───────────────────────────────────────────────────────
+# ── Shared embedder (Cache + Projects RAG) via backend.projects.embedder ────────
+# Module-level aliases kept for stats() / lazy-init callers in this file.
+
+from backend.projects import embedder as _shared_embedder
+
+
+def _sync_embedder_flags():
+    """Mirror shared embedder state onto legacy names used by CacheManager.stats."""
+    global _EMBEDDER, _EMBEDDER_INIT, _EMBEDDER_LOADING, _EMBEDDER_ERROR
+    _EMBEDDER = _shared_embedder._EMBEDDER
+    _EMBEDDER_INIT = _shared_embedder._EMBEDDER_INIT
+    _EMBEDDER_LOADING = getattr(_shared_embedder, "_EMBEDDER_LOADING", False)
+    _EMBEDDER_ERROR = _shared_embedder._EMBEDDER_ERROR
+
+
 _EMBEDDER = None
 _EMBEDDER_INIT = False
+_EMBEDDER_LOADING = False
 _EMBEDDER_ERROR: Optional[str] = None
 
 
 def _init_embedder() -> Optional[object]:
-    global _EMBEDDER, _EMBEDDER_INIT, _EMBEDDER_ERROR
-    if _EMBEDDER_INIT:
-        return _EMBEDDER
-    _EMBEDDER_INIT = True
-    try:
-        from fastembed import TextEmbedding
-        # Modelo multilíngue leve (~120MB, ONNX, sem torch)
-        _EMBEDDER = TextEmbedding(
-            model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
-        )
-        print("✅ Cache semântico pronto (paraphrase-multilingual-MiniLM-L12-v2)")
-    except ImportError:
-        _EMBEDDER_ERROR = "fastembed não instalado. Rode: pip install fastembed"
-        print(f"⚠️  {_EMBEDDER_ERROR}")
-    except Exception as e:
-        _EMBEDDER_ERROR = str(e)
-        print(f"⚠️  Erro ao inicializar embedder: {e}")
-    return _EMBEDDER
+    """Initialize shared fastembed instance (Projects + Cache)."""
+    emb = _shared_embedder.init_embedder()
+    _sync_embedder_flags()
+    return emb
 
-
-# ── Utilidades de embedding ───────────────────────────────────────────────────
 
 def _embedding_to_blob(vec) -> bytes:
-    """Serializa numpy array float32 como bytes."""
-    arr = np.array(vec, dtype=np.float32)
-    return arr.tobytes()
+    return _shared_embedder.embedding_to_blob(vec)
 
 
 def _blob_to_embedding(blob: bytes):
-    """Desserializa bytes → numpy array float32."""
-    return np.frombuffer(blob, dtype=np.float32)
+    return _shared_embedder.blob_to_embedding(blob)
 
 
 def _cosine_similarity(a, b) -> float:
-    """Similaridade cosseno entre dois vetores numpy."""
-    denom = np.linalg.norm(a) * np.linalg.norm(b)
-    if denom == 0:
-        return 0.0
-    return float(np.dot(a, b) / denom)
+    return _shared_embedder.cosine_similarity(a, b)
 
 
 def _embed_text(text: str) -> Optional[bytes]:
     """Gera embedding de um texto e retorna como BLOB. Roda sync (thread pool)."""
-    embedder = _init_embedder()
-    if embedder is None or not _HAS_NUMPY:
-        return None
-    embeddings = list(embedder.embed([text]))
-    return _embedding_to_blob(embeddings[0])
+    blob = _shared_embedder.embed_text(text)
+    _sync_embedder_flags()
+    return blob
 
 
 def _estimate_tokens(text: str) -> int:
@@ -121,6 +115,17 @@ class CacheManager:
             "similarity_threshold": float(settings.get("similarity_threshold", "0.92")),
         }
 
+    async def warmup(self) -> None:
+        """Inicializa o embedder em background para acelerar a primeira query."""
+        try:
+            settings = await self.get_settings()
+            if settings["enabled"] and settings["semantic_enabled"]:
+                logger.info("🌀 Warm-up: Inicializando o embedder em background...")
+                loop = asyncio.get_running_loop()
+                await loop.run_in_executor(None, _init_embedder)
+        except Exception as e:
+            logger.error("⚠️  Erro no warm-up do embedder:", exc_info=e)
+
     async def update_settings(self, updates: dict) -> None:
         async with aiosqlite.connect(DB_PATH) as db:
             for k, v in updates.items():
@@ -130,19 +135,37 @@ class CacheManager:
                 )
             await db.commit()
 
+        # Se habilitou cache semântico, faz warm-up em background
+        if updates.get("semantic_enabled") is True or updates.get("enabled") is True:
+            settings = await self.get_settings()
+            if settings["enabled"] and settings["semantic_enabled"] and not _EMBEDDER_INIT and not _EMBEDDER_LOADING:
+                asyncio.create_task(self.warmup())
+
     # ── Public: get ───────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _semantic_prompt_key(prompt_text: str, context_fingerprint: str | None) -> str:
+        """
+        Namespace semantic embeddings by memory/profile fingerprint so a hit
+        for user A (or memory state M1) cannot serve user B / state M2.
+        Exact cache already hashes full messages (incl. system + memory block).
+        """
+        if context_fingerprint:
+            return f"[mem:{context_fingerprint}]\n{prompt_text}"
+        return prompt_text
 
     async def get(
         self,
         model_id: str,
         messages: list[dict],
+        context_fingerprint: str | None = None,
     ) -> Optional[CacheHit]:
         settings = await self.get_settings()
 
         if not settings["enabled"]:
             return None
 
-        # 1. Exact cache
+        # 1. Exact cache (full messages already include injected system/memory)
         if settings["exact_enabled"]:
             hit = await self._get_exact(
                 model_id, messages, settings["exact_ttl_hours"]
@@ -150,16 +173,26 @@ class CacheManager:
             if hit:
                 return hit
 
-        # 2. Semantic cache
+        # 2. Semantic cache — keyed by last user msg + memory fingerprint
         if settings["semantic_enabled"] and _HAS_NUMPY:
             last_user = next(
                 (m["content"] for m in reversed(messages) if m["role"] == "user"),
                 None,
             )
             if last_user:
+                if not isinstance(last_user, str):
+                    # Multimodal parts: join text segments only
+                    if isinstance(last_user, list):
+                        last_user = " ".join(
+                            p.get("text", "") for p in last_user
+                            if isinstance(p, dict) and p.get("type") == "text"
+                        )
+                    else:
+                        last_user = str(last_user)
+                semantic_key = self._semantic_prompt_key(last_user, context_fingerprint)
                 hit = await self._get_semantic(
                     model_id,
-                    last_user,
+                    semantic_key,
                     settings["similarity_threshold"],
                     settings["semantic_ttl_hours"],
                 )
@@ -175,6 +208,7 @@ class CacheManager:
         model_id: str,
         messages: list[dict],
         response: str,
+        context_fingerprint: str | None = None,
     ) -> None:
         settings = await self.get_settings()
         if not settings["enabled"]:
@@ -193,10 +227,19 @@ class CacheManager:
                 None,
             )
             if last_user:
+                if not isinstance(last_user, str):
+                    if isinstance(last_user, list):
+                        last_user = " ".join(
+                            p.get("text", "") for p in last_user
+                            if isinstance(p, dict) and p.get("type") == "text"
+                        )
+                    else:
+                        last_user = str(last_user)
+                semantic_key = self._semantic_prompt_key(last_user, context_fingerprint)
                 loop = asyncio.get_event_loop()
-                blob = await loop.run_in_executor(None, _embed_text, last_user)
+                blob = await loop.run_in_executor(None, _embed_text, semantic_key)
                 if blob:
-                    await self._set_semantic(model_id, last_user, blob, response, token_est)
+                    await self._set_semantic(model_id, semantic_key, blob, response, token_est)
 
     # ── Public: stats ─────────────────────────────────────────────────────────
 
@@ -214,6 +257,32 @@ class CacheManager:
             ) as cur:
                 sem_count, sem_hits, sem_tokens = await cur.fetchone()
 
+        # Determinar status detalhado do embedder
+        _sync_embedder_flags()
+        global _EMBEDDER_INIT, _EMBEDDER_LOADING, _EMBEDDER_ERROR
+
+        settings = await self.get_settings()
+        embedder_ready = _EMBEDDER_INIT and _EMBEDDER is not None
+        embedder_error = _EMBEDDER_ERROR
+
+
+        if not _EMBEDDER_INIT and not _EMBEDDER_LOADING:
+            # Tenta verificar se fastembed está instalado sem inicializar o modelo pesado
+            try:
+                from fastembed import TextEmbedding
+
+                # Se está instalado e cache semântico está ativo, inicia warm-up em background
+                if settings["enabled"] and settings["semantic_enabled"]:
+                    embedder_error = "Carregando modelo de cache semântico em background..."
+                    asyncio.create_task(self.warmup())
+                else:
+                    embedder_error = "fastembed instalado. Ative o cache semântico para carregar."
+            except ImportError:
+                # Não instalado (deixa frontend cair no padrão t('tools.embedderMissing'))
+                embedder_error = None
+        elif _EMBEDDER_LOADING:
+            embedder_error = "Carregando modelo de cache semântico em background..."
+
         return {
             "exact": {
                 "entries": exact_count,
@@ -224,12 +293,13 @@ class CacheManager:
                 "entries": sem_count,
                 "hits": sem_hits,
                 "tokens_saved": sem_tokens,
-                "embedder_ready": _EMBEDDER_INIT and _EMBEDDER is not None,
-                "embedder_error": _EMBEDDER_ERROR,
+                "embedder_ready": embedder_ready,
+                "embedder_error": embedder_error,
             },
             "total_hits": (exact_hits or 0) + (sem_hits or 0),
             "total_tokens_saved": (exact_tokens or 0) + (sem_tokens or 0),
         }
+
 
     async def list_entries(self, cache_type: str = "exact", limit: int = 50) -> list:
         table = "cache_exact" if cache_type == "exact" else "cache_semantic"

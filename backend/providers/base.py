@@ -5,6 +5,10 @@ import hashlib
 import time
 import json
 
+from backend.logging_config import get_logger
+
+logger = get_logger(__name__)
+
 
 class RateLimitError(Exception):
     """
@@ -85,8 +89,16 @@ class OpenAICompatProvider(BaseProvider):
                         retry_after = int(retry_after_raw) if retry_after_raw and retry_after_raw.isdigit() else None
                         raise RateLimitError(retry_after=retry_after, provider=self.base_url)
                     body = await response.aread()
+                    detail = body.decode(errors="replace")
+                    if response.status_code == 403:
+                        raise RuntimeError(
+                            "Provider error 403 (access_denied): a chave de API foi rejeitada "
+                            "pelo provedor (inválida, expirada, sem saldo/plano ou sem permissão "
+                            f"para este modelo). Confira a chave e a conta no console do provedor. "
+                            f"Detalhe: {detail}"
+                        )
                     raise RuntimeError(
-                        f"Provider error {response.status_code}: {body.decode()}"
+                        f"Provider error {response.status_code}: {detail}"
                     )
 
                 in_thinking = False
@@ -406,6 +418,7 @@ class GeminiProvider(BaseProvider):
                             if expire_str:
                                 try:
                                     from datetime import datetime
+
                                     dt = datetime.strptime(expire_str.split(".")[0].rstrip("Z"), "%Y-%m-%dT%H:%M:%S")
                                     expire_epoch = dt.timestamp()
                                     GEMINI_CACHE[prefix_hash] = (cache_id, expire_epoch)
@@ -413,7 +426,7 @@ class GeminiProvider(BaseProvider):
                                     GEMINI_CACHE[prefix_hash] = (cache_id, now + 600)
                             else:
                                 GEMINI_CACHE[prefix_hash] = (cache_id, now + 600)
-                            print(f"✅ Gemini Context Cache criado com sucesso: {cache_id}")
+                            logger.info("✅ Gemini Context Cache criado com sucesso: %s", cache_id)
 
                 if cache_id:
                     # Cache exists! Stream using the cache
@@ -455,9 +468,9 @@ class GeminiProvider(BaseProvider):
                                         continue
                                 return  # Stream finished successfully!
                             else:
-                                print(f"Gemini cached stream failed ({response.status_code}), falling back to OpenAICompat...")
+                                logger.error("Gemini cached stream failed (%s), falling back to OpenAICompat...", response.status_code)
             except Exception as e:
-                print(f"Error implementing Gemini Context Caching: {e}. Falling back to OpenAICompat...")
+                logger.error("Error implementing Gemini Context Caching: %s. Falling back to OpenAICompat...", exc_info=e)
 
         # Fallback to Native Gemini API if it is an AI Studio key (starts with AIzaSy or AQ.)
         is_ai_studio_key = self.api_key.startswith("AIzaSy") or self.api_key.startswith("AQ.")
@@ -501,7 +514,7 @@ class GeminiProvider(BaseProvider):
                                                 }
                                             })
                                         except Exception as e:
-                                            print(f"[Gemini Native] Error parsing base64 image: {e}")
+                                            logger.error("[Gemini Native] Error parsing base64 image:", exc_info=e)
                         
                         gemini_contents.append({
                             "role": "user" if role == "user" else "model",
@@ -558,12 +571,12 @@ class GeminiProvider(BaseProvider):
                                 raise RateLimitError(retry_after=retry_after, provider="gemini")
                             body = await response.aread()
                             err = f"[Gemini Native] API error {response.status_code}: {body.decode()}"
-                            print(err)
+                            logger.info(err)
                             raise RuntimeError(err)
             except (RuntimeError, RateLimitError):
                 raise  # Propagate API errors upward — do NOT swallow into OpenAICompat
             except Exception as e:
-                print(f"[Gemini Native Error] {e}. Falling back to OpenAICompat...")
+                logger.error("[Gemini Native Error] %s. Falling back to OpenAICompat...", exc_info=e)
 
         # FALLBACK: Use standard OpenAICompatProvider logic
         openai_provider = OpenAICompatProvider(api_key=self.api_key, base_url=self.base_url)

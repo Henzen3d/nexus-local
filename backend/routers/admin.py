@@ -1,11 +1,18 @@
 from fastapi import APIRouter, HTTPException, Depends
+from pydantic import BaseModel
 import httpx
+import os
 import re
 import uuid
 from backend.database import get_db
+from backend.logging_config import get_logger
 from backend.models import ProviderUpdate, ModelToggle, ModelUpdate, FreeRegistryConfigUpdate
+
+logger = get_logger(__name__)
+
 from backend.providers.model_fetcher import ModelFetcher
-from backend.auth import get_current_user
+from backend.providers.model_fetcher import ModelFetcher
+from backend.auth import get_current_user, require_admin
 from backend.free_registry.sync import sync_free_registry
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -41,7 +48,11 @@ async def sync_provider_models(provider_id: str, db, custom_api_key: str = None)
         return {"updated": 0, "skipped": 0, "errors": [f"Provider {provider_id} nao encontrado"]}
     base_url, global_api_key, enabled = row
     
+    from backend.providers.registry import resolve_env_api_key
+
     api_key = custom_api_key if custom_api_key else global_api_key
+    api_key = resolve_env_api_key(provider_id, api_key)
+
     if not api_key and provider_id != "ollama":
         return {"updated": 0, "skipped": 0, "errors": ["Chave de API nao configurada"]}
 
@@ -104,7 +115,7 @@ async def sync_provider_models(provider_id: str, db, custom_api_key: str = None)
                 registry_data = json.load(f)
                 registry_models = registry_data.get("models", {})
     except Exception as e:
-        print(f"Error loading context registry during sync: {e}")
+        logger.error("Error loading context registry during sync:", exc_info=e)
 
     for item in models_fetched:
         model_name = item["model_name"]
@@ -226,9 +237,24 @@ async def sync_provider_models(provider_id: str, db, custom_api_key: str = None)
 async def list_providers(current_user: dict = Depends(get_current_user)):
     db = await get_db()
     try:
+        from backend.providers.registry import (
+
+            resolve_env_api_key,
+            is_key_sentinel,
+            is_admin_key_shared_for_provider,
+        )
+
+        # Global toggle (meta) — ainda usado na UI do topo
+        async with db.execute("SELECT value FROM meta WHERE key = 'share_admin_keys'") as cur:
+            row_meta = await cur.fetchone()
+            share_admin_keys_global = row_meta[0] == "true" if row_meta else False
+
         async with db.execute(
-            """SELECT p.id, p.name, p.base_url, k.api_key IS NOT NULL as has_key, p.enabled, p.is_free,
-                      COALESCE(k.api_key, p.api_key) as active_key
+            """SELECT p.id, p.name, p.base_url,
+                      CASE WHEN k.api_key IS NOT NULL AND TRIM(k.api_key) != '' THEN 1 ELSE 0 END as has_personal_key,
+                      p.enabled, p.is_free,
+                      COALESCE(NULLIF(TRIM(k.api_key), ''), NULLIF(TRIM(p.api_key), '')) as active_key,
+                      COALESCE(p.share_admin_key, 0) as share_admin_key
                FROM providers p
                LEFT JOIN user_api_keys k ON k.provider_id = p.id AND k.user_id = ?
                WHERE p.id != 'free_registry'
@@ -240,8 +266,40 @@ async def list_providers(current_user: dict = Depends(get_current_user)):
         result = []
         for p in providers:
             pid = p[0]
-            active_key = p[6] or ""
-            
+            has_personal_key = bool(p[3])
+            active_key = (p[6] or "").strip()
+            share_admin_key = bool(p[7])
+            # Sentinela "free" no DB não é chave real — resolve via env (ZenMux etc.)
+            if is_key_sentinel(active_key):
+                active_key = ""
+            is_shared = False
+
+            # Sem chave própria/global: se sharing (global OU individual) estiver on, herda chave de admin
+            share_this = await is_admin_key_shared_for_provider(db, pid)
+            if not active_key and share_this and current_user.get("role") != "admin":
+                async with db.execute(
+                    """SELECT api_key FROM user_api_keys
+                       WHERE provider_id = ?
+                       AND api_key IS NOT NULL AND TRIM(api_key) != ''
+                       AND user_id IN (SELECT id FROM users WHERE role = 'admin')
+                       LIMIT 1""",
+                    (pid,),
+                ) as admin_cur:
+                    admin_row = await admin_cur.fetchone()
+                    if admin_row and admin_row[0]:
+                        candidate = str(admin_row[0]).strip()
+                        if not is_key_sentinel(candidate):
+                            active_key = candidate
+                            is_shared = True
+
+            # Fallback env (ZENMUX_API_KEY etc.) para display de has_key / máscara
+            if not active_key:
+                active_key = resolve_env_api_key(pid, None)
+
+            # has_key = provedor utilizável pelo usuário atual (alinha com o chat).
+            # Inclui: chave pessoal, chave global em providers, chave compartilhada, ollama.
+            has_usable_key = bool(active_key) or pid == "ollama"
+
             # Mask API Key
             masked_key = ""
             if active_key:
@@ -259,15 +317,19 @@ async def list_providers(current_user: dict = Depends(get_current_user)):
                 "id": pid,
                 "name": p[1],
                 "base_url": p[2],
-                "has_key": bool(p[3]),
+                "has_key": has_usable_key,
+                "has_personal_key": has_personal_key,
+                "is_shared": is_shared,
+                "share_admin_key": share_admin_key,
+                "share_admin_keys_global": share_admin_keys_global,
                 "enabled": bool(p[4]),
                 "is_free": bool(p[5]),
                 "masked_key": masked_key,
                 "models": [
                     {
-                        "id": m[0], 
-                        "display_name": m[1], 
-                        "enabled": bool(m[2]), 
+                        "id": m[0],
+                        "display_name": m[1],
+                        "enabled": bool(m[2]),
                         "context_length": m[3],
                         "context_source": m[4],
                         "confirmed_free": bool(m[5])
@@ -292,8 +354,23 @@ async def list_all_models(current_user: dict = Depends(get_current_user)):
             row = await cur.fetchone()
             hide_unconfirmed = row[0] == "true" if row else True
 
-        async with db.execute(
-            """SELECT m.id, m.display_name, m.context_length,
+        # Chave utilizável: pessoal, global do provider, ollama, OU chave de admin
+        # quando providers.share_admin_key = 1 (controle individual; global = bulk).
+        key_condition = """(
+            (k.api_key IS NOT NULL AND k.api_key != '') OR
+            (p.api_key IS NOT NULL AND p.api_key != '') OR
+            p.id = 'ollama' OR
+            (
+                COALESCE(p.share_admin_key, 0) = 1
+                AND p.id IN (
+                    SELECT provider_id FROM user_api_keys
+                    WHERE api_key IS NOT NULL AND api_key != ''
+                    AND user_id IN (SELECT id FROM users WHERE role = 'admin')
+                )
+            )
+        )"""
+
+        query = f"""SELECT m.id, m.display_name, m.context_length,
                       p.id as provider_id, p.name as provider_name,
                       r.nexuslocal_score, r.popularity_rank, r.quality_score,
                       COALESCE(q.status, 'available') as quota_status,
@@ -305,14 +382,10 @@ async def list_all_models(current_user: dict = Depends(get_current_user)):
                LEFT JOIN user_api_keys k ON k.provider_id = p.id AND k.user_id = ?
                LEFT JOIN model_rankings r ON r.model_id = m.id
                LEFT JOIN model_quota_status q ON q.model_id = m.id
-               WHERE m.enabled = 1 AND p.enabled = 1 AND (
-                   (k.api_key IS NOT NULL AND k.api_key != '') OR 
-                   (p.api_key IS NOT NULL AND p.api_key != '') OR 
-                   p.id = 'ollama'
-               )
-               ORDER BY COALESCE(r.nexuslocal_score, -1) DESC, p.name, m.display_name""",
-            (current_user["id"],),
-        ) as cur:
+               WHERE m.enabled = 1 AND p.enabled = 1 AND {key_condition}
+               ORDER BY COALESCE(r.nexuslocal_score, -1) DESC, p.name, m.display_name"""
+
+        async with db.execute(query, (current_user["id"],)) as cur:
             rows = await cur.fetchall()
             
         result = []
@@ -344,7 +417,7 @@ async def list_all_models(current_user: dict = Depends(get_current_user)):
 
 
 @router.patch("/providers/{provider_id}")
-async def update_provider(provider_id: str, body: ProviderUpdate, current_user: dict = Depends(get_current_user)):
+async def update_provider(provider_id: str, body: ProviderUpdate, current_user: dict = Depends(require_admin)):
     db = await get_db()
     try:
         should_sync = False
@@ -367,6 +440,24 @@ async def update_provider(provider_id: str, body: ProviderUpdate, current_user: 
                 "UPDATE providers SET enabled = ? WHERE id = ?",
                 (1 if body.enabled else 0, provider_id),
             )
+        if body.share_admin_key is not None:
+            await db.execute(
+                "UPDATE providers SET share_admin_key = ? WHERE id = ?",
+                (1 if body.share_admin_key else 0, provider_id),
+            )
+            # Mantém meta global alinhada: true só se TODOS os provedores estão compartilhados
+            async with db.execute(
+                """SELECT
+                     SUM(CASE WHEN COALESCE(share_admin_key, 0) = 1 THEN 1 ELSE 0 END),
+                     COUNT(*)
+                   FROM providers WHERE id != 'free_registry'"""
+            ) as cur:
+                shared_n, total_n = await cur.fetchone()
+            all_on = total_n and int(shared_n or 0) == int(total_n)
+            await db.execute(
+                "INSERT OR REPLACE INTO meta (key, value) VALUES ('share_admin_keys', ?)",
+                ("true" if all_on else "false",),
+            )
         await db.commit()
 
         if should_sync and body.api_key is not None:
@@ -377,7 +468,7 @@ async def update_provider(provider_id: str, body: ProviderUpdate, current_user: 
 
 
 @router.patch("/models/{model_id:path}")
-async def toggle_model(model_id: str, body: ModelUpdate):
+async def toggle_model(model_id: str, body: ModelUpdate, current_user: dict = Depends(require_admin)):
     db = await get_db()
     try:
         if body.enabled is not None:
@@ -402,7 +493,7 @@ async def toggle_model(model_id: str, body: ModelUpdate):
         await db.close()
 
 @router.post("/models/{model_id:path}/confirm-free")
-async def confirm_model_free(model_id: str):
+async def confirm_model_free(model_id: str, current_user: dict = Depends(require_admin)):
     db = await get_db()
     try:
         # Update models table
@@ -424,7 +515,7 @@ async def confirm_model_free(model_id: str):
 
 
 @router.post("/providers/{provider_id}/models/toggle")
-async def toggle_all_provider_models(provider_id: str, body: ModelToggle):
+async def toggle_all_provider_models(provider_id: str, body: ModelToggle, current_user: dict = Depends(require_admin)):
     db = await get_db()
     try:
         await db.execute(
@@ -440,7 +531,7 @@ async def toggle_all_provider_models(provider_id: str, body: ModelToggle):
 
 
 @router.post("/providers/sync")
-async def sync_all_providers(current_user: dict = Depends(get_current_user)):
+async def sync_all_providers(current_user: dict = Depends(require_admin)):
     db = await get_db()
     try:
         # Pega todos os providers ativos
@@ -469,7 +560,7 @@ async def sync_all_providers(current_user: dict = Depends(get_current_user)):
 
 
 @router.post("/providers/{provider_id}/sync")
-async def sync_provider(provider_id: str, current_user: dict = Depends(get_current_user)):
+async def sync_provider(provider_id: str, current_user: dict = Depends(require_admin)):
     db = await get_db()
     try:
         async with db.execute(
@@ -488,7 +579,7 @@ async def sync_provider(provider_id: str, current_user: dict = Depends(get_curre
 
 
 @router.post("/providers/{provider_id}/sync-models")
-async def sync_models_endpoint(provider_id: str, current_user: dict = Depends(get_current_user)):
+async def sync_models_endpoint(provider_id: str, current_user: dict = Depends(require_admin)):
     db = await get_db()
     try:
         async with db.execute(
@@ -530,7 +621,7 @@ async def get_free_registry_config(current_user: dict = Depends(get_current_user
         await db.close()
 
 @router.patch("/free-registry/config")
-async def update_free_registry_config(body: FreeRegistryConfigUpdate, current_user: dict = Depends(get_current_user)):
+async def update_free_registry_config(body: FreeRegistryConfigUpdate, current_user: dict = Depends(require_admin)):
     db = await get_db()
     try:
         if body.threshold is not None:
@@ -549,7 +640,7 @@ async def update_free_registry_config(body: FreeRegistryConfigUpdate, current_us
         await db.close()
 
 @router.post("/free-registry/sync")
-async def trigger_free_registry_sync(current_user: dict = Depends(get_current_user)):
+async def trigger_free_registry_sync(current_user: dict = Depends(require_admin)):
     db = await get_db()
     try:
         res = await sync_free_registry(db)
@@ -561,9 +652,7 @@ async def trigger_free_registry_sync(current_user: dict = Depends(get_current_us
 
 # ── Gerenciamento de Usuários (Apenas Admin) ──────────────────────────
 @router.get("/users")
-async def list_users(current_user: dict = Depends(get_current_user)):
-    if current_user.get("role") != "admin":
-        raise HTTPException(status_code=403, detail="Acesso restrito a administradores.")
+async def list_users(current_user: dict = Depends(require_admin)):
         
     db = await get_db()
     try:
@@ -587,9 +676,7 @@ async def list_users(current_user: dict = Depends(get_current_user)):
 
 
 @router.delete("/users/{user_id}")
-async def delete_user(user_id: str, current_user: dict = Depends(get_current_user)):
-    if current_user.get("role") != "admin":
-        raise HTTPException(status_code=403, detail="Acesso restrito a administradores.")
+async def delete_user(user_id: str, current_user: dict = Depends(require_admin)):
         
     if current_user["id"] == user_id:
         raise HTTPException(status_code=400, detail="Você não pode excluir a sua própria conta de administrador.")
@@ -604,6 +691,46 @@ async def delete_user(user_id: str, current_user: dict = Depends(get_current_use
 
         # Deleta o usuário (conversas e chaves são deletadas via ON DELETE CASCADE no SQLite)
         await db.execute("DELETE FROM users WHERE id = ?", (user_id,))
+        await db.commit()
+        return {"ok": True}
+    finally:
+        await db.close()
+
+
+class ShareConfigUpdate(BaseModel):
+    share_admin_keys: bool
+
+
+@router.get("/providers/share-config")
+async def get_share_config(current_user: dict = Depends(get_current_user)):
+    db = await get_db()
+    try:
+        async with db.execute("SELECT value FROM meta WHERE key = 'share_admin_keys'") as cur:
+            row = await cur.fetchone()
+            share_enabled = row[0] == "true" if row else False
+        return {"share_admin_keys": share_enabled}
+    finally:
+        await db.close()
+
+
+@router.post("/providers/share-config")
+async def update_share_config(body: ShareConfigUpdate, current_user: dict = Depends(require_admin)):
+    """
+    Toggle global: liga/desliga o compartilhamento em massa.
+    Também espelha o valor em todos os providers.share_admin_key (bulk).
+    O admin ainda pode ligar/desligar provedores individuais depois.
+    """
+    db = await get_db()
+    try:
+        await db.execute(
+            "INSERT OR REPLACE INTO meta (key, value) VALUES ('share_admin_keys', ?)",
+            ("true" if body.share_admin_keys else "false",)
+        )
+        # Bulk sync individual flags so UI and runtime stay consistent
+        await db.execute(
+            "UPDATE providers SET share_admin_key = ?",
+            (1 if body.share_admin_keys else 0,),
+        )
         await db.commit()
         return {"ok": True}
     finally:

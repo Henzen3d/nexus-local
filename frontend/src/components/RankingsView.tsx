@@ -249,7 +249,7 @@ export function RankingsView() {
 
                         {/* Quality Score */}
                         <td style={{ padding: '12px 10px', textAlign: 'center', color: 'var(--body)' }}>
-                          {r.quality_score?.toFixed(0) || '—'}
+                          {r.quality_score?.toFixed(0) || '-'}
                           <div style={{ fontSize: '9.5px', color: 'var(--muted-soft)' }}>
                             +{r.quality_contribution.toFixed(1)}
                           </div>
@@ -257,7 +257,7 @@ export function RankingsView() {
 
                         {/* Popularity Rank */}
                         <td style={{ padding: '12px 10px', textAlign: 'center', color: 'var(--body)' }}>
-                          {r.popularity_rank ? `#${r.popularity_rank}` : '—'}
+                          {r.popularity_rank ? `#${r.popularity_rank}` : '-'}
                           <div style={{ fontSize: '9.5px', color: 'var(--muted-soft)' }}>
                             +{r.popularity_contribution.toFixed(1)}
                           </div>

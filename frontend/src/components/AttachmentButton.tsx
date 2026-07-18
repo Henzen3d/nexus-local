@@ -62,15 +62,15 @@ export function AttachmentButton({
     <div className="attachment-button-container">
       <button
         type="button"
-        className={`attachment-btn-chat ${uploading ? 'loading' : ''}`}
+        className={`attachment-btn-chat custom-tooltip-trigger tooltip-up ${uploading ? 'loading' : ''}`}
         onClick={handleButtonClick}
         disabled={disabled || uploading || !currentModelId}
-        title={!currentModelId ? t('artifacts.selectModelFirst') : t('artifacts.attachFiles')}
+        data-tooltip={!currentModelId ? t('artifacts.selectModelFirst') : t('artifacts.attachFiles')}
       >
         {uploading ? (
-          <Loader2 size={16} className="spin text-primary" />
+          <Loader2 size={15} className="spin text-primary" />
         ) : (
-          <Paperclip size={16} />
+          <Paperclip size={15} strokeWidth={1.75} />
         )}
       </button>
       <input

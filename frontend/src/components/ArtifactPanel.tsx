@@ -1,10 +1,12 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useStore } from '../store/useStore'
 import { Copy, Check, Download, ExternalLink, X, FileCode, FileText, Image, Globe, ChevronLeft, ChevronRight, Pencil, Send, Atom, Play, Square, Eye, Code2 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { useChatContext } from '../context/ChatContext'
+import { ThinkingParser } from '../utils/ThinkingParser'
+import { highlightCode } from './CodeBlock'
 
 /**
  * buildJsxSandbox — constrói um documento HTML completo que executa
@@ -273,6 +275,62 @@ export function ArtifactPanel() {
     setViewMode('preview')
   }, [activeArtifact?.id])
 
+  // Garante que tags de raciocínio (ex: <think>...</think> ou </think> órfãos) do modelo
+  // sejam removidas caso o artifact venha do histórico anterior do banco
+  const cleanContent = activeArtifact
+    ? (ThinkingParser.parse(activeArtifact.content).answer || activeArtifact.content)
+    : ''
+
+  /**
+   * Detecta a linguagem para syntax highlight a partir do tipo/título do artifact.
+   * Títulos de código vêm do backend no formato "{LANG} Code" (ex: "PYTHON Code").
+   */
+  const highlightLang = useMemo(() => {
+    if (!activeArtifact) return ''
+    const type = activeArtifact.type
+    if (type === 'html') return 'html'
+    if (type === 'svg') return 'svg'
+    if (type === 'jsx') return 'jsx'
+    if (type === 'markdown') return 'markdown'
+
+    const title = activeArtifact.title.toLowerCase()
+    // "PYTHON Code", "JS Code", "typescript code", etc.
+    const known: Array<[RegExp, string]> = [
+      [/\b(python|py)\b/, 'python'],
+      [/\b(typescript|ts)\b/, 'typescript'],
+      [/\b(javascript|js)\b/, 'javascript'],
+      [/\b(tsx)\b/, 'tsx'],
+      [/\b(jsx)\b/, 'jsx'],
+      [/\b(html)\b/, 'html'],
+      [/\b(css)\b/, 'css'],
+      [/\b(json)\b/, 'json'],
+      [/\b(bash|shell|sh)\b/, 'bash'],
+      [/\b(yaml|yml)\b/, 'yaml'],
+      [/\b(sql)\b/, 'sql'],
+      [/\b(go|golang)\b/, 'go'],
+      [/\b(rust|rs)\b/, 'rust'],
+      [/\b(java)\b/, 'java'],
+      [/\b(c\+\+|cpp)\b/, 'cpp'],
+      [/\b(c#|csharp)\b/, 'csharp'],
+      [/\b(php)\b/, 'php'],
+      [/\b(ruby|rb)\b/, 'ruby'],
+      [/\b(swift)\b/, 'swift'],
+      [/\b(kotlin|kt)\b/, 'kotlin'],
+    ]
+    for (const [re, lang] of known) {
+      if (re.test(title)) return lang
+    }
+    // Fallback: primeira palavra do título se parecer um id de linguagem
+    const first = title.split(/[\s._-]+/)[0]?.replace(/[^a-z0-9+#]/g, '')
+    if (first && first.length >= 1 && first.length <= 12 && first !== 'code') return first
+    return ''
+  }, [activeArtifact])
+
+  const highlightedCode = useMemo(
+    () => (cleanContent ? highlightCode(cleanContent, highlightLang) : ''),
+    [cleanContent, highlightLang]
+  )
+
   const getFriendlyFormatName = (type: string) => {
     switch (type) {
       case 'html': return 'HTML'
@@ -313,14 +371,14 @@ export function ArtifactPanel() {
   }
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(activeArtifact.content)
+    navigator.clipboard.writeText(cleanContent)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }
 
   const handleDownload = () => {
     const mime = getMimeType(activeArtifact.type)
-    const blob = new Blob([activeArtifact.content], { type: mime })
+    const blob = new Blob([cleanContent], { type: mime })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
@@ -338,7 +396,7 @@ export function ArtifactPanel() {
 
   const handleOpenNewTab = () => {
     const mime = getMimeType(activeArtifact.type)
-    const blob = new Blob([activeArtifact.content], { type: mime })
+    const blob = new Blob([cleanContent], { type: mime })
     const url = URL.createObjectURL(blob)
     window.open(url, '_blank')
     // Nota: não podemos dar revokeObjectURL imediatamente pois a nova aba precisa carregar o blob.
@@ -378,8 +436,8 @@ export function ArtifactPanel() {
 
     // Para tipos que usam blocos de código, envolve o conteúdo no fence correto
     const wrappedContent = activeArtifact.type !== 'markdown'
-      ? `\`\`\`${activeArtifact.type}\n${activeArtifact.content}\n\`\`\``
-      : `\`\`\`markdown\n${activeArtifact.content}\n\`\`\``
+      ? `\`\`\`${activeArtifact.type}\n${cleanContent}\n\`\`\``
+      : `\`\`\`markdown\n${cleanContent}\n\`\`\``
 
     const fullPrompt =
       `Edite o seguinte documento ${label} conforme a instrução abaixo.\n` +
@@ -410,16 +468,16 @@ export function ArtifactPanel() {
           {['html', 'svg', 'markdown', 'jsx'].includes(activeArtifact.type) ? (
             <div className="segmented-control">
               <button 
-                className={`segmented-btn ${viewMode === 'preview' ? 'active' : ''}`}
+                className={`segmented-btn custom-tooltip-trigger ${viewMode === 'preview' ? 'active' : ''}`}
                 onClick={() => setViewMode('preview')}
-                title={t('artifacts.preview')}
+                data-tooltip={t('artifacts.preview')}
               >
                 <Eye size={14} />
               </button>
               <button 
-                className={`segmented-btn ${viewMode === 'code' ? 'active' : ''}`}
+                className={`segmented-btn custom-tooltip-trigger ${viewMode === 'code' ? 'active' : ''}`}
                 onClick={() => setViewMode('code')}
-                title={t('artifacts.code')}
+                data-tooltip={t('artifacts.code')}
               >
                 <Code2 size={14} />
               </button>
@@ -447,10 +505,10 @@ export function ArtifactPanel() {
           return (
             <div className="artifact-version-nav">
               <button
-                className="artifact-action-btn"
+                className="artifact-action-btn custom-tooltip-trigger"
                 onClick={() => navigateVersion('prev')}
                 disabled={currentIdx <= 0}
-                title={t('artifacts.prevVersion')}
+                data-tooltip={t('artifacts.prevVersion')}
               >
                 <ChevronLeft size={14} />
               </button>
@@ -458,10 +516,10 @@ export function ArtifactPanel() {
                 {currentIdx + 1} / {total}
               </span>
               <button
-                className="artifact-action-btn"
+                className="artifact-action-btn custom-tooltip-trigger"
                 onClick={() => navigateVersion('next')}
                 disabled={currentIdx >= total - 1}
-                title={t('artifacts.nextVersion')}
+                data-tooltip={t('artifacts.nextVersion')}
               >
                 <ChevronRight size={14} />
               </button>
@@ -472,7 +530,7 @@ export function ArtifactPanel() {
         <div className="artifact-actions">
           {getRunnableLanguage() && (
             <button
-              className={`artifact-action-btn run-btn ${isRunningCode ? 'running' : ''}`}
+              className={`artifact-action-btn run-btn custom-tooltip-trigger ${isRunningCode ? 'running' : ''}`}
               onClick={() => {
                 if (isRunningCode) {
                   setIsRunningCode(false)
@@ -481,32 +539,32 @@ export function ArtifactPanel() {
                   setRunKey((k) => k + 1)
                 }
               }}
-              title={isRunningCode ? t('artifacts.stopRun') : t('artifacts.runCode')}
+              data-tooltip={isRunningCode ? t('artifacts.stopRun') : t('artifacts.runCode')}
             >
               {isRunningCode ? <Square size={14} className="text-red-500" /> : <Play size={14} className="text-green-500" />}
             </button>
           )}
 
           <button 
-            className="artifact-action-btn" 
+            className="artifact-action-btn custom-tooltip-trigger" 
             onClick={handleCopy} 
-            title={t('artifacts.copyContent')}
+            data-tooltip={t('artifacts.copyContent')}
           >
             {copied ? <Check size={14} /> : <Copy size={14} />}
           </button>
           
           <button 
-            className="artifact-action-btn" 
+            className="artifact-action-btn custom-tooltip-trigger" 
             onClick={handleDownload} 
-            title={t('artifacts.downloadFile')}
+            data-tooltip={t('artifacts.downloadFile')}
           >
             <Download size={14} />
           </button>
           
           <button 
-            className="artifact-action-btn" 
+            className="artifact-action-btn custom-tooltip-trigger" 
             onClick={handleOpenNewTab} 
-            title={t('artifacts.openNewTab')}
+            data-tooltip={t('artifacts.openNewTab')}
           >
             <ExternalLink size={14} />
           </button>
@@ -514,9 +572,9 @@ export function ArtifactPanel() {
           <div className="artifact-toolbar-divider" />
           
           <button 
-            className="artifact-action-btn close-btn" 
+            className="artifact-action-btn close-btn custom-tooltip-trigger" 
             onClick={() => setArtifactPanelOpen(false)} 
-            title={t('artifacts.closePanel')}
+            data-tooltip={t('artifacts.closePanel')}
           >
             <X size={14} />
           </button>
@@ -527,14 +585,17 @@ export function ArtifactPanel() {
       <div className="artifact-viewer">
         {['html', 'svg', 'markdown', 'jsx'].includes(activeArtifact.type) && viewMode === 'code' ? (
           <pre className="artifact-code-content">
-            <code>{activeArtifact.content}</code>
+            <code
+              className={`language-${highlightLang || activeArtifact.type}`}
+              dangerouslySetInnerHTML={{ __html: highlightedCode }}
+            />
           </pre>
         ) : (
           <>
             {activeArtifact.type === 'html' && (
               <iframe
                 sandbox="allow-scripts"
-                srcDoc={activeArtifact.content}
+                srcDoc={cleanContent}
                 referrerPolicy="no-referrer"
                 title={activeArtifact.title}
               />
@@ -542,8 +603,17 @@ export function ArtifactPanel() {
             
             {activeArtifact.type === 'markdown' && (
               <div className="artifact-markdown-content">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                  {activeArtifact.content}
+                <ReactMarkdown 
+                  remarkPlugins={[remarkGfm]}
+                  components={{
+                    table: ({ node, ...props }) => (
+                      <div className="markdown-table-wrapper">
+                        <table className="markdown-table" {...props} />
+                      </div>
+                    )
+                  }}
+                >
+                  {cleanContent}
                 </ReactMarkdown>
               </div>
             )}
@@ -551,7 +621,7 @@ export function ArtifactPanel() {
             {activeArtifact.type === 'svg' && (
               <div className="artifact-svg-content">
                 <img 
-                  src={"data:image/svg+xml;base64," + btoa(unescape(encodeURIComponent(activeArtifact.content)))} 
+                  src={"data:image/svg+xml;base64," + btoa(unescape(encodeURIComponent(cleanContent)))} 
                   alt={activeArtifact.title} 
                 />
               </div>
@@ -560,7 +630,7 @@ export function ArtifactPanel() {
             {activeArtifact.type === 'jsx' && (
               <iframe
                 sandbox="allow-scripts"
-                srcDoc={buildJsxSandbox(activeArtifact.content, activeArtifact.title)}
+                srcDoc={buildJsxSandbox(cleanContent, activeArtifact.title)}
                 referrerPolicy="no-referrer"
                 title={activeArtifact.title}
               />
@@ -575,8 +645,8 @@ export function ArtifactPanel() {
               sandbox="allow-scripts"
               srcDoc={
                 getRunnableLanguage() === 'python'
-                  ? buildPythonSandbox(activeArtifact.content)
-                  : buildJsSandbox(activeArtifact.content)
+                  ? buildPythonSandbox(cleanContent)
+                  : buildJsSandbox(cleanContent)
               }
               referrerPolicy="no-referrer"
               title="Code Execution Console"
@@ -584,7 +654,10 @@ export function ArtifactPanel() {
             />
           ) : (
             <pre className="artifact-code-content">
-              <code>{activeArtifact.content}</code>
+              <code
+                className={`language-${highlightLang || 'code'}`}
+                dangerouslySetInnerHTML={{ __html: highlightedCode }}
+              />
             </pre>
           )
         )}

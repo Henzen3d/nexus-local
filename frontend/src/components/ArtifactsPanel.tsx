@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react'
 import ReactMarkdown from 'react-markdown'
-import { Search, Plus, Eye, Globe, Image, FileText, Atom, FileCode, Clock, Lock, Unlock, Menu } from 'lucide-react'
+import { Search, Plus, Eye, Globe, Image, FileText, Atom, FileCode, Clock, Lock, Unlock, Menu, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useStore } from '../store/useStore'
 import type { Artifact } from '../types'
+import { ThinkingParser } from '../utils/ThinkingParser'
 
 export function ArtifactsPanel() {
   const { t, i18n } = useTranslation()
@@ -36,6 +37,7 @@ export function ArtifactsPanel() {
   }
 
   const renderArtifactPreview = (art: Artifact) => {
+    const cleanContent = ThinkingParser.parse(art.content).answer || art.content
     return (
       <div className="artifact-card-preview">
         {/* Eye counter badge */}
@@ -48,11 +50,11 @@ export function ArtifactsPanel() {
 
         {art.type === 'markdown' ? (
           <ReactMarkdown className="artifact-markdown-preview-render">
-            {art.content}
+            {cleanContent}
           </ReactMarkdown>
         ) : art.type === 'code' || art.type === 'jsx' ? (
           <div className="artifact-text-preview-code">
-            {art.content}
+            {cleanContent}
           </div>
         ) : (
           <div className="preview-placeholder-wrapper">
@@ -96,26 +98,27 @@ export function ArtifactsPanel() {
   }
 
   return (
-    <div className="artifacts-panel">
-      <div className="artifacts-container">
-        {/* Header */}
-        <header className="artifacts-header">
-          <div className="panel-top-bar">
-            <div className="panel-top-bar-left">
-              {!sidebarOpen && (
-                <button
-                  className="icon-only-btn"
-                  onClick={() => setSidebarOpen(true)}
-                  title={t("common.openMenu")}
-                  aria-label={t("common.openMenu")}
-                >
-                  <Menu size={20} />
-                </button>
-              )}
-            </div>
-            <div className="panel-top-bar-right">
+    <div className="artifacts-panel list-panel">
+      <div className="artifacts-container list-panel-inner">
+        {/* Header — mesmo padrão de Conversas / Projetos */}
+        <header className="list-panel-header artifacts-header">
+          <div className="list-panel-title-row">
+            {!sidebarOpen && (
               <button
-                className="btn-primary-new"
+                type="button"
+                className="icon-only-btn touch-target"
+                onClick={() => setSidebarOpen(true)}
+                title={t("common.openMenu")}
+                aria-label={t("common.openMenu")}
+              >
+                <Menu size={20} />
+              </button>
+            )}
+            <h1>{t("artifacts.title")}</h1>
+            <div className="list-panel-actions">
+              <button
+                type="button"
+                className="claude-btn-primary"
                 onClick={() => {
                   // Inicia um novo chat para o usuário solicitar criação de artefatos
                   const check = window.confirm(t('artifacts.newChatConfirm'))
@@ -126,30 +129,28 @@ export function ArtifactsPanel() {
                   }
                 }}
               >
-                <Plus size={14} />
-                <span>{t("artifacts.newArtifact")}</span>
+                <Plus size={16} strokeWidth={2.2} />
+                {t("artifacts.newArtifact")}
               </button>
             </div>
           </div>
-          <h1>{t("artifacts.title")}</h1>
-        </header>
 
-        {/* Search Input */}
-        <div className="search-bar-container">
-          <Search className="search-icon-field" size={15} />
-          <input
-            type="text"
-            className="search-input-field"
-            placeholder={t('artifacts.searchPlaceholder')}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-          {search && (
-            <button className="clear-search-btn" onClick={() => setSearch('')}>
-              X
-            </button>
-          )}
-        </div>
+          <div className="search-bar-container">
+            <Search className="search-icon-field" size={15} />
+            <input
+              type="text"
+              className="search-input-field"
+              placeholder={t('artifacts.searchPlaceholder')}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+            {search && (
+              <button type="button" className="clear-search-btn" onClick={() => setSearch('')}>
+                <X size={14} />
+              </button>
+            )}
+          </div>
+        </header>
 
         {/* Grid content */}
         <div className="artifacts-content-area">

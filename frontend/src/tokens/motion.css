@@ -1,7 +1,14 @@
-/* Motion e transições */
+/* Motion e transições — teto 250ms; easing out (sem bounce/elastic) */
 :root {
   --motion-fast: 120ms;
   --motion-normal: 180ms;
   --motion-slow: 220ms;
-  --ease-standard: ease-out;
+  /* ease-out-expo: desacelera suave, sem overshoot */
+  --ease-standard: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* Transition tokens (Fase 7.1) */
+  --transition-fast: 150ms var(--ease-out-quart);
+  --transition-base: 200ms var(--ease-out-quart);
 }
