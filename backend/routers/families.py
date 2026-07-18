@@ -19,12 +19,13 @@ Endpoints:
     GET    /api/families/suggest                 – sugere agrupamentos baseado em padrões de nome
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
 from typing import List, Optional
 import re
 
 from backend.database import get_db
+from backend.auth import get_current_user, require_admin
 
 router = APIRouter(prefix="/api/families", tags=["families"])
 
@@ -73,7 +74,7 @@ async def _list_members(db, family_id: str):
 # ─── CRUD de famílias ──────────────────────────────────────────────────────────
 
 @router.get("/", response_model=List[dict])
-async def list_families():
+async def list_families(current_user: dict = Depends(get_current_user)):
     """Lista todas as famílias cadastradas."""
     db = await get_db()
     async with db.execute(
@@ -85,7 +86,7 @@ async def list_families():
 
 
 @router.get("/suggest", response_model=List[dict])
-async def suggest_family_groupings():
+async def suggest_family_groupings(current_user: dict = Depends(get_current_user)):
     """
     Assistente de sugestão de agrupamento de modelos em famílias (Fase 7.2).
 
@@ -180,7 +181,7 @@ async def suggest_family_groupings():
 
 
 @router.get("/{family_id}", response_model=dict)
-async def get_family(family_id: str):
+async def get_family(family_id: str, current_user: dict = Depends(get_current_user)):
     """Retorna os detalhes de uma família com seus membros."""
     db = await get_db()
     family = await _fetch_family(db, family_id)
@@ -198,7 +199,7 @@ async def get_family(family_id: str):
 
 
 @router.post("/", response_model=dict, status_code=201)
-async def create_family(payload: FamilyCreate):
+async def create_family(payload: FamilyCreate, current_user: dict = Depends(require_admin)):
     """Cria uma nova família de modelos."""
     db = await get_db()
     async with db.execute("SELECT 1 FROM model_families WHERE id = ?", (payload.id,)) as cur:
@@ -215,7 +216,7 @@ async def create_family(payload: FamilyCreate):
 
 
 @router.put("/{family_id}", response_model=dict)
-async def update_family(family_id: str, payload: FamilyUpdate):
+async def update_family(family_id: str, payload: FamilyUpdate, current_user: dict = Depends(require_admin)):
     """Atualiza display_name e/ou description de uma família."""
     db = await get_db()
     if not await _fetch_family(db, family_id):
@@ -239,7 +240,7 @@ async def update_family(family_id: str, payload: FamilyUpdate):
 
 
 @router.delete("/{family_id}", response_model=dict)
-async def delete_family(family_id: str):
+async def delete_family(family_id: str, current_user: dict = Depends(require_admin)):
     """Apaga uma família e seus membros (CASCADE)."""
     db = await get_db()
     async with db.execute("SELECT 1 FROM model_families WHERE id = ?", (family_id,)) as cur:
@@ -255,7 +256,7 @@ async def delete_family(family_id: str):
 # ─── Gerenciamento de membros ──────────────────────────────────────────────────
 
 @router.get("/{family_id}/members", response_model=List[dict])
-async def list_family_members(family_id: str):
+async def list_family_members(family_id: str, current_user: dict = Depends(get_current_user)):
     """Lista os modelos membros de uma família, ordenados por fallback_order."""
     db = await get_db()
     if not await _fetch_family(db, family_id):
@@ -267,7 +268,7 @@ async def list_family_members(family_id: str):
 
 
 @router.post("/{family_id}/members", response_model=dict, status_code=201)
-async def add_family_member(family_id: str, payload: MemberCreate):
+async def add_family_member(family_id: str, payload: MemberCreate, current_user: dict = Depends(require_admin)):
     """Adiciona um modelo à família com uma posição de fallback."""
     db = await get_db()
     if not await _fetch_family(db, family_id):
@@ -287,7 +288,7 @@ async def add_family_member(family_id: str, payload: MemberCreate):
 
 
 @router.delete("/{family_id}/members/{model_id:path}", response_model=dict)
-async def remove_family_member(family_id: str, model_id: str):
+async def remove_family_member(family_id: str, model_id: str, current_user: dict = Depends(require_admin)):
     """Remove um modelo de uma família."""
     db = await get_db()
     async with db.execute(

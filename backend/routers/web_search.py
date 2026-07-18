@@ -73,14 +73,25 @@ async def update_config(body: WebSearchConfigUpdate, current_user: dict = Depend
 async def get_logs(limit: int = 50, current_user: dict = Depends(get_current_user)):
     db = await get_db()
     try:
-        async with db.execute(
-            """SELECT id, conversation_id, message_id, query, trigger_type, results_count, created_at
-               FROM web_search_log
-               ORDER BY created_at DESC
-               LIMIT ?""",
-            (limit,)
-        ) as cur:
-            rows = await cur.fetchall()
+        if current_user.get("role") != "admin":
+            async with db.execute(
+                """SELECT id, conversation_id, message_id, query, trigger_type, results_count, created_at
+                   FROM web_search_log
+                   WHERE user_id = ?
+                   ORDER BY created_at DESC
+                   LIMIT ?""",
+                (current_user["id"], limit)
+            ) as cur:
+                rows = await cur.fetchall()
+        else:
+            async with db.execute(
+                """SELECT id, conversation_id, message_id, query, trigger_type, results_count, created_at
+                   FROM web_search_log
+                   ORDER BY created_at DESC
+                   LIMIT ?""",
+                (limit,)
+            ) as cur:
+                rows = await cur.fetchall()
         
         logs = []
         for r in rows:

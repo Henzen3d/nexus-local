@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { Send, Square, Sparkles, Loader2, AlertCircle } from 'lucide-react'
+import { ArrowUp, Square, Sparkles, Loader2, AlertCircle, Wrench, Globe } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useStore } from '../store/useStore'
 import { ModelSelector } from './ModelSelector'
@@ -7,13 +7,18 @@ import { api } from '../api/client'
 import { AttachmentButton } from './AttachmentButton'
 import { AttachmentChip } from './AttachmentChip'
 import { WebSearchToggle } from './WebSearchToggle'
+import { Button } from './ui/Button'
+import { BottomSheet } from './ui/BottomSheet'
+import { useIsMobile } from '../hooks/useIsMobile'
+import { useVisualViewportOffset } from '../hooks/useVisualViewportOffset'
 import type { Attachment } from '../types'
 
 interface Props {
   onSend: (text: string, displayText?: string, attachmentIds?: string[], attachments?: Attachment[]) => void
+  isEmpty?: boolean
 }
 
-export function MessageInput({ onSend }: Props) {
+export function MessageInput({ onSend, isEmpty = false }: Props) {
   const { t } = useTranslation()
   const [text, setText] = useState('')
   const [enhancing, setEnhancing] = useState(false)
@@ -22,8 +27,44 @@ export function MessageInput({ onSend }: Props) {
   const [enhanceFlash, setEnhanceFlash] = useState(false)
   const [enhanceError, setEnhanceError] = useState<string | null>(null)
   const [attachments, setAttachments] = useState<Attachment[]>([])
+  const [toolsOpen, setToolsOpen] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const { isStreaming, selectedModelId } = useStore()
+  const {
+    isStreaming,
+    selectedModelId,
+    webSearchActive,
+    setWebSearchActive,
+    showToast,
+    activeConversationId,
+  } = useStore()
+  const isMobile = useIsMobile()
+  const keyboardOffset = useVisualViewportOffset()
+
+  // Focus the input on mount or when conversation changes on desktop
+  useEffect(() => {
+    if (!isMobile) {
+      textareaRef.current?.focus()
+    }
+  }, [activeConversationId, isMobile])
+
+  // Focus the input when streaming or enhancing ends on desktop
+  const prevIsStreaming = useRef(isStreaming)
+  const prevEnhancing = useRef(enhancing)
+
+  useEffect(() => {
+    const wasBusy = prevIsStreaming.current || prevEnhancing.current
+    const isBusy = isStreaming || enhancing
+
+    if (wasBusy && !isBusy && !isMobile) {
+      const timer = setTimeout(() => {
+        textareaRef.current?.focus()
+      }, 50)
+      return () => clearTimeout(timer)
+    }
+
+    prevIsStreaming.current = isStreaming
+    prevEnhancing.current = enhancing
+  }, [isStreaming, enhancing, isMobile])
 
   useEffect(() => {
     api.getEnhancerConfig().then((cfg) => {
@@ -44,9 +85,18 @@ export function MessageInput({ onSend }: Props) {
     const trimmed = text.trim()
     if (!trimmed && attachments.length === 0) return
     if (!selectedModelId) return
-    
-    const ids = attachments.map((a) => a.id)
-    onSend(trimmed, undefined, ids.length > 0 ? ids : undefined, attachments.length > 0 ? attachments : undefined)
+
+    const ids = attachments.map((a) => a.id).filter((id): id is string => !!id)
+    if (attachments.length > 0 && ids.length === 0) {
+      showToast(t('artifacts.uploadError', { defaultValue: 'Anexo inválido. Remova e anexe novamente.' }), 'error')
+      return
+    }
+    onSend(
+      trimmed || (ids.length > 0 ? t('chat.attachedFileOnly', { defaultValue: '(arquivo anexado)' }) : ''),
+      undefined,
+      ids.length > 0 ? ids : undefined,
+      attachments.length > 0 ? attachments : undefined
+    )
     setText('')
     setAttachments([])
   }
@@ -64,8 +114,8 @@ export function MessageInput({ onSend }: Props) {
         setTimeout(() => setEnhanceFlash(false), 500)
         textareaRef.current?.focus()
       }
-    } catch (err: any) {
-      const msg = err?.message || t('chat.enhanceError')
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : t('chat.enhanceError')
       setEnhanceError(msg)
       setTimeout(() => setEnhanceError(null), 4000)
     } finally {
@@ -74,6 +124,8 @@ export function MessageInput({ onSend }: Props) {
   }
 
   const handleKey = (e: React.KeyboardEvent) => {
+    // Mobile: Enter inserts newline; send only via button
+    if (isMobile) return
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       handleSend()
@@ -82,9 +134,15 @@ export function MessageInput({ onSend }: Props) {
 
   const canSend = (!!text.trim() || attachments.length > 0) && !!selectedModelId && !isStreaming
   const enhancerReady = enhancerEnabled && enhancerConfigured
+  const toolsActiveCount = webSearchActive ? 1 : 0
+
+  const wrapperStyle =
+    isMobile && keyboardOffset > 0
+      ? { paddingBottom: `calc(8px + env(safe-area-inset-bottom, 0px) + ${keyboardOffset}px)` }
+      : undefined
 
   return (
-    <div className="input-wrapper">
+    <div className="input-wrapper" style={wrapperStyle}>
       <div className={`input-card ${enhanceFlash ? 'enhance-flash' : ''}`}>
         {attachments.length > 0 && (
           <div className="input-attachments-preview">
@@ -112,6 +170,7 @@ export function MessageInput({ onSend }: Props) {
             }
             disabled={isStreaming || enhancing}
             rows={1}
+            enterKeyHint={isMobile ? 'enter' : 'send'}
           />
         </div>
 
@@ -124,39 +183,68 @@ export function MessageInput({ onSend }: Props) {
                 setAttachments((prev) => [...prev, att])
               }}
               onUploadError={(err) => {
-                alert(err)
+                showToast(err, 'error')
               }}
               disabled={isStreaming}
             />
-            {enhancerEnabled && (
+
+            {/* Desktop: all tools inline */}
+            {!isMobile && (
+              <>
+                {enhancerEnabled && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className={`composer-tool-btn custom-tooltip-trigger tooltip-up ${enhancing ? 'loading' : ''}`}
+                    onClick={handleEnhance}
+                    disabled={!text.trim() || enhancing || isStreaming}
+                    data-tooltip={
+                      !enhancerReady
+                        ? t('chat.enhanceNotConfigured')
+                        : t('chat.enhanceTitle')
+                    }
+                    aria-label={t('chat.enhanceTitle')}
+                  >
+                    {enhancing ? <Loader2 size={15} className="spin" /> : <Sparkles size={15} />}
+                  </Button>
+                )}
+                <WebSearchToggle />
+              </>
+            )}
+
+            {/* Mobile: overflow into tools sheet */}
+            {isMobile && (
               <button
-                className={`enhance-btn ${enhancing ? 'loading' : ''}`}
-                onClick={handleEnhance}
-                disabled={!text.trim() || enhancing || isStreaming}
-                title={
-                  !enhancerReady
-                    ? t('chat.enhanceNotConfigured')
-                    : t('chat.enhanceTitle')
-                }
-                style={{ marginRight: '4px' }}
+                type="button"
+                className={`composer-tools-btn touch-target ${toolsActiveCount > 0 ? 'has-active' : ''}`}
+                onClick={() => setToolsOpen(true)}
+                disabled={isStreaming}
+                aria-label={t('chat.toolsTitle', { defaultValue: 'Ferramentas' })}
               >
-                {enhancing ? <Loader2 size={15} className="spin" /> : <Sparkles size={15} />}
+                <Wrench size={16} />
+                {toolsActiveCount > 0 && (
+                  <span className="composer-tools-badge">{toolsActiveCount}</span>
+                )}
               </button>
             )}
-            <div style={{ display: 'inline-flex', alignSelf: 'center' }}>
-              <WebSearchToggle />
-            </div>
           </div>
           <div className="input-actions-right">
             <ModelSelector />
-            <button
-              className={`send-btn ${isStreaming ? 'stop' : ''}`}
+            <Button
+              variant={isStreaming ? 'secondary' : 'primary'}
+              size="icon"
+              className="custom-tooltip-trigger tooltip-up send-btn-target"
               onClick={handleSend}
               disabled={!isStreaming && !canSend}
-              title={isStreaming ? t('chat.stop') : t('chat.send')}
+              data-tooltip={isStreaming ? t('chat.stop') : t('chat.send')}
+              aria-label={isStreaming ? t('chat.stop') : t('chat.send')}
             >
-              {isStreaming ? <Square size={15} fill="currentColor" /> : <Send size={15} />}
-            </button>
+              {isStreaming ? (
+                <Square size={12} fill="currentColor" />
+              ) : (
+                <ArrowUp size={16} strokeWidth={2.5} />
+              )}
+            </Button>
           </div>
         </div>
       </div>
@@ -168,9 +256,62 @@ export function MessageInput({ onSend }: Props) {
         </p>
       )}
 
-      <p className="input-hint">
-        {t('chat.inputHint')}
-      </p>
+      {!isEmpty && (
+        <p className="input-hint">
+          {t('chat.inputHint')}
+        </p>
+      )}
+
+      <BottomSheet
+        open={toolsOpen && isMobile}
+        onClose={() => setToolsOpen(false)}
+        title={t('chat.toolsTitle', { defaultValue: 'Ferramentas' })}
+      >
+        <div className="composer-tools-sheet">
+          {enhancerEnabled && (
+            <button
+              type="button"
+              className="composer-tool-row"
+              disabled={!text.trim() || enhancing || isStreaming || !enhancerReady}
+              onClick={async () => {
+                await handleEnhance()
+                setToolsOpen(false)
+              }}
+            >
+              <span className="composer-tool-icon">
+                {enhancing ? <Loader2 size={18} className="spin" /> : <Sparkles size={18} />}
+              </span>
+              <span className="composer-tool-text">
+                <span className="composer-tool-label">{t('chat.enhanceTitle')}</span>
+                <span className="composer-tool-desc">
+                  {!enhancerReady
+                    ? t('chat.enhanceNotConfigured')
+                    : t('chat.enhanceDesc', { defaultValue: 'Reescreve e melhora seu prompt' })}
+                </span>
+              </span>
+            </button>
+          )}
+
+          <button
+            type="button"
+            className={`composer-tool-row ${webSearchActive ? 'active' : ''}`}
+            onClick={() => setWebSearchActive(!webSearchActive)}
+          >
+            <span className="composer-tool-icon">
+              <Globe size={18} />
+            </span>
+            <span className="composer-tool-text">
+              <span className="composer-tool-label">
+                {webSearchActive ? t('chat.webSearchOn') : t('chat.webSearchOff')}
+              </span>
+              <span className="composer-tool-desc">
+                {t('chat.webSearchDesc', { defaultValue: 'Consulta a web durante a resposta' })}
+              </span>
+            </span>
+            <span className={`composer-tool-switch ${webSearchActive ? 'on' : ''}`} aria-hidden />
+          </button>
+        </div>
+      </BottomSheet>
     </div>
   )
 }

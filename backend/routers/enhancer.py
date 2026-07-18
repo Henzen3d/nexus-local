@@ -1,8 +1,9 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Optional
 from backend.database import get_db, check_and_deactivate_model
 from backend.providers.registry import get_provider, get_model_name
+from backend.auth import get_current_user
 
 router = APIRouter(prefix="/api/enhancer", tags=["enhancer"])
 
@@ -96,7 +97,7 @@ async def save_config(body: EnhancerConfigIn):
 
 
 @router.post("/process", response_model=EnhancerProcessOut)
-async def process_prompt(body: EnhancerProcessIn):
+async def process_prompt(body: EnhancerProcessIn, current_user: dict = Depends(get_current_user)):
     if not body.prompt.strip():
         raise HTTPException(status_code=400, detail="Prompt vazio.")
 
@@ -117,7 +118,7 @@ async def process_prompt(body: EnhancerProcessIn):
     db = await get_db()
     try:
         try:
-            provider = await get_provider(provider_id, db)
+            provider = await get_provider(provider_id, db, user_id=current_user["id"])
             model_name = await get_model_name(model_id, db)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))

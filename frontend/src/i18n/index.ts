@@ -36,7 +36,8 @@ const resources = {
 
 /** Map browser language tags to our supported codes */
 export function mapBrowserLanguage(lang: string | undefined | null): LocaleCode {
-  if (!lang) return 'pt-BR'
+  // Unsupported / missing browser lang → English (global default)
+  if (!lang) return 'en-US'
   const lower = lang.toLowerCase()
   if (lower.startsWith('pt')) return 'pt-BR'
   if (lower.startsWith('en')) return 'en-US'
@@ -70,7 +71,7 @@ export function mapBrowserLanguage(lang: string | undefined | null): LocaleCode 
     return 'es-419'
   }
   if (lower.startsWith('es')) return 'es-ES'
-  return 'pt-BR'
+  return 'en-US'
 }
 
 export function detectInitialLocale(): LocaleCode {
@@ -85,21 +86,26 @@ export function detectInitialLocale(): LocaleCode {
   if (typeof navigator !== 'undefined') {
     return mapBrowserLanguage(navigator.language)
   }
-  return 'pt-BR'
+  return 'en-US'
 }
 
 export function applyDocumentLang(locale: string) {
   if (typeof document !== 'undefined') {
-    document.documentElement.lang = locale
+    const root = document.documentElement
+    root.lang = locale
+    // Keep browser auto-translate off (app ships its own i18n)
+    root.setAttribute('translate', 'no')
+    root.classList.add('notranslate')
   }
 }
 
-const initialLng = typeof window !== 'undefined' ? detectInitialLocale() : 'pt-BR'
+const initialLng = typeof window !== 'undefined' ? detectInitialLocale() : 'en-US'
 
 i18n.use(initReactI18next).init({
   resources,
   lng: initialLng,
-  fallbackLng: 'pt-BR',
+  // Missing keys fall back to English; unsupported browser langs also map to en-US
+  fallbackLng: 'en-US',
   interpolation: { escapeValue: false },
   returnNull: false,
 })

@@ -1,5 +1,15 @@
 import type { Conversation, ConversationDetail, Model, Provider, CacheStats, CacheSettings, CacheEntry, EnhancerConfig, FusionConfig, Artifact, Attachment, VisionRelayConfig, WebSearchConfig, WebSearchLog } from '../types'
 
+export interface UserProfileApi {
+  user_id?: string
+  display_name?: string
+  full_name?: string
+  occupation?: string
+  custom_instructions?: string
+  memory_enabled?: number | boolean
+  updated_at?: string | null
+}
+
 const apiURL = import.meta.env.VITE_API_URL
 const BASE = apiURL ? (apiURL.endsWith('/api') ? apiURL : `${apiURL}/api`) : '/api'
 
@@ -37,6 +47,17 @@ export const api = {
     fetchJSON<{ ok: boolean; is_favorite: boolean }>(`/conversations/${id}/favorite`, {
       method: 'PATCH',
     }),
+  updateConversation: (
+    id: string,
+    data: { title?: string; project_tag?: string | null; project_id?: string | null }
+  ) =>
+    fetchJSON<{ ok: boolean; project_tag?: string | null; project_id?: string | null }>(
+      `/conversations/${id}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      }
+    ),
   renameConversation: (id: string, title: string) =>
     fetchJSON(`/conversations/${id}/rename`, {
       method: 'PATCH',
@@ -50,10 +71,21 @@ export const api = {
 
   // Admin
   getProviders: () => fetchJSON<Provider[]>('/admin/providers'),
-  updateProvider: (id: string, data: { api_key?: string; enabled?: boolean; base_url?: string }) =>
+  updateProvider: (id: string, data: {
+    api_key?: string
+    enabled?: boolean
+    base_url?: string
+    share_admin_key?: boolean
+  }) =>
     fetchJSON(`/admin/providers/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(data),
+    }),
+  getShareConfig: () => fetchJSON<{ share_admin_keys: boolean }>('/admin/providers/share-config'),
+  updateShareConfig: (share_admin_keys: boolean) =>
+    fetchJSON<{ ok: boolean }>('/admin/providers/share-config', {
+      method: 'POST',
+      body: JSON.stringify({ share_admin_keys }),
     }),
   toggleModel: (id: string, enabled: boolean) =>
     fetchJSON(`/admin/models/${id}`, {
@@ -144,9 +176,29 @@ export const api = {
       method: 'POST',
       headers,
       body: formData
-    }).then(res => {
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      return res.json()
+    }).then(async (res) => {
+      if (!res.ok) {
+        let detail = `HTTP ${res.status}`
+        try {
+          const body = await res.json()
+          if (body?.detail) detail = typeof body.detail === 'string' ? body.detail : detail
+        } catch {
+          /* ignore */
+        }
+        throw new Error(detail)
+      }
+      const data = await res.json()
+      // Backend returns `attachment_id`; UI / chat WS expect `id`
+      return {
+        id: data.id ?? data.attachment_id,
+        filename: data.filename,
+        mime_type: data.mime_type,
+        file_type: data.file_type,
+        size_bytes: data.size_bytes,
+        thumbnail_url: data.thumbnail_url ?? null,
+        file_url: data.file_url,
+        extracted_text: data.extracted_text ?? data.extracted_text_preview ?? null,
+      } as Attachment
     })
   },
 
@@ -191,4 +243,174 @@ export const api = {
       body: JSON.stringify(data)
     }),
   getRankings: () => fetchJSON<any[]>('/ranking'),
+
+  // Memory
+  getUserMemory: () => fetchJSON<any[]>('/memory'),
+  getUserMemoryPreview: () =>
+    fetchJSON<{
+      fact_count: number
+      block: string
+      block_chars: number
+      fingerprint?: string
+      profile?: UserProfileApi
+    }>('/memory/preview'),
+  deleteMemoryFact: (id: string) => fetchJSON<any>(`/memory/${id}`, { method: 'DELETE' }),
+  pinMemoryFact: (id: string, pinned: boolean) =>
+    fetchJSON<{ status: string; id: string; is_pinned: boolean }>(`/memory/${id}/pin`, {
+      method: 'PATCH',
+      body: JSON.stringify({ pinned }),
+    }),
+  clearAllMemory: () => fetchJSON<any>('/memory/clear', { method: 'POST' }),
+  getUserProfile: () => fetchJSON<UserProfileApi>('/memory/profile'),
+  saveUserProfile: (data: Partial<UserProfileApi>) =>
+    fetchJSON<UserProfileApi>('/memory/profile', {
+      method: 'PUT',
+      body: JSON.stringify({
+        display_name: data.display_name,
+        full_name: data.full_name,
+        occupation: data.occupation,
+        custom_instructions: data.custom_instructions,
+        memory_enabled: data.memory_enabled === undefined ? undefined : !!data.memory_enabled,
+      }),
+    }),
+  getMemoryExtractorConfig: () =>
+    fetchJSON<MemoryExtractorConfig>('/memory/extractor-config'),
+  saveMemoryExtractorConfig: (data: Partial<MemoryExtractorConfig>) =>
+    fetchJSON<MemoryExtractorConfig>('/memory/extractor-config', {
+      method: 'PUT',
+      body: JSON.stringify({
+        memory_extractor_provider_id: data.memory_extractor_provider_id,
+        memory_extractor_model_id: data.memory_extractor_model_id,
+        memory_extractor_enabled: data.memory_extractor_enabled,
+        memory_llm_summaries_enabled: data.memory_llm_summaries_enabled,
+      }),
+    }),
+  getMemorySummaries: (scope?: string) =>
+    fetchJSON<import('../types').MemorySummary[]>(
+      scope ? `/memory/summaries?scope=${encodeURIComponent(scope)}` : '/memory/summaries'
+    ),
+  refreshMemorySummaries: () =>
+    fetchJSON<import('../types').MemorySummary[]>('/memory/summaries/refresh', { method: 'POST' }),
+  getMemoryStats: () => fetchJSON<MemoryStatsApi>('/memory/stats'),
+  exportMemory: () => fetchJSON<MemoryExportBundle>('/memory/export'),
+  importMemory: (data: MemoryExportBundle & { mode?: 'merge' | 'replace' }) =>
+    fetchJSON<{ status: string; mode: string; imported_facts: number; imported_summaries: number }>(
+      '/memory/import',
+      { method: 'POST', body: JSON.stringify(data) }
+    ),
+  getMemoryImportPrompt: () =>
+    fetchJSON<{ prompt: string; title: string; steps: string[] }>('/memory/import-prompt'),
+  importMemoryText: (data: {
+    text: string
+    mode?: 'merge' | 'replace'
+    merge_instructions_into_profile?: boolean
+  }) =>
+    fetchJSON<{
+      status: string
+      mode: string
+      imported_facts: number
+      sections_found: string[]
+      profile_instructions_updated: boolean
+    }>('/memory/import-text', { method: 'POST', body: JSON.stringify(data) }),
+
+  // Projects (persistent context workspaces)
+  listProjects: (sort = 'updated', q?: string) => {
+    const params = new URLSearchParams({ sort })
+    if (q) params.append('q', q)
+    return fetchJSON<import('../types').Project[]>(`/projects?${params.toString()}`)
+  },
+  getProject: (id: string) => fetchJSON<import('../types').Project>(`/projects/${id}`),
+  createProject: (data: { name: string; description?: string; instructions?: string }) =>
+    fetchJSON<import('../types').Project>('/projects', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  updateProject: (
+    id: string,
+    data: Partial<{
+      name: string
+      description: string
+      instructions: string
+      is_favorite: boolean
+      archived: boolean
+      model_default: string | null
+      retrieval_top_k: number
+      retrieval_threshold: number
+    }>
+  ) =>
+    fetchJSON<import('../types').Project>(`/projects/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+  deleteProject: (id: string) =>
+    fetchJSON<{ ok: boolean }>(`/projects/${id}`, { method: 'DELETE' }),
+  patchProjectMemory: (id: string, summary_text: string) =>
+    fetchJSON<{ ok: boolean; summary_text: string }>(`/projects/${id}/memory`, {
+      method: 'PATCH',
+      body: JSON.stringify({ summary_text }),
+    }),
+  listProjectFiles: (id: string) =>
+    fetchJSON<import('../types').ProjectFile[]>(`/projects/${id}/files`),
+  uploadProjectFile: (projectId: string, file: File) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    const token = localStorage.getItem('nexuslocal_token')
+    const headers: HeadersInit = {}
+    if (token) headers['Authorization'] = `Bearer ${token}`
+    return fetch(BASE + `/projects/${projectId}/files`, {
+      method: 'POST',
+      headers,
+      body: formData,
+    }).then((res) => {
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      return res.json() as Promise<import('../types').ProjectFile>
+    })
+  },
+  deleteProjectFile: (projectId: string, fileId: string) =>
+    fetchJSON<{ ok: boolean }>(`/projects/${projectId}/files/${fileId}`, { method: 'DELETE' }),
+  listProjectChats: (id: string) =>
+    fetchJSON<import('../types').ProjectChat[]>(`/projects/${id}/chats`),
+  createProjectChat: (projectId: string, data?: { title?: string; model_id?: string; provider_id?: string }) =>
+    fetchJSON<{ id: string; project_id: string; title: string }>(`/projects/${projectId}/chats`, {
+      method: 'POST',
+      body: JSON.stringify(data || {}),
+    }),
+}
+
+export interface MemoryStatsApi {
+  active_facts: number
+  inactive_facts: number
+  by_category: Record<string, number>
+  summaries_count: number
+  last_fact_update?: string | null
+  extractions_total: number
+  extractions_today: number
+}
+
+export interface MemoryExportBundle {
+  format?: string
+  exported_at?: string
+  user_id?: string
+  profile?: Partial<UserProfileApi>
+  facts?: Array<{
+    category?: string
+    fact?: string
+    fact_key?: string | null
+    confidence?: number
+    is_pinned?: number
+  }>
+  summaries?: Array<{
+    scope?: string
+    scope_ref?: string
+    summary_md?: string
+  }>
+  mode?: 'merge' | 'replace'
+}
+
+export interface MemoryExtractorConfig {
+  memory_extractor_provider_id?: string | null
+  memory_extractor_model_id?: string | null
+  memory_extractor_enabled?: boolean
+  memory_llm_summaries_enabled?: boolean
+  resolved_source?: 'memory_extractor' | 'enhancer' | 'chat_fallback'
 }

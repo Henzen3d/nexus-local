@@ -1,6 +1,103 @@
 import { create } from 'zustand'
 import type { Artifact, Conversation, ConversationDetail, Message, Model, CacheStats, CacheSettings, FusionStatusEntry, Attachment, WebSearchSource } from '../types'
 import { api } from '../api/client'
+import { detectInitialLocale } from '../i18n'
+
+// ── Persistência de provedor/modelo (por usuário quando possível) ───────────
+
+function _scopedKey(suffix: string): string {
+  if (typeof window === 'undefined') return `nexuslocal_${suffix}`
+  try {
+    const u = localStorage.getItem('nexuslocal_user')
+    const user = u ? JSON.parse(u) : null
+    if (user?.id) return `nexuslocal_${user.id}_${suffix}`
+  } catch {
+    /* ignore */
+  }
+  return `nexuslocal_${suffix}`
+}
+
+function readPersistedModelSelection(): {
+  modelId: string | null
+  providerId: string | null
+} {
+  if (typeof window === 'undefined') return { modelId: null, providerId: null }
+  try {
+    const modelId = localStorage.getItem(_scopedKey('selected_model_id'))
+    const providerId = localStorage.getItem(_scopedKey('selected_provider_id'))
+    // fallback legado (global)
+    return {
+      modelId: modelId || localStorage.getItem('nexuslocal_selected_model_id'),
+      providerId: providerId || localStorage.getItem('nexuslocal_selected_provider_id'),
+    }
+  } catch {
+    return { modelId: null, providerId: null }
+  }
+}
+
+function readLastModelByProvider(): Record<string, string> {
+  if (typeof window === 'undefined') return {}
+  try {
+    const raw =
+      localStorage.getItem(_scopedKey('last_model_by_provider')) ||
+      localStorage.getItem('nexuslocal_last_model_by_provider')
+    if (!raw) return {}
+    const parsed = JSON.parse(raw)
+    return parsed && typeof parsed === 'object' ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+
+function persistModelSelection(modelId: string, providerId: string) {
+  if (typeof window === 'undefined') return
+  try {
+    localStorage.setItem(_scopedKey('selected_model_id'), modelId)
+    localStorage.setItem(_scopedKey('selected_provider_id'), providerId)
+    // legado global (compat)
+    localStorage.setItem('nexuslocal_selected_model_id', modelId)
+    localStorage.setItem('nexuslocal_selected_provider_id', providerId)
+
+    const map = readLastModelByProvider()
+    map[providerId] = modelId
+    const mapJson = JSON.stringify(map)
+    localStorage.setItem(_scopedKey('last_model_by_provider'), mapJson)
+    localStorage.setItem('nexuslocal_last_model_by_provider', mapJson)
+  } catch {
+    /* ignore quota / private mode */
+  }
+}
+
+/** Resolve model+provider válidos a partir da lista carregada e preferências salvas. */
+function resolveModelSelection(
+  models: Model[],
+  preferredModelId: string | null | undefined,
+  preferredProviderId: string | null | undefined
+): { modelId: string | null; providerId: string | null } {
+  if (!models.length) return { modelId: null, providerId: null }
+
+  const lastByProvider = readLastModelByProvider()
+
+  // 1) modelo persistido/atual ainda existe
+  if (preferredModelId) {
+    const found = models.find((m) => m.id === preferredModelId)
+    if (found) return { modelId: found.id, providerId: found.provider_id }
+  }
+
+  // 2) provedor persistido: último modelo daquele provedor, senão o primeiro da lista
+  if (preferredProviderId) {
+    const lastId = lastByProvider[preferredProviderId]
+    if (lastId) {
+      const last = models.find((m) => m.id === lastId && m.provider_id === preferredProviderId)
+      if (last) return { modelId: last.id, providerId: last.provider_id }
+    }
+    const firstOfProv = models.find((m) => m.provider_id === preferredProviderId)
+    if (firstOfProv) return { modelId: firstOfProv.id, providerId: firstOfProv.provider_id }
+  }
+
+  // 3) fallback: primeiro modelo da API (já ordenado por ranking)
+  return { modelId: models[0].id, providerId: models[0].provider_id }
+}
 
 interface AppState {
   // Sidebar
@@ -27,7 +124,7 @@ interface AppState {
   selectedProviderId: string | null
 
   // View
-  view: 'chat' | 'admin' | 'conversations' | 'artifacts'
+  view: 'chat' | 'admin' | 'conversations' | 'artifacts' | 'projects'
   theme: 'light' | 'dark' | 'system'
   chatFont: 'sans' | 'serif' | 'mono'
   locale: string
@@ -74,14 +171,30 @@ interface AppState {
   setLastCacheHit: (hit: { type: string; similarity: number } | null) => void
   loadModels: () => Promise<void>
   selectModel: (modelId: string, providerId: string) => void
+  /** Troca de provedor: restaura o último modelo usado nele (ou o 1º por ranking). */
+  selectProvider: (providerId: string) => void
   setSidebarOpen: (v: boolean) => void
-  setView: (v: 'chat' | 'admin' | 'conversations' | 'artifacts') => void
+  setView: (v: 'chat' | 'admin' | 'conversations' | 'artifacts' | 'projects') => void
+  setConversationProjectTag: (id: string, projectTag: string | null) => Promise<void>
+  /** Assign conversation to a first-class Project workspace (project_id FK) */
+  setConversationProjectId: (id: string, projectId: string | null) => Promise<void>
+  /** When set, ProjectsPanel opens assign modal for this conversation id */
+  projectAssignConversationId: string | null
+  setProjectAssignConversationId: (id: string | null) => void
+  /** Active Projects workspace — new chats / WS turns inherit this project_id */
+  activeProjectId: string | null
+  setActiveProjectId: (id: string | null) => void
+  /** Cached project names for breadcrumb (id → name) */
+  projectNameById: Record<string, string>
+  setProjectName: (id: string, name: string) => void
   setTheme: (theme: 'light' | 'dark' | 'system') => void
   setChatFont: (font: 'sans' | 'serif' | 'mono') => void
   setLocale: (locale: string) => void
   setModelSortMode: (mode: 'ranking' | 'alphabetical') => void
   setHapticFeedback: (v: boolean) => void
   setProfile: (profile: { displayName?: string; fullName?: string; occupation?: string; customInstructions?: string }) => void
+  /** Hydrate profile from backend (page reload with existing token). */
+  hydrateProfileFromServer: () => Promise<void>
   renameConversation: (id: string, title: string) => Promise<void>
   deleteConversation: (id: string) => Promise<void>
   loadCacheStats: () => Promise<void>
@@ -131,32 +244,73 @@ export const useStore = create<AppState>((set, get) => ({
   setAuth: (token, user) => {
     localStorage.setItem('nexuslocal_token', token)
     localStorage.setItem('nexuslocal_user', JSON.stringify(user))
-    
+
+    // Remove legacy GLOBAL profile keys (pre-multi-user). They used to leak
+    // occupation/company from user A into a new account B on register/login.
+    localStorage.removeItem('nexuslocal_display_name')
+    localStorage.removeItem('nexuslocal_full_name')
+    localStorage.removeItem('nexuslocal_occupation')
+    localStorage.removeItem('nexuslocal_custom_instructions')
+
     const userId = user?.id || ''
     const username = user?.username || ''
-    const formattedUsername = username ? username.charAt(0).toUpperCase() + username.slice(1) : ''
-    
-    const displayName = localStorage.getItem(`nexuslocal_${userId}_display_name`) || 
-                        localStorage.getItem('nexuslocal_display_name') || 
-                        formattedUsername
-                        
-    const fullName = localStorage.getItem(`nexuslocal_${userId}_full_name`) || 
-                     localStorage.getItem('nexuslocal_full_name') || 
-                     formattedUsername
-                     
-    const occupation = localStorage.getItem(`nexuslocal_${userId}_occupation`) || 
-                       localStorage.getItem('nexuslocal_occupation') || 
-                       ''
-                       
-    const customInstructions = localStorage.getItem(`nexuslocal_${userId}_custom_instructions`) || 
-                               localStorage.getItem('nexuslocal_custom_instructions') || 
-                               ''
-                               
+    const formattedUsername = username
+      ? username.charAt(0).toUpperCase() + username.slice(1)
+      : ''
+
+    // ONLY per-user keys — never fall back to global localStorage.
+    const cachedDisplay = localStorage.getItem(`nexuslocal_${userId}_display_name`) || ''
+    const cachedFull = localStorage.getItem(`nexuslocal_${userId}_full_name`) || ''
+    const cachedOcc = localStorage.getItem(`nexuslocal_${userId}_occupation`) || ''
+    const cachedInstr = localStorage.getItem(`nexuslocal_${userId}_custom_instructions`) || ''
+
+    // UI fallback: username only (not occupation / custom instructions)
+    const displayName = cachedDisplay || formattedUsername
+    const fullName = cachedFull || ''
+    const occupation = cachedOcc
+    const customInstructions = cachedInstr
+
     set({ token, user, displayName, fullName, occupation, customInstructions })
+
+    // Hydrate from backend. Migrate localStorage → server only for THIS userId keys.
+    api.getUserProfile()
+      .then(async (p) => {
+        const serverHasData = !!(
+          (p.display_name && p.display_name.trim()) ||
+          (p.full_name && p.full_name.trim()) ||
+          (p.occupation && p.occupation.trim()) ||
+          (p.custom_instructions && p.custom_instructions.trim())
+        )
+        if (serverHasData) {
+          const dn = p.display_name || displayName
+          const fn = p.full_name || fullName
+          const occ = p.occupation || occupation
+          const ci = p.custom_instructions || customInstructions
+          localStorage.setItem(`nexuslocal_${userId}_display_name`, dn)
+          localStorage.setItem(`nexuslocal_${userId}_full_name`, fn)
+          localStorage.setItem(`nexuslocal_${userId}_occupation`, occ)
+          localStorage.setItem(`nexuslocal_${userId}_custom_instructions`, ci)
+          set({ displayName: dn, fullName: fn, occupation: occ, customInstructions: ci })
+        } else if (cachedDisplay || cachedFull || cachedOcc || cachedInstr) {
+          // Only push keys that already belonged to this userId (re-login same browser)
+          await api.saveUserProfile({
+            display_name: cachedDisplay || formattedUsername,
+            full_name: cachedFull,
+            occupation: cachedOcc,
+            custom_instructions: cachedInstr,
+          })
+        }
+      })
+      .catch((err) => console.warn('[profile] hydrate failed', err))
   },
   logout: () => {
     localStorage.removeItem('nexuslocal_token')
     localStorage.removeItem('nexuslocal_user')
+    // Legacy global keys (must not survive for the next account)
+    localStorage.removeItem('nexuslocal_display_name')
+    localStorage.removeItem('nexuslocal_full_name')
+    localStorage.removeItem('nexuslocal_occupation')
+    localStorage.removeItem('nexuslocal_custom_instructions')
     set({
       token: null,
       user: null,
@@ -183,12 +337,12 @@ export const useStore = create<AppState>((set, get) => ({
   lastCacheHit: null,
   toast: null,
   models: [],
-  selectedModelId: null,
-  selectedProviderId: null,
+  selectedModelId: typeof window !== 'undefined' ? readPersistedModelSelection().modelId : null,
+  selectedProviderId: typeof window !== 'undefined' ? readPersistedModelSelection().providerId : null,
   view: 'chat',
   theme: (typeof window !== 'undefined' ? localStorage.getItem('nexuslocal_theme') as 'light' | 'dark' | 'system' : null) || 'system',
   chatFont: (typeof window !== 'undefined' ? localStorage.getItem('nexuslocal_chat_font') as 'sans' | 'serif' | 'mono' : null) || 'sans',
-  locale: (typeof window !== 'undefined' ? localStorage.getItem('nexuslocal_locale') : null) || 'pt-BR',
+  locale: typeof window !== 'undefined' ? detectInitialLocale() : 'en-US',
   modelSortMode: (typeof window !== 'undefined' ? localStorage.getItem('nexuslocal_model_sort_mode') as 'ranking' | 'alphabetical' : null) || 'ranking',
   hapticFeedback: typeof window !== 'undefined' ? localStorage.getItem('nexuslocal_haptic_feedback') === 'true' : false,
   displayName: (typeof window !== 'undefined' ? (() => {
@@ -196,48 +350,41 @@ export const useStore = create<AppState>((set, get) => ({
       const u = localStorage.getItem('nexuslocal_user')
       const user = u ? JSON.parse(u) : null
       if (user) {
-        return localStorage.getItem(`nexuslocal_${user.id}_display_name`) || 
-               localStorage.getItem('nexuslocal_display_name') || 
+        return localStorage.getItem(`nexuslocal_${user.id}_display_name`) ||
                (user.username ? user.username.charAt(0).toUpperCase() + user.username.slice(1) : '')
       }
     } catch {}
-    return localStorage.getItem('nexuslocal_display_name') || ''
+    return ''
   })() : null) || '',
   fullName: (typeof window !== 'undefined' ? (() => {
     try {
       const u = localStorage.getItem('nexuslocal_user')
       const user = u ? JSON.parse(u) : null
       if (user) {
-        return localStorage.getItem(`nexuslocal_${user.id}_full_name`) || 
-               localStorage.getItem('nexuslocal_full_name') || 
-               (user.username ? user.username.charAt(0).toUpperCase() + user.username.slice(1) : '')
+        return localStorage.getItem(`nexuslocal_${user.id}_full_name`) || ''
       }
     } catch {}
-    return localStorage.getItem('nexuslocal_full_name') || ''
+    return ''
   })() : null) || '',
   occupation: (typeof window !== 'undefined' ? (() => {
     try {
       const u = localStorage.getItem('nexuslocal_user')
       const user = u ? JSON.parse(u) : null
       if (user) {
-        return localStorage.getItem(`nexuslocal_${user.id}_occupation`) || 
-               localStorage.getItem('nexuslocal_occupation') || 
-               ''
+        return localStorage.getItem(`nexuslocal_${user.id}_occupation`) || ''
       }
     } catch {}
-    return localStorage.getItem('nexuslocal_occupation') || ''
+    return ''
   })() : null) || '',
   customInstructions: (typeof window !== 'undefined' ? (() => {
     try {
       const u = localStorage.getItem('nexuslocal_user')
       const user = u ? JSON.parse(u) : null
       if (user) {
-        return localStorage.getItem(`nexuslocal_${user.id}_custom_instructions`) || 
-               localStorage.getItem('nexuslocal_custom_instructions') || 
-               ''
+        return localStorage.getItem(`nexuslocal_${user.id}_custom_instructions`) || ''
       }
     } catch {}
-    return localStorage.getItem('nexuslocal_custom_instructions') || ''
+    return ''
   })() : null) || '',
   cacheStats: null,
   cacheSettings: null,
@@ -250,6 +397,9 @@ export const useStore = create<AppState>((set, get) => ({
   activeConversationArtifacts: [],
   allArtifacts: [],
   _pendingArtifactId: null,
+  projectAssignConversationId: null,
+  activeProjectId: null,
+  projectNameById: {},
 
   loadConversations: async (search?: string, filter?: string, page?: number, limit?: number) => {
     const conversations = await api.getConversations(search, filter, page, limit)
@@ -269,6 +419,8 @@ export const useStore = create<AppState>((set, get) => ({
       activeConversationArtifacts: [],
       _pendingArtifactId: null,
       view: 'chat',
+      // Keep RAG context when opening a chat that belongs to a project
+      activeProjectId: conv.project_id || null,
     })
     // Puxa a lista de artifacts da conversa em segundo plano
     get().loadActiveConversationArtifacts()
@@ -287,6 +439,8 @@ export const useStore = create<AppState>((set, get) => ({
       activeConversationArtifacts: [],
       _pendingArtifactId: null,
       view: 'chat',
+      // Leaving explicit project context unless user opens a project chat again
+      activeProjectId: null,
     })
   },
 
@@ -329,13 +483,32 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   setConversationCreated: (id: string, title: string) => {
-    set((s) => ({
-      activeConversationId: id,
-      conversations: [
-        { id, title, message_count: 0, created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
-        ...s.conversations,
-      ],
-    }))
+    set((s) => {
+      const project_id = s.activeProjectId || null
+      return {
+        activeConversationId: id,
+        activeConversation: {
+          id,
+          title,
+          message_count: 0,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          project_id,
+          messages: s.messages,
+        },
+        conversations: [
+          {
+            id,
+            title,
+            message_count: 0,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            project_id,
+          },
+          ...s.conversations,
+        ],
+      }
+    })
   },
 
   appendToken: (token: string) => {
@@ -386,19 +559,86 @@ export const useStore = create<AppState>((set, get) => ({
 
   loadModels: async () => {
     const models = await api.getModels()
-    set((s) => ({
+    const s = get()
+    // Preferência: seleção em memória → localStorage → primeiro disponível
+    const resolved = resolveModelSelection(
       models,
-      selectedModelId: s.selectedModelId ?? models[0]?.id ?? null,
-      selectedProviderId: s.selectedProviderId ?? models[0]?.provider_id ?? null,
-    }))
+      s.selectedModelId,
+      s.selectedProviderId
+    )
+    set({
+      models,
+      selectedModelId: resolved.modelId,
+      selectedProviderId: resolved.providerId,
+    })
+    if (resolved.modelId && resolved.providerId) {
+      persistModelSelection(resolved.modelId, resolved.providerId)
+    }
   },
 
   selectModel: (modelId: string, providerId: string) => {
     set({ selectedModelId: modelId, selectedProviderId: providerId })
+    persistModelSelection(modelId, providerId)
+  },
+
+  selectProvider: (providerId: string) => {
+    const { models } = get()
+    const resolved = resolveModelSelection(models, null, providerId)
+    if (resolved.modelId && resolved.providerId) {
+      set({
+        selectedModelId: resolved.modelId,
+        selectedProviderId: resolved.providerId,
+      })
+      persistModelSelection(resolved.modelId, resolved.providerId)
+    }
   },
 
   setSidebarOpen: (v: boolean) => set({ sidebarOpen: v }),
-  setView: (v: 'chat' | 'admin' | 'conversations' | 'artifacts') => set({ view: v }),
+  setView: (v: 'chat' | 'admin' | 'conversations' | 'artifacts' | 'projects') => set({ view: v }),
+  setProjectAssignConversationId: (id) => set({ projectAssignConversationId: id }),
+  setActiveProjectId: (id) => {
+    // Avoid notify/re-render loops when the same project is set again
+    if (get().activeProjectId === id) return
+    set({ activeProjectId: id })
+  },
+
+  setConversationProjectTag: async (id, projectTag) => {
+    const cleaned = projectTag?.trim().toLowerCase().replace(/\s+/g, '-') || null
+    await api.updateConversation(id, { project_tag: cleaned })
+    set((s) => ({
+      conversations: s.conversations.map((c) =>
+        c.id === id ? { ...c, project_tag: cleaned } : c
+      ),
+      activeConversation:
+        s.activeConversation?.id === id
+          ? { ...s.activeConversation, project_tag: cleaned }
+          : s.activeConversation,
+    }))
+  },
+
+  setConversationProjectId: async (id, projectId) => {
+    const pid = projectId?.trim() || null
+    await api.updateConversation(id, { project_id: pid })
+    set((s) => ({
+      conversations: s.conversations.map((c) =>
+        c.id === id ? { ...c, project_id: pid } : c
+      ),
+      activeConversation:
+        s.activeConversation?.id === id
+          ? { ...s.activeConversation, project_id: pid }
+          : s.activeConversation,
+      // Keep RAG context if assigning the open chat
+      activeProjectId:
+        s.activeConversationId === id || s.activeConversation?.id === id
+          ? pid
+          : s.activeProjectId,
+    }))
+  },
+
+  setProjectName: (id, name) =>
+    set((s) => ({
+      projectNameById: { ...s.projectNameById, [id]: name },
+    })),
   setTheme: (theme) => {
     localStorage.setItem('nexuslocal_theme', theme)
     set({ theme })
@@ -439,6 +679,61 @@ export const useStore = create<AppState>((set, get) => ({
       occupation: profile.occupation !== undefined ? profile.occupation : s.occupation,
       customInstructions: profile.customInstructions !== undefined ? profile.customInstructions : s.customInstructions,
     }))
+    // Phase A+: persist to backend (fire-and-forget; local state already updated)
+    const payload: Record<string, string> = {}
+    if (profile.displayName !== undefined) payload.display_name = profile.displayName
+    if (profile.fullName !== undefined) payload.full_name = profile.fullName
+    if (profile.occupation !== undefined) payload.occupation = profile.occupation
+    if (profile.customInstructions !== undefined) payload.custom_instructions = profile.customInstructions
+    if (Object.keys(payload).length > 0) {
+      api.saveUserProfile(payload).catch((err) => console.warn('[profile] save failed', err))
+    }
+  },
+
+  hydrateProfileFromServer: async () => {
+    const { token, user } = get()
+    if (!token || !user?.id) return
+    const userId = user.id
+    // Only migrate data already scoped to this userId (never global leftovers)
+    const cachedDisplay = localStorage.getItem(`nexuslocal_${userId}_display_name`) || ''
+    const cachedFull = localStorage.getItem(`nexuslocal_${userId}_full_name`) || ''
+    const cachedOcc = localStorage.getItem(`nexuslocal_${userId}_occupation`) || ''
+    const cachedInstr = localStorage.getItem(`nexuslocal_${userId}_custom_instructions`) || ''
+    try {
+      const p = await api.getUserProfile()
+      const serverHasData = !!(
+        (p.display_name && p.display_name.trim()) ||
+        (p.full_name && p.full_name.trim()) ||
+        (p.occupation && p.occupation.trim()) ||
+        (p.custom_instructions && p.custom_instructions.trim())
+      )
+      if (serverHasData) {
+        const dn = p.display_name || cachedDisplay
+        const fn = p.full_name || cachedFull
+        const occ = p.occupation || cachedOcc
+        const ci = p.custom_instructions || cachedInstr
+        localStorage.setItem(`nexuslocal_${userId}_display_name`, dn)
+        localStorage.setItem(`nexuslocal_${userId}_full_name`, fn)
+        localStorage.setItem(`nexuslocal_${userId}_occupation`, occ)
+        localStorage.setItem(`nexuslocal_${userId}_custom_instructions`, ci)
+        set({ displayName: dn, fullName: fn, occupation: occ, customInstructions: ci })
+      } else if (cachedDisplay || cachedFull || cachedOcc || cachedInstr) {
+        await api.saveUserProfile({
+          display_name: cachedDisplay,
+          full_name: cachedFull,
+          occupation: cachedOcc,
+          custom_instructions: cachedInstr,
+        })
+        set({
+          displayName: cachedDisplay,
+          fullName: cachedFull,
+          occupation: cachedOcc,
+          customInstructions: cachedInstr,
+        })
+      }
+    } catch (err) {
+      console.warn('[profile] hydrate failed', err)
+    }
   },
 
   renameConversation: async (id: string, title: string) => {

@@ -1,7 +1,8 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from typing import Optional, List
 from backend.database import get_db
+from backend.auth import get_current_user, require_admin
 
 router = APIRouter(prefix="/api/fusion", tags=["fusion"])
 
@@ -88,14 +89,14 @@ async def _get_models() -> List[dict]:
 
 
 @router.get("/config", response_model=FusionConfigOut)
-async def get_config():
+async def get_config(current_user: dict = Depends(get_current_user)):
     judge = await _get_judge_config()
     models = await _get_models()
     return {**judge, "models": models}
 
 
 @router.post("/config", response_model=FusionConfigOut)
-async def save_config(body: FusionConfigIn):
+async def save_config(body: FusionConfigIn, current_user: dict = Depends(require_admin)):
     db = await get_db()
     try:
         current = await _get_judge_config()
@@ -142,7 +143,7 @@ async def save_config(body: FusionConfigIn):
 
 
 @router.post("/judge", response_model=FusionConfigOut)
-async def save_judge(body: FusionJudgeIn):
+async def save_judge(body: FusionJudgeIn, current_user: dict = Depends(require_admin)):
     db = await get_db()
     try:
         current = await _get_judge_config()
@@ -172,7 +173,7 @@ async def save_judge(body: FusionJudgeIn):
 
 
 @router.post("/models", response_model=FusionConfigOut)
-async def add_model(body: FusionModelIn):
+async def add_model(body: FusionModelIn, current_user: dict = Depends(require_admin)):
     db = await get_db()
     try:
         await db.execute(
@@ -193,7 +194,7 @@ async def add_model(body: FusionModelIn):
 
 
 @router.delete("/models/{model_id}", response_model=FusionConfigOut)
-async def remove_model(model_id: int):
+async def remove_model(model_id: int, current_user: dict = Depends(require_admin)):
     db = await get_db()
     try:
         await db.execute("DELETE FROM fusion_models WHERE id = ?", (model_id,))

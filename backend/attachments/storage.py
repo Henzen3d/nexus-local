@@ -3,7 +3,10 @@ import shutil
 from pathlib import Path
 from PIL import Image
 
-STORAGE_DIR = Path("j:/Arquivos Osmar/Multi+/backend/storage/attachments")
+from backend.logging_config import get_logger
+logger = get_logger(__name__)
+
+STORAGE_DIR = Path(__file__).resolve().parent.parent / "storage" / "attachments"
 
 def get_absolute_path(relative_path: str) -> Path:
     return STORAGE_DIR / relative_path
@@ -38,7 +41,7 @@ def save_file(file_content: bytes, filename: str, attachment_id: str, is_image: 
                 img.thumbnail((120, 120))
                 img.save(thumb_path, "JPEG", quality=85)
         except Exception as e:
-            print(f"Failed to generate thumbnail: {e}")
+            logger.error("Failed to generate thumbnail:", exc_info=e)
             thumb_rel_path = None
 
     return file_rel_path, thumb_rel_path

@@ -1,8 +1,18 @@
 ---
-version: beta-2
+version: beta-4
 name: Claude-design-analysis
-description: A warm-canvas editorial interface for Anthropic's Claude product. The system anchors on a tinted cream canvas with serif display headlines, warm coral CTAs, and dark navy product surfaces (code editor mockups, model showcase cards). Brand voltage comes from the cream/coral pairing — deliberately warm and humanist where most AI brands use cool blue + slate. Type voice runs a slab-serif display ("Copernicus" / Tiempos Headline) for h1/h2 and a humanist sans for body. The signature Anthropic black-radial-spike mark anchors the wordmark. As of v-beta, the **product/chat app now ships two theme modes — Light and Dark** — controlled by semantic tokens layered on top of the base palette (see "Theme Modes" section). As of v-beta-2, the **sidebar gained a fixed navigation layer** ("Conversas" and "Artefatos" as permanent entries, a pinned "Favoritos" section, and a reusable conversation context menu for favorite/rename/delete — see "Sidebar Navigation" under Product/Chat App Components).
-scope: This document covers both the **marketing site** (claude.com — heroes, pricing, feature cards) and the **product/chat app** (NexusLocal — sidebar, chat canvas, message input). Tokens (colors, typography, spacing, radius) are shared; component sections are split by context. The product/chat app additionally defines a **semantic theming layer** (`theme.light.*` / `theme.dark.*`) so every chat-app component resolves its color through the active theme instead of a hardcoded surface, and a **sidebar navigation layer** (fixed entries + favorites + full-page Conversas/Artefatos views) documented alongside the existing chat canvas and message input components.
+description: >
+  NexusLocal product/chat design system (editorial cream + coral brand, dual Light/Dark themes).
+  v-beta — semantic theme tokens. v-beta-2 — sidebar fixed nav (Conversas/Artefatos/Favoritos).
+  v-beta-3 — chat message hierarchy (thinking block, response, metadata).
+  v-beta-4 — **UI Premium Refresh**: dark palette recalibration (#1d1d1c sidebar, #1f1f1e canvas,
+  #2c2c2a input), permanent chat-input border (no coral focus ring), DeepSeek-style sidebar header
+  (logo + search + panel-close, pill "Nova conversa"), larger borderless suggestion chips, custom
+  tooltips app-wide, expandable free-provider badge, provider API-key links, global memory toggle only.
+scope: >
+  Marketing reference (claude.com) + product/chat app (NexusLocal). Product app uses
+  `theme.light.*` / `theme.dark.*` and maps to CSS variables in `frontend/src/index.css`
+  (`html[data-theme="light|dark"]`). Source of truth for shipped colors is the CSS theme block.
 
 colors:
   primary: "#cc785c"
@@ -19,47 +29,59 @@ colors:
   surface-soft: "#f5f0e8"
   surface-card: "#efe9de"
   surface-cream-strong: "#e8e0d2"
-  surface-dark: "#181715"
-  surface-dark-elevated: "#252320"
-  surface-dark-soft: "#1f1e1b"
+  # --- Dark product surfaces (v-beta-4 recalibrated) ---
+  surface-dark: "#1d1d1c"              # sidebar background
+  surface-dark-elevated: "#2a2a28"     # sidebar hover / elevated rows
+  surface-dark-soft: "#242422"
+  surface-dark-input: "#2c2c2a"        # chat input + elevated cards
+  canvas-dark: "#1f1f1e"               # main chat canvas / app floor
+  border-dark: "#33312d"
+  input-border-dark: "#575653"         # permanent 2px chat-input outline (dark)
+  chip-bg-dark: "#363635"              # suggestion chips fill
+  chip-text-dark: "#ffffff"
+  chip-icon-dark: "#97958c"
   on-primary: "#ffffff"
-  on-dark: "#faf9f5"
-  on-dark-soft: "#a09d96"
+  on-dark: "#f8f8f6"                   # brand title / primary text on dark
+  on-dark-soft: "#c3c2b7"              # secondary sidebar/body text on dark
   accent-teal: "#5db8a6"
   accent-amber: "#e8a55a"
   success: "#5db872"
   warning: "#d4a017"
   error: "#c64545"
-  # --- New tokens added for Light/Dark theming of the product/chat app ---
-  sidebar-light: "#f7f4ee"
-  canvas-white: "#ffffff"
-  border-light: "#e8e3da"
-  surface-dark-input: "#2a2825"
-  border-dark: "#33312d"
-  canvas-dark: "#21201d"
+  free-dot: "#3ecf8e"                  # expandable free-tier badge
+  # --- Light product surfaces ---
+  sidebar-light: "#f7f7f5"
+  canvas-white: "#FCFBF8"
+  canvas-light: "#FCFBF8"
+  border-light: "rgba(0,0,0,0.06)"
 
 theme:
   light:
     bg-sidebar: "{colors.sidebar-light}"
-    bg-canvas: "{colors.canvas-white}"
-    bg-card: "{colors.surface-card}"
-    bg-input: "{colors.canvas-white}"
-    bg-hover: "{colors.surface-soft}"
-    text-primary: "{colors.ink}"
-    text-secondary: "{colors.muted}"
-    text-tertiary: "{colors.muted-soft}"
+    bg-canvas: "{colors.canvas-light}"
+    bg-card: "#FFFFFF"
+    bg-input: "#FFFFFF"
+    bg-hover: "rgba(0,0,0,0.02)"
+    text-primary: "#222222"
+    text-secondary: "#555555"
+    text-tertiary: "#777777"
     border: "{colors.border-light}"
+    input-border: "{colors.border-light}"   # no coral focus ring
     accent: "{colors.primary}"
   dark:
-    bg-sidebar: "{colors.surface-dark}"
-    bg-canvas: "{colors.canvas-dark}"
-    bg-card: "{colors.surface-dark-elevated}"
-    bg-input: "{colors.surface-dark-input}"
-    bg-hover: "{colors.surface-dark-elevated}"
-    text-primary: "{colors.on-dark}"
-    text-secondary: "{colors.on-dark-soft}"
-    text-tertiary: "{colors.on-dark-soft}"
-    border: "{colors.border-dark}"
+    bg-sidebar: "{colors.surface-dark}"           # #1d1d1c
+    bg-canvas: "{colors.canvas-dark}"             # #1f1f1e
+    bg-card: "{colors.surface-dark-input}"        # #2c2c2a
+    bg-input: "{colors.surface-dark-input}"       # #2c2c2a
+    bg-hover: "{colors.surface-dark-elevated}"    # #2a2a28
+    text-primary: "{colors.on-dark}"              # #f8f8f6
+    text-secondary: "{colors.on-dark-soft}"       # #c3c2b7
+    text-tertiary: "{colors.muted-soft}"          # #6c6a64
+    border: "{colors.border-dark}"                # #33312d
+    input-border: "{colors.input-border-dark}"    # #575653 permanent 2px
+    chip-bg: "{colors.chip-bg-dark}"
+    chip-text: "{colors.chip-text-dark}"
+    chip-icon: "{colors.chip-icon-dark}"
     accent: "{colors.primary}"
 
 typography:
@@ -347,7 +369,7 @@ The dark surfaces are where Claude shows its product chrome — code blocks, ter
 - Warm cream canvas (`{colors.canvas}` — #faf9f5) with dark warm-ink text (`{colors.ink}` — #141413). The brand's defining color choice.
 - Coral primary CTA (`{colors.primary}` — #cc785c). Used scarcely on individual buttons, generously on full-bleed coral callout cards.
 - Slab-serif display headlines via Copernicus / Tiempos Headline at weight 400 with negative letter-spacing. Pairs with humanist sans body for a literary editorial voice.
-- Dark navy product mockup cards (`{colors.surface-dark}` — #181715) carrying code blocks, terminal panels, model comparison data — the brand shows the product chrome at scale rather than abstract marketing illustrations.
+- Dark navy product mockup cards (`{colors.surface-dark}` — #1d1d1c product / marketing dark) carrying code blocks, terminal panels, model comparison data — the brand shows the product chrome at scale rather than abstract marketing illustrations.
 - Light cream feature cards (`{colors.surface-card}` — #efe9de) — slightly darker than canvas, used for content-driven feature explanations.
 - Anthropic radial-spike mark — a small black asterisk-like glyph (4-spoke radial) — appears as the brand wordmark prefix and as a content marker.
 - Border radius is hierarchical: `{rounded.md}` (8px) for buttons + inputs, `{rounded.lg}` (12px) for content + product cards, `{rounded.xl}` (16px) for the hero illustration container, `{rounded.pill}` for badges.
@@ -367,9 +389,13 @@ The dark surfaces are where Claude shows its product chrome — code blocks, ter
 - **Surface Soft** (`{colors.surface-soft}` — #f5f0e8): Section dividers, very-soft band backgrounds.
 - **Surface Card** (`{colors.surface-card}` — #efe9de): Feature cards, content cards. One step darker than canvas.
 - **Surface Cream Strong** (`{colors.surface-cream-strong}` — #e8e0d2): A strongest-cream variant used on selected category tabs and emphasized section bands.
-- **Surface Dark** (`{colors.surface-dark}` — #181715): Code editor mockups, model showcase cards, footer. The dominant dark surface.
-- **Surface Dark Elevated** (`{colors.surface-dark-elevated}` — #252320): Elevated cards inside dark bands (settings panels in mockups).
-- **Surface Dark Soft** (`{colors.surface-dark-soft}` — #1f1e1b): Slightly lighter dark, used for code block backgrounds inside larger dark cards.
+- **Surface Dark** (`{colors.surface-dark}` — #1d1d1c): **v-beta-4** product sidebar + marketing dark navy. (Previously #181715.)
+- **Surface Dark Elevated** (`{colors.surface-dark-elevated}` — #2a2a28): Sidebar hover/active, elevated rows. (Previously #252320.)
+- **Surface Dark Soft** (`{colors.surface-dark-soft}` — #242422): Soft dark dividers / secondary panels.
+- **Surface Dark Input** (`{colors.surface-dark-input}` — #2c2c2a): Chat input card + elevated cards in dark mode.
+- **Canvas Dark** (`{colors.canvas-dark}` — #1f1f1e): Main chat floor / app background in dark mode.
+- **Input Border Dark** (`{colors.input-border-dark}` — #575653): Permanent **2px** outline on the chat input (dark). Never replaced by a coral focus ring.
+- **Chip BG / Text / Icon (dark)** (`#363635` / `#ffffff` / `#97958c`): Welcome suggestion chips — no hairline border.
 - **Hairline** (`{colors.hairline}` — #e6dfd8): The 1px border tone on cream surfaces. Same hex as `{colors.primary-disabled}` — borders feel like one elevation step rather than ink lines.
 - **Hairline Soft** (`{colors.hairline-soft}` — #ebe6df): Barely-visible divider used inside the same band.
 
@@ -380,8 +406,8 @@ The dark surfaces are where Claude shows its product chrome — code blocks, ter
 - **Muted** (`{colors.muted}` — #6c6a64): Sub-headings, breadcrumbs, footer-adjacent secondary text.
 - **Muted Soft** (`{colors.muted-soft}` — #8e8b82): Captions, fine-print, copyright lines.
 - **On Primary** (`{colors.on-primary}` — #ffffff): Text on coral buttons.
-- **On Dark** (`{colors.on-dark}` — #faf9f5): Cream-tinted white used on dark surfaces (echoes the canvas tone).
-- **On Dark Soft** (`{colors.on-dark-soft}` — #a09d96): Footer body text, secondary labels in dark mockups.
+- **On Dark** (`{colors.on-dark}` — #f8f8f6): Primary text + brand title/logo on dark surfaces (**v-beta-4**; was #faf9f5).
+- **On Dark Soft** (`{colors.on-dark-soft}` — #c3c2b7): Secondary sidebar labels, body on dark (**v-beta-4**; was #a09d96).
 
 ### Semantic
 - **Success** (`{colors.success}` — #5db872): Green status dots, "available" indicators.
@@ -398,34 +424,55 @@ Every chat-app component color now resolves through a **semantic token** (`{them
 ### Light Mode (from the reference screenshot)
 | Role | Token | Value | Notes |
 |---|---|---|---|
-| Sidebar background | `{theme.light.bg-sidebar}` | `#f7f4ee` (new: `{colors.sidebar-light}`) | A warm off-white, one step darker than the chat canvas — same elevation logic as `surface-card` vs `canvas`, just applied to the sidebar instead of only to feature cards. |
-| Chat canvas background | `{theme.light.bg-canvas}` | `#ffffff` (new: `{colors.canvas-white}`) | The reference screenshot's main content area reads closer to pure white than the marketing site's tinted `{colors.canvas}` (#faf9f5) — product surfaces run slightly cooler/whiter than marketing pages. |
-| Cards (chips, dropdowns, DESIGN.md file card) | `{theme.light.bg-card}` | `{colors.surface-card}` #efe9de | Unchanged from alpha spec. |
-| Message input | `{theme.light.bg-input}` | `{colors.canvas-white}` #ffffff | White card with hairline border, matches the file-attachment card in the screenshot. |
-| Hover state | `{theme.light.bg-hover}` | `{colors.surface-soft}` #f5f0e8 | Sidebar nav-item and recent-chat hover. |
-| Primary text | `{theme.light.text-primary}` | `{colors.ink}` #141413 | Greeting, sidebar item labels. |
-| Secondary text | `{theme.light.text-secondary}` | `{colors.muted}` #6c6a64 | "Fazer Upgrade", plan badge, section labels ("Recentes"). |
-| Border / hairline | `{theme.light.border}` | new: `{colors.border-light}` #e8e3da | Slightly warmer/darker than `{colors.hairline}` so it stays visible against the whiter card backgrounds. |
-| Accent | `{theme.light.accent}` | `{colors.primary}` #cc785c | Unchanged — the sun/spike-mark icon and "Fazer Upgrade" underline in the screenshot are this coral. |
+| Sidebar background | `{theme.light.bg-sidebar}` | `#F7F4EE` | A warm off-white, one step darker than the chat canvas. |
+| Chat canvas background | `{theme.light.bg-canvas}` | `#FCFBF8` (new premium light canvas) | The premium neutral light canvas. |
+| Cards (chips, dropdowns, DESIGN.md file card) | `{theme.light.bg-card}` | `#FFFFFF` | Updated to white feature cards. |
+| Message input | `{theme.light.bg-input}` | `#FFFFFF` | White card with hairline border. |
+| Hover state | `{theme.light.bg-hover}` | `rgba(0,0,0,0.02)` | Extremely soft hover. |
+| Primary text | `{theme.light.text-primary}` | `#222222` | Greeting, sidebar item labels. |
+| Secondary text | `{theme.light.text-secondary}` | `#555555` | Secondary information. |
+| Border / hairline | `{theme.light.border}` | `rgba(0,0,0,0.06)` | Extremely subtle border. |
+| Accent | `{theme.light.accent}` | `{colors.primary}` #cc785c | Unchanged — the sun/spike-mark icon. |
 
-### Dark Mode (existing alpha spec, now formalized as a mode rather than the only option)
+### Dark Mode (v-beta-4 recalibrated — shipped values)
 | Role | Token | Value | Notes |
 |---|---|---|---|
-| Sidebar background | `{theme.dark.bg-sidebar}` | `{colors.surface-dark}` #181715 | Unchanged from alpha spec. |
-| Chat canvas background | `{theme.dark.bg-canvas}` | new: `{colors.canvas-dark}` #21201d | **New token.** Alpha spec left the chat canvas cream even in the dark sidebar state, which isn't a true dark mode. This is one step lighter than the sidebar so the canvas still reads as the "floor" against the sidebar. |
-| Cards (chips, dropdowns) | `{theme.dark.bg-card}` | `{colors.surface-dark-elevated}` #252320 | Unchanged. |
-| Message input | `{theme.dark.bg-input}` | new: `{colors.surface-dark-input}` #2a2825 | **New token.** Slightly lighter than the card color so the input reads as the most "elevated" surface, mirroring the white input card in light mode. |
-| Hover state | `{theme.dark.bg-hover}` | `{colors.surface-dark-elevated}` | Unchanged. |
-| Primary text | `{theme.dark.text-primary}` | `{colors.on-dark}` #faf9f5 | Unchanged. |
-| Secondary text | `{theme.dark.text-secondary}` | `{colors.on-dark-soft}` #a09d96 | Unchanged. |
-| Border / hairline | `{theme.dark.border}` | new: `{colors.border-dark}` #33312d | **New token.** Alpha spec had no dark-mode border color; dropdowns/cards relied on background-color contrast alone. |
-| Accent | `{theme.dark.accent}` | `{colors.primary}` #cc785c | The coral send-button / accent never changes between modes — it's the one constant brand signal. |
+| Sidebar background | `{theme.dark.bg-sidebar}` | `#1d1d1c` | Was #181715. Neutral near-black, slightly cooler. |
+| Chat canvas background | `{theme.dark.bg-canvas}` | `#1f1f1e` | Was #21201d. App floor / main chat area. |
+| Cards / elevated panels | `{theme.dark.bg-card}` | `#2c2c2a` | Same as input — elevated surfaces. |
+| Message input | `{theme.dark.bg-input}` | `#2c2c2a` | Was #2a2825. |
+| Hover state | `{theme.dark.bg-hover}` | `#2a2a28` | Sidebar rows, nav hover. |
+| Primary text / brand title | `{theme.dark.text-primary}` | `#f8f8f6` | Logo wordmark + primary UI text. |
+| Secondary text | `{theme.dark.text-secondary}` | `#c3c2b7` | Was #a09d96. Sidebar labels, muted body. |
+| Tertiary / captions | `{theme.dark.text-tertiary}` | `#6c6a64` | Group labels, fine print. |
+| Border / hairline | `{theme.dark.border}` | `#33312d` | Dividers, dropdown edges. |
+| Chat input outline | `{theme.dark.input-border}` | `#575653` | **Permanent 2px** border. **No coral focus ring** on focus (light or dark). |
+| Suggestion chip fill | `{theme.dark.chip-bg}` | `#363635` | No hairline border. |
+| Suggestion chip text | `{theme.dark.chip-text}` | `#ffffff` | |
+| Suggestion chip icons | `{theme.dark.chip-icon}` | `#97958c` | |
+| Accent | `{theme.dark.accent}` | `#cc785c` | Coral send / brand constant. |
+
+### CSS mapping (source of truth)
+Shipped in `frontend/src/index.css` under `html[data-theme="dark"]` / `html[data-theme="light"]`:
+
+| CSS variable | Dark | Light |
+|---|---|---|
+| `--canvas` | `#1f1f1e` | `#FCFBF8` |
+| `--surface-dark` | `#1d1d1c` | `#f7f7f5` |
+| `--surface-dark-elevated` | `#2a2a28` | `rgba(0,0,0,0.04)` |
+| `--surface-card` | `#2c2c2a` | `#FFFFFF` |
+| `--on-dark` | `#f8f8f6` | `#121212` |
+| `--on-dark-soft` | `#c3c2b7` | `#222222` |
+| `--body` | `#c3c2b7` | `#555555` |
+| `--muted` | `#97958c` | `#555555` |
+| `--input-border` | `#575653` | (uses hairline) |
+| `--chip-bg` / `--chip-text` / `--chip-icon` | `#363635` / `#fff` / `#97958c` | (surface-card stack) |
 
 ### Principles
-- **The coral accent, typography choices, spacing, and radius scale never change between modes.** Only surface, text, and border colors swap. This keeps the brand recognizable regardless of theme.
-- **Elevation logic stays consistent across modes:** sidebar is always one step "further" from the accent than the canvas; the input/card is always the most elevated surface. Light mode expresses this with white-vs-off-white; dark mode expresses it with three progressively lighter near-blacks.
-- **Default mode:** Light, to match the reference screenshot and claude.ai's default. Dark remains available as a user preference.
-- **Persistence:** theme choice should persist per-user (e.g. `localStorage.theme`) and default to `prefers-color-scheme` on first load if no stored preference exists.
+- **The coral accent, typography choices, spacing, and radius scale never change between modes.** Only surface, text, and border colors swap.
+- **Elevation logic stays consistent across modes:** sidebar is one step from the canvas; the input is the most elevated surface.
+- **No coral focus ring on the chat input** in either mode — focus must not look like a "selection" chrome. Dark keeps a permanent `#575653` 2px outline; light keeps a soft hairline + ambient shadow only.
+- **Default mode:** system preference / last user choice (`localStorage`).
 
 ### New Component: Theme Toggle
 **`theme-toggle-button`** — Small icon button (sun/moon), lives in the sidebar footer near the user card or inside a settings menu. Size 32×32px, `{rounded.md}`, background transparent, hover `{theme.*.bg-hover}`. Icon color `{theme.*.text-secondary}`. Toggling swaps the active `{theme.*}` set app-wide; no page reload required.
@@ -550,11 +597,31 @@ When photography is used (rare — mostly testimonials), avatars crop to perfect
 
 > **Theming note:** every color below is now expressed as `{theme.*}` (resolves to `{theme.light.*}` or `{theme.dark.*}` depending on active mode — see "Theme Modes" section above). The old alpha spec hardcoded these to the dark-mode values only; that mapping is preserved as the Dark Mode column, Light Mode is the new addition matching the reference screenshot.
 
-**`sidebar`** — Left sidebar, full height, background `{theme.bg-sidebar}` (light: `#f7f4ee` · dark: `#181715`). No right border, or a barely-visible 1px `{theme.border}`. Contains, top to bottom: logo/wordmark + collapse button, "Novo bate-papo" ghost button, the two **fixed navigation items** (`sidebar-fixed-nav-item`: "Conversas", "Artefatos"), the dynamic "Favoritos" section (`sidebar-favorites-section`, renders only when it has content), the dynamic "Recentes" section (`sidebar-recent-section`), and the user card at the footer.
+**`sidebar`** — Left sidebar, full height, background `{theme.bg-sidebar}` (light: `#f7f7f5` · dark: `#1d1d1c`). 1px right border `{theme.border}`. Width `{layout.sidebar-w}` = **308px**. Contains, top to bottom:
+1. **Header** (`sidebar-header`) — brand left, actions right
+2. Optional **search row** (toggled)
+3. **Nova conversa** pill (`sidebar-new-chat-button`)
+4. Fixed nav (`Conversas` / `Artefatos` / `Projetos`)
+5. Favoritos + Recentes (grouped by date)
+6. Footer user card + theme/logout
 
-**`sidebar-new-chat-button`** — Ghost pill button at top of sidebar. Background transparent, text `{theme.text-primary}`, hover using `{theme.bg-hover}`. Icon + text, `{typography.nav-link}` (Inter 14px / 500).
+**`sidebar-header`** (v-beta-4, DeepSeek-style layout) —
+- **Left:** compact logo **20×20** + wordmark "NexusLocal" in serif ~18px / 600, color `{theme.text-primary}` (`#f8f8f6` dark).
+- **Right actions** (32×32 ghost icon buttons, color `{theme.text-secondary}`):
+  1. **Search** (`Search`) — toggles `sidebar-search-row`, filters conversation titles client-side
+  2. **Collapse** (`PanelLeftClose`) — closes sidebar (replaces chevron `<`)
+- Logo/icon hover: subtle **tilt** `rotate(-8°..-10°) scale(1.04–1.06)` for dynamism (shared motion on fixed-nav icons and footer icon buttons).
 
-**`sidebar-nav-item`** — Navigation items (Conversas, Projetos, etc.). Text `{theme.text-primary}`, icon to the left, hover background `{theme.bg-hover}`. `{typography.nav-link}` (Inter 14px / 500).
+**`sidebar-search-row`** — Full-width field under header when search is open. Background `{theme.bg-hover}`, 1px `{theme.border}`, `{rounded.md}`, search glyph + input + clear. Placeholder `{theme.text-secondary}`.
+
+**`sidebar-new-chat-button`** (v-beta-4, DeepSeek pill) — Full-width **pill** below header (not a ghost text row).
+- Width: `calc(100% - 24px)`, margin `4px 12px 10px`, padding `11px 16px`
+- Dark: fill `{theme.bg-hover}` / `#2a2a28`, border `1px solid rgba(255,255,255,0.12)`, text `{theme.text-primary}`
+- Light: fill `#ffffff`, border `1px solid rgba(0,0,0,0.10)`
+- Content centered: **circular + badge** (20px circle, 1.5px stroke, Plus 12px) + label "Nova conversa" (14px / 500)
+- Hover: slightly lighter fill; + circle tilts
+
+**`sidebar-nav-item` / `sidebar-fixed-nav-item`** — Navigation items (Conversas, Artefatos, Projetos). Text `{theme.text-secondary}` default → `{theme.text-primary}` on hover; selected uses elevated bg + optional coral weight. Icon left (18–20px). **Icon tilt on hover** (same motion as header).
 
 > **v-beta-2 addition — Sidebar Navigation (Conversas / Artefatos / Favoritos).** The alpha and beta specs treated "Conversas" and "Artefatos" as generic `sidebar-nav-item` entries with no defined destination. This version formalizes them as permanent, always-visible entries with their own full-page views, plus a pinned Favoritos section and a shared context menu — see the plan doc for the full implementation breakdown (`PLANO_SIDEBAR_CONVERSAS_ARTEFATOS.md`).
 
@@ -579,17 +646,33 @@ When photography is used (rare — mostly testimonials), avatars crop to perfect
 
 #### Chat Canvas
 
-**`chat-canvas`** — Central chat area, background `{theme.bg-canvas}` (light: `#ffffff` · dark: `#21201d`, new token `{colors.canvas-dark}`). One elevation step lighter than the sidebar in both modes — the "floor" pattern.
+**`chat-canvas`** — Central chat area, background `{theme.bg-canvas}` (light: `#FCFBF8` · dark: `#1f1f1e`). Floor pattern against the sidebar (`#1d1d1c` dark).
+
+**`chat-header`** — Compact bar (`--header-h` 52px + safe-area). Left cluster: open-sidebar (if closed) → **provider selector** → **Fusion toggle** (DNA icon, 32×32, tooltip custom) → optional project breadcrumb. Right: support / overflow menu. Fusion sits **next to the provider selector**, not isolated on the far right.
 
 **`chat-plan-badge`** — Small pill badge at top showing plan status (e.g., "plano Gratuito · Fazer Upgrade"). Background `{theme.bg-card}`, text `{theme.text-secondary}`, upgrade link in `{colors.primary}` (coral, underlined) — matches the reference screenshot exactly.
 
 **`chat-greeting`** — Central greeting ("Boa noite, {nome}"). Brand mark/logo + serif display text using `{typography.display-sm}` or `{typography.display-md}` (Tiempos Headline / Cormorant Garamond, 28-36px, weight 400, letter-spacing -0.3 to -0.5px), color `{theme.text-primary}`. Name portion may be emphasized with a slightly stronger shade of `{theme.text-primary}`. Time-of-day aware (Bom dia / Boa tarde / Boa noite). The sun/spike-mark glyph beside the greeting renders in `{colors.primary}` (coral) in both modes.
 
-**`chat-category-chips`** — Category suggestion pills (Escrever, Aprender, Código, Assuntos pessoais, Sugestões). Background `{theme.bg-card}`, text `{theme.text-primary}`, icon to left in `{theme.text-secondary}`, hover darkening one step further (`{colors.surface-cream-strong}` in light, `{colors.surface-dark-elevated}` in dark). Pill shape, `{typography.button}` (Inter 14px / 500).
+**`chat-category-chips` / `welcome-chip-btn`** (v-beta-4) — Suggestion chips under empty-state greeting.
+- **No border** (hairline removed).
+- Padding `10px 16px`, radius ~10px, gap icon/text `9px`.
+- Typography **14.5px / 500**; icons **18px**.
+- **Dark:** fill `#363635`, text `#ffffff`, icons `#97958c` (hover fill `#40403e`).
+- **Light:** fill `{theme.bg-card}`, text `{theme.text-primary}`, icons `{theme.text-secondary}`.
+- Icon tilt on hover (shared micro-motion). Max bar width ~570px (aligned to input +20px).
 
 #### Message Input
 
-**`chat-input-card`** — Input container card, matches the "DESIGN.md" attachment-card look in the reference screenshot. Background `{theme.bg-input}` (light: `#ffffff` · dark: `#2a2825`, new token `{colors.surface-dark-input}`), large border-radius (~20px, `{rounded.xl}`), 1px `{theme.border}`. On focus: subtle shadow + slight highlight (not a thick coral ring). Shadow: `0 0.25rem 1.25rem rgba(0,0,0,3.5%)` at rest in light mode; dark mode uses a barely-there `0 0.25rem 1.25rem rgba(0,0,0,20%)` instead, since shadows read differently on dark surfaces.
+**`chat-input-card`** (v-beta-4) — Composer shell.
+- Background `{theme.bg-input}` (light `#FFFFFF` · dark `#2c2c2a`).
+- Radius ~24px (`{rounded.xl}` / pill-adjacent).
+- **Width:** max **780px** default (+20px from 760); empty-state **720px** (+20px from 700).
+- **Border:**
+  - Dark: **permanent 2px** solid `#575653` (`--input-border`). Unchanged on focus.
+  - Light: 1px hairline + soft ambient shadow; focus keeps hairline (**never coral**).
+- **Focus policy (both themes):** do **not** apply coral `box-shadow` / `border-color: var(--primary)` on `:focus-within`. The previous coral focus ring is explicitly forbidden — it read as an unwanted "selection" chrome.
+- Tool row: attach, enhancer, web-search (custom tooltips `tooltip-up`). **No per-chat memory brain icon** — memory is global only (Settings → Memória).
 
 **`chat-model-selector-button`** — Model selector button inside input. Shows current model name (e.g., "Sonnet 5") + optional variant suffix (e.g., "Médio") + chevron (▾). Height 32px, padding 0 10px, border-radius `{rounded.md}` (8px), `{typography.button}` (Inter 14px / 500), color `{theme.text-primary}`, background transparent. Hover: background `{theme.bg-hover}`. Variant text in `{theme.text-secondary}`.
 
@@ -665,7 +748,7 @@ When photography is used (rare — mostly testimonials), avatars crop to perfect
 
 **`text-input`** — Standard text input. Background `{colors.canvas}`, text `{colors.ink}`, type `{typography.body-md}`, rounded `{rounded.md}` (8px), padding 10px × 14px, height 40px. 1px hairline border in `{colors.hairline}`.
 
-**`text-input-focused`** — Focus state. Border thickens or shifts to `{colors.primary}` (coral) for emphasis. Carries a 3px coral-at-15%-alpha outer ring.
+**`text-input-focused`** — Focus state for **admin/forms** may use a subtle primary border. **Exception — chat composer (`chat-input-card`):** never use coral ring; see Message Input / v-beta-4.
 
 **`cookie-consent-card`** — Bottom-right floating dark cookie banner. Background `{colors.surface-dark}`, text `{colors.on-dark}`, rounded `{rounded.lg}`, padding `{spacing.lg}` (24px). One of the few places dark surface appears at small scale on cream pages.
 
@@ -685,7 +768,7 @@ When photography is used (rare — mostly testimonials), avatars crop to perfect
 
 **`cta-band-dark`** — Alternative pre-footer band on developer-focused pages. Background `{colors.surface-dark}`, text `{colors.on-dark}`, rounded `{rounded.lg}`, padding 64px. Often pairs with a code-window card.
 
-**`footer`** — Dark navy footer that closes every page. Background `{colors.surface-dark}` (#181715), text `{colors.on-dark-soft}`. 4-column link list at desktop covering Product / Company / Resources / Legal. Vertical padding 64px. The Anthropic spike-mark + "Anthropic" wordmark sits at the top in `{colors.on-dark}`. The footer never inverts.
+**`footer`** — Dark navy footer that closes every page. Background `{colors.surface-dark}` (#1d1d1c product alignment), text `{colors.on-dark-soft}` (#c3c2b7). 4-column link list at desktop covering Product / Company / Resources / Legal. Vertical padding 64px. The Anthropic spike-mark + "Anthropic" wordmark sits at the top in `{colors.on-dark}`. The footer never inverts.
 
 ## Do's and Don'ts
 
@@ -746,6 +829,51 @@ When photography is used (rare — mostly testimonials), avatars crop to perfect
 6. Cream + coral + dark navy is the trinity. Don't introduce a fourth surface tone (no purple cards, no green sections).
 7. When in doubt about emphasis: bigger Copernicus serif before bolder weight.
 
+## UI Premium Refresh (v-beta-4)
+
+> Shipped in product CSS/components. This section is the canonical checklist for colors + interaction details that superseded earlier dark tokens.
+
+### Dark palette (summary)
+| Surface | Hex |
+|---|---|
+| Sidebar | `#1d1d1c` |
+| Canvas / app floor | `#1f1f1e` |
+| Cards / chat input | `#2c2c2a` |
+| Sidebar hover | `#2a2a28` |
+| Brand / primary text | `#f8f8f6` |
+| Secondary text | `#c3c2b7` |
+| Muted / chip icons | `#97958c` |
+| Suggestion chip fill | `#363635` |
+| Suggestion chip text | `#ffffff` |
+| Chat input border (2px) | `#575653` |
+| Free-tier badge dot | `#3ecf8e` |
+| Coral accent (unchanged) | `#cc785c` |
+
+### Shared structural rules (light + dark)
+1. **Chat input focus:** no coral selection ring.
+2. **Input max-width:** 780px (empty 720px).
+3. **Suggestion chips:** larger type/icons, no outline; dark uses chip tokens above.
+4. **Custom tooltips:** all interactive hover copy uses `.custom-tooltip-trigger` + `data-tooltip` (not native `title` balloons). `Button` maps `title`/`tooltip` → custom automatically. Placement `tooltip-up` near the composer.
+5. **Sidebar icon motion:** hover tilt ~−10° + slight scale on brand, header actions, fixed nav, new-chat +, footer icons.
+6. **Memory:** on by default globally (`profile.memory_enabled`); **no** per-conversation brain control in the composer.
+7. **Providers UI:** when no API key → primary CTA `+ Obter API Key`; with key → `Sincronizar Modelos`. External-link icon beside provider name. Free tier badge = green dot that expands on hover to "Oferece Modelos Free".
+8. **Fusion:** icon button adjacent to provider selector; custom tooltip "Ativar/Desativar modo Fusion"; icon optically centered in 32×32 target.
+
+### Component CSS classes (implementation map)
+| Spec | CSS / component |
+|---|---|
+| Dark tokens | `html[data-theme="dark"]` in `frontend/src/index.css` |
+| Sidebar header | `.sidebar-header`, `.sidebar-brand`, `.brand-logo` (20px), `.sidebar-header-actions` |
+| Search | `.sidebar-search-row` |
+| Nova conversa pill | `.new-chat-btn`, `.new-chat-btn-icon` |
+| Fixed nav tilt | `.sidebar-fixed-nav-item:hover svg` |
+| Input | `.input-card`, `.input-wrapper` |
+| Chips | `.welcome-chip-btn` |
+| Tooltips | `.custom-tooltip-trigger`, `.tooltip-up` |
+| Free badge | `.tier-badge.free`, `.tier-badge-dot`, `.tier-badge-label` |
+| Provider key link | `.provider-key-link` |
+| Fusion header | `.fusion-header-btn` |
+
 ## Chat Message Hierarchy (v-beta-3)
 
 > Added in v-beta-3. Formalizes the **visual hierarchy** of AI responses — addressing the gap where reasoning, response text, metadata, and actions all competed for attention at the same visual weight. The goal: the user should immediately identify (1) the main response, (2) the thinking block (optional), (3) metadata, (4) available actions.
@@ -805,24 +933,25 @@ All formats are unified into a single `{ thinking, response, isThinking }` objec
 - **Sidebar conv-item active state:** `border-left: 2px solid {colors.primary}` — coral left accent as selected indicator
 - **Sidebar group labels:** `10.5px / 600 / 0.7px tracking / opacity 70%` — more refined, less heavy
 
-### Input Card (Updated)
+### Input Card (Updated — v-beta-4)
 
-**`chat-input-card`** (updated from v-beta):
-- `border-radius: 24px` (increased from 20px)
-- `padding: 2px` outer wrap (creates visual breathing room)
-- `textarea border-radius: 18px` (inner follows the outer rounding)
-- Light mode shadow: `0 1px 8px rgba(20,20,19,0.07)` — very subtle, editorial
-- Dark mode shadow: `0 0.25rem 1rem rgba(0,0,0,0.28)` — warmer tone, less heavy than before
+**`chat-input-card`**:
+- `border-radius: 24px`
+- Outer padding ~6px; textarea breathing room
+- Max-width **780px** (empty state **720px**)
+- Light: 1px hairline + soft ambient shadow; **no coral focus ring**
+- Dark: fill `#2c2c2a`, **permanent 2px** border `#575653`; focus does not change border color
+- See **UI Premium Refresh (v-beta-4)** for full policy
 
 ## Known Gaps
 
 - Copernicus and StyreneB are licensed Anthropic typefaces and not available as public web fonts. Substitutes (Tiempos Headline / Cormorant Garamond / EB Garamond for serif; Inter / Söhne for sans) are documented in the typography section.
 - The Anthropic radial-spike-mark is a brand glyph rendered as inline SVG; it's not formalized as a system token here. Treat it as a logo asset.
-- Animation and transition timings (chat message reveal, code block typewriter effect on the homepage, agentic-flow diagram animations) are not in scope, including the theme-toggle transition itself (recommend a simple 150-200ms `background-color`/`color` cross-fade, no layout shift).
-- Form validation states beyond `{component.text-input-focused}` are not extracted — error / success states would need a sign-up or feedback flow to confirm, and haven't been re-verified against dark mode.
-- The new light-mode sidebar/canvas hex values (`sidebar-light`, `canvas-white`, `border-light`) and the new dark-mode canvas/input values (`canvas-dark`, `surface-dark-input`, `border-dark`) are estimated from the reference screenshot at normal viewing resolution — worth a pixel-sample pass against a live claude.ai session (light) and a dark-mode screenshot (not yet supplied) to confirm exact hex values before shipping.
-- The v-beta-2 sidebar-navigation components (`sidebar-fixed-nav-item`, `sidebar-favorites-section`, `conversation-context-menu`, `confirm-delete-modal`, `artifact-card`) are documented at the visual/token level only; data-model and API details (favoriting, renaming, deleting, list pagination) live in the separate implementation plan (`PLANO_SIDEBAR_CONVERSAS_ARTEFATOS.md`), not in this file.
-- Batch-action toolbar (`bulk-select-toolbar`) interaction details — whether it docks top or bottom, and its exact button set beyond "Favoritar selecionados" / "Apagar selecionados" — are a first pass and may need revision once wired up.
+- Animation timings beyond documented micro-motions (sidebar icon tilt, chip icon tilt, tooltip fade) are not fully specified.
+- Form validation states beyond `{component.text-input-focused}` are not extracted for all admin forms.
+- **Light mode palette** still pending a dedicated pass matching the depth of v-beta-4 dark recalibration (structure/sizes already shared).
+- The v-beta-2 sidebar-navigation data-model details live in `PLANO_SIDEBAR_CONVERSAS_ARTEFATOS.md`.
+- **v-beta-4 dark hex values are shipped** in `frontend/src/index.css` (`html[data-theme="dark"]`) — treat CSS as source of truth if this file and CSS diverge.
 
 ## NexusLocal Implementation Notes
 
@@ -850,7 +979,7 @@ From these marketing-only components, we only reuse the **shared tokens** (color
 ### Implementation Checklist for NexusLocal
 - [ ] Update `index.html` / font file: keep Inter (300/400/500/600) and add serif fallback (`Cormorant Garamond` or `EB Garamond`) via Google Fonts for headlines.
 - [ ] Create/update theme token file (`theme.css` or `tailwind.config`) with **both** `theme.light.*` and `theme.dark.*` sets from the "Theme Modes" section — expose each as a CSS custom property (e.g. `--bg-sidebar`, `--bg-canvas`, `--text-primary`) so components never reference raw hex.
-- [ ] Add a `data-theme="light" | "dark"` attribute on `<html>` (or a `.dark` class toggle) and scope the two token sets under it, e.g. `:root[data-theme="light"] { --bg-sidebar: #f7f4ee; ... }` / `:root[data-theme="dark"] { --bg-sidebar: #181715; ... }`.
+- [x] `data-theme="light" | "dark"` on `<html>` with tokens in `frontend/src/index.css` (dark v-beta-4: sidebar `#1d1d1c`, canvas `#1f1f1e`, input `#2c2c2a`).
 - [ ] Build `theme-toggle-button` (sun/moon icon) — on click, flips `data-theme` and writes the choice to `localStorage.theme`.
 - [ ] On first load with no stored preference, initialize from `window.matchMedia('(prefers-color-scheme: dark)')`.
 - [ ] Sidebar: bind background/text to `var(--bg-sidebar)` / `var(--text-primary)` instead of hardcoded dark values.
@@ -861,8 +990,21 @@ From these marketing-only components, we only reuse the **shared tokens** (color
 - [ ] Chat input: apply large radius, subtle shadow (shadow opacity should differ between modes — see `chat-input-card` notes), keep provider selector at top intact.
 - [ ] Replace fixed model selector inside input with provider-dependent model selector.
 - [ ] Send button: the only coral-highlighted element — stays `{colors.primary}` in both modes, does **not** bind to theme tokens.
-- [ ] Review accessibility contrast for both modes: `{theme.light.text-secondary}` (#6c6a64) on `{theme.light.bg-canvas}` (#ffffff), and `{theme.dark.text-secondary}` (#a09d96) on `{theme.dark.bg-canvas}` (#21201d), before finalizing.
+- [ ] Review accessibility contrast for both modes: light secondary on canvas; dark secondary `#c3c2b7` on canvas `#1f1f1e` / sidebar `#1d1d1c` (v-beta-4).
+- [x] Chat input: no coral focus ring; dark permanent 2px `#575653`.
+- [x] Sidebar header DeepSeek layout (logo + search + panel-close) + pill Nova conversa.
+- [x] Suggestion chips borderless + larger type/icons (dark chip tokens).
+- [x] Custom tooltips app-wide; Fusion beside provider; global memory only.
 - [ ] Sidebar navigation (v-beta-2): pin "Conversas" and "Artefatos" as `sidebar-fixed-nav-item` directly below "Novo bate-papo"; build the "Conversas" (`list-page-header` + `list-page-search` + `conversation-list-row` list + `bulk-select-toolbar`) and "Artefatos" (`list-page-header` + `list-page-search` + `artifact-card` grid) full-page views.
 - [ ] Add `conversation-context-menu` (`•••`) to every `conversation-list-row`, with Favoritar/Desfavoritar, Mudar o nome (inline rename), and Apagar (routes through `confirm-delete-modal`, never deletes directly).
 - [ ] Add `sidebar-favorites-section` between the fixed nav items and "Recentes" — conditionally rendered, sorted by `favorited_at DESC`, using the same `conversation-list-row` component as Recentes.
 - [ ] Full data-model, API endpoint, and QA-edge-case breakdown for this feature lives in `PLANO_SIDEBAR_CONVERSAS_ARTEFATOS.md` — follow its phase order (backend → context menu → favorites section → fixed nav items → full pages).
+
+### Fase 9.5: Memória Adaptativa e Sugestões Dinâmicas
+NexusLocal possui uma inteligência de personalização de usuário inovadora:
+- **Sugestões Elaboradas**: Cliques nos chips inferiores (Escrever, Aprender, Código, Brainstorm) acionam instruções extensas e bem formuladas no prompt final enviado ao modelo, assegurando respostas detalhadas desde o primeiro turno.
+- **Ordenação Dinâmica de Chips**: O rodapé de chips é reordenado dinamicamente com base no score de interesse histórico das últimas 15 conversas do usuário.
+- **Sugestões Contextuais Customizadas**: Injeção automática de sugestões especiais de atalho no topo do submenu ao identificar tópicos frequentes no histórico do usuário (ex: `Fix Serviços`, `React`, `Python`, `mcp`).
+- **Memória Adaptativa em Segundo Plano**: Processamento assíncrono pós-fluxo de chat que extrai fatos recorrentes do usuário, salvando-os de forma estruturada (`user_memory` SQLite) para injeção contextual em novas sessões.
+- **Gerenciador de Memória**: Aba dedicada nas configurações do sistema permitindo visualização, busca e exclusão de fatos que a IA aprendeu sobre o usuário.
+

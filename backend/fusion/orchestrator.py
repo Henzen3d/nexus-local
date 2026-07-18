@@ -5,7 +5,11 @@ import uuid
 from typing import List, Dict, Any, Optional
 from fastapi import WebSocket
 from backend.database import get_db, check_and_deactivate_model
+from backend.logging_config import get_logger
+from backend.orchestration.artifacts import detect_artifacts, save_artifact
 from backend.providers.registry import get_provider, get_model_name
+
+logger = get_logger(__name__)
 
 # ──────────────────────────────────────────────────────────────────────────
 # Configuração
@@ -15,6 +19,7 @@ TIMEOUT_MODELO_PARALELO = 90  # segundos — evita que 1 modelo travado segure o
 TIMEOUT_BUSCA_WEB = 20
 TIMEOUT_DETECCAO_CLAIMS = 30  # segundos — a detecção de claims não pode atrasar demais o Juiz
 TIMEOUT_JUIZ = 180  # segundos — evita que um Juiz travado segure o Fusion indefinidamente
+TIMEOUT_REFINAR = 45  # segundos — refino pré-fan-out não pode travar o Fusion inteiro
 
 SELF_CRITIQUE_SUFFIX = (
     "\n\n---\nApós responder normalmente, adicione uma linha final no formato:\n"
@@ -119,8 +124,8 @@ query de busca curta e direta para verificar o fato. Exemplo:
             return []
         queries = json.loads(resposta[start:end + 1])
         return [q for q in queries if isinstance(q, str) and q.strip()][:3]
-    except Exception as e:
-        print(f"[fusion grounding] erro ao detectar claims: {e}")
+    except Exception:
+        logger.warning("fusion grounding: erro ao detectar claims", exc_info=True)
         return []
 
 
@@ -139,26 +144,99 @@ async def _refinar_pergunta(
         "3. Retorne APENAS o texto da pergunta refinada (ou original), sem comentários, aspas extras, ou explicações."
     )
     
-    mensagens = [{"role": "system", "content": system_prompt}] + history
-    
+    # Só o histórico recente — evita prompt enorme (ex.: system de projeto) no refinador
+    hist_curto = []
+    for m in history:
+        if not isinstance(m, dict):
+            continue
+        role = m.get("role")
+        if role not in ("user", "assistant"):
+            continue
+        content = m.get("content")
+        if isinstance(content, list):
+            text_parts = [
+                str(p.get("text", "")) for p in content if isinstance(p, dict) and p.get("type") == "text"
+            ]
+            content = "\n".join(text_parts)
+        if not isinstance(content, str) or not content.strip():
+            continue
+        # Cap por mensagem para não estourar free-tier no refine
+        hist_curto.append({"role": role, "content": content[:2000]})
+    hist_curto = hist_curto[-6:]
+
+    mensagens = [{"role": "system", "content": system_prompt}] + hist_curto
+    if not any(m.get("role") == "user" for m in hist_curto):
+        mensagens.append({"role": "user", "content": prompt[:4000]})
+
     try:
-        resposta = ""
-        async for token in provider_juiz.stream_chat(
-            model=judge_model_name,
-            messages=mensagens,
-        ):
-            resposta += str(token)
-            
+        async def _stream_refine() -> str:
+            resposta = ""
+            async for token in provider_juiz.stream_chat(
+                model=judge_model_name,
+                messages=mensagens,
+            ):
+                resposta += str(token)
+            return resposta
+
+        resposta = await asyncio.wait_for(_stream_refine(), timeout=TIMEOUT_REFINAR)
         resposta_limpa = resposta.strip()
-        
+
         # Se a IA encapsular com aspas, removemos
         if resposta_limpa.startswith('"') and resposta_limpa.endswith('"'):
             resposta_limpa = resposta_limpa[1:-1].strip()
-            
+
+        # Refino vazio ou absurdamente longo → fallback
+        if not resposta_limpa or len(resposta_limpa) > max(len(prompt) * 4, 4000):
+            return prompt
+
         return resposta_limpa
-    except Exception as e:
-        print(f"[fusion refinement] erro ao refinar pergunta: {e}")
+    except asyncio.TimeoutError:
+        logger.warning("fusion refinement: timeout após %ss — usando pergunta original", TIMEOUT_REFINAR)
         return prompt
+    except Exception:
+        logger.warning("fusion refinement: erro ao refinar pergunta", exc_info=True)
+        return prompt
+
+
+def _precisa_refinar(prompt: str, history: list) -> bool:
+    """Heurística rápida: só aciona o refinador se houver sinais de ambiguidade.
+    Suporta todas as línguas de tradução ativa no sistema (PT, EN, ES, FR, DE, JA, KO)."""
+    # Primeira mensagem da conversa — não há contexto anterior para desambiguar
+    user_msgs = [m for m in history if isinstance(m, dict) and m.get("role") == "user"]
+    if len(user_msgs) <= 1:
+        return False
+
+    # Padrões para línguas com limite de palavra (\b)
+    # (Português, Inglês, Espanhol, Francês, Alemão)
+    patterns_western = [
+        # Português
+        r'isso|isto|ele[s]?|ela[s]?|anterior|acima|aquilo|o mesmo|a mesma|o que disse|como mencionei|continue|continua|e quanto|sobre aquilo|nesse caso|desse jeito|esse tema|essa questão|do que falamos',
+        # English
+        r'this|that|it|he|she|they|him|her|them|above|former|latter|aforesaid|same|continue|go on|what about|about that|in this case|in that case|what I said|as I mentioned',
+        # Español
+        r'esto|eso|aquello|él|ella|ellos|ellas|anterior|arriba|lo mismo|la misma|continua|continúa|qué hay de|sobre eso|en este caso|en ese caso|lo que dije|como mencioné',
+        # Français
+        r'ceci|cela|ça|il|elle|ils|elles|le|la|les|lui|leur|précédent|ci-dessus|continuer|qu\'en est-il|à ce sujet|dans ce cas|ce que j\'ai dit|comme mentionné',
+        # Deutsch
+        r'dies|das|es|er|sie|ihm|ihn|ihnen|vorherige|oben|weiter|weitergehen|was ist mit|darüber|in diesem Fall|was ich gesagt habe|wie erwähnt'
+    ]
+    
+    combined_western = r'\b(' + '|'.join(patterns_western) + r')\b'
+    if re.search(combined_western, prompt, re.IGNORECASE):
+        return True
+
+    # Padrões para línguas sem limite de palavra (Japonês, Coreano)
+    patterns_asian = [
+        # Japanese (これ, それ, あれ, 彼, 彼女, 前の, 続き, 続けて, さっき)
+        r'これ|それ|あれ|彼|彼女|前の|続き|続けて|さっき',
+        # Korean (이것, 그것, 저것, 그, 그녀, 이전, 계속, 아까, 앞서)
+        r'이것|그것|저것|그|그녀|이전|계속|아까|앞서'
+    ]
+    combined_asian = '|'.join(patterns_asian)
+    if re.search(combined_asian, prompt):
+        return True
+
+    return False
 
 
 async def _buscar_web(query: str, search_config: dict) -> Optional[str]:
@@ -182,8 +260,8 @@ async def _buscar_web(query: str, search_config: dict) -> Optional[str]:
             return None
         finally:
             await db.close()
-    except Exception as e:
-        print(f"[fusion grounding] erro na busca '{query}': {e}")
+    except Exception:
+        logger.warning("fusion grounding: erro na busca '%s'", query, exc_info=True)
         return None
 
 
@@ -194,6 +272,8 @@ async def executar_fusion(
     conversation_id: str,
     user_id: str | None = None,
     force_grounding: bool = False,
+    web_search_already_done: bool = False,
+    client_timezone_offset: int | None = None,
 ):
     db = await get_db()
     try:
@@ -227,29 +307,40 @@ async def executar_fusion(
 
     # Grounding roda se estiver habilitado na config do Fusion OU se o usuário
     # ativou a busca web nesta mensagem — sempre condicionado à busca web global.
+    # Se a busca web global já foi executada para o prompt inicial, pulamos
+    # a verificação factual para não repetir o trabalho e economizar tempo e quota.
     web_search_ok = bool(search_config and search_config.get("enabled"))
-    grounding_enabled = (config_grounding or force_grounding) and web_search_ok
+    grounding_enabled = (config_grounding or force_grounding) and web_search_ok and not web_search_already_done
 
     modelos = [
         {"id": r[0], "provider_id": r[1], "model_id": r[2], "position": r[3]}
         for r in modelos_rows
     ]
 
-    await websocket.send_json({
-        "type": "fusion_start",
-        "models": [m["model_id"] for m in modelos],
-    })
-
-    # ── Refinamento da Pergunta ──────────────────────────────────────────
+    # ── Instanciar o Juiz (necessário para refinamento e fases posteriores) ──
     conn = await get_db()
     try:
-        provider_juiz = await get_provider(judge_provider_id, conn)
+        provider_juiz = await get_provider(judge_provider_id, conn, user_id=user_id)
         judge_model_name = await get_model_name(judge_model_id, conn)
     finally:
         await conn.close()
 
-    prompt_refinado = await _refinar_pergunta(provider_juiz, judge_model_name, prompt, history)
-    
+    # ── Refinamento da Pergunta (condicional) ────────────────────────────
+    # Só refina se houver sinais de ambiguidade (pronomes, referências a
+    # contexto anterior). Perguntas auto-contidas pulam direto pro fan-out,
+    # evitando 5-45s de latência desnecessária no free-tier.
+    prompt_refinado = prompt
+    if _precisa_refinar(prompt, history):
+        await websocket.send_json({"type": "fusion_phase", "phase": "refining"})
+        prompt_refinado = await _refinar_pergunta(provider_juiz, judge_model_name, prompt, history)
+
+    # ── Agora sim mostra os modelos — sem espera fantasma ────────────────
+    await websocket.send_json({
+        "type": "fusion_start",
+        "models": [m["model_id"] for m in modelos],
+    })
+    await websocket.send_json({"type": "fusion_phase", "phase": "proposers"})
+
     # Substituir no history apenas para os modelos (o bd ainda guarda o original)
     history_para_modelos = [dict(m) for m in history]
     if history_para_modelos and history_para_modelos[-1].get("role") == "user":
@@ -261,7 +352,7 @@ async def executar_fusion(
             for part in original_content:
                 if part.get("type") == "text":
                     part["text"] = part["text"].replace(prompt, prompt_refinado)
-        
+
     if prompt_refinado != prompt:
         await websocket.send_json({
             "type": "fusion_refined_prompt",
@@ -287,7 +378,7 @@ async def executar_fusion(
                     "original_model_id": resolved.original_model_id if resolved.was_failover else None
                 })
 
-                provider = await get_provider(final_provider_id, conn)
+                provider = await get_provider(final_provider_id, conn, user_id=user_id)
                 model_name = await get_model_name(final_model_id, conn)
             finally:
                 await conn.close()
@@ -329,7 +420,7 @@ async def executar_fusion(
             }
 
         except asyncio.TimeoutError:
-            print(f"[fusion] Timeout no modelo {modelo['model_id']}")
+            logger.warning("fusion: timeout no modelo %s", modelo['model_id'])
             await websocket.send_json({
                 "type": "fusion_status",
                 "model_id": modelo["model_id"],
@@ -340,7 +431,7 @@ async def executar_fusion(
 
         except Exception as e:
             error_msg = str(e)
-            print(f"[fusion] Erro no modelo {modelo['model_id']}: {error_msg}")
+            logger.error("fusion: erro no modelo %s: %s", modelo["model_id"], error_msg)
             await check_and_deactivate_model(modelo["model_id"], error_msg)
             await websocket.send_json({
                 "type": "fusion_status",
@@ -356,8 +447,7 @@ async def executar_fusion(
         await websocket.send_json({"type": "error", "message": "Nenhum modelo retornou resposta válida."})
         return
 
-    # O Juiz já foi instanciado lá em cima para o refinamento
-    # provider_juiz, judge_model_name já estão disponíveis
+    # provider_juiz e judge_model_name já instanciados antes do fan-out
 
     # ── Grounding: detectar claims verificáveis e buscar na web ────────
     grounding_texto = ""
@@ -371,7 +461,7 @@ async def executar_fusion(
                 timeout=TIMEOUT_DETECCAO_CLAIMS,
             )
         except asyncio.TimeoutError:
-            print("[fusion grounding] timeout na detecção de claims — seguindo sem grounding")
+            logger.warning("fusion grounding: timeout na detecção de claims — seguindo sem grounding")
             queries = []
 
         if queries:
@@ -408,17 +498,52 @@ async def executar_fusion(
         for r in respostas_validas
     ])
 
-    conteudo_usuario = f'Pergunta original do usuário: "{prompt}"\n\n{blocos}'
-    if grounding_texto:
-        conteudo_usuario += (
-            f"\n\n--- RESULTADOS DE BUSCA WEB (fonte externa, priorize sobre respostas "
-            f"divergentes dos modelos) ---\n{grounding_texto}"
-        )
+    import datetime
+    if client_timezone_offset is not None:
+        try:
+            # client_timezone_offset is in minutes (positive for west of UTC, negative for east)
+            # In Python timedelta, positive is east, so we invert the sign.
+            tz = datetime.timezone(datetime.timedelta(minutes=-int(client_timezone_offset)))
+            current_date = datetime.datetime.now(tz).strftime("%d/%m/%Y %H:%M")
+        except Exception:
+            current_date = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
+    else:
+        current_date = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
 
-    mensagens_juiz = [
-        {"role": "system", "content": judge_system_prompt},
-        {"role": "user", "content": conteudo_usuario},
-    ]
+    # O Juiz precisa do histórico da conversa para manter contexto, além
+    # de receber os resultados da busca web inicial (que estão na última
+    # mensagem do usuário em `history`).
+    mensagens_juiz = [dict(m) for m in history]
+    
+    judge_system_prompt_final = (
+        f"{judge_system_prompt}\n\n"
+        f"[INFORMAÇÃO DO SISTEMA]\n"
+        f"Data atual do sistema: {current_date}. Você deve usar esta data como referência para o tempo presente."
+    )
+
+    # Substitui a instrução de sistema padrão pela do Juiz
+    if mensagens_juiz and mensagens_juiz[0].get("role") == "system":
+        mensagens_juiz[0]["content"] = judge_system_prompt_final
+    else:
+        mensagens_juiz.insert(0, {"role": "system", "content": judge_system_prompt_final})
+
+    # Anexa as respostas para consolidação na última mensagem do usuário
+    if mensagens_juiz and mensagens_juiz[-1].get("role") == "user":
+        extra_content = f"\n\n--- RESPOSTAS DOS MODELOS PARALELOS PARA CONSOLIDAÇÃO ---\n{blocos}"
+        if grounding_texto:
+            extra_content += (
+                f"\n\n--- RESULTADOS DE BUSCA WEB (FACT-CHECKING POSTERIOR) ---\n"
+                f"Priorize essas informações factuais sobre as respostas dos modelos:\n{grounding_texto}"
+            )
+        
+        orig_content = mensagens_juiz[-1]["content"]
+        if isinstance(orig_content, str):
+            mensagens_juiz[-1]["content"] = orig_content + extra_content
+        elif isinstance(orig_content, list):
+            for part in reversed(orig_content):
+                if part.get("type") == "text":
+                    part["text"] += extra_content
+                    break
 
     await websocket.send_json({
         "type": "fusion_judge_start",
@@ -480,12 +605,12 @@ async def executar_fusion(
 
     if full_response:
         try:
-            from backend.routers.chat import detect_artifacts, _save_artifact
+            from backend.orchestration.artifacts import detect_artifacts, save_artifact
             db = await get_db()
             try:
                 detected_list = detect_artifacts(full_response)
                 for detected in detected_list:
-                    art_id = await _save_artifact(
+                    art_id = await save_artifact(
                         db, conversation_id, assistant_msg_id, detected
                     )
                     artifacts_list.append({
@@ -504,8 +629,8 @@ async def executar_fusion(
                     })
             finally:
                 await db.close()
-        except Exception as e:
-            print(f"[fusion artifact] erro ao detectar/salvar múltiplos: {e}")
+        except Exception:
+            logger.exception("fusion artifact detect/save failed")
 
     await websocket.send_json({
         "type": "stream_end",

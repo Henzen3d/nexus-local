@@ -2,6 +2,9 @@ import asyncio
 import httpx
 from backend.database import get_db
 
+from backend.logging_config import get_logger
+logger = get_logger(__name__)
+
 async def get_web_search_config(db):
     async with db.execute(
         "SELECT enabled, search_provider, api_key, max_results, heuristic_enabled, heuristic_sensitivity FROM web_search_config WHERE id = 1"
@@ -21,7 +24,7 @@ async def get_web_search_config(db):
 class BraveSearchProvider:
     async def search(self, query: str, api_key: str, max_results: int = 5) -> list[dict]:
         if not api_key:
-            print("[Brave Search] Warning: API Key missing")
+            logger.warning("[Brave Search] Warning: API Key missing")
             return []
         url = "https://api.search.brave.com/res/v1/web/search"
         headers = {
@@ -48,9 +51,9 @@ class BraveSearchProvider:
                         })
                     return results
                 else:
-                    print(f"[Brave Search] API responded with status {res.status_code}: {res.text}")
+                    logger.info("[Brave Search] API responded with status %s: %s", res.status_code, res.text)
             except Exception as e:
-                print(f"[Brave Search Error] {e}")
+                logger.error("[Brave Search Error]", exc_info=e)
         return []
 
 class DuckDuckGoProvider:
@@ -58,6 +61,7 @@ class DuckDuckGoProvider:
         try:
             def sync_search():
                 from ddgs import DDGS
+
                 with DDGS() as ddgs:
                     # Using text method which is stable
                     res_list = list(ddgs.text(query, max_results=max_results))
@@ -74,7 +78,7 @@ class DuckDuckGoProvider:
                 })
             return results
         except Exception as e:
-            print(f"[DuckDuckGo Search Error] {e}")
+            logger.error("[DuckDuckGo Search Error]", exc_info=e)
         return []
 
 async def resolve_and_execute_search(query: str, db, config: dict = None) -> list[dict]:

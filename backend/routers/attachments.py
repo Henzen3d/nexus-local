@@ -76,7 +76,8 @@ async def upload_attachment(
             preview_text = extracted_text[:200] + ("..." if len(extracted_text) > 200 else "")
 
         return {
-            "attachment_id": attachment_id,
+            "id": attachment_id,
+            "attachment_id": attachment_id,  # legacy alias
             "file_type": category,
             "filename": file.filename,
             "mime_type": mime_type,

@@ -24,8 +24,14 @@ export class ThinkingParser {
     'reasoning',
     'analysis',
     'reflection',
-    'assistant_thought'
+    'assistant_thought',
+    'redacted_reasoning',
+    'redacted_thinking',
   ];
+
+  private static get tagsPattern(): string {
+    return this.TAGS.join('|');
+  }
 
   /**
    * Verifica se uma string consiste apenas de "raciocínio vazado":
@@ -61,6 +67,25 @@ export class ThinkingParser {
     return italicOrEmptyCount / lines.length >= 0.7;
   }
 
+  /** Remove todos os blocos e tags de raciocínio remanescentes do texto visível. */
+  private static stripAllThinkingArtifacts(text: string): string {
+    if (!text) return '';
+    const tags = this.tagsPattern;
+    let out = text;
+    // Blocos completos (possivelmente múltiplos)
+    out = out.replace(new RegExp(`<(${tags})(?:\\s+[^>]*)?>[\\s\\S]*?<\\/\\1>`, 'gi'), '');
+    // Tags órfãs de abertura/fechamento
+    out = out.replace(new RegExp(`<\\/?(?:${tags})(?:\\s+[^>]*)?>`, 'gi'), '');
+    // Variantes com escape HTML
+    out = out.replace(
+      new RegExp(`&lt;\\/?(?:${tags})(?:\\s+[^&]*)?&gt;`, 'gi'),
+      ''
+    );
+    // Modelos que usam fence "thinking" falso: ```thinking ... ```
+    out = out.replace(/```(?:thinking|reasoning|analysis)\s*[\s\S]*?```/gi, '');
+    return out;
+  }
+
   /**
    * Extrai o raciocínio e a resposta final de um conteúdo acumulado de stream.
    * Evita corrupção de string ocultando tags HTML/XML parciais no final do stream.
@@ -71,86 +96,85 @@ export class ThinkingParser {
       return { reasoning: null, answer: '', isThinking: false };
     }
 
-    let reasoning: string | null = null;
+    let reasoningParts: string[] = [];
     let answer = '';
     let isThinking = false;
+    let cursor = 0;
 
-    // 1. Busca a primeira tag de abertura suportada (ex: <think> ou <think time="10">)
-    const tagsPattern = this.TAGS.join('|');
-    const openPattern = new RegExp(`<(${tagsPattern})(?:\\s+[^>]*)?>`, 'i');
-    const openMatch = openPattern.exec(content);
+    const openPattern = new RegExp(`<(${this.tagsPattern})(?:\\s+[^>]*)?>`, 'gi');
 
-    if (openMatch) {
-      const openTagName = openMatch[1]; // A tag efetiva que abriu
+    // Extrai todos os blocos <think>...</think> em sequência
+    while (cursor < content.length) {
+      openPattern.lastIndex = cursor;
+      const openMatch = openPattern.exec(content);
+
+      if (!openMatch) {
+        // Resto sem mais tags de abertura
+        let tail = content.substring(cursor);
+        // Oculta abertura parcial no final do stream (ex: `<thi`)
+        const partialOpen = /<[a-zA-Z_]*$/.exec(tail);
+        if (partialOpen) {
+          tail = tail.substring(0, partialOpen.index);
+        }
+        answer += tail;
+        break;
+      }
+
+      const openTagName = openMatch[1];
       const openStart = openMatch.index;
       const openEnd = openStart + openMatch[0].length;
 
-      // Conteúdo antes da tag <think>
-      const preThinkContent = content.substring(0, openStart);
-
-      // Se o conteúdo pré-think parece raciocínio vazado, suprimimos da resposta
-      // e o adicionamos ao início do bloco de raciocínio
-      if (this.isLeakedThinking(preThinkContent)) {
-        // Será anexado ao reasoning como prefixo (raciocínio vazado recuperado)
-        reasoning = preThinkContent.trim() ? preThinkContent.trim() + '\n\n' : '';
+      // Texto antes da tag
+      const pre = content.substring(cursor, openStart);
+      if (reasoningParts.length === 0 && this.isLeakedThinking(pre)) {
+        if (pre.trim()) reasoningParts.push(pre.trim());
       } else {
-        // Conteúdo legítimo antes da tag: exibir na resposta normalmente
-        answer += preThinkContent;
-        reasoning = '';
+        answer += pre;
       }
 
-      // 2. Busca a tag de fechamento correspondente
+      // Busca fechamento correspondente
       const closePattern = new RegExp(`</${openTagName}>`, 'i');
-      const remainingContent = content.substring(openEnd);
-      const closeMatch = closePattern.exec(remainingContent);
+      const remaining = content.substring(openEnd);
+      const closeMatch = closePattern.exec(remaining);
 
       if (closeMatch) {
-        // Bloco fechado com sucesso — concatena o prefixo com o raciocínio real
-        const innerReasoning = remainingContent.substring(0, closeMatch.index).trim();
-        reasoning = (reasoning || '') + innerReasoning;
-        const closeEnd = closeMatch.index + closeMatch[0].length;
-
-        // O resto do conteúdo após a tag fechada é resposta
-        answer += remainingContent.substring(closeEnd);
+        const inner = remaining.substring(0, closeMatch.index).trim();
+        if (inner) reasoningParts.push(inner);
+        cursor = openEnd + closeMatch.index + closeMatch[0].length;
         isThinking = false;
       } else {
-        // Ainda estamos dentro do bloco de raciocínio (streaming ativo)
+        // Streaming: ainda dentro do bloco
         isThinking = true;
-
-        // Tratamento de edge-case: previne vazar fechamentos parciais no raciocínio (ex: `...raciocínio</thi`)
-        const partialCloseRegex = /<\/[a-zA-Z_]*$/;
-        const partialMatch = partialCloseRegex.exec(remainingContent);
-
-        const innerReasoning = partialMatch
-          ? remainingContent.substring(0, partialMatch.index).trim()
-          : remainingContent.trim();
-
-        reasoning = (reasoning || '') + innerReasoning;
+        const partialClose = /<\/[a-zA-Z_]*$/.exec(remaining);
+        const inner = (
+          partialClose
+            ? remaining.substring(0, partialClose.index)
+            : remaining
+        ).trim();
+        if (inner) reasoningParts.push(inner);
+        cursor = content.length;
       }
-    } else {
-      // Nenhuma tag de abertura encontrada.
-      // Tratamento de edge-case: previne vazar aberturas parciais na resposta (ex: `Olá <th`)
-      const partialOpenRegex = /<[a-zA-Z_]*$/;
-      const partialMatch = partialOpenRegex.exec(content);
-
-      if (partialMatch) {
-        // Se parece o início de uma tag, ocultamos da resposta por segurança até o próximo chunk
-        answer = content.substring(0, partialMatch.index);
-      } else {
-        answer = content;
-      }
-      isThinking = false;
     }
 
-    // Normaliza: reasoning vazio string → null quando não há thinking
-    const finalReasoning = reasoning === null && !isThinking
-      ? null
-      : (reasoning?.trim() || null);
+    // Limpeza final: nada de tags de raciocínio deve vazar no answer
+    let cleanAnswer = this.stripAllThinkingArtifacts(answer).trimStart();
+
+    // Se o answer ainda começa com raciocínio em itálico e temos reasoning, tira
+    if (reasoningParts.length > 0 && this.isLeakedThinking(cleanAnswer.slice(0, 200))) {
+      // não remove answer legítimo; só prefixos claramente leaked
+    }
+
+    const finalReasoning =
+      reasoningParts.length > 0
+        ? reasoningParts.join('\n\n').trim() || null
+        : isThinking
+          ? ''
+          : null;
 
     return {
       reasoning: finalReasoning,
-      answer: answer.trimStart(),
-      isThinking
+      answer: cleanAnswer.trim(),
+      isThinking,
     };
   }
 }

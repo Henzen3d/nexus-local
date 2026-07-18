@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { Dna, ChevronDown, ChevronUp, Loader2, CheckCircle2, XCircle, Brain, ChevronRight, Globe, Sparkles } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
+import { markdownComponents } from './markdownComponents'
 import remarkGfm from 'remark-gfm'
 import { useTranslation } from 'react-i18next'
 import type { FusionStatusEntry } from '../types'
@@ -109,26 +110,7 @@ export function FusionStatusCard({ fusionStatuses, fusionJudgeModelId, fusionGro
                   <div className="fusion-model-response">
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm]}
-                      components={{
-                        pre({ children, ...props }) {
-                          const firstChild = React.Children.toArray(children)[0]
-                          if (React.isValidElement(firstChild) && firstChild.type === 'code') {
-                            const codeProps = firstChild.props as any
-                            const language = codeProps.className
-                            const text = String(codeProps.children).replace(/\n$/, '')
-                            return (
-                              <div className="code-block">
-                                <span className="code-lang">{language?.replace('language-', '') || 'code'}</span>
-                                <pre><code className={language} {...props}>{text}</code></pre>
-                              </div>
-                            )
-                          }
-                          return <pre {...props}>{children}</pre>
-                        },
-                        code({ className, children, node, ...props }) {
-                          return <code className="inline-code" {...props}>{children}</code>
-                        },
-                      }}
+                      components={markdownComponents}
                     >
                       {s.response}
                     </ReactMarkdown>
