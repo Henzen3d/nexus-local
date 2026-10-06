@@ -57,7 +57,7 @@ class BraveSearchProvider:
         return []
 
 class DuckDuckGoProvider:
-    async def search(self, query: str, max_results: int = 5) -> list[dict]:
+    async def search(self, query: str, max_results: int = 5, timeout: float = 8.0) -> list[dict]:
         try:
             def sync_search():
                 from ddgs import DDGS
@@ -66,9 +66,12 @@ class DuckDuckGoProvider:
                     # Using text method which is stable
                     res_list = list(ddgs.text(query, max_results=max_results))
                     return res_list
-            
-            loop = asyncio.get_event_loop()
-            raw_results = await loop.run_in_executor(None, sync_search)
+
+            loop = asyncio.get_running_loop()
+            raw_results = await asyncio.wait_for(
+                loop.run_in_executor(None, sync_search),
+                timeout=timeout,
+            )
             results = []
             for r in raw_results:
                 results.append({
@@ -77,6 +80,9 @@ class DuckDuckGoProvider:
                     "url": r.get("href", "")
                 })
             return results
+        except asyncio.TimeoutError:
+            logger.error("[DuckDuckGo Search Error] timeout após %.1fs", timeout)
+            return []
         except Exception as e:
             logger.error("[DuckDuckGo Search Error]", exc_info=e)
         return []

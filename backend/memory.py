@@ -557,6 +557,57 @@ async def _get_meta(db, key: str) -> str | None:
         return None
 
 
+_DEAD_EXTRACTOR_KEY = "memory_extractor_dead_models"
+
+
+def is_missing_model_error(exc: BaseException) -> bool:
+    """404 de modelo inexistente. Não trata timeout nem erro genérico."""
+    text = str(exc).lower()
+    return (
+        "model_not_found" in text
+        or "does not exist" in text
+        or "model not found" in text
+    )
+
+
+async def _load_dead_extractor_models(db) -> set[str]:
+    raw = await _get_meta(db, _DEAD_EXTRACTOR_KEY)
+    if not raw:
+        return set()
+    try:
+        data = json.loads(raw)
+    except Exception:
+        return set()
+    if not isinstance(data, list):
+        return set()
+    return {str(item) for item in data if item}
+
+
+async def _save_dead_extractor_models(db, names: set[str]) -> None:
+    await db.execute(
+        "INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)",
+        (_DEAD_EXTRACTOR_KEY, json.dumps(sorted(names))),
+    )
+    await db.commit()
+
+
+async def extractor_model_is_dead(db, model_name: str) -> bool:
+    return model_name in await _load_dead_extractor_models(db)
+
+
+async def mark_extractor_model_dead(db, model_name: str) -> None:
+    if not model_name:
+        return
+    names = await _load_dead_extractor_models(db)
+    names.add(model_name)
+    await _save_dead_extractor_models(db, names)
+
+
+async def clear_dead_extractor_models(db) -> None:
+    await db.execute("DELETE FROM meta WHERE key = ?", (_DEAD_EXTRACTOR_KEY,))
+    await db.commit()
+
+
 async def is_memory_extractor_enabled(db) -> bool:
     """Auto-extraction can be disabled via meta.memory_extractor_enabled = '0'."""
     val = await _get_meta(db, "memory_extractor_enabled")
@@ -653,6 +704,12 @@ async def extract_user_memory_background(
             except Exception as prov_err:
                 logger.error("[Memory Extractor] Erro ao resolver provider/modelo:", exc_info=prov_err)
                 return
+            if await extractor_model_is_dead(db, model_name):
+                logger.info(
+                    "[Memory Extractor] modelo %s indisponível; pulando até trocar o modelo",
+                    model_name,
+                )
+                return
 
         # 2. Call the LLM (outside the DB connection to avoid holding it during network I/O)
         messages = [
@@ -664,6 +721,17 @@ async def extract_user_memory_background(
             async for token in provider.stream_chat(model=model_name, messages=messages, temperature=0.05):
                 full_response += str(token)
         except Exception as api_err:
+            if is_missing_model_error(api_err):
+                try:
+                    async with aiosqlite.connect(DB_PATH) as dead_db:
+                        await mark_extractor_model_dead(dead_db, model_name)
+                except Exception as mark_err:
+                    logger.error("[Memory Extractor] falha ao pausar modelo morto:", exc_info=mark_err)
+                logger.error(
+                    "[Memory Extractor] modelo %s não existe; pausando novas tentativas até trocar o modelo",
+                    model_name,
+                )
+                return
             logger.error("[Memory Extractor] Erro na chamada ao LLM (source=%s):", source, exc_info=api_err)
             return
 

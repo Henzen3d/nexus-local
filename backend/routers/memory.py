@@ -176,6 +176,8 @@ async def put_extractor_config(body: ExtractorConfigIn, user: dict = Depends(get
                 await _meta_set(db, "memory_extractor_model_id", val)
             else:
                 await db.execute("DELETE FROM meta WHERE key = ?", ("memory_extractor_model_id",))
+            from backend.memory import clear_dead_extractor_models
+            await clear_dead_extractor_models(db)
         if body.memory_extractor_enabled is not None:
             await _meta_set(db, "memory_extractor_enabled", "1" if body.memory_extractor_enabled else "0")
         if body.memory_llm_summaries_enabled is not None:
