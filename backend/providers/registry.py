@@ -55,7 +55,7 @@ async def get_provider(provider_id: str, db: aiosqlite.Connection, user_id: str 
 
     if not row:
         raise ValueError(f"Provider '{provider_id}' not found.")
-    base_url, global_key, enabled, is_free = row
+    base_url, _global_key, enabled, _is_free = row
     if not enabled:
         raise ValueError(f"Provider '{provider_id}' is disabled.")
         
@@ -68,25 +68,21 @@ async def get_provider(provider_id: str, db: aiosqlite.Connection, user_id: str 
             key_row = await key_cur.fetchone()
             if key_row:
                 api_key = key_row[0]
-                
-    if not api_key:
-        share_enabled = await is_admin_key_shared_for_provider(db, provider_id)
-        if share_enabled:
-            async with db.execute(
-                """SELECT api_key FROM user_api_keys 
-                   WHERE provider_id = ? 
-                   AND user_id IN (SELECT id FROM users WHERE role = 'admin') 
-                   LIMIT 1""",
-                (provider_id,),
-            ) as admin_cur:
-                admin_row = await admin_cur.fetchone()
-                if admin_row:
-                    api_key = admin_row[0]
-                
-    if not api_key:
-        api_key = global_key
 
-    api_key = resolve_env_api_key(provider_id, api_key)
+    # Família: cada conta usa só a própria chave. Sem herança da chave global
+    # nem da chave de outro usuário. ZenMux no .env fica só para o admin.
+    if is_key_sentinel(api_key) and provider_id == "zenmux" and user_id:
+        async with db.execute(
+            "SELECT role FROM users WHERE id = ?",
+            (user_id,),
+        ) as role_cur:
+            role_row = await role_cur.fetchone()
+        if role_row and role_row[0] == "admin":
+            api_key = resolve_env_api_key(provider_id, api_key)
+    elif not is_key_sentinel(api_key):
+        api_key = (api_key or "").strip()
+    else:
+        api_key = ""
         
     if not api_key and provider_id != "ollama":
         raise ValueError(

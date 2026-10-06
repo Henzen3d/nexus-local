@@ -186,6 +186,7 @@ export interface WebSearchConfig {
   enabled: boolean
   search_provider: 'duckduckgo' | 'brave'
   api_key: string
+  api_key_set?: boolean
   max_results: number
   heuristic_enabled: boolean
   heuristic_sensitivity: 'low' | 'medium' | 'high'

@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Sparkles, ArrowRight, User, Lock, Mail, Phone, Activity } from 'lucide-react'
+import { ArrowRight, User, Lock, Activity } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { api } from '../api/client'
 
@@ -9,11 +9,8 @@ interface LoginProps {
 
 export function Login({ onLoginSuccess }: LoginProps) {
   const { t } = useTranslation()
-  const [isRegister, setIsRegister] = useState(false)
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
-  const [email, setEmail] = useState('')
-  const [phone, setPhone] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -23,36 +20,19 @@ export function Login({ onLoginSuccess }: LoginProps) {
 
     const nameTrim = username.trim()
     const passTrim = password.trim()
-    const emailTrim = email.trim()
-    const phoneTrim = phone.trim()
 
     if (!nameTrim || !passTrim) {
       setError(t('auth.fillRequired'))
       return
     }
 
-    if (isRegister && !emailTrim) {
-      setError(t('auth.emailRequired'))
-      return
-    }
-
     setLoading(true)
     try {
-      if (isRegister) {
-        const res = await api.register({ 
-          username: nameTrim, 
-          password: passTrim,
-          email: emailTrim,
-          phone: phoneTrim || undefined
-        })
-        onLoginSuccess(res.token, res.user)
-      } else {
-        const res = await api.login({ username: nameTrim, password: passTrim })
-        onLoginSuccess(res.token, res.user)
-      }
+      const res = await api.login({ username: nameTrim, password: passTrim })
+      onLoginSuccess(res.token, res.user)
     } catch (err: any) {
       console.error(err)
-      setError(isRegister ? t('auth.registerError') : t('auth.loginError'))
+      setError(t('auth.loginError'))
     } finally {
       setLoading(false)
     }
@@ -102,42 +82,6 @@ export function Login({ onLoginSuccess }: LoginProps) {
             </div>
           </div>
 
-          {isRegister && (
-            <>
-              <div className="login-input-group">
-                <label htmlFor="email">{t('auth.email')}</label>
-                <div className="login-input-wrapper">
-                  <Mail size={16} className="login-input-icon" />
-                  <input
-                    id="email"
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder={t('auth.emailPlaceholder')}
-                    disabled={loading}
-                    autoComplete="email"
-                  />
-                </div>
-              </div>
-
-              <div className="login-input-group">
-                <label htmlFor="phone">{t('auth.phoneOptional')}</label>
-                <div className="login-input-wrapper">
-                  <Phone size={16} className="login-input-icon" />
-                  <input
-                    id="phone"
-                    type="text"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    placeholder={t('auth.phonePlaceholder')}
-                    disabled={loading}
-                    autoComplete="tel"
-                  />
-                </div>
-              </div>
-            </>
-          )}
-
           <button type="submit" className="login-submit-btn" disabled={loading}>
             {loading ? (
               <>
@@ -146,28 +90,12 @@ export function Login({ onLoginSuccess }: LoginProps) {
               </>
             ) : (
               <>
-                {isRegister ? t('auth.createAccount') : t('auth.login')}
+                {t('auth.login')}
                 <ArrowRight size={16} />
               </>
             )}
           </button>
         </form>
-
-        <div className="login-toggle">
-          <span>
-            {isRegister ? t('auth.hasAccount') : t('auth.noAccount')}
-          </span>
-          <button 
-            type="button" 
-            onClick={() => {
-              setIsRegister(!isRegister)
-              setError('')
-            }}
-            disabled={loading}
-          >
-            {isRegister ? t('auth.signIn') : t('auth.signUp')}
-          </button>
-        </div>
       </div>
     </div>
   )

@@ -63,12 +63,12 @@ async def _get_config() -> dict:
 
 
 @router.get("/config", response_model=EnhancerConfigOut)
-async def get_config():
+async def get_config(current_user: dict = Depends(get_current_user)):
     return await _get_config()
 
 
 @router.post("/config", response_model=EnhancerConfigOut)
-async def save_config(body: EnhancerConfigIn):
+async def save_config(body: EnhancerConfigIn, current_user: dict = Depends(get_current_user)):
     db = await get_db()
     try:
         current = await _get_config()

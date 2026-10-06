@@ -649,6 +649,52 @@ DEFAULT_PROVIDERS = [
 ]
 
 
+async def claim_global_provider_keys(db) -> None:
+    """Copia chaves globais para o admin, uma vez. Não sobrescreve chave já pessoal."""
+    from backend.providers.registry import is_key_sentinel
+
+    async with db.execute("SELECT value FROM meta WHERE key = 'family_keys_claimed'") as cur:
+        claimed = await cur.fetchone()
+    already = bool(claimed and claimed[0] == "true")
+
+    await db.execute("UPDATE providers SET share_admin_key = 0")
+    await db.execute(
+        "INSERT OR REPLACE INTO meta (key, value) VALUES ('share_admin_keys', 'false')"
+    )
+
+    if already:
+        await db.commit()
+        return
+
+    async with db.execute("SELECT id FROM users WHERE role = 'admin'") as cur:
+        admins = await cur.fetchall()
+    if not admins:
+        await db.commit()
+        return
+
+    async with db.execute(
+        "SELECT id, api_key FROM providers WHERE api_key IS NOT NULL AND TRIM(api_key) != ''"
+    ) as cur:
+        providers = await cur.fetchall()
+
+    for (admin_id,) in admins:
+        for provider_id, raw_key in providers:
+            key = (raw_key or "").strip()
+            if not key or is_key_sentinel(key):
+                continue
+            await db.execute(
+                """INSERT INTO user_api_keys (user_id, provider_id, api_key)
+                   VALUES (?, ?, ?)
+                   ON CONFLICT(user_id, provider_id) DO NOTHING""",
+                (admin_id, provider_id, key),
+            )
+
+    await db.execute(
+        "INSERT OR REPLACE INTO meta (key, value) VALUES ('family_keys_claimed', 'true')"
+    )
+    await db.commit()
+
+
 async def get_db():
     db = await aiosqlite.connect(DB_PATH)
     await db.execute("PRAGMA foreign_keys = ON")
@@ -1242,6 +1288,7 @@ async def init_db():
             except Exception as e:
                 logger.error("[database migration] erro ao adicionar project_id em conversations:", exc_info=e)
 
+        await claim_global_provider_keys(db)
         logger.error("[OK] Ranking & Failover tables: initialized")
 
 

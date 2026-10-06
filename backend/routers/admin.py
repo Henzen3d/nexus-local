@@ -1,3 +1,4 @@
+from typing import Optional
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 import httpx
@@ -12,7 +13,7 @@ logger = get_logger(__name__)
 
 from backend.providers.model_fetcher import ModelFetcher
 from backend.providers.model_fetcher import ModelFetcher
-from backend.auth import get_current_user, require_admin
+from backend.auth import get_current_user, require_admin, hash_password
 from backend.free_registry.sync import sync_free_registry
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -241,7 +242,6 @@ async def list_providers(current_user: dict = Depends(get_current_user)):
 
             resolve_env_api_key,
             is_key_sentinel,
-            is_admin_key_shared_for_provider,
         )
 
         # Global toggle (meta) — ainda usado na UI do topo
@@ -253,8 +253,8 @@ async def list_providers(current_user: dict = Depends(get_current_user)):
             """SELECT p.id, p.name, p.base_url,
                       CASE WHEN k.api_key IS NOT NULL AND TRIM(k.api_key) != '' THEN 1 ELSE 0 END as has_personal_key,
                       p.enabled, p.is_free,
-                      COALESCE(NULLIF(TRIM(k.api_key), ''), NULLIF(TRIM(p.api_key), '')) as active_key,
-                      COALESCE(p.share_admin_key, 0) as share_admin_key
+                      NULLIF(TRIM(k.api_key), '') as active_key,
+                      0 as share_admin_key
                FROM providers p
                LEFT JOIN user_api_keys k ON k.provider_id = p.id AND k.user_id = ?
                WHERE p.id != 'free_registry'
@@ -274,30 +274,9 @@ async def list_providers(current_user: dict = Depends(get_current_user)):
                 active_key = ""
             is_shared = False
 
-            # Sem chave própria/global: se sharing (global OU individual) estiver on, herda chave de admin
-            share_this = await is_admin_key_shared_for_provider(db, pid)
-            if not active_key and share_this and current_user.get("role") != "admin":
-                async with db.execute(
-                    """SELECT api_key FROM user_api_keys
-                       WHERE provider_id = ?
-                       AND api_key IS NOT NULL AND TRIM(api_key) != ''
-                       AND user_id IN (SELECT id FROM users WHERE role = 'admin')
-                       LIMIT 1""",
-                    (pid,),
-                ) as admin_cur:
-                    admin_row = await admin_cur.fetchone()
-                    if admin_row and admin_row[0]:
-                        candidate = str(admin_row[0]).strip()
-                        if not is_key_sentinel(candidate):
-                            active_key = candidate
-                            is_shared = True
-
-            # Fallback env (ZENMUX_API_KEY etc.) para display de has_key / máscara
-            if not active_key:
+            if not active_key and pid == "zenmux" and current_user.get("role") == "admin":
                 active_key = resolve_env_api_key(pid, None)
 
-            # has_key = provedor utilizável pelo usuário atual (alinha com o chat).
-            # Inclui: chave pessoal, chave global em providers, chave compartilhada, ollama.
             has_usable_key = bool(active_key) or pid == "ollama"
 
             # Mask API Key
@@ -358,16 +337,7 @@ async def list_all_models(current_user: dict = Depends(get_current_user)):
         # quando providers.share_admin_key = 1 (controle individual; global = bulk).
         key_condition = """(
             (k.api_key IS NOT NULL AND k.api_key != '') OR
-            (p.api_key IS NOT NULL AND p.api_key != '') OR
-            p.id = 'ollama' OR
-            (
-                COALESCE(p.share_admin_key, 0) = 1
-                AND p.id IN (
-                    SELECT provider_id FROM user_api_keys
-                    WHERE api_key IS NOT NULL AND api_key != ''
-                    AND user_id IN (SELECT id FROM users WHERE role = 'admin')
-                )
-            )
+            p.id = 'ollama'
         )"""
 
         query = f"""SELECT m.id, m.display_name, m.context_length,
@@ -426,7 +396,7 @@ async def update_provider(provider_id: str, body: ProviderUpdate, current_user: 
                 "UPDATE providers SET base_url = ? WHERE id = ?",
                 (body.base_url, provider_id),
             )
-        if body.api_key is not None:
+        if body.api_key is not None and body.api_key.strip():
             # Insere ou atualiza na tabela user_api_keys
             await db.execute(
                 """INSERT INTO user_api_keys (user_id, provider_id, api_key)
@@ -439,24 +409,6 @@ async def update_provider(provider_id: str, body: ProviderUpdate, current_user: 
             await db.execute(
                 "UPDATE providers SET enabled = ? WHERE id = ?",
                 (1 if body.enabled else 0, provider_id),
-            )
-        if body.share_admin_key is not None:
-            await db.execute(
-                "UPDATE providers SET share_admin_key = ? WHERE id = ?",
-                (1 if body.share_admin_key else 0, provider_id),
-            )
-            # Mantém meta global alinhada: true só se TODOS os provedores estão compartilhados
-            async with db.execute(
-                """SELECT
-                     SUM(CASE WHEN COALESCE(share_admin_key, 0) = 1 THEN 1 ELSE 0 END),
-                     COUNT(*)
-                   FROM providers WHERE id != 'free_registry'"""
-            ) as cur:
-                shared_n, total_n = await cur.fetchone()
-            all_on = total_n and int(shared_n or 0) == int(total_n)
-            await db.execute(
-                "INSERT OR REPLACE INTO meta (key, value) VALUES ('share_admin_keys', ?)",
-                ("true" if all_on else "false",),
             )
         await db.commit()
 
@@ -651,6 +603,111 @@ async def trigger_free_registry_sync(current_user: dict = Depends(require_admin)
         await db.close()
 
 # ── Gerenciamento de Usuários (Apenas Admin) ──────────────────────────
+class FamilyUserCreate(BaseModel):
+    username: str
+    password: str
+    email: Optional[str] = None
+    phone: Optional[str] = None
+
+
+class FamilyPasswordReset(BaseModel):
+    password: str
+
+
+class FamilyProviderKey(BaseModel):
+    api_key: str
+
+
+@router.post("/users", status_code=201)
+async def create_family_user(body: FamilyUserCreate, current_user: dict = Depends(require_admin)):
+    username = body.username.strip().lower()
+    email = body.email.strip().lower() if body.email else None
+    phone = body.phone.strip() if body.phone else None
+    if not username or not body.password.strip():
+        raise HTTPException(status_code=400, detail="Usuário e senha são obrigatórios.")
+
+    db = await get_db()
+    try:
+        async with db.execute("SELECT id FROM users WHERE username = ?", (username,)) as cur:
+            if await cur.fetchone():
+                raise HTTPException(status_code=400, detail="Este nome de usuário já está cadastrado.")
+        if email:
+            async with db.execute("SELECT id FROM users WHERE email = ?", (email,)) as cur:
+                if await cur.fetchone():
+                    raise HTTPException(status_code=400, detail="Este endereço de e-mail já está cadastrado.")
+        user_id = str(uuid.uuid4())
+        await db.execute(
+            """INSERT INTO users (id, username, password_hash, email, phone, role)
+               VALUES (?, ?, ?, ?, ?, 'user')""",
+            (user_id, username, hash_password(body.password), email, phone),
+        )
+        await db.commit()
+        return {
+            "user": {
+                "id": user_id,
+                "username": username,
+                "email": email,
+                "phone": phone,
+                "role": "user",
+            }
+        }
+    finally:
+        await db.close()
+
+
+@router.patch("/users/{user_id}/password")
+async def reset_family_password(
+    user_id: str,
+    body: FamilyPasswordReset,
+    current_user: dict = Depends(require_admin),
+):
+    if not body.password.strip():
+        raise HTTPException(status_code=400, detail="Senha vazia.")
+    db = await get_db()
+    try:
+        async with db.execute("SELECT id FROM users WHERE id = ?", (user_id,)) as cur:
+            if not await cur.fetchone():
+                raise HTTPException(status_code=404, detail="Usuário não encontrado.")
+        await db.execute(
+            "UPDATE users SET password_hash = ? WHERE id = ?",
+            (hash_password(body.password), user_id),
+        )
+        await db.commit()
+        return {"ok": True}
+    finally:
+        await db.close()
+
+
+@router.put("/users/{user_id}/providers/{provider_id}/key")
+async def set_family_provider_key(
+    user_id: str,
+    provider_id: str,
+    body: FamilyProviderKey,
+    current_user: dict = Depends(require_admin),
+):
+    key = body.api_key.strip()
+    if not key:
+        raise HTTPException(status_code=400, detail="Chave vazia.")
+    db = await get_db()
+    try:
+        async with db.execute("SELECT id FROM users WHERE id = ?", (user_id,)) as cur:
+            if not await cur.fetchone():
+                raise HTTPException(status_code=404, detail="Usuário não encontrado.")
+        async with db.execute("SELECT id FROM providers WHERE id = ?", (provider_id,)) as cur:
+            if not await cur.fetchone():
+                raise HTTPException(status_code=404, detail="Provedor não encontrado.")
+        await db.execute(
+            """INSERT INTO user_api_keys (user_id, provider_id, api_key)
+               VALUES (?, ?, ?)
+               ON CONFLICT(user_id, provider_id) DO UPDATE SET api_key = excluded.api_key""",
+            (user_id, provider_id, key),
+        )
+        await db.commit()
+        return {"ok": True}
+    finally:
+        await db.close()
+
+
 @router.get("/users")
 async def list_users(current_user: dict = Depends(require_admin)):
         
@@ -715,23 +772,8 @@ async def get_share_config(current_user: dict = Depends(get_current_user)):
 
 @router.post("/providers/share-config")
 async def update_share_config(body: ShareConfigUpdate, current_user: dict = Depends(require_admin)):
-    """
-    Toggle global: liga/desliga o compartilhamento em massa.
-    Também espelha o valor em todos os providers.share_admin_key (bulk).
-    O admin ainda pode ligar/desligar provedores individuais depois.
-    """
-    db = await get_db()
-    try:
-        await db.execute(
-            "INSERT OR REPLACE INTO meta (key, value) VALUES ('share_admin_keys', ?)",
-            ("true" if body.share_admin_keys else "false",)
-        )
-        # Bulk sync individual flags so UI and runtime stay consistent
-        await db.execute(
-            "UPDATE providers SET share_admin_key = ?",
-            (1 if body.share_admin_keys else 0,),
-        )
-        await db.commit()
-        return {"ok": True}
-    finally:
-        await db.close()
+    """Compartilhamento desligado. O pedido é recusado."""
+    raise HTTPException(
+        status_code=403,
+        detail="Compartilhamento de chaves está desligado. Cada usuário usa a própria chave.",
+    )

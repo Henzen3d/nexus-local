@@ -28,6 +28,9 @@ async def get_config(current_user: dict = Depends(get_current_user)):
         async with db.execute("SELECT injection_template FROM web_search_config WHERE id = 1") as cur:
             row = await cur.fetchone()
         cfg["injection_template"] = row[0] if row else ""
+        raw_key = (cfg.get("api_key") or "").strip()
+        cfg["api_key_set"] = bool(raw_key)
+        cfg["api_key"] = ""
         return cfg
     finally:
         await db.close()
@@ -40,6 +43,18 @@ async def update_config(body: WebSearchConfigUpdate, current_user: dict = Depend
             row = await cur.fetchone()
         
         fields_to_update = body.model_dump(exclude_unset=True)
+        allowed = {
+            "enabled",
+            "search_provider",
+            "api_key",
+            "max_results",
+            "heuristic_enabled",
+            "heuristic_sensitivity",
+            "injection_template",
+        }
+        fields_to_update = {k: v for k, v in fields_to_update.items() if k in allowed}
+        if not str(fields_to_update.get("api_key") or "").strip():
+            fields_to_update.pop("api_key", None)
         
         if row:
             update_fields = []

@@ -21,6 +21,7 @@ import { UsageDashboard } from './UsageDashboard'
 import { RankingWeightsSettings } from './RankingWeightsSettings'
 import { RankingsView } from './RankingsView'
 import { UserMemoryPanel } from './UserMemoryPanel'
+import { CreateFamilyUser, FamilyUserKeys } from './FamilyAccountTools'
 import { useIsMobile } from '../hooks/useIsMobile'
 
 type Tab = 'general' | 'providers' | 'rankings' | 'cache' | 'tools' | 'users' | 'dashboard' | 'memory'
@@ -157,14 +158,14 @@ function AdminPanelMobile() {
   }
 
   const saveKey = async (id: string) => {
-    const payload: { api_key?: string; base_url?: string } = {}
     if (keys[id]?.trim()) {
-      payload.api_key = keys[id].trim()
+      await api.setOwnProviderKey(id, keys[id].trim())
     }
-    if (id === 'cloudflare') {
-      payload.base_url = `https://api.cloudflare.com/client/v4/accounts/${cfAccountId.trim()}/ai/v1`
+    if (user?.role === 'admin' && id === 'cloudflare') {
+      await api.updateProvider(id, {
+        base_url: `https://api.cloudflare.com/client/v4/accounts/${cfAccountId.trim()}/ai/v1`,
+      })
     }
-    await api.updateProvider(id, payload)
     setSaved((s) => ({ ...s, [id]: true }))
     setTimeout(() => setSaved((s) => ({ ...s, [id]: false })), 2000)
     await load()
@@ -737,37 +738,6 @@ function AdminPanelMobile() {
               </div>
             </div>
 
-            {user?.role === 'admin' && (
-              <div className="settings-card-section" style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '14px 16px',
-                background: 'var(--surface-cream-weak)',
-                border: '1px solid var(--hairline)',
-                borderRadius: 'var(--radius-lg)',
-                marginBottom: '12px',
-                marginTop: '12px'
-              }}>
-                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flex: 1, marginRight: '8px' }}>
-                  <Share2 size={18} style={{ color: 'var(--primary)', flexShrink: 0 }} />
-                  <div>
-                    <h4 style={{ margin: 0, fontSize: '13.5px', fontWeight: 600 }}>Compartilhar chaves de API</h4>
-                    <p style={{ margin: '2px 0 0', fontSize: '12px', color: 'var(--muted)', lineHeight: '1.4' }}>
-                      Liga/desliga o compartilhamento em massa. Para um provedor só, use o ícone de chave ao lado de “Chave de API”.
-                    </p>
-                  </div>
-                </div>
-                <button
-                  className={`toggle-btn ${shareKeysEnabled ? 'on' : 'off'}`}
-                  onClick={() => handleToggleShareKeys()}
-                  style={{ border: 'none', background: 'transparent', cursor: 'pointer' }}
-                >
-                  {shareKeysEnabled ? <ToggleRight size={26} /> : <ToggleLeft size={26} />}
-                </button>
-              </div>
-            )}
-
             <div className="settings-card-section-title" style={{ marginTop: '12px' }}>🎁 Provedores Gratuitos/Testes</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               {providers.filter(p => p.is_free).map(prov => {
@@ -830,22 +800,6 @@ function AdminPanelMobile() {
                       <div className="key-field" style={{ padding: 0, border: 'none' }}>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
                           <label style={{ fontSize: '12px', color: 'var(--muted)', fontWeight: 600 }}>{t("settings.apiKey")}</label>
-                          {user?.role === 'admin' && (
-                            <button
-                              type="button"
-                              className={`provider-share-key-btn ${prov.share_admin_key ? 'is-on' : ''}`}
-                              onClick={() => handleToggleShareProviderKey(prov.id, !!prov.share_admin_key)}
-                              title={
-                                prov.share_admin_key
-                                  ? t('settings.shareKeyOn', { defaultValue: 'Compartilhando esta chave com outros usuários - clique para desligar' })
-                                  : t('settings.shareKeyOff', { defaultValue: 'Não compartilhada - clique para compartilhar só este provedor' })
-                              }
-                              aria-label={t('settings.shareThisKey', { defaultValue: 'Compartilhar chave deste provedor' })}
-                              aria-pressed={!!prov.share_admin_key}
-                            >
-                              <Key size={14} strokeWidth={2} />
-                            </button>
-                          )}
                         </div>
                         <div className="key-input-row" style={{ marginTop: '6px' }}>
                           <input 
@@ -996,22 +950,6 @@ function AdminPanelMobile() {
                       <div className="key-field" style={{ padding: 0, border: 'none' }}>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
                           <label style={{ fontSize: '12px', color: 'var(--muted)', fontWeight: 600 }}>{t("settings.apiKey")}</label>
-                          {user?.role === 'admin' && (
-                            <button
-                              type="button"
-                              className={`provider-share-key-btn ${prov.share_admin_key ? 'is-on' : ''}`}
-                              onClick={() => handleToggleShareProviderKey(prov.id, !!prov.share_admin_key)}
-                              title={
-                                prov.share_admin_key
-                                  ? t('settings.shareKeyOn', { defaultValue: 'Compartilhando esta chave com outros usuários - clique para desligar' })
-                                  : t('settings.shareKeyOff', { defaultValue: 'Não compartilhada - clique para compartilhar só este provedor' })
-                              }
-                              aria-label={t('settings.shareThisKey', { defaultValue: 'Compartilhar chave deste provedor' })}
-                              aria-pressed={!!prov.share_admin_key}
-                            >
-                              <Key size={14} strokeWidth={2} />
-                            </button>
-                          )}
                         </div>
                         <div className="key-input-row" style={{ marginTop: '6px' }}>
                           <input 
@@ -1257,6 +1195,7 @@ function AdminPanelMobile() {
           <div className="settings-mobile-content">
             <h4 style={{ fontWeight: 600, fontSize: '15px', color: 'var(--ink)' }}>{t("settings.registeredUsers")}</h4>
             <p style={{ fontSize: '12px', color: 'var(--muted)' }}>Controle de acessos do servidor</p>
+            <CreateFamilyUser onCreated={fetchUsers} />
 
             {loadingUsers ? (
               <div style={{ color: 'var(--muted)', textAlign: 'center', padding: '30px' }}>{t("settings.loadingUsers")}</div>
@@ -1300,6 +1239,9 @@ function AdminPanelMobile() {
                       </div>
                     </div>
 
+                    {u.id !== user?.id && (
+                      <FamilyUserKeys userId={u.id} providers={providers} />
+                    )}
                     {u.id !== user?.id && (
                       <button 
                         className="user-delete-btn" 
@@ -1771,14 +1713,14 @@ function AdminPanelDesktop() {
   }, [tab])
 
   const saveKey = async (id: string) => {
-    const payload: { api_key?: string; base_url?: string } = {}
     if (keys[id]?.trim()) {
-      payload.api_key = keys[id].trim()
+      await api.setOwnProviderKey(id, keys[id].trim())
     }
-    if (id === 'cloudflare') {
-      payload.base_url = `https://api.cloudflare.com/client/v4/accounts/${cfAccountId.trim()}/ai/v1`
+    if (user?.role === 'admin' && id === 'cloudflare') {
+      await api.updateProvider(id, {
+        base_url: `https://api.cloudflare.com/client/v4/accounts/${cfAccountId.trim()}/ai/v1`,
+      })
     }
-    await api.updateProvider(id, payload)
     setSaved((s) => ({ ...s, [id]: true }))
     setTimeout(() => setSaved((s) => ({ ...s, [id]: false })), 2000)
     await load()
@@ -1959,25 +1901,6 @@ function AdminPanelDesktop() {
               )}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '6px' }}>
                 <label style={{ margin: 0 }}>{t("settings.apiKey")}</label>
-                {user?.role === 'admin' && (
-                  <button
-                    type="button"
-                    className={`provider-share-key-btn ${prov.share_admin_key ? 'is-on' : ''}`}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      handleToggleShareProviderKey(prov.id, !!prov.share_admin_key)
-                    }}
-                    title={
-                      prov.share_admin_key
-                        ? t('settings.shareKeyOn', { defaultValue: 'Compartilhando esta chave com outros usuários - clique para desligar' })
-                        : t('settings.shareKeyOff', { defaultValue: 'Não compartilhada - clique para compartilhar só este provedor' })
-                    }
-                    aria-label={t('settings.shareThisKey', { defaultValue: 'Compartilhar chave deste provedor' })}
-                    aria-pressed={!!prov.share_admin_key}
-                  >
-                    <Key size={15} strokeWidth={2} />
-                  </button>
-                )}
               </div>
               <div className="key-input-row">
                 <input
@@ -2550,37 +2473,6 @@ function AdminPanelDesktop() {
                   </button>
                 </div>
 
-                {user?.role === 'admin' && (
-                  <div className="admin-share-card" style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: '16px',
-                    borderRadius: 'var(--radius-lg)',
-                    background: 'var(--surface-cream-weak)',
-                    border: '1px solid var(--hairline)',
-                    marginBottom: '20px',
-                    marginTop: '12px'
-                  }}>
-                    <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                      <Share2 size={20} style={{ color: 'var(--primary)', flexShrink: 0 }} />
-                      <div>
-                        <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 600 }}>Compartilhar chaves de API do administrador</h4>
-                        <p style={{ margin: '2px 0 0', fontSize: '12.5px', color: 'var(--muted)' }}>
-                          Liga/desliga o compartilhamento em massa. Para um provedor só, use o ícone de chave ao lado de “Chave de API”.
-                        </p>
-                      </div>
-                    </div>
-                    <button
-                      className={`toggle-btn ${shareKeysEnabled ? 'on' : 'off'}`}
-                      onClick={() => handleToggleShareKeys()}
-                      style={{ border: 'none', background: 'transparent', cursor: 'pointer' }}
-                    >
-                      {shareKeysEnabled ? <ToggleRight size={28} /> : <ToggleLeft size={28} />}
-                    </button>
-                  </div>
-                )}
-
                 <div className="providers-wrapper" style={{ display: 'flex', flexDirection: 'column', gap: '24px', marginTop: '16px' }}>
                   <div className="admin-section">
                     <h3 className="section-title">🎁 {t('settings.providersFreeSection')}</h3>
@@ -2646,6 +2538,7 @@ function AdminPanelDesktop() {
                 <p style={{ fontSize: '13px', color: 'var(--muted)', marginBottom: '24px' }}>
                   {t('settings.usersDesc')}
                 </p>
+                <CreateFamilyUser onCreated={fetchUsers} />
                 {loadingUsers ? (
                   <div style={{ color: 'var(--muted)', textAlign: 'center', padding: '20px' }}>{t("settings.loadingUsers")}</div>
                 ) : userError ? (
@@ -2682,6 +2575,9 @@ function AdminPanelDesktop() {
                             </td>
                             <td>{u.created_at ? new Date(u.created_at).toLocaleDateString(locale) : '-'}</td>
                             <td>
+                              {u.id !== user?.id && (
+                                <FamilyUserKeys userId={u.id} providers={providers} />
+                              )}
                               {u.id !== user?.id && (
                                 <button
                                   className="user-delete-btn"

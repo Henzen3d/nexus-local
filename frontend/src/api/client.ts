@@ -160,7 +160,24 @@ export const api = {
 
   // User Management
   getUsers: () => fetchJSON<any[]>('/admin/users'),
+  createUser: (data: { username: string; password: string; email?: string; phone?: string }) =>
+    fetchJSON<{ user: { id: string; username: string; role: string } }>('/admin/users', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
   deleteUser: (id: string) => fetchJSON(`/admin/users/${id}`, { method: 'DELETE' }),
+  resetUserPassword: (id: string, password: string) =>
+    fetchJSON(`/admin/users/${id}/password`, { method: 'PATCH', body: JSON.stringify({ password }) }),
+  setUserProviderKey: (userId: string, providerId: string, api_key: string) =>
+    fetchJSON(`/admin/users/${userId}/providers/${providerId}/key`, {
+      method: 'PUT',
+      body: JSON.stringify({ api_key }),
+    }),
+  setOwnProviderKey: (providerId: string, api_key: string) =>
+    fetchJSON(`/me/providers/${providerId}/key`, {
+      method: 'PUT',
+      body: JSON.stringify({ api_key }),
+    }),
 
   // Attachments
   uploadAttachment: (file: File, modelId: string): Promise<Attachment> => {

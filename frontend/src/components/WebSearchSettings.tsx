@@ -32,7 +32,11 @@ export function WebSearchSettings() {
   const save = async () => {
     if (!config) return
     try {
-      await api.saveWebSearchConfig(config)
+      const payload = { ...config }
+      if (!payload.api_key.trim()) {
+        delete (payload as { api_key?: string }).api_key
+      }
+      await api.saveWebSearchConfig(payload)
       setSaved(true)
       setTimeout(() => setSaved(false), 2000)
       
@@ -80,7 +84,7 @@ export function WebSearchSettings() {
               type={showKey ? 'text' : 'password'}
               value={config.api_key}
               onChange={(e) => setConfig({ ...config, api_key: e.target.value })}
-              placeholder="BSp..."
+              placeholder={config.api_key_set ? 'Chave já salva — deixe vazio para manter' : 'BSp...'}
               style={{
                 flex: 1,
                 padding: '8px 12px',

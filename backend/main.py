@@ -29,6 +29,7 @@ from backend.routers.families import router as families_router
 from backend.routers.dashboard import router as dashboard_router
 
 from backend.routers.auth import router as auth_router
+from backend.routers.account import router as account_router
 from backend.routers.memory import router as memory_router
 from backend.routers.projects import router as projects_router
 
@@ -54,6 +55,7 @@ app.add_middleware(
 )
 
 app.include_router(auth_router)
+app.include_router(account_router)
 app.include_router(memory_router)
 app.include_router(projects_router)
 app.include_router(chat_router)
