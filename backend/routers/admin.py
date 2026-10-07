@@ -175,14 +175,23 @@ async def sync_provider_models(provider_id: str, db, custom_api_key: str = None)
         else:
             # Insert new model!
             display_name = derive_display_name(model_name)
+            is_auto_free = 1 if (
+                (provider_id == "openrouter" and model_name.endswith(":free"))
+                or provider_id in ("zenmux", "llm7")
+            ) else 0
             await db.execute(
                 """INSERT INTO models (id, provider_id, name, display_name, context_length, context_source, enabled, confirmed_free)
-                   VALUES (?, ?, ?, ?, ?, 'api', 0, 0)""",
-                (db_model_id, provider_id, model_name, display_name, context_length)
+                   VALUES (?, ?, ?, ?, ?, 'api', ?, ?)""",
+                (db_model_id, provider_id, model_name, display_name, context_length, is_auto_free, is_auto_free)
             )
             updated_count += 1
 
+    # Executa o matching do registry para auto-habilitar modelos recém-sincronizados que sejam confirmados como free
+    from backend.free_registry.matcher import match_registry_to_models
+    await match_registry_to_models(db)
+
     # Disables models that are NOT returned by the API (excluding overridden ones)
+    # This runs AFTER match_registry to guarantee dead models (e.g. 404 models) stay disabled.
     if synced_ids:
         placeholders = ",".join("?" for _ in synced_ids)
         await db.execute(
@@ -224,10 +233,6 @@ async def sync_provider_models(provider_id: str, db, custom_api_key: str = None)
         # Recalculate scores
         scored_models = await compute_all_scores(db)
         await persist_scores(db, scored_models)
-
-    # Executa o matching do registry para auto-habilitar modelos recém-sincronizados que sejam confirmados como free
-    from backend.free_registry.matcher import match_registry_to_models
-    await match_registry_to_models(db)
 
     await db.commit()
     return {"updated": updated_count, "skipped": skipped_count, "errors": []}

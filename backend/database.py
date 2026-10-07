@@ -388,10 +388,9 @@ DEFAULT_PROVIDERS = [
         "base_url": "https://api.groq.com/openai/v1",
         "is_free": 1,
         "models": [
-            ("groq/llama-3.3-70b", "llama-3.3-70b-versatile", "Llama 3.3 70B", 128000),
-            ("groq/llama-3.1-8b", "llama-3.1-8b-instant", "Llama 3.1 8B (Fast)", 128000),
-            ("groq/gemma2-9b", "gemma2-9b-it", "Gemma 2 9B", 8192),
-            ("groq/mixtral-8x7b", "mixtral-8x7b-32768", "Mixtral 8x7B", 32768),
+            ("groq/openai/gpt-oss-120b", "openai/gpt-oss-120b", "GPT OSS 120B", 131072),
+            ("groq/openai/gpt-oss-20b", "openai/gpt-oss-20b", "GPT OSS 20B", 131072),
+            ("groq/qwen/qwen3.8-27b", "qwen/qwen3.8-27b", "Qwen 3.8 27B", 131072),
         ],
     },
     {
@@ -400,11 +399,12 @@ DEFAULT_PROVIDERS = [
         "base_url": "https://openrouter.ai/api/v1",
         "is_free": 1,
         "models": [
-            ("openrouter/llama-3.3-70b", "meta-llama/llama-3.3-70b-instruct:free", "Llama 3.3 70B", 131072),
-            ("openrouter/qwen2.5-72b", "qwen/qwen-2.5-72b-instruct:free", "Qwen 2.5 72B", 32768),
-            ("openrouter/deepseek-r1", "deepseek/deepseek-r1:free", "DeepSeek R1", 65536),
-            ("openrouter/gemma3-27b", "google/gemma-3-27b-it:free", "Gemma 3 27B", 131072),
-            ("openrouter/mistral-7b", "mistralai/mistral-7b-instruct:free", "Mistral 7B", 32768),
+            ("openrouter/google/gemma-4-31b-it:free", "google/gemma-4-31b-it:free", "Gemma 4 31B (Free)", 262144),
+            ("openrouter/google/gemma-4-26b-a4b-it:free", "google/gemma-4-26b-a4b-it:free", "Gemma 4 26B (Free)", 262144),
+            ("openrouter/nvidia/nemotron-3-ultra-550b-a55b:free", "nvidia/nemotron-3-ultra-550b-a55b:free", "Nemotron 3 Ultra 550B (Free)", 131072),
+            ("openrouter/openai/gpt-oss-120b:free", "openai/gpt-oss-120b:free", "GPT OSS 120B (Free)", 131072),
+            ("openrouter/liquid/lfm-2.5-2.6b:free", "liquid/lfm-2.5-2.6b:free", "LFM 2.5 2.6B (Free)", 32768),
+            ("openrouter/cohere/north-mini-code:free", "cohere/north-mini-code:free", "North Mini Code (Free)", 32768),
         ],
     },
     {
@@ -413,19 +413,20 @@ DEFAULT_PROVIDERS = [
         "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
         "is_free": 1,
         "models": [
-            ("gemini/flash-2.0", "gemini-2.0-flash", "Gemini 2.0 Flash", 1048576),
-            ("gemini/flash-1.5", "gemini-1.5-flash", "Gemini 1.5 Flash", 1048576),
-            ("gemini/flash-2.0-lite", "gemini-2.0-flash-lite", "Gemini 2.0 Flash Lite", 1048576),
+            ("gemini/gemini-3.8-flash", "gemini-3.8-flash", "Gemini 3.8 Flash", 1048576),
+            ("gemini/gemini-3.5-flash", "gemini-3.5-flash", "Gemini 3.5 Flash", 1048576),
+            ("gemini/gemini-3.5-flash-lite", "gemini-3.5-flash-lite", "Gemini 3.5 Flash Lite", 1048576),
+            ("gemini/gemma-4-31b-it", "gemma-4-31b-it", "Gemma 4 31B", 262144),
         ],
     },
     {
         "id": "cerebras",
         "name": "Cerebras",
         "base_url": "https://api.cerebras.ai/v1",
-        "is_free": 1,
+        "is_free": 0,
         "models": [
-            ("cerebras/llama-3.3-70b", "llama-3.3-70b", "Llama 3.3 70B (Ultra Fast)", 131072),
-            ("cerebras/llama-3.1-8b", "llama3.1-8b", "Llama 3.1 8B (Ultra Fast)", 131072),
+            ("cerebras/gpt-oss-120b", "gpt-oss-120b", "GPT OSS 120B (Cerebras)", 131072),
+            ("cerebras/qwen-3.8-27b", "qwen-3.8-27b", "Qwen 3.8 27B (Cerebras)", 131072),
         ],
     },
     {
@@ -551,12 +552,15 @@ DEFAULT_PROVIDERS = [
     {
         "id": "freetheai",
         "name": "FreeTheAI",
-        "base_url": "https://api.freetheai.xyz/v1",
+        "base_url": "https://api.freetheai.org/v1",
         "is_free": 1,
         "models": [
-            ("freetheai/gpt-4o-mini", "gpt-4o-mini", "GPT-4o Mini", 128000),
-            ("freetheai/claude-3-5-sonnet", "claude-3-5-sonnet", "Claude 3.5 Sonnet", 200000),
-            ("freetheai/deepseek-r1", "deepseek-r1", "DeepSeek R1", 131072),
+            ("freetheai/fta/kai/kilo-auto/free", "fta/kai/kilo-auto/free", "Kilo Auto (FreeTheAI)", 131072),
+            ("freetheai/fta/kai/openrouter/free", "fta/kai/openrouter/free", "OpenRouter (FreeTheAI)", 131072),
+            ("freetheai/fta/kai/stepfun/step-3.7-flash:free", "fta/kai/stepfun/step-3.7-flash:free", "Step 3.7 Flash (FreeTheAI)", 131072),
+            ("freetheai/fta/ocz/ling-3.1-flash-free", "fta/ocz/ling-3.1-flash-free", "Ling 3.1 Flash (FreeTheAI)", 131072),
+            ("freetheai/fta/ocz/longcat-2.5-preview-free", "fta/ocz/longcat-2.5-preview-free", "LongCat 2.5 Preview (FreeTheAI)", 1000000),
+            ("freetheai/fta/ocz/mimo-v2.6-flash-free", "fta/ocz/mimo-v2.6-flash-free", "MiMo v2.6 Flash (FreeTheAI)", 131072),
         ],
     },
     {
@@ -644,6 +648,16 @@ DEFAULT_PROVIDERS = [
             ("zenmux/step-3.7-flash-free", "stepfun/step-3.7-flash-free", "Step 3.7 Flash Free", 131072),
             ("zenmux/glm-4.7-flash-free", "z-ai/glm-4.7-flash-free", "GLM 4.7 Flash Free", 131072),
             ("zenmux/glm-4.6v-flash-free", "z-ai/glm-4.6v-flash-free", "GLM 4.6v Flash Free", 131072),
+        ],
+    },
+    {
+        "id": "agnes",
+        "name": "Agnes AI",
+        "base_url": "https://apihub.agnes-ai.com/v1",
+        "is_free": 1,
+        "models": [
+            ("agnes/agnes-2.5-flash", "agnes-2.5-flash", "Agnes 2.5 Flash", 524288),
+            ("agnes/agnes-3.0-flash", "agnes-3.0-flash", "Agnes 3.0 Flash", 524288),
         ],
     },
 ]

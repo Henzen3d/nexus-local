@@ -5,7 +5,6 @@ PROVIDER_NAME_MAP = {
     "Groq": "groq",
     "Google Gemini": "gemini",
     "OpenRouter": "openrouter",
-    "Cerebras": "cerebras",
     "NVIDIA NIM": "nvidia",
     "Cloudflare Workers AI": "cloudflare",
     "Cohere": "cohere",
@@ -14,7 +13,10 @@ PROVIDER_NAME_MAP = {
     "Mistral AI": "mistral",
     "SambaNova": "sambanova",
     "SiliconFlow": "siliconflow",
-    "Z AI (Zhipu AI)": "zai"
+    "Z AI (Zhipu AI)": "zai",
+    "ZenMux": "zenmux",
+    "LongCat": "longcat",
+    "Agnes AI": "agnes",
 }
 
 async def match_registry_to_models(db) -> dict:

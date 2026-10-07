@@ -23,13 +23,9 @@ FAMILIES = [
         "display_name": "Llama 3.3 70B",
         "description": "Modelo open-source altamente versátil de 70 bilhões de parâmetros.",
         "members": [
-            {"model_id": "cerebras/llama-3.3-70b", "fallback_order": 1},
-            {"model_id": "groq/llama-3.3-70b", "fallback_order": 2},
-            {"model_id": "sambanova/llama-3.3-70b", "fallback_order": 3},
-            {"model_id": "siliconflow/llama-3.3-70b", "fallback_order": 4},
-            {"model_id": "openrouter/llama-3.3-70b", "fallback_order": 5},
-            {"model_id": "huggingface/llama-3.3-70b", "fallback_order": 6},
-            {"model_id": "cloudflare/llama-3.3-70b-fast", "fallback_order": 7}
+            {"model_id": "siliconflow/llama-3.3-70b", "fallback_order": 1},
+            {"model_id": "huggingface/llama-3.3-70b", "fallback_order": 2},
+            {"model_id": "cloudflare/llama-3.3-70b-fast", "fallback_order": 3}
         ]
     },
     {
@@ -42,11 +38,12 @@ FAMILIES = [
         ]
     },
     {
-        "id": "gemini-2.0-flash",
-        "display_name": "Gemini 2.0 Flash",
-        "description": "Modelo multimodal ultra rápido do Google com janela gigante de contexto.",
+        "id": "gemini-3.8-flash",
+        "display_name": "Gemini 3.8 Flash",
+        "description": "Modelo multimodal ultra rápido do Google com janela gigante de contexto (1M tokens).",
         "members": [
-            {"model_id": "gemini/flash-2.0", "fallback_order": 1}
+            {"model_id": "gemini/gemini-3.8-flash", "fallback_order": 1},
+            {"model_id": "gemini/gemini-3.5-flash", "fallback_order": 2}
         ]
     }
 ]

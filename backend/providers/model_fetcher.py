@@ -27,8 +27,14 @@ class ModelFetcher:
                 raise Exception(f"HTTP {response.status_code}: {response.text}")
             data = response.json()
             results = []
+            non_chat_prefixes = ("whisper", "canopylabs/orpheus", "meta-llama/llama-prompt-guard")
             for m in data.get("data", []):
                 name = m.get("id")
+                active = m.get("active", True)
+                if not active:
+                    continue
+                if name and any(name.startswith(p) for p in non_chat_prefixes):
+                    continue
                 ctx = m.get("context_window")
                 if name and ctx:
                     results.append({"model_name": name, "context_length": parse_context_length(ctx)})
@@ -56,10 +62,15 @@ class ModelFetcher:
 
     @staticmethod
     async def fetch_gemini(api_key: str) -> List[Dict[str, Any]]:
+        headers = {}
+        params = {"key": api_key}
+        if api_key.startswith("AQ."):
+            headers["x-goog-api-key"] = api_key
         async with httpx.AsyncClient(timeout=15.0) as client:
             response = await client.get(
                 "https://generativelanguage.googleapis.com/v1beta/models",
-                params={"key": api_key}
+                headers=headers,
+                params=params
             )
             if response.status_code != 200:
                 raise Exception(f"HTTP {response.status_code}: {response.text}")

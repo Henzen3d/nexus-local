@@ -3,7 +3,18 @@
   "note": "Registry completo de context windows. Atualizar conforme documentacao dos providers.",
 
   "models": {
-
+    "agnes-2.5-flash": {
+      "context_length": 524288,
+      "provider": "agnes",
+      "source": "https://platform.agnes-ai.com",
+      "verified_at": "2026-10"
+    },
+    "agnes-3.0-flash": {
+      "context_length": 524288,
+      "provider": "agnes",
+      "source": "https://platform.agnes-ai.com",
+      "verified_at": "2026-10"
+    },
     "llama-3.3-70b-versatile": {
       "context_length": 131072,
       "provider": "groq",

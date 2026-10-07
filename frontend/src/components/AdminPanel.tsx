@@ -1964,7 +1964,7 @@ function AdminPanelDesktop() {
               {prov.id === 'freetheai' && (
                 <div style={{ marginTop: '12px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                   <a 
-                    href="https://discord.gg/secrets" 
+                    href="https://freetheai.org/checkin" 
                     target="_blank" 
                     rel="noopener noreferrer"
                     className="sync-btn"
@@ -1982,10 +1982,10 @@ function AdminPanelDesktop() {
                       fontWeight: 500
                     }}
                   >
-                    <span>💬 Realizar Check-in (/checkin)</span>
+                    <span>💬 Check-in / Captcha</span>
                   </a>
                   <span style={{ fontSize: '12px', color: 'var(--muted)' }}>
-                    Execute o comando <code>/checkin</code> no Discord do FreeTheAI diariamente para manter a chave ativa.
+                    Acesse <code>https://freetheai.org/checkin</code> ou use <code>/checkin</code> no Discord diariamente para liberar as chamadas.
                   </span>
                 </div>
               )}

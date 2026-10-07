@@ -16,7 +16,7 @@ export const PROVIDER_API_KEY_URLS: Record<string, string> = {
   sambanova: 'https://cloud.sambanova.ai',
   siliconflow: 'https://cloud.siliconflow.com/account/ak',
   longcat: 'https://longcat.chat',
-  freetheai: 'https://freetheai.xyz',
+  freetheai: 'https://freetheai.org',
   llm7: 'https://token.llm7.io',
   deepseek: 'https://platform.deepseek.com/api_keys',
   qwen: 'https://home.qwencloud.com/api-keys',
@@ -25,6 +25,7 @@ export const PROVIDER_API_KEY_URLS: Record<string, string> = {
   mistral: 'https://console.mistral.ai/api-keys',
   cohere: 'https://dashboard.cohere.com/api-keys',
   zenmux: 'https://zenmux.ai/platform/pay-as-you-go',
+  agnes: 'https://www.agnes-ai.com',
 }
 
 export function getProviderApiKeyUrl(providerId: string): string | undefined {
