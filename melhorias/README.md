@@ -8,6 +8,14 @@ Esta pasta centraliza todas as iniciativas de evolução, planos de arquitetura,
 
 ```
 melhorias/
+├── dream-memory/               # 🌙 Consolidação Noturna de Memória ("Dream Memory" - Kimi/Claude Code/Mem0)
+│   ├── 00-visao-geral.md       # Diagnóstico, decisão e arquitetura geral
+│   ├── 01-fase-esquema-e-historico.md
+│   ├── 02-fase-motor-de-consolidacao.md
+│   ├── 03-fase-gatilho-e-orquestracao.md
+│   ├── 04-fase-interface-e-auditoria-ui.md
+│   └── 05-fase-testes-e-criterios-aceite.md
+│
 ├── novas-5-melhorias-ux/       # 🚀 As 5 Próximas Frentes de Melhoria UX/UI (Benchmarks 2026)
 │   ├── README.md               # Visão geral comparada (Claude, ChatGPT, DeepSeek, MiMo, Manus, MiniMax)
 │   ├── ROADMAP-CHECKLIST.md    # Checklist operacional consolidado de execução

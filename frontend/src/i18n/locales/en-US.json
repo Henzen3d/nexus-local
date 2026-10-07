@@ -306,6 +306,8 @@
     "voiceAutoSub": "Off by default, so the phone does not play audio on its own.",
     "voicePreview": "Play sample",
     "voiceListen": "Read reply",
+    "voiceGenerating": "Generating audio...",
+    "voicePlay": "Play audio",
     "voiceStop": "Stop reading",
     "scoreCalibration": "Score Calibration",
     "freeProviders": "Free / trial providers",

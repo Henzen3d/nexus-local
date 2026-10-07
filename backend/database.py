@@ -915,15 +915,17 @@ async def init_db():
                 final_ctx = reg_info["context_length"] if reg_info else ctx
                 final_source = 'registry' if reg_info else 'default'
 
+                is_prov_free = 1 if prov.get("id") in ("agnes", "zenmux", "llm7", "freetheai") else 0
                 await db.execute(
-                    """INSERT INTO models (id, provider_id, name, display_name, context_length, context_source)
-                       VALUES (?, ?, ?, ?, ?, ?)
+                    """INSERT INTO models (id, provider_id, name, display_name, context_length, context_source, confirmed_free)
+                       VALUES (?, ?, ?, ?, ?, ?, ?)
                        ON CONFLICT(id) DO UPDATE SET 
                            name=excluded.name, 
                            display_name=excluded.display_name,
+                           confirmed_free=CASE WHEN excluded.confirmed_free = 1 THEN 1 ELSE models.confirmed_free END,
                            context_length=CASE WHEN models.id IN (SELECT model_id FROM model_overrides) THEN models.context_length ELSE excluded.context_length END,
                            context_source=CASE WHEN models.id IN (SELECT model_id FROM model_overrides) THEN 'user' ELSE excluded.context_source END""",
-                    (model_id, prov["id"], model_name, display_name, final_ctx, final_source),
+                    (model_id, prov["id"], model_name, display_name, final_ctx, final_source, is_prov_free),
                 )
         await db.commit()
 
@@ -1087,6 +1089,19 @@ async def init_db():
                 await db.commit()
             except Exception:
                 pass
+
+        # Auto-confirma modelos de provedores gratuitos dedicados (Agnes AI, ZenMux, LLM7, FreeTheAI)
+        try:
+            await db.execute(
+                """UPDATE models 
+                   SET confirmed_free = 1 
+                   WHERE provider_id IN ('agnes', 'zenmux', 'llm7', 'freetheai') AND (confirmed_free IS NULL OR confirmed_free = 0)"""
+            )
+            await db.commit()
+        except Exception as e:
+            logger.error("[database migration] erro ao atualizar confirmed_free para provedores free:", exc_info=e)
+
+
 
         # Incremental migration check for user_memory
         try:

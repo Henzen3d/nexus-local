@@ -162,12 +162,24 @@ async def sync_provider_models(provider_id: str, db, custom_api_key: str = None)
         async with db.execute("SELECT context_length, context_source, enabled, confirmed_free FROM models WHERE id = ?", (db_model_id,)) as cur:
             existing = await cur.fetchone()
 
+        is_auto_free = 1 if (
+            (provider_id == "openrouter" and model_name.endswith(":free"))
+            or provider_id in ("zenmux", "llm7", "agnes", "freetheai")
+        ) else 0
+
         if existing:
             old_ctx, old_source, old_enabled, old_confirmed_free = existing
-            if old_ctx != context_length or old_source != 'api':
+            should_update_ctx = (old_ctx != context_length or old_source != 'api')
+            should_confirm_free = (is_auto_free == 1 and not old_confirmed_free)
+
+            if should_update_ctx or should_confirm_free:
+                new_ctx = context_length if should_update_ctx else old_ctx
+                new_source = 'api' if should_update_ctx else old_source
+                new_cf = 1 if (is_auto_free == 1 or old_confirmed_free) else 0
+                new_enabled = 1 if should_confirm_free else old_enabled
                 await db.execute(
-                    "UPDATE models SET context_length = ?, context_source = 'api' WHERE id = ?",
-                    (context_length, db_model_id)
+                    "UPDATE models SET context_length = ?, context_source = ?, confirmed_free = ?, enabled = ? WHERE id = ?",
+                    (new_ctx, new_source, new_cf, new_enabled, db_model_id)
                 )
                 updated_count += 1
             else:
@@ -175,10 +187,6 @@ async def sync_provider_models(provider_id: str, db, custom_api_key: str = None)
         else:
             # Insert new model!
             display_name = derive_display_name(model_name)
-            is_auto_free = 1 if (
-                (provider_id == "openrouter" and model_name.endswith(":free"))
-                or provider_id in ("zenmux", "llm7")
-            ) else 0
             await db.execute(
                 """INSERT INTO models (id, provider_id, name, display_name, context_length, context_source, enabled, confirmed_free)
                    VALUES (?, ?, ?, ?, ?, 'api', ?, ?)""",

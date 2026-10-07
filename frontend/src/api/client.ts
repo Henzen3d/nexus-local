@@ -297,7 +297,7 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify(data),
     }),
-  speak: async (text: string, voice?: string) => {
+  speak: async (text: string, voice?: string, signal?: AbortSignal) => {
     const token = localStorage.getItem('nexuslocal_token')
     const headers: HeadersInit = { 'Content-Type': 'application/json' }
     if (token) headers['Authorization'] = `Bearer ${token}`
@@ -305,6 +305,7 @@ export const api = {
       method: 'POST',
       headers,
       body: JSON.stringify({ text, voice }),
+      signal,
     })
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     return res.blob()

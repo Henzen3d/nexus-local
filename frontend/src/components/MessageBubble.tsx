@@ -1,6 +1,6 @@
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { User, Bot, Copy, Check, Zap, Sparkles, FileText, Globe, Image, FileCode, Download, Atom, ChevronRight, Brain, AlertCircle, RefreshCw, Volume2, Square } from 'lucide-react'
+import { User, Bot, Copy, Check, Zap, Sparkles, FileText, Globe, Image, FileCode, Download, Atom, ChevronRight, Brain, AlertCircle, RefreshCw, Volume2, Square, Loader2, Play } from 'lucide-react'
 import React, { useState, useRef, useEffect, useDeferredValue } from 'react'
 import { useTranslation } from 'react-i18next'
 import i18n from '../i18n'
@@ -532,14 +532,38 @@ export function MessageBubble({ message }: Props) {
           </button>
           {message.role === 'assistant' && message.content && (
             <button
-              className="meta-copy-btn custom-tooltip-trigger"
+              className={`meta-copy-btn custom-tooltip-trigger ${
+                ttsPlay.id === message.id && ttsPlay.status === 'playing' ? 'tts-active' : ''
+              } ${ttsPlay.id === message.id && ttsPlay.status === 'loading' ? 'tts-loading' : ''}`}
               onClick={() => { playSpeech(message.id, message.content).catch(() => {}) }}
-              data-tooltip={ttsPlay.id === message.id && ttsPlay.status === 'playing' ? t('settings.voiceStop') : t('settings.voiceListen')}
-              aria-label={t('settings.voiceListen')}
+              data-tooltip={
+                ttsPlay.id === message.id && ttsPlay.status === 'loading'
+                  ? t('settings.voiceGenerating', { defaultValue: 'Gerando áudio...' })
+                  : ttsPlay.id === message.id && ttsPlay.status === 'playing'
+                  ? t('settings.voiceStop', { defaultValue: 'Parar leitura' })
+                  : ttsPlay.cachedIds?.has(message.id)
+                  ? t('settings.voicePlay', { defaultValue: 'Tocar áudio' })
+                  : t('settings.voiceListen', { defaultValue: 'Ouvir resposta' })
+              }
+              aria-label={
+                ttsPlay.id === message.id && ttsPlay.status === 'loading'
+                  ? t('settings.voiceGenerating', { defaultValue: 'Gerando áudio...' })
+                  : ttsPlay.id === message.id && ttsPlay.status === 'playing'
+                  ? t('settings.voiceStop', { defaultValue: 'Parar leitura' })
+                  : ttsPlay.cachedIds?.has(message.id)
+                  ? t('settings.voicePlay', { defaultValue: 'Tocar áudio' })
+                  : t('settings.voiceListen', { defaultValue: 'Ouvir resposta' })
+              }
             >
-              {ttsPlay.id === message.id && ttsPlay.status === 'playing'
-                ? <Square size={12} />
-                : <Volume2 size={12} />}
+              {ttsPlay.id === message.id && ttsPlay.status === 'loading' ? (
+                <Loader2 size={12} className="animate-spin text-primary" />
+              ) : ttsPlay.id === message.id && ttsPlay.status === 'playing' ? (
+                <Square size={12} className="text-primary" />
+              ) : ttsPlay.cachedIds?.has(message.id) ? (
+                <Play size={12} className="text-primary" fill="currentColor" />
+              ) : (
+                <Volume2 size={12} />
+              )}
             </button>
           )}
         </div>

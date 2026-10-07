@@ -1595,6 +1595,14 @@ html[data-chat-font="mono"] {
   background: var(--surface-soft);
   color: var(--ink);
 }
+.message-meta .meta-copy-btn.tts-loading {
+  color: var(--primary);
+  opacity: 1;
+}
+.message-meta .meta-copy-btn.tts-active {
+  color: var(--primary);
+  opacity: 1;
+}
 
 /* Notice de relay de imagem */
 .message-relay-notice {

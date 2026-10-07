@@ -307,6 +307,8 @@
     "voiceAutoSub": "Desligado por padrão. O celular não dispara áudio sozinho.",
     "voicePreview": "Ouvir amostra",
     "voiceListen": "Ouvir resposta",
+    "voiceGenerating": "Gerando áudio...",
+    "voicePlay": "Tocar áudio",
     "voiceStop": "Parar leitura",
     "scoreCalibration": "Calibração de pontuação",
     "freeProviders": "Provedores gratuitos / testes",
