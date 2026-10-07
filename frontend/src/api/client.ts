@@ -290,6 +290,25 @@ export const api = {
         memory_enabled: data.memory_enabled === undefined ? undefined : !!data.memory_enabled,
       }),
     }),
+  getTtsSettings: () =>
+    fetchJSON<{ voice: string; auto: boolean; voices: { id: string; name: string; edge: string }[] }>('/tts/settings'),
+  saveTtsSettings: (data: { voice?: string; auto?: boolean }) =>
+    fetchJSON<{ voice: string; auto: boolean; voices: { id: string; name: string; edge: string }[] }>('/tts/settings', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+  speak: async (text: string, voice?: string) => {
+    const token = localStorage.getItem('nexuslocal_token')
+    const headers: HeadersInit = { 'Content-Type': 'application/json' }
+    if (token) headers['Authorization'] = `Bearer ${token}`
+    const res = await fetch(BASE + '/tts', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ text, voice }),
+    })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    return res.blob()
+  },
   getMemoryExtractorConfig: () =>
     fetchJSON<MemoryExtractorConfig>('/memory/extractor-config'),
   saveMemoryExtractorConfig: (data: Partial<MemoryExtractorConfig>) =>

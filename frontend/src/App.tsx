@@ -13,6 +13,7 @@ import { ProjectsPanel } from './components/ProjectsPanel'
 import { ChatProvider } from './context/ChatContext'
 import { Login } from './components/Login'
 import { MemoryOnboarding } from './components/MemoryOnboarding'
+import { loadTtsPrefs } from './lib/ttsPlayer'
 import { PwaInstallBanner } from './components/PwaInstallBanner'
 import { applyDocumentLang } from './i18n'
 import { MOBILE_BREAKPOINT } from './hooks/useIsMobile'
@@ -125,6 +126,7 @@ export default function App() {
   useEffect(() => {
     if (token) {
       hydrateProfileFromServer()
+      loadTtsPrefs().catch(() => {})
     }
   }, [token, hydrateProfileFromServer])
 

@@ -186,3 +186,17 @@ Em diálogos que utilizam o Modo Fusion, apenas a **resposta final compilada pel
 Ao renderizar HTML de terceiros gerado por LLMs:
 *   Utilizar `<iframe sandbox="allow-scripts">` (nunca combinando `allow-scripts` com `allow-same-origin` de forma que permita ao iframe acessar o localStorage do NexusLocal e roubar chaves de API locais).
 *   Garantir sanitização básica para títulos e campos injetados diretamente na árvore do DOM.
+
+---
+
+## 7. Contas da família
+
+O cadastro público está fechado. Só o administrador cria contas, em **Gerenciar usuários**.
+
+O botão **Cadastrar Usuário** aparece quando o papel da sessão é administrador. O banco grava o papel em minúsculas (`admin`). A tela também aceita `ADMIN`, para não esconder o botão por diferença de caixa.
+
+Cada conta usa a própria chave de API. O administrador pode definir a senha inicial e gravar a chave daquela pessoa na mesma tela. O service worker atualiza a interface sozinho; se o botão não aparecer depois de um deploy, feche a aba e abra de novo.
+
+## 8. Leitura em voz
+
+As respostas do chat podem ser lidas com Edge TTS, sem chave. Em Configurações de voz ficam Antonio, Francisca e Thalita. A escolha fica na conta. O botão de ouvir fica em cada resposta. A leitura automática começa desligada.

@@ -1,5 +1,5 @@
-import { useState, useRef, useEffect } from 'react'
-import { ArrowUp, Square, Sparkles, Loader2, AlertCircle, Wrench, Globe } from 'lucide-react'
+import { useState, useRef, useEffect, useSyncExternalStore } from 'react'
+import { ArrowUp, Square, Sparkles, Loader2, AlertCircle, Wrench, Globe, Mic, AudioLines } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useStore } from '../store/useStore'
 import { ModelSelector } from './ModelSelector'
@@ -12,6 +12,17 @@ import { BottomSheet } from './ui/BottomSheet'
 import { useIsMobile } from '../hooks/useIsMobile'
 import { useVisualViewportOffset } from '../hooks/useVisualViewportOffset'
 import type { Attachment } from '../types'
+import {
+  applyDecision,
+  createSpeechSession,
+  getTalk,
+  onFinalTranscript,
+  onMicTap,
+  onTalkToggle,
+  speechRecognitionCtor,
+  subscribeTalk,
+} from '../lib/talkLoop'
+import { stopSpeech } from '../lib/ttsPlayer'
 
 interface Props {
   onSend: (text: string, displayText?: string, attachmentIds?: string[], attachments?: Attachment[]) => void
@@ -39,6 +50,85 @@ export function MessageInput({ onSend, isEmpty = false }: Props) {
   } = useStore()
   const isMobile = useIsMobile()
   const keyboardOffset = useVisualViewportOffset()
+  const talk = useSyncExternalStore(subscribeTalk, getTalk)
+  const onSendRef = useRef(onSend)
+  onSendRef.current = onSend
+  const seenConv = useRef(activeConversationId)
+
+  useEffect(() => {
+    const prev = seenConv.current
+    seenConv.current = activeConversationId
+    if (prev && prev !== activeConversationId) {
+      applyDecision({ type: 'exit', next: { mode: 'off', phase: 'idle' } })
+    }
+  }, [activeConversationId])
+
+  useEffect(() => {
+    if (talk.phase !== 'listening') return
+    const Ctor = speechRecognitionCtor(window)
+    if (!Ctor) {
+      showToast(t('chat.micUnsupported', { defaultValue: 'Voz só no Chrome.' }), 'error')
+      applyDecision({ type: 'exit', next: { mode: 'off', phase: 'idle' } })
+      return
+    }
+    let gotFinal = false
+    const session = createSpeechSession(Ctor, {
+      onInterim: (heard) => setText(heard),
+      onFinal: (heard) => {
+        gotFinal = true
+        const cur = getTalk()
+        const decision = onFinalTranscript(cur, heard)
+        const modelId = useStore.getState().selectedModelId
+        if (decision.type === 'send' && !modelId) {
+          showToast(t('chat.selectModelPlaceholder'), 'error')
+          applyDecision(
+            cur.mode === 'loop'
+              ? { type: 'listen', next: { mode: 'loop', phase: 'listening' } }
+              : { type: 'exit', next: { mode: 'off', phase: 'idle' } },
+          )
+          setText('')
+          return
+        }
+        if (decision.type === 'send' && useStore.getState().isStreaming) {
+          applyDecision({ type: 'exit', next: { mode: 'off', phase: 'idle' } })
+          setText('')
+          return
+        }
+        applyDecision(decision)
+        setText('')
+        if (decision.type === 'send') onSendRef.current(decision.text)
+      },
+      onError: (code) => {
+        if (code === 'aborted' || code === 'no-speech') return
+        showToast(
+          code === 'not-allowed'
+            ? t('chat.micDenied', { defaultValue: 'Permita o microfone no Chrome.' })
+            : t('chat.micUnsupported', { defaultValue: 'Voz só no Chrome.' }),
+          'error',
+        )
+        applyDecision({ type: 'exit', next: { mode: 'off', phase: 'idle' } })
+      },
+      onEnd: () => {
+        if (gotFinal) return
+        const cur = getTalk()
+        if (cur.mode === 'loop' && cur.phase === 'listening') {
+          applyDecision({ type: 'listen', next: { mode: 'loop', phase: 'listening' } })
+          return
+        }
+        if (cur.phase === 'listening') {
+          applyDecision({ type: 'exit', next: { mode: 'off', phase: 'idle' } })
+        }
+      },
+    })
+    try {
+      session.start()
+    } catch {
+      showToast(t('chat.micUnsupported', { defaultValue: 'Voz só no Chrome.' }), 'error')
+      applyDecision({ type: 'exit', next: { mode: 'off', phase: 'idle' } })
+      return
+    }
+    return () => session.abort()
+  }, [talk.epoch, talk.phase, showToast, t])
 
   // Focus the input on mount or when conversation changes on desktop
   useEffect(() => {
@@ -164,7 +254,9 @@ export function MessageInput({ onSend, isEmpty = false }: Props) {
             onChange={(e) => setText(e.target.value)}
             onKeyDown={handleKey}
             placeholder={
-              !selectedModelId
+              talk.phase === 'listening'
+                ? t('chat.micListening', { defaultValue: 'Ouvindo…' })
+                : !selectedModelId
                 ? t('chat.selectModelPlaceholder')
                 : t('chat.writeMessage')
             }
@@ -176,6 +268,30 @@ export function MessageInput({ onSend, isEmpty = false }: Props) {
 
         <div className="input-actions-row">
           <div className="input-actions-left">
+            <button
+              type="button"
+              className={`composer-tool-btn touch-target ${talk.phase === 'listening' && talk.mode === 'once' ? 'listening' : ''}`}
+              onClick={() => {
+                stopSpeech()
+                applyDecision(onMicTap(getTalk()))
+              }}
+              disabled={isStreaming && talk.mode !== 'loop'}
+              aria-label={t('chat.mic', { defaultValue: 'Falar' })}
+            >
+              <Mic size={16} />
+            </button>
+            <button
+              type="button"
+              className={`composer-tool-btn touch-target ${talk.mode === 'loop' ? 'listening' : ''}`}
+              onClick={() => {
+                stopSpeech()
+                applyDecision(onTalkToggle(getTalk()))
+              }}
+              aria-pressed={talk.mode === 'loop'}
+              aria-label={t('chat.talkLoop', { defaultValue: 'Conversar' })}
+            >
+              <AudioLines size={16} />
+            </button>
             <AttachmentButton
               currentModelId={selectedModelId}
               onUploadStart={() => {}}

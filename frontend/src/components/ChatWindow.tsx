@@ -13,6 +13,8 @@ import { Button } from './ui/Button'
 import { BottomSheet } from './ui/BottomSheet'
 import { useIsMobile } from '../hooks/useIsMobile'
 import { NexusLogoIcon } from './NexusLogoIcon'
+import { getTtsPrefs, onSpeechEnded, playSpeech } from '../lib/ttsPlayer'
+import { applyDecision, getTalk, noteSpeaking, onTtsEnded } from '../lib/talkLoop'
 
 import { SUPPORT_URL } from '../config/support'
 
@@ -389,6 +391,36 @@ export function ChatWindow() {
       bottomSentinelRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' })
     }
   }, [messages, streamingContent])
+
+  const spokenConv = useRef<string | null>(null)
+  const spokenIds = useRef<Set<string>>(new Set())
+  useEffect(() => {
+    if (spokenConv.current !== activeConversationId) {
+      spokenConv.current = activeConversationId
+      spokenIds.current = new Set(messages.map((m) => m.id))
+      return
+    }
+    const fresh = messages.filter((m) => m.role === 'assistant' && !spokenIds.current.has(m.id))
+    messages.forEach((m) => spokenIds.current.add(m.id))
+    const loop = getTalk().mode === 'loop'
+    const shouldSpeak = getTtsPrefs().auto || loop
+    if (!shouldSpeak || fresh.length === 0) return
+    const last = fresh[fresh.length - 1]
+    if (loop && !last.content.trim()) {
+      applyDecision(onTtsEnded({ mode: 'loop', phase: 'speaking' }))
+      return
+    }
+    if (loop) noteSpeaking()
+    playSpeech(last.id, last.content).catch(() => {
+      if (getTalk().mode === 'loop') applyDecision(onTtsEnded({ mode: 'loop', phase: 'speaking' }))
+    })
+  }, [messages, activeConversationId])
+
+  useEffect(() => {
+    return onSpeechEnded(() => {
+      applyDecision(onTtsEnded(getTalk()))
+    })
+  }, [])
 
   // Fecha submenu ao clicar fora
   const handleOverlayClick = useCallback(() => setOpenChip(null), [])

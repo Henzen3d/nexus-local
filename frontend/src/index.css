@@ -2326,6 +2326,11 @@ html[data-theme="light"] .input-card:focus-within {
   line-height: 0;
   transition: color 0.15s, background 0.15s, border-color 0.15s;
 }
+.composer-tool-btn.listening {
+  color: var(--primary);
+  background: rgba(204, 120, 92, 0.12);
+}
+
 .composer-tool-btn:hover:not(:disabled) {
   color: var(--ink);
   background: var(--surface-cream-strong);
@@ -5075,6 +5080,55 @@ html[data-theme="light"] .sidebar[data-open="false"] .new-chat-btn {
    ════════════════════════════════════════════════════════════ */
 .users-manager-section {
   padding: 24px 20px;
+}
+
+.register-user-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 12px 0 16px;
+  padding: 14px;
+  background: var(--surface-card);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+}
+
+.register-user-title {
+  font-size: 14px;
+  color: var(--ink);
+}
+
+.register-user-input {
+  width: 100%;
+  min-height: 40px;
+  padding: 8px 12px;
+  background: var(--surface-cream-strong);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.register-user-btn {
+  display: flex !important;
+  visibility: visible !important;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 44px;
+  padding: 12px 16px;
+  background: #cc785c;
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.register-user-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .users-table-wrapper {

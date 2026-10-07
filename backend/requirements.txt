@@ -18,3 +18,4 @@ python-magic-bin>=0.4.14; sys_platform == "win32"
 pandas>=2.0.0
 ddgs>=9.14.4
 fastembed>=0.7.1
+edge-tts>=7.2.7

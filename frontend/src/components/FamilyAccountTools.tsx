@@ -1,8 +1,11 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { api } from '../api/client'
+import { REGISTER_USER_BUTTON_CLASS } from '../lib/registerUser'
 import type { Provider } from '../types'
 
 export function CreateFamilyUser({ onCreated }: { onCreated: () => void }) {
+  const { t } = useTranslation()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [email, setEmail] = useState('')
@@ -34,15 +37,17 @@ export function CreateFamilyUser({ onCreated }: { onCreated: () => void }) {
     }
   }
 
+  const label = t('settings.registerUser', { defaultValue: 'Cadastrar Usuário' })
+
   return (
-    <div className="settings-card-section" style={{ padding: '14px', display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '14px' }}>
-      <strong style={{ fontSize: '14px' }}>Nova conta da família</strong>
-      <input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="usuário" autoComplete="off" />
-      <input value={password} onChange={(e) => setPassword(e.target.value)} placeholder="senha inicial" type="password" autoComplete="new-password" />
-      <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="e-mail (opcional)" type="email" autoComplete="off" />
+    <div className="register-user-block">
+      <strong className="register-user-title">{t('settings.registerUserTitle', { defaultValue: 'Nova conta da família' })}</strong>
+      <input className="register-user-input" value={username} onChange={(e) => setUsername(e.target.value)} placeholder="usuário" autoComplete="off" />
+      <input className="register-user-input" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="senha inicial" type="password" autoComplete="new-password" />
+      <input className="register-user-input" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="e-mail (opcional)" type="email" autoComplete="off" />
       {error && <div className="login-error">{error}</div>}
-      <button type="button" className="save-btn" onClick={submit} disabled={saving}>
-        {saving ? 'Criando...' : 'Criar conta'}
+      <button type="button" className={REGISTER_USER_BUTTON_CLASS} onClick={submit} disabled={saving}>
+        {saving ? t('settings.registerUserSaving', { defaultValue: 'Criando...' }) : label}
       </button>
     </div>
   )

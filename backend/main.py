@@ -32,6 +32,7 @@ from backend.routers.auth import router as auth_router
 from backend.routers.account import router as account_router
 from backend.routers.memory import router as memory_router
 from backend.routers.projects import router as projects_router
+from backend.routers.tts import router as tts_router
 
 app = FastAPI(title="NexusLocal", version="1.0.0")
 
@@ -71,6 +72,7 @@ app.include_router(web_search_router)
 app.include_router(families_router)
 app.include_router(dashboard_router)
 app.include_router(ranking_router)
+app.include_router(tts_router)
 
 
 

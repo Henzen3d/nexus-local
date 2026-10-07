@@ -22,6 +22,8 @@ import { RankingWeightsSettings } from './RankingWeightsSettings'
 import { RankingsView } from './RankingsView'
 import { UserMemoryPanel } from './UserMemoryPanel'
 import { CreateFamilyUser, FamilyUserKeys } from './FamilyAccountTools'
+import { canShowRegisterUserButton } from '../lib/registerUser'
+import { playSpeech, saveTtsPrefs, useTtsPrefs } from '../lib/ttsPlayer'
 import { useIsMobile } from '../hooks/useIsMobile'
 
 type Tab = 'general' | 'providers' | 'rankings' | 'cache' | 'tools' | 'users' | 'dashboard' | 'memory'
@@ -46,6 +48,7 @@ function AdminPanelMobile() {
     hapticFeedback, setHapticFeedback, displayName, fullName, occupation,
     customInstructions, setProfile, logout, locale, setLocale
   } = useStore()
+  const tts = useTtsPrefs()
 
   // Stack navigation state
   const [screenStack, setScreenStack] = useState<string[]>(['list'])
@@ -591,7 +594,6 @@ function AdminPanelMobile() {
                   <div>
                     <span className="settings-list-item-label">
                       {t('settings.voiceSettings', { defaultValue: 'Leitura de Voz' })}
-                      <span className="settings-coming-soon-badge">{t('settings.comingSoon', { defaultValue: 'Em breve' })}</span>
                     </span>
                     <span className="settings-list-item-subtitle">{t('settings.voiceSettingsSub', { defaultValue: 'Vozes TTS do chat' })}</span>
                   </div>
@@ -1195,7 +1197,9 @@ function AdminPanelMobile() {
           <div className="settings-mobile-content">
             <h4 style={{ fontWeight: 600, fontSize: '15px', color: 'var(--ink)' }}>{t("settings.registeredUsers")}</h4>
             <p style={{ fontSize: '12px', color: 'var(--muted)' }}>Controle de acessos do servidor</p>
-            <CreateFamilyUser onCreated={fetchUsers} />
+            {canShowRegisterUserButton(user?.role) && (
+              <CreateFamilyUser onCreated={fetchUsers} />
+            )}
 
             {loadingUsers ? (
               <div style={{ color: 'var(--muted)', textAlign: 'center', padding: '30px' }}>{t("settings.loadingUsers")}</div>
@@ -1424,31 +1428,47 @@ function AdminPanelMobile() {
         <div className="settings-mobile-container-view">
           <Header title={t("settings.voiceSettings")} />
           <div className="settings-mobile-content">
-            <div className="settings-coming-soon-banner">{t('settings.comingSoonPreview', { defaultValue: 'Prévia: esta seção ainda não afeta o sistema.' })}</div>
             <p style={{ fontSize: '13px', color: 'var(--muted)', marginBottom: '12px', padding: '0 4px' }}>
-              Selecione a voz sintetizada para leitura de mensagens e respostas de áudio do chat.
+              {t('settings.voiceSettingsSub', { defaultValue: 'Vozes TTS do chat' })}. Edge TTS, sem chave.
             </p>
             <div className="settings-card-section">
               {[
-                { id: 'auto', name: 'Automático (Voz Padrão do Sistema)' },
-                { id: 'google-pt', name: 'Google Português (Brasil)' },
-                { id: 'maria', name: 'Microsoft Maria - Portuguese (Brazil)' },
-                { id: 'daniel', name: 'Microsoft Daniel - Portuguese (Brazil)' },
-                { id: 'luciana', name: 'Speech Synthesis Pt-BR (Premium)' },
+                { id: 'antonio', name: 'Antonio' },
+                { id: 'francisca', name: 'Francisca' },
+                { id: 'thalita', name: 'Thalita' },
               ].map((v) => (
-                <div 
-                  key={v.id} 
+                <div
+                  key={v.id}
                   className="settings-list-item"
-                  onClick={() => { setSelectedVoice(v.id); triggerHaptic(10) }}
-                  style={{ background: selectedVoice === v.id ? 'rgba(204,120,92,0.05)' : undefined }}
+                  onClick={() => { saveTtsPrefs({ voice: v.id }).catch(() => {}); triggerHaptic(10) }}
+                  style={{ background: tts.voice === v.id ? 'rgba(204,120,92,0.05)' : undefined }}
                 >
-                  <span style={{ fontSize: '13.5px', color: selectedVoice === v.id ? 'var(--primary)' : 'var(--ink)', fontWeight: selectedVoice === v.id ? 600 : 500 }}>
+                  <span style={{ fontSize: '13.5px', color: tts.voice === v.id ? 'var(--primary)' : 'var(--ink)', fontWeight: tts.voice === v.id ? 600 : 500 }}>
                     {v.name}
                   </span>
-                  {selectedVoice === v.id && <Check size={16} style={{ color: 'var(--primary)' }} />}
+                  {tts.voice === v.id && <Check size={16} style={{ color: 'var(--primary)' }} />}
                 </div>
               ))}
             </div>
+            <div className="settings-card-section" style={{ marginTop: '12px' }}>
+              <div className="settings-list-item" onClick={() => { saveTtsPrefs({ auto: !tts.auto }).catch(() => {}); triggerHaptic(10) }}>
+                <div>
+                  <span className="settings-list-item-label">{t('settings.voiceAuto')}</span>
+                  <span className="settings-list-item-subtitle">{t('settings.voiceAutoSub')}</span>
+                </div>
+                <span style={{ color: tts.auto ? 'var(--primary)' : 'var(--muted)', fontSize: '13px', fontWeight: 600 }}>
+                  {tts.auto ? 'Ligada' : 'Desligada'}
+                </span>
+              </div>
+            </div>
+            <button
+              type="button"
+              className="register-user-btn"
+              style={{ marginTop: '16px' }}
+              onClick={() => { playSpeech('preview', 'Esta é a voz do Nexus Local.', tts.voice).catch(() => {}) }}
+            >
+              {t('settings.voicePreview')}
+            </button>
           </div>
         </div>
       )}
@@ -2538,7 +2558,9 @@ function AdminPanelDesktop() {
                 <p style={{ fontSize: '13px', color: 'var(--muted)', marginBottom: '24px' }}>
                   {t('settings.usersDesc')}
                 </p>
-                <CreateFamilyUser onCreated={fetchUsers} />
+                {canShowRegisterUserButton(user?.role) && (
+                  <CreateFamilyUser onCreated={fetchUsers} />
+                )}
                 {loadingUsers ? (
                   <div style={{ color: 'var(--muted)', textAlign: 'center', padding: '20px' }}>{t("settings.loadingUsers")}</div>
                 ) : userError ? (

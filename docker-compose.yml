@@ -2,6 +2,9 @@ services:
   backend:
     build: ./backend
     container_name: nexus_backend
+    # tini como PID 1: adota e reapa filhos órfãos (evita zumbis
+    # permanentes — mesmo padrão do incidente vistorias 2026-08-14).
+    init: true
     restart: always
     # Injeta JWT_SECRET, chaves de API e demais vars do .env no container.
     # Sem isso o backend falha no boot (auth.py exige JWT_SECRET) e o proxy
@@ -26,6 +29,9 @@ services:
         - VITE_API_URL=${VITE_API_URL}
         - VITE_WS_URL=${VITE_WS_URL}
     container_name: nexus_frontend
+    # tini como PID 1: adota e reapa filhos órfãos (node como PID 1
+    # não reapar; deixa zumbis acumulando).
+    init: true
     restart: always
     depends_on:
       - backend
@@ -47,4 +53,4 @@ networks:
     driver: bridge
 
 volumes:
-  fastembed_cache:
+  fastembed_cache:

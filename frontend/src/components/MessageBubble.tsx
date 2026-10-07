@@ -1,6 +1,6 @@
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { User, Bot, Copy, Check, Zap, Sparkles, FileText, Globe, Image, FileCode, Download, Atom, ChevronRight, Brain, AlertCircle, RefreshCw } from 'lucide-react'
+import { User, Bot, Copy, Check, Zap, Sparkles, FileText, Globe, Image, FileCode, Download, Atom, ChevronRight, Brain, AlertCircle, RefreshCw, Volume2, Square } from 'lucide-react'
 import React, { useState, useRef, useEffect, useDeferredValue } from 'react'
 import { useTranslation } from 'react-i18next'
 import i18n from '../i18n'
@@ -13,6 +13,7 @@ import { AIStatusIndicator } from './AIStatusIndicator'
 import { markdownComponents } from './markdownComponents'
 import { AdapterRegistry } from '../adapters/AdapterRegistry'
 import { AIMetadataDisplay } from './AIMetadataDisplay'
+import { playSpeech, useTtsPlay } from '../lib/ttsPlayer'
 
 // ─── ThinkingBlock — componente independente de modelo ─────────────────────────
 // ─── ThinkingBlock — componente independente de modelo ─────────────────────────
@@ -271,6 +272,7 @@ interface Props {
 export function MessageBubble({ message }: Props) {
   const { t } = useTranslation()
   const [copied, setCopied] = useState(false)
+  const ttsPlay = useTtsPlay()
   const lastCacheHit = useStore((s) => s.lastCacheHit)
   const { setActiveArtifact, setArtifactPanelOpen, loadArtifactHistory } = useStore()
 
@@ -528,6 +530,18 @@ export function MessageBubble({ message }: Props) {
           >
             {copied ? <Check size={12} className="text-success" /> : <Copy size={12} />}
           </button>
+          {message.role === 'assistant' && message.content && (
+            <button
+              className="meta-copy-btn custom-tooltip-trigger"
+              onClick={() => { playSpeech(message.id, message.content).catch(() => {}) }}
+              data-tooltip={ttsPlay.id === message.id && ttsPlay.status === 'playing' ? t('settings.voiceStop') : t('settings.voiceListen')}
+              aria-label={t('settings.voiceListen')}
+            >
+              {ttsPlay.id === message.id && ttsPlay.status === 'playing'
+                ? <Square size={12} />
+                : <Volume2 size={12} />}
+            </button>
+          )}
         </div>
       </div>
     </div>
