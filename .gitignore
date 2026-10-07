@@ -75,6 +75,10 @@ check_db.py
 _fable5_migration_test.py
 test-*.png
 test-*.jpg
+melhorias/amostras-e-testes/
+*.pdf
+vistoria*.html
+Laudo*
 
 # ── Arquivos HTML de rascunho / apresentação ─────────────────────────────────
 Discurso.html
