@@ -8,6 +8,11 @@ Esta pasta centraliza todas as iniciativas de evolução, planos de arquitetura,
 
 ```
 melhorias/
+├── assistente-proativo/        # 🤖 Assistente Proativo (Detecção de emoção/entidades + pesquisa background)
+│   ├── assistente-proativo-plano.md
+│   ├── brainstorm-assistente-proativo.md
+│   └── design-assistente-proativo.md
+│
 ├── dream-memory/               # 🌙 Consolidação Noturna de Memória ("Dream Memory" - Kimi/Claude Code/Mem0)
 │   ├── 00-visao-geral.md       # Diagnóstico, decisão e arquitetura geral
 │   ├── 01-fase-esquema-e-historico.md
