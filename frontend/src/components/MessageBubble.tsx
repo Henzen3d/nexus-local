@@ -538,7 +538,7 @@ export function MessageBubble({ message }: Props) {
               onClick={() => { playSpeech(message.id, message.content).catch(() => {}) }}
               data-tooltip={
                 ttsPlay.id === message.id && ttsPlay.status === 'loading'
-                  ? t('settings.voiceGenerating', { defaultValue: 'Gerando áudio...' })
+                  ? `${t('settings.voiceGenerating', { defaultValue: 'Gerando áudio...' })} (${ttsPlay.progress}%)`
                   : ttsPlay.id === message.id && ttsPlay.status === 'playing'
                   ? t('settings.voiceStop', { defaultValue: 'Parar leitura' })
                   : ttsPlay.cachedIds?.has(message.id)
@@ -547,7 +547,7 @@ export function MessageBubble({ message }: Props) {
               }
               aria-label={
                 ttsPlay.id === message.id && ttsPlay.status === 'loading'
-                  ? t('settings.voiceGenerating', { defaultValue: 'Gerando áudio...' })
+                  ? `${t('settings.voiceGenerating', { defaultValue: 'Gerando áudio...' })} ${ttsPlay.progress}%`
                   : ttsPlay.id === message.id && ttsPlay.status === 'playing'
                   ? t('settings.voiceStop', { defaultValue: 'Parar leitura' })
                   : ttsPlay.cachedIds?.has(message.id)
@@ -556,7 +556,10 @@ export function MessageBubble({ message }: Props) {
               }
             >
               {ttsPlay.id === message.id && ttsPlay.status === 'loading' ? (
-                <Loader2 size={12} className="animate-spin text-primary" />
+                <>
+                  <Loader2 size={12} className="animate-spin text-primary" />
+                  <span className="tts-progress-percent">{ttsPlay.progress}%</span>
+                </>
               ) : ttsPlay.id === message.id && ttsPlay.status === 'playing' ? (
                 <Square size={12} className="text-primary" />
               ) : ttsPlay.cachedIds?.has(message.id) ? (

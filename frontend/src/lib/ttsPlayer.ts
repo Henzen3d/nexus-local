@@ -5,14 +5,16 @@ export type TtsPrefs = { voice: string; auto: boolean }
 export type TtsPlay = {
   id: string | null
   status: 'idle' | 'loading' | 'playing'
+  progress: number
   cachedIds: Set<string>
 }
 
 let prefs: TtsPrefs = { voice: 'antonio', auto: false }
-let play: TtsPlay = { id: null, status: 'idle', cachedIds: new Set<string>() }
+let play: TtsPlay = { id: null, status: 'idle', progress: 0, cachedIds: new Set<string>() }
 let audio: HTMLAudioElement | null = null
 let currentPlayingId: string | null = null
 let abortCtrl: AbortController | null = null
+let progressTimer: any = null
 
 const prefListeners = new Set<() => void>()
 const playListeners = new Set<() => void>()
@@ -27,6 +29,39 @@ function emitPrefs() {
 }
 function emitPlay() {
   playListeners.forEach((fn) => fn())
+}
+
+function startProgressTimer(textLength: number) {
+  if (progressTimer) clearInterval(progressTimer)
+  const startTime = performance.now()
+  // Estima a duração: base de ~800ms + ~1.1ms por caractere (com mínimo de 1.4s e máximo de 8s)
+  const estimatedMs = Math.max(1400, Math.min(8000, 800 + textLength * 1.1))
+
+  progressTimer = setInterval(() => {
+    const elapsed = performance.now() - startTime
+    const ratio = Math.min(1, elapsed / estimatedMs)
+    let p: number
+    if (ratio < 1) {
+      // Curva desacelerada: sobe rápido e desacelera até ~90%
+      p = Math.round(90 * (1 - Math.pow(1 - ratio, 1.8)))
+    } else {
+      // Passou do tempo estimado: sobe lentamente até 98%
+      const extraRatio = Math.min(1, (elapsed - estimatedMs) / 3500)
+      p = Math.min(98, Math.round(90 + extraRatio * 8))
+    }
+    p = Math.max(5, p)
+    if (play.status === 'loading' && play.progress !== p) {
+      play = { ...play, progress: p }
+      emitPlay()
+    }
+  }, 75)
+}
+
+function stopProgressTimer() {
+  if (progressTimer) {
+    clearInterval(progressTimer)
+    progressTimer = null
+  }
 }
 
 export function getTtsPrefs() {
@@ -52,9 +87,10 @@ export function useTtsPlay() {
 }
 
 export function clearAudioCache() {
+  stopProgressTimer()
   audioCache.forEach((entry) => URL.revokeObjectURL(entry.url))
   audioCache.clear()
-  play = { ...play, cachedIds: new Set() }
+  play = { ...play, cachedIds: new Set(), progress: 0 }
   emitPlay()
 }
 
@@ -83,6 +119,7 @@ export function onSpeechEnded(fn: (id: string) => void) {
 }
 
 export function stopSpeech() {
+  stopProgressTimer()
   if (abortCtrl) {
     abortCtrl.abort()
     abortCtrl = null
@@ -94,7 +131,7 @@ export function stopSpeech() {
   }
   audio = null
   currentPlayingId = null
-  play = { id: null, status: 'idle', cachedIds: new Set(audioCache.keys()) }
+  play = { id: null, status: 'idle', progress: 0, cachedIds: new Set(audioCache.keys()) }
   emitPlay()
 }
 
@@ -111,6 +148,7 @@ export async function playSpeech(id: string, text: string, voice = prefs.voice) 
   }
 
   // Interrompe qualquer áudio ou requisição anterior
+  stopProgressTimer()
   if (abortCtrl) {
     abortCtrl.abort()
     abortCtrl = null
@@ -126,7 +164,7 @@ export async function playSpeech(id: string, text: string, voice = prefs.voice) 
   const cached = audioCache.get(id)
   if (cached) {
     currentPlayingId = id
-    play = { id, status: 'playing', cachedIds: new Set(audioCache.keys()) }
+    play = { id, status: 'playing', progress: 100, cachedIds: new Set(audioCache.keys()) }
     emitPlay()
 
     audio = new Audio(cached.url)
@@ -143,15 +181,20 @@ export async function playSpeech(id: string, text: string, voice = prefs.voice) 
     return
   }
 
-  // 2. Não está no cache: ativa estado de loading com AbortController
+  // 2. Não está no cache: ativa estado de loading com timer de progresso
   abortCtrl = new AbortController()
   currentPlayingId = id
-  play = { id, status: 'loading', cachedIds: new Set(audioCache.keys()) }
+  play = { id, status: 'loading', progress: 5, cachedIds: new Set(audioCache.keys()) }
   emitPlay()
+  startProgressTimer(text.length)
 
   try {
     const blob = await api.speak(text, voice, abortCtrl.signal)
     if (currentPlayingId !== id) return
+
+    stopProgressTimer()
+    play = { ...play, progress: 100 }
+    emitPlay()
 
     // Salva no cache da sessão com política LRU
     if (audioCache.size >= MAX_CACHE_SIZE) {
@@ -171,10 +214,11 @@ export async function playSpeech(id: string, text: string, voice = prefs.voice) 
       stopSpeech()
       endedListeners.forEach((fn) => fn(id))
     }
-    play = { id, status: 'playing', cachedIds: new Set(audioCache.keys()) }
+    play = { id, status: 'playing', progress: 100, cachedIds: new Set(audioCache.keys()) }
     emitPlay()
     await audio.play()
   } catch (err: any) {
+    stopProgressTimer()
     if (err?.name === 'AbortError') return
     if (currentPlayingId === id) stopSpeech()
     throw err
