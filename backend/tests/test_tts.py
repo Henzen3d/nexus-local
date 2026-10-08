@@ -17,11 +17,13 @@ from backend.tts import chunk_for_speech, prepare_speech, resolve_voice
 
 
 def test_prepare_speech_strips_markdown():
-    raw = "# Título\n\nOlá **mundo**. Veja [o site](https://exemplo.com).\n\n```py\nprint(1)\n```\n"
+    raw = "# Título\n\n<think>Raciocínio interno da IA.</think>Olá **mundo**. Veja [o site](https://exemplo.com).\n\n```py\nprint(1)\n```\n"
     text = prepare_speech(raw)
     assert "Título" in text
     assert "Olá mundo" in text
     assert "o site" in text
+    assert "Raciocínio interno" not in text
+    assert "think" not in text
     assert "https://" not in text
     assert "print" not in text
     assert "**" not in text

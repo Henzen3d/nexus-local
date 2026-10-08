@@ -535,7 +535,10 @@ export function MessageBubble({ message }: Props) {
               className={`meta-copy-btn custom-tooltip-trigger ${
                 ttsPlay.id === message.id && ttsPlay.status === 'playing' ? 'tts-active' : ''
               } ${ttsPlay.id === message.id && ttsPlay.status === 'loading' ? 'tts-loading' : ''}`}
-              onClick={() => { playSpeech(message.id, message.content).catch(() => {}) }}
+              onClick={() => {
+                const textToSpeak = (cleanedContent || answer || message.content).trim()
+                playSpeech(message.id, textToSpeak).catch(() => {})
+              }}
               data-tooltip={
                 ttsPlay.id === message.id && ttsPlay.status === 'loading'
                   ? `${t('settings.voiceGenerating', { defaultValue: 'Gerando áudio...' })} (${ttsPlay.progress}%)`

@@ -35,6 +35,25 @@ def resolve_voice(voice_id: str | None) -> str:
 
 def prepare_speech(raw: str) -> str:
     text = raw or ""
+    # Remove blocos de raciocínio / thinking (DeepSeek-R1, Qwen, MiniMax, Claude, etc.)
+    text = re.sub(
+        r"<(?:think|thinking|thought|reasoning|analysis|reflection|assistant_thought|redacted_reasoning|redacted_thinking)[^>]*>[\s\S]*?</(?:think|thinking|thought|reasoning|analysis|reflection|assistant_thought|redacted_reasoning|redacted_thinking)>",
+        " ",
+        text,
+        flags=re.IGNORECASE,
+    )
+    # Remove tags de raciocínio abertas mas não fechadas (ex: stream interrompido)
+    text = re.sub(
+        r"<(?:think|thinking|thought|reasoning|analysis|reflection|assistant_thought)[^>]*>[\s\S]*$",
+        " ",
+        text,
+        flags=re.IGNORECASE,
+    )
+    # Remove blocos de artefatos brutos
+    text = re.sub(r"<(?:artifact|antArtifact)[^>]*>[\s\S]*?</(?:artifact|antArtifact)>", " ", text, flags=re.IGNORECASE)
+    # Remove blocos de código com linguagem de raciocínio
+    text = re.sub(r"```(?:thinking|reasoning|analysis)\s*[\s\S]*?```", " ", text, flags=re.IGNORECASE)
+    # Remove blocos de código normais
     text = re.sub(r"```[\s\S]*?```", " ", text)
     text = re.sub(r"`[^`]+`", " ", text)
     text = re.sub(r"!\[[^\]]*\]\([^)]+\)", " ", text)

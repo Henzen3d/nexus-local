@@ -15,6 +15,7 @@ import { useIsMobile } from '../hooks/useIsMobile'
 import { NexusLogoIcon } from './NexusLogoIcon'
 import { getTtsPrefs, onSpeechEnded, playSpeech } from '../lib/ttsPlayer'
 import { applyDecision, getTalk, noteSpeaking, onTtsEnded } from '../lib/talkLoop'
+import { AdapterRegistry } from '../adapters/AdapterRegistry'
 
 import { SUPPORT_URL } from '../config/support'
 
@@ -411,7 +412,9 @@ export function ChatWindow() {
       return
     }
     if (loop) noteSpeaking()
-    playSpeech(last.id, last.content).catch(() => {
+    const adapter = AdapterRegistry.getAdapter(last.model_id || null, last.provider || null)
+    const textToSpeak = (adapter.parse(last.content).answer || last.content).trim()
+    playSpeech(last.id, textToSpeak).catch(() => {
       if (getTalk().mode === 'loop') applyDecision(onTtsEnded({ mode: 'loop', phase: 'speaking' }))
     })
   }, [messages, activeConversationId])
