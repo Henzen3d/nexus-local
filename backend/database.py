@@ -521,7 +521,7 @@ DEFAULT_PROVIDERS = [
         "id": "sambanova",
         "name": "SambaNova",
         "base_url": "https://api.sambanova.ai/v1",
-        "is_free": 1,
+        "is_free": 0,
         "models": [
             ("sambanova/llama-3.3-70b", "Meta-Llama-3.3-70B-Instruct", "Llama 3.3 70B", 131072),
             ("sambanova/llama-3.2-1b", "Meta-Llama-3.2-1B-Instruct", "Llama 3.2 1B (Fast)", 16384),
@@ -1100,6 +1100,14 @@ async def init_db():
             await db.commit()
         except Exception as e:
             logger.error("[database migration] erro ao atualizar confirmed_free para provedores free:", exc_info=e)
+
+        # SambaNova encerrou o free tier aberto e agora exige cartão/plano de pagamento
+        try:
+            await db.execute("UPDATE providers SET is_free = 0 WHERE id = 'sambanova'")
+            await db.commit()
+        except Exception as e:
+            logger.error("[database migration] erro ao atualizar status do sambanova:", exc_info=e)
+
 
 
 
