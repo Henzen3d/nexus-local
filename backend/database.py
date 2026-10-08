@@ -641,8 +641,7 @@ DEFAULT_PROVIDERS = [
         "id": "zenmux",
         "name": "ZenMux",
         "base_url": "https://zenmux.ai/api/v1",
-        "api_key": "free",
-        "is_free": 1,
+        "is_free": 0,
         "models": [
             ("zenmux/grok-4.5-free", "x-ai/grok-4.5-free", "Grok 4.5 Free", 131072),
             ("zenmux/step-3.7-flash-free", "stepfun/step-3.7-flash-free", "Step 3.7 Flash Free", 131072),
@@ -915,7 +914,7 @@ async def init_db():
                 final_ctx = reg_info["context_length"] if reg_info else ctx
                 final_source = 'registry' if reg_info else 'default'
 
-                is_prov_free = 1 if prov.get("id") in ("agnes", "zenmux", "llm7", "freetheai") else 0
+                is_prov_free = 1 if prov.get("id") in ("agnes", "llm7", "freetheai") else 0
                 await db.execute(
                     """INSERT INTO models (id, provider_id, name, display_name, context_length, context_source, confirmed_free)
                        VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -1090,12 +1089,12 @@ async def init_db():
             except Exception:
                 pass
 
-        # Auto-confirma modelos de provedores gratuitos dedicados (Agnes AI, ZenMux, LLM7, FreeTheAI)
+        # Auto-confirma modelos de provedores gratuitos dedicados (Agnes AI, LLM7, FreeTheAI)
         try:
             await db.execute(
                 """UPDATE models 
                    SET confirmed_free = 1 
-                   WHERE provider_id IN ('agnes', 'zenmux', 'llm7', 'freetheai') AND (confirmed_free IS NULL OR confirmed_free = 0)"""
+                   WHERE provider_id IN ('agnes', 'llm7', 'freetheai') AND (confirmed_free IS NULL OR confirmed_free = 0)"""
             )
             await db.commit()
         except Exception as e:
@@ -1107,6 +1106,14 @@ async def init_db():
             await db.commit()
         except Exception as e:
             logger.error("[database migration] erro ao atualizar status do sambanova:", exc_info=e)
+
+        # ZenMux opera sob modelo PAYG e exige saldo/créditos pagos (HTTP 403 access_denied)
+        try:
+            await db.execute("UPDATE providers SET is_free = 0 WHERE id = 'zenmux'")
+            await db.execute("UPDATE models SET confirmed_free = 0 WHERE provider_id = 'zenmux'")
+            await db.commit()
+        except Exception as e:
+            logger.error("[database migration] erro ao atualizar status do zenmux:", exc_info=e)
 
 
 

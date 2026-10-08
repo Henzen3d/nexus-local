@@ -164,7 +164,7 @@ async def sync_provider_models(provider_id: str, db, custom_api_key: str = None)
 
         is_auto_free = 1 if (
             (provider_id == "openrouter" and model_name.endswith(":free"))
-            or provider_id in ("zenmux", "llm7", "agnes", "freetheai")
+            or provider_id in ("llm7", "agnes", "freetheai")
         ) else 0
 
         if existing:
