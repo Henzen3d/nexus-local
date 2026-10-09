@@ -1002,24 +1002,6 @@ async def init_db():
         except Exception as e:
             logger.error("Error initializing web search config:", exc_info=e)
 
-        # Update supports_vision for vision-capable models
-        try:
-            # Update known models and anything with 'vision' or 'vl' in name/id
-            await db.execute(
-                """UPDATE models SET supports_vision = 1 
-                   WHERE id LIKE '%vision%' 
-                      OR id LIKE '%vl%' 
-                      OR id LIKE '%gpt-4o%' 
-                      OR id LIKE '%gemini/flash%' 
-                      OR name LIKE '%vision%' 
-                      OR name LIKE '%vl%' 
-                      OR name LIKE '%gpt-4o%' 
-                      OR name LIKE '%gemini%'"""
-            )
-            await db.commit()
-        except Exception as e:
-            logger.error("Error updating vision models:", exc_info=e)
-
         # ── Migração incremental: tabelas de ranking & failover ──────────────
         # model_families — garante coluna 'description' (tabela pode já existir sem ela)
         try:

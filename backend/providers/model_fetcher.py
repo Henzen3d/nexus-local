@@ -1,6 +1,18 @@
 import httpx
 from typing import List, Dict, Any, Optional
 
+def vision_from_architecture(architecture) -> bool:
+    """OpenRouter: architecture.input_modalities. Sem o campo, False."""
+    if not isinstance(architecture, dict):
+        return False
+    mods = architecture.get("input_modalities")
+    if not mods:
+        return False
+    if isinstance(mods, str):
+        mods = [mods]
+    return any(str(m).lower() == "image" for m in mods)
+
+
 def parse_context_length(ctx) -> int:
     if not ctx:
         return 8192
@@ -37,7 +49,7 @@ class ModelFetcher:
                     continue
                 ctx = m.get("context_window")
                 if name and ctx:
-                    results.append({"model_name": name, "context_length": parse_context_length(ctx)})
+                    results.append({"model_name": name, "context_length": parse_context_length(ctx), "supports_vision": False})
             return results
 
     @staticmethod
@@ -57,7 +69,11 @@ class ModelFetcher:
                 name = m.get("id")
                 ctx = m.get("context_length")
                 if name and ctx and name.endswith(":free"):
-                    results.append({"model_name": name, "context_length": int(ctx)})
+                    results.append({
+                        "model_name": name,
+                        "context_length": int(ctx),
+                        "supports_vision": vision_from_architecture(m.get("architecture")),
+                    })
             return results
 
     @staticmethod
@@ -82,7 +98,7 @@ class ModelFetcher:
                 name = m.get("name", "").replace("models/", "")
                 ctx = m.get("inputTokenLimit")
                 if name and ctx:
-                    results.append({"model_name": name, "context_length": int(ctx)})
+                    results.append({"model_name": name, "context_length": int(ctx), "supports_vision": False})
             return results
 
     @staticmethod
@@ -98,9 +114,9 @@ class ModelFetcher:
                 name = m.get("id")
                 ctx = m.get("context_length")
                 if name:
-                    results.append({"model_name": name, "context_length": parse_context_length(ctx)})
+                    results.append({"model_name": name, "context_length": parse_context_length(ctx), "supports_vision": False})
             return results
- 
+
     @staticmethod
     async def fetch_sambanova(api_key: str) -> List[Dict[str, Any]]:
         async with httpx.AsyncClient(timeout=15.0) as client:
@@ -159,7 +175,7 @@ class ModelFetcher:
                 name = m.get("id")
                 ctx = m.get("context_length") or m.get("context_window")
                 if name:
-                    results.append({"model_name": name, "context_length": parse_context_length(ctx)})
+                    results.append({"model_name": name, "context_length": parse_context_length(ctx), "supports_vision": False})
             return results
 
     @staticmethod
@@ -183,11 +199,11 @@ class ModelFetcher:
                         if name:
                             # Ollama models don't expose context length via /api/tags easily.
                             # We default to 8192.
-                            results.append({"model_name": name, "context_length": 8192})
+                            results.append({"model_name": name, "context_length": 8192, "supports_vision": False})
                     return results
             except Exception:
                 pass
-                
+            
             # 2. Try OpenAI compatible endpoint at the given base_url
             for path in ["/models", "/v1/models"]:
                 try:
@@ -204,7 +220,7 @@ class ModelFetcher:
                             name = m.get("id")
                             ctx = m.get("context_length") or m.get("context_window")
                             if name:
-                                results.append({"model_name": name, "context_length": int(ctx) if ctx else 8192})
+                                results.append({"model_name": name, "context_length": int(ctx) if ctx else 8192, "supports_vision": False})
                         return results
                 except Exception:
                     continue
