@@ -8,6 +8,17 @@ Esta pasta centraliza todas as iniciativas de evolução, planos de arquitetura,
 
 ```
 melhorias/
+├── intelligent-ui/             # Interface inteligente: JSON de blocos, UI fica no Multi+ já aberto
+│   ├── README.md
+│   ├── 00-visao-e-spec.md
+│   ├── 01-plano-fundacao.md
+│   ├── 02-plano-indicadores.md
+│   ├── 03-plano-cartoes-imagens.md
+│   ├── 04-plano-graficos.md
+│   ├── 05-plano-controles.md
+│   ├── 06-criterios-aceite.md
+│   └── 07-chatkit-referencia.md
+│
 ├── assistente-proativo/        # 🤖 Assistente Proativo (Detecção de emoção/entidades + pesquisa background)
 │   ├── assistente-proativo-plano.md
 │   ├── brainstorm-assistente-proativo.md
@@ -79,6 +90,10 @@ melhorias/
 ```
 
 ---
+
+## Intelligent UI
+
+Spec e planos em [`intelligent-ui/`](intelligent-ui/README.md). Não implementado. A IA manda dados. O React atual desenha. Flag futura nasce desligada.
 
 ## 🚀 Frentes Ativas de Desenvolvimento
 
