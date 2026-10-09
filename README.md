@@ -92,7 +92,6 @@ nexus-local/
 
 ## 🗺️ Roadmap
 
-*   [ ] **Self-Scaffold**: Autonomous evaluation loop inspired by Ornith.
 *   [ ] **System Prompts**: Customizable system instructions and personas per chat.
 *   [ ] **Export Mode**: Export conversations as Markdown or JSON.
 *   [ ] **Inline Editing**: Real-time editing and previewing inside the Artifact panel.
