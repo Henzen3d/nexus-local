@@ -46,7 +46,14 @@ async def save_description_cache(file_hash: str, description: str, relay_model: 
     )
     await db.commit()
 
-async def describe_image_via_relay(image_rel_path: str, mime_type: str, file_hash: str, user_id: str, conversation_id: str | None = None) -> dict:
+async def describe_image_via_relay(
+    image_rel_path: str | None,
+    mime_type: str,
+    file_hash: str,
+    user_id: str,
+    conversation_id: str | None = None,
+    image_bytes: bytes | None = None,
+) -> dict:
     db = await get_db()
     try:
         config = await get_vision_relay_config(db)
@@ -57,13 +64,18 @@ async def describe_image_via_relay(image_rel_path: str, mime_type: str, file_has
             raise RelayError("Provedor ou modelo intérprete não configurado no Vision Relay.")
 
         # 1. Check cache
-        if config["cache_descriptions"]:
+        if config["cache_descriptions"] and file_hash:
             cached = await get_cached_description(file_hash, db)
             if cached:
                 return {"description": cached, "relay_model": config["relay_model_id"], "from_cache": True}
 
         # 2. Convert image to base64
-        base64_data = await read_as_base64(image_rel_path)
+        if image_bytes is not None:
+            base64_data = base64.b64encode(image_bytes).decode("utf-8")
+        elif image_rel_path:
+            base64_data = await read_as_base64(image_rel_path)
+        else:
+            raise RelayError("Imagem ausente para o Vision Relay.")
 
         from backend.ranking.failover import resolve_model_with_failover
         resolved = await resolve_model_with_failover(config["relay_model_id"], db)

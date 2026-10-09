@@ -93,6 +93,7 @@ async def stream_from_llm(
     success = False
     original_model_id = model_id
     full_response = ""
+    vision_relay_retry_done = False
 
     while attempt < _MAX_FAILOVER_ATTEMPTS and not success:
         attempt += 1
@@ -172,6 +173,29 @@ async def stream_from_llm(
                 continue
         except Exception as e:
             error_msg = str(e)
+            from backend.orchestration.handle_attachments import (
+                history_contains_images,
+                is_vision_refusal_error,
+                replace_images_with_relay,
+            )
+            if (
+                not vision_relay_retry_done
+                and history_contains_images(history)
+                and is_vision_refusal_error(error_msg)
+            ):
+                try:
+                    history = await replace_images_with_relay(
+                        history, user_id=user_id, conversation_id=conversation_id
+                    )
+                    vision_relay_retry_done = True
+                    full_response = ""
+                    attempt -= 1
+                    continue
+                except Exception:
+                    logger.error(
+                        "Vision Relay fallback falhou após recusa de imagem",
+                        exc_info=True,
+                    )
             await ws.send_json({
                 "type": "error",
                 "message": f"Erro ao chamar modelo: {error_msg}",

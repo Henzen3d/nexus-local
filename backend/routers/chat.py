@@ -180,6 +180,7 @@ async def _process_turn(
         extracted_text_by_id, model_supports_vision,
         web_search_used, search_results, web_search_query,
         search_config, format_search_results, user_id,
+        user_query=user_message, model_id=model_id, provider_id=provider_id,
     )
 
     # ── Build context (memory + project RAG) ────────────────────────

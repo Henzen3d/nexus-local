@@ -45,7 +45,12 @@ async def upload_attachment(
         extracted_text = None
         if category == "document":
             try:
-                extracted_text = await extract_text(str(abs_path), mime_type)
+                extracted_text = await extract_text(
+                    str(abs_path),
+                    mime_type,
+                    file_hash=file_hash,
+                    user_id=current_user.get("id"),
+                )
             except Exception as e:
                 # If extraction fails (e.g. scanned PDF), cleanup file and return error
                 if abs_path.exists():
