@@ -159,7 +159,7 @@ async def sync_provider_models(provider_id: str, db, custom_api_key: str = None)
             continue
 
         # Get existing model details to see if context changed
-        async with db.execute("SELECT context_length, context_source, enabled, confirmed_free FROM models WHERE id = ?", (db_model_id,)) as cur:
+        async with db.execute("SELECT context_length, context_source, enabled, confirmed_free, supports_vision FROM models WHERE id = ?", (db_model_id,)) as cur:
             existing = await cur.fetchone()
 
         is_auto_free = 1 if (
@@ -167,19 +167,23 @@ async def sync_provider_models(provider_id: str, db, custom_api_key: str = None)
             or provider_id in ("llm7", "agnes", "freetheai")
         ) else 0
 
+        fetched_supports_vision = bool(item.get("supports_vision", False))
+        new_sv = 1 if fetched_supports_vision else 0
+
         if existing:
-            old_ctx, old_source, old_enabled, old_confirmed_free = existing
+            old_ctx, old_source, old_enabled, old_confirmed_free, old_supports_vision = existing
             should_update_ctx = (old_ctx != context_length or old_source != 'api')
             should_confirm_free = (is_auto_free == 1 and not old_confirmed_free)
+            should_update_vision = bool(old_supports_vision) != bool(new_sv)
 
-            if should_update_ctx or should_confirm_free:
+            if should_update_ctx or should_confirm_free or should_update_vision:
                 new_ctx = context_length if should_update_ctx else old_ctx
                 new_source = 'api' if should_update_ctx else old_source
                 new_cf = 1 if (is_auto_free == 1 or old_confirmed_free) else 0
                 new_enabled = 1 if should_confirm_free else old_enabled
                 await db.execute(
-                    "UPDATE models SET context_length = ?, context_source = ?, confirmed_free = ?, enabled = ? WHERE id = ?",
-                    (new_ctx, new_source, new_cf, new_enabled, db_model_id)
+                    "UPDATE models SET context_length = ?, context_source = ?, confirmed_free = ?, enabled = ?, supports_vision = ? WHERE id = ?",
+                    (new_ctx, new_source, new_cf, new_enabled, new_sv, db_model_id)
                 )
                 updated_count += 1
             else:
@@ -188,9 +192,9 @@ async def sync_provider_models(provider_id: str, db, custom_api_key: str = None)
             # Insert new model!
             display_name = derive_display_name(model_name)
             await db.execute(
-                """INSERT INTO models (id, provider_id, name, display_name, context_length, context_source, enabled, confirmed_free)
-                   VALUES (?, ?, ?, ?, ?, 'api', ?, ?)""",
-                (db_model_id, provider_id, model_name, display_name, context_length, is_auto_free, is_auto_free)
+                """INSERT INTO models (id, provider_id, name, display_name, context_length, context_source, enabled, confirmed_free, supports_vision)
+                   VALUES (?, ?, ?, ?, ?, 'api', ?, ?, ?)""",
+                (db_model_id, provider_id, model_name, display_name, context_length, is_auto_free, is_auto_free, 1 if fetched_supports_vision else 0)
             )
             updated_count += 1
 
