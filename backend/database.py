@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS models (
     display_name   TEXT NOT NULL,
     context_length INTEGER DEFAULT 8192,
     context_source TEXT DEFAULT 'default',
+    confirmed_free INTEGER DEFAULT 0,
     enabled        INTEGER DEFAULT 1
 );
 
@@ -296,16 +297,62 @@ CREATE TABLE IF NOT EXISTS free_model_registry (
 CREATE INDEX IF NOT EXISTS idx_registry_provider ON free_model_registry(provider_name, model_id_raw);
 
 CREATE TABLE IF NOT EXISTS user_memory (
-    id          TEXT PRIMARY KEY,
-    user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    category    TEXT NOT NULL,
-    fact        TEXT NOT NULL,
+    id             TEXT PRIMARY KEY,
+    user_id        TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    category       TEXT NOT NULL,
+    fact           TEXT NOT NULL,
+    fact_key       TEXT,
+    is_active      INTEGER DEFAULT 1,
+    is_pinned      INTEGER DEFAULT 0,
+    status         TEXT DEFAULT 'active' CHECK(status IN ('active', 'merged', 'superseded', 'archived')),
+    superseded_by_id TEXT REFERENCES user_memory(id) ON DELETE SET NULL,
+    source_dream_id TEXT REFERENCES dream_logs(id) ON DELETE SET NULL,
+    consolidated_at TEXT DEFAULT NULL,
+    version        INTEGER DEFAULT 1,
     source_conv_id TEXT REFERENCES conversations(id) ON DELETE SET NULL,
-    confidence  REAL DEFAULT 1.0,
-    created_at  TEXT DEFAULT (datetime('now')),
-    updated_at  TEXT DEFAULT (datetime('now'))
+    confidence     REAL DEFAULT 1.0,
+    embedding      BLOB,
+    created_at     TEXT DEFAULT (datetime('now')),
+    updated_at     TEXT DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_user_memory_user ON user_memory(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_memory_key ON user_memory(user_id, fact_key) WHERE is_active = 1;
+CREATE INDEX IF NOT EXISTS idx_user_memory_status ON user_memory(user_id, status) WHERE status = 'active';
+CREATE INDEX IF NOT EXISTS idx_user_memory_lineage ON user_memory(superseded_by_id) WHERE superseded_by_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_user_memory_dream_source ON user_memory(source_dream_id) WHERE source_dream_id IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS memory_snapshots (
+    id             TEXT PRIMARY KEY,
+    user_id        TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    trigger_type   TEXT NOT NULL,
+    facts_count    INTEGER NOT NULL,
+    snapshot_json  TEXT NOT NULL,
+    snapshot_hash  TEXT NOT NULL,
+    is_compressed  INTEGER DEFAULT 0,
+    created_at     TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_snapshots_user ON memory_snapshots(user_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS dream_logs (
+    id                 TEXT PRIMARY KEY,
+    user_id            TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    snapshot_id        TEXT REFERENCES memory_snapshots(id) ON DELETE SET NULL,
+    provider_id        TEXT NOT NULL,
+    model_id           TEXT NOT NULL,
+    facts_before       INTEGER NOT NULL,
+    facts_after        INTEGER NOT NULL,
+    facts_merged       INTEGER NOT NULL,
+    facts_superseded   INTEGER NOT NULL,
+    facts_created      INTEGER NOT NULL,
+    facts_total_active INTEGER NOT NULL,
+    duration_ms        INTEGER NOT NULL,
+    status             TEXT NOT NULL,
+    summary_notes      TEXT,
+    error_message      TEXT,
+    interrupted_fixed  INTEGER DEFAULT 0,
+    created_at         TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_dream_logs_user ON dream_logs(user_id, created_at DESC);
 
 -- =========================================================
 -- PROJECTS MODULE (persistent context workspaces + RAG)
@@ -1133,6 +1180,11 @@ async def init_db():
             ("fact_key", "TEXT"),
             ("is_active", "INTEGER DEFAULT 1"),
             ("is_pinned", "INTEGER DEFAULT 0"),
+            ("status", "TEXT DEFAULT 'active'"),
+            ("superseded_by_id", "TEXT"),
+            ("source_dream_id", "TEXT"),
+            ("consolidated_at", "TEXT"),
+            ("version", "INTEGER DEFAULT 1"),
         ]:
             try:
                 await db.execute(f"SELECT {col_name} FROM user_memory LIMIT 1")
@@ -1142,6 +1194,61 @@ async def init_db():
                     await db.commit()
                 except Exception as e:
                     logger.error("[database migration] erro ao adicionar coluna %s em user_memory:", col_name, exc_info=e)
+
+        # Backfill status and create dream indexes
+        try:
+            await db.execute("UPDATE user_memory SET status = CASE WHEN is_active = 1 THEN 'active' ELSE 'archived' END WHERE status IS NULL OR status = ''")
+            await db.execute("CREATE INDEX IF NOT EXISTS idx_user_memory_status ON user_memory(user_id, status) WHERE status = 'active'")
+            await db.execute("CREATE INDEX IF NOT EXISTS idx_user_memory_lineage ON user_memory(superseded_by_id) WHERE superseded_by_id IS NOT NULL")
+            await db.execute("CREATE INDEX IF NOT EXISTS idx_user_memory_dream_source ON user_memory(source_dream_id) WHERE source_dream_id IS NOT NULL")
+            await db.commit()
+        except Exception as e:
+            logger.error("[database migration] erro ao atualizar status/indexes em user_memory:", exc_info=e)
+
+        # Dream memory tables: memory_snapshots and dream_logs
+        try:
+            await db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS memory_snapshots (
+                    id             TEXT PRIMARY KEY,
+                    user_id        TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    trigger_type   TEXT NOT NULL,
+                    facts_count    INTEGER NOT NULL,
+                    snapshot_json  TEXT NOT NULL,
+                    snapshot_hash  TEXT NOT NULL,
+                    is_compressed  INTEGER DEFAULT 0,
+                    created_at     TEXT DEFAULT (datetime('now'))
+                )
+                """
+            )
+            await db.execute("CREATE INDEX IF NOT EXISTS idx_snapshots_user ON memory_snapshots(user_id, created_at DESC)")
+            await db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS dream_logs (
+                    id                 TEXT PRIMARY KEY,
+                    user_id            TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    snapshot_id        TEXT REFERENCES memory_snapshots(id) ON DELETE SET NULL,
+                    provider_id        TEXT NOT NULL,
+                    model_id           TEXT NOT NULL,
+                    facts_before       INTEGER NOT NULL,
+                    facts_after        INTEGER NOT NULL,
+                    facts_merged       INTEGER NOT NULL,
+                    facts_superseded   INTEGER NOT NULL,
+                    facts_created      INTEGER NOT NULL,
+                    facts_total_active INTEGER NOT NULL,
+                    duration_ms        INTEGER NOT NULL,
+                    status             TEXT NOT NULL,
+                    summary_notes      TEXT,
+                    error_message      TEXT,
+                    interrupted_fixed  INTEGER DEFAULT 0,
+                    created_at         TEXT DEFAULT (datetime('now'))
+                )
+                """
+            )
+            await db.execute("CREATE INDEX IF NOT EXISTS idx_dream_logs_user ON dream_logs(user_id, created_at DESC)")
+            await db.commit()
+        except Exception as e:
+            logger.error("[database migration] erro ao migrar memory_snapshots e dream_logs:", exc_info=e)
 
         # Phase A+: user_profiles (server-side profile + memory_enabled)
         try:
@@ -1327,18 +1434,33 @@ MEMORY_INJECT_MAX_CHARS = 4000
 MEMORY_INJECT_LIMIT = 30
 
 
-async def get_user_memory(user_id: str, limit: int = MEMORY_INJECT_LIMIT, active_only: bool = False) -> list[dict]:
-    """Returns up to `limit` active memory facts ordered by confidence desc, updated_at desc."""
+async def get_user_memory(
+    user_id: str,
+    limit: int = MEMORY_INJECT_LIMIT,
+    active_only: bool = False,
+    status: str = None,
+) -> list[dict]:
+    """Returns up to `limit` memory facts ordered by confidence desc, updated_at desc."""
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
-        where = "user_id = ? AND is_active = 1" if active_only else "user_id = ?"
+        params = [user_id]
+        if status:
+            where = "user_id = ? AND status = ?"
+            params.append(status)
+        elif active_only:
+            where = "user_id = ? AND is_active = 1"
+        else:
+            where = "user_id = ?"
+        params.append(limit)
         async with db.execute(
-            f"""SELECT id, category, fact, fact_key, source_conv_id, confidence, is_pinned, is_active, updated_at
+            f"""SELECT id, category, fact, fact_key, source_conv_id, confidence,
+                       is_pinned, is_active, status, superseded_by_id, source_dream_id,
+                       consolidated_at, version, created_at, updated_at
                 FROM user_memory
                 WHERE {where}
                 ORDER BY is_pinned DESC, confidence DESC, updated_at DESC
                 LIMIT ?""",
-            (user_id, limit),
+            params,
         ) as cur:
             rows = await cur.fetchall()
             return [dict(r) for r in rows]
@@ -1377,7 +1499,8 @@ async def add_memory_fact(
                     await db.execute(
                         """UPDATE user_memory
                            SET fact = ?, category = ?, confidence = MAX(confidence, ?),
-                               source_conv_id = ?, embedding = ?, updated_at = datetime('now')
+                               source_conv_id = ?, embedding = ?, status = 'active', is_active = 1,
+                               updated_at = datetime('now')
                            WHERE id = ?""",
                         (fact, category, confidence, source_conv_id, emb, existing[0]),
                     )
@@ -1385,7 +1508,8 @@ async def add_memory_fact(
                     await db.execute(
                         """UPDATE user_memory
                            SET fact = ?, category = ?, confidence = MAX(confidence, ?),
-                               source_conv_id = ?, updated_at = datetime('now')
+                               source_conv_id = ?, status = 'active', is_active = 1,
+                               updated_at = datetime('now')
                            WHERE id = ?""",
                         (fact, category, confidence, source_conv_id, existing[0]),
                     )
@@ -1402,17 +1526,17 @@ async def add_memory_fact(
             if fact_key or emb is not None:
                 if emb is not None and fact_key:
                     await db.execute(
-                        "UPDATE user_memory SET fact_key = ?, embedding = ?, updated_at = datetime('now') WHERE id = ?",
+                        "UPDATE user_memory SET fact_key = ?, embedding = ?, status = 'active', is_active = 1, updated_at = datetime('now') WHERE id = ?",
                         (fact_key, emb, dup[0]),
                     )
                 elif emb is not None:
                     await db.execute(
-                        "UPDATE user_memory SET embedding = ?, updated_at = datetime('now') WHERE id = ?",
+                        "UPDATE user_memory SET embedding = ?, status = 'active', is_active = 1, updated_at = datetime('now') WHERE id = ?",
                         (emb, dup[0]),
                     )
                 else:
                     await db.execute(
-                        "UPDATE user_memory SET fact_key = ?, updated_at = datetime('now') WHERE id = ?",
+                        "UPDATE user_memory SET fact_key = ?, status = 'active', is_active = 1, updated_at = datetime('now') WHERE id = ?",
                         (fact_key, dup[0]),
                     )
                 await db.commit()
@@ -1426,7 +1550,7 @@ async def add_memory_fact(
         if count >= 200:
             # Archive the oldest, lowest-confidence non-pinned fact to make room
             await db.execute(
-                """UPDATE user_memory SET is_active = 0 WHERE id = (
+                """UPDATE user_memory SET is_active = 0, status = 'archived', updated_at = datetime('now') WHERE id = (
                     SELECT id FROM user_memory
                     WHERE user_id = ? AND is_active = 1 AND is_pinned = 0
                     ORDER BY confidence ASC, updated_at ASC LIMIT 1
@@ -1437,8 +1561,8 @@ async def add_memory_fact(
         fact_id = str(uuid.uuid4())
         await db.execute(
             """INSERT INTO user_memory
-               (id, user_id, category, fact, fact_key, source_conv_id, confidence, is_active, embedding)
-               VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)""",
+               (id, user_id, category, fact, fact_key, source_conv_id, confidence, is_active, status, embedding)
+               VALUES (?, ?, ?, ?, ?, ?, ?, 1, 'active', ?)""",
             (fact_id, user_id, category, fact, fact_key, source_conv_id, confidence, emb),
         )
         await db.commit()
@@ -1572,7 +1696,7 @@ async def deactivate_memory_by_key(user_id: str, fact_key: str) -> None:
         return
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
-            "UPDATE user_memory SET is_active = 0, updated_at = datetime('now') WHERE user_id = ? AND fact_key = ?",
+            "UPDATE user_memory SET is_active = 0, status = 'archived', updated_at = datetime('now') WHERE user_id = ? AND fact_key = ?",
             (user_id, fact_key),
         )
         await db.commit()
@@ -1607,23 +1731,31 @@ async def clear_all_memory_summaries(user_id: str) -> int:
 
 async def clear_all_memory(user_id: str) -> None:
     """
-    Esquecer tudo: soft-delete de todos os fatos ativos + apaga resumos rolling
-    (global e por projeto). Perfil manual (nome/instruções) é preservado.
+    Esquecer tudo (LGPD): soft-delete/archive de todos os fatos,
+    apaga snapshots de memória, resumos rolling e marca dream_logs como 'purged_by_user'.
     """
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
-            "UPDATE user_memory SET is_active = 0, updated_at = datetime('now') WHERE user_id = ? AND is_active = 1",
+            "UPDATE user_memory SET is_active = 0, status = 'archived', updated_at = datetime('now') WHERE user_id = ?",
+            (user_id,),
+        )
+        await db.execute(
+            "DELETE FROM memory_snapshots WHERE user_id = ?",
             (user_id,),
         )
         await db.execute(
             "DELETE FROM user_memory_summaries WHERE user_id = ?",
             (user_id,),
         )
+        await db.execute(
+            "UPDATE dream_logs SET status = 'purged_by_user' WHERE user_id = ?",
+            (user_id,),
+        )
         await db.commit()
 
 
 async def get_memory_stats(user_id: str) -> dict:
-    """Local metrics for memory dashboard (Phase D)."""
+    """Local metrics for memory dashboard with Dream telemetries (Phase D & Dream)."""
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute(
             "SELECT COUNT(*) FROM user_memory WHERE user_id = ? AND is_active = 1",
@@ -1635,6 +1767,11 @@ async def get_memory_stats(user_id: str) -> dict:
             (user_id,),
         ) as cur:
             (inactive_facts,) = await cur.fetchone()
+        async with db.execute(
+            "SELECT COUNT(*) FROM user_memory WHERE user_id = ? AND is_pinned = 1 AND is_active = 1",
+            (user_id,),
+        ) as cur:
+            (pinned_facts,) = await cur.fetchone()
         async with db.execute(
             """SELECT category, COUNT(*) FROM user_memory
                WHERE user_id = ? AND is_active = 1
@@ -1653,6 +1790,16 @@ async def get_memory_stats(user_id: str) -> dict:
         ) as cur:
             row = await cur.fetchone()
             last_fact_update = row[0] if row else None
+
+        # Dream history telemetry
+        async with db.execute(
+            "SELECT COUNT(*), MAX(created_at) FROM dream_logs WHERE user_id = ? AND status = 'success'",
+            (user_id,),
+        ) as cur:
+            dream_row = await cur.fetchone()
+            dream_count = dream_row[0] if dream_row else 0
+            last_dream_at = dream_row[1] if dream_row else None
+
         async with db.execute(
             "SELECT value FROM meta WHERE key = ?",
             (f"memory_extractions_total_{user_id}",),
@@ -1681,12 +1828,333 @@ async def get_memory_stats(user_id: str) -> dict:
     return {
         "active_facts": active_facts or 0,
         "inactive_facts": inactive_facts or 0,
+        "pinned_facts": pinned_facts or 0,
+        "dream_count": dream_count or 0,
+        "last_dream_at": last_dream_at,
         "by_category": by_category,
         "summaries_count": summaries_count or 0,
         "last_fact_update": last_fact_update,
         "extractions_total": extractions_total,
         "extractions_today": extractions_today,
     }
+
+
+# =========================================================
+# DREAM MEMORY METHODS (Snapshots, Lineage, Rollback, Edit)
+# =========================================================
+
+async def create_memory_snapshot(user_id: str, trigger_type: str) -> tuple[str, str]:
+    """
+    Serializes active memory facts into JSON, computes SHA-256 hash and saves to memory_snapshots.
+    Returns (snapshot_id, snapshot_hash).
+    Retains up to 7 most recent snapshots per user, purging older ones.
+    """
+    import uuid
+    import hashlib
+    import json
+
+    snapshot_id = str(uuid.uuid4())
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            """SELECT id, category, fact, fact_key, confidence, is_pinned, is_active, status,
+                      superseded_by_id, source_dream_id, consolidated_at, version, created_at, updated_at
+               FROM user_memory
+               WHERE user_id = ? AND is_active = 1
+               ORDER BY id ASC""",
+            (user_id,),
+        ) as cur:
+            rows = await cur.fetchall()
+
+        facts_list = [dict(r) for r in rows]
+        payload_str = json.dumps(facts_list, sort_keys=True, ensure_ascii=False)
+        payload_hash = hashlib.sha256(payload_str.encode("utf-8")).hexdigest()
+
+        await db.execute(
+            """INSERT INTO memory_snapshots
+               (id, user_id, trigger_type, facts_count, snapshot_json, snapshot_hash, is_compressed, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, 0, datetime('now'))""",
+            (snapshot_id, user_id, trigger_type, len(facts_list), payload_str, payload_hash),
+        )
+
+        # Retention policy: keep 7 most recent snapshots per user
+        await db.execute(
+            """DELETE FROM memory_snapshots
+               WHERE user_id = ? AND id NOT IN (
+                   SELECT id FROM memory_snapshots
+                   WHERE user_id = ?
+                   ORDER BY created_at DESC
+                   LIMIT 7
+               )""",
+            (user_id, user_id),
+        )
+        await db.commit()
+
+    return snapshot_id, payload_hash
+
+
+async def rollback_memory_snapshot(user_id: str, snapshot_id: str) -> bool:
+    """
+    Surgically rolls back a dream cycle based on the snapshot.
+    Rules:
+    1. Validates existence and SHA-256 integrity of snapshot.
+    2. Reactivates facts recorded in snapshot with status='active', is_active=1, superseded_by_id=NULL.
+    3. Deactivates only derived facts created by the associated dream (source_dream_id = :dream_id).
+    4. Preserves any new user-created facts (source_dream_id IS NULL) added after the snapshot.
+    5. Marks dream_logs as 'rolled_back'.
+    6. Reconciles summaries and semantic cache fingerprint outside lock.
+    """
+    import hashlib
+    import json
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT id, facts_count, snapshot_json, snapshot_hash FROM memory_snapshots WHERE id = ? AND user_id = ?",
+            (snapshot_id, user_id),
+        ) as cur:
+            snap_row = await cur.fetchone()
+
+        if not snap_row:
+            logger.warning("[Rollback] Snapshot %s não encontrado para usuário %s", snapshot_id, user_id)
+            return False
+
+        calc_hash = hashlib.sha256(snap_row["snapshot_json"].encode("utf-8")).hexdigest()
+        if calc_hash != snap_row["snapshot_hash"]:
+            logger.error("[Rollback] Integridade comprometida: SHA-256 do snapshot %s diverge!", snapshot_id)
+            return False
+
+        facts_data = json.loads(snap_row["snapshot_json"])
+
+        async with db.execute(
+            "SELECT id, status FROM dream_logs WHERE snapshot_id = ? AND user_id = ? ORDER BY created_at DESC LIMIT 1",
+            (snapshot_id, user_id),
+        ) as cur:
+            dream_row = await cur.fetchone()
+
+        dream_id = dream_row["id"] if dream_row else None
+
+        # Flash transaction
+        await db.execute("BEGIN IMMEDIATE")
+        try:
+            # 1. Deactivate derived facts created by this dream
+            if dream_id:
+                await db.execute(
+                    """UPDATE user_memory
+                       SET is_active = 0, status = 'archived', updated_at = datetime('now')
+                       WHERE user_id = ? AND source_dream_id = ?""",
+                    (user_id, dream_id),
+                )
+
+            # 2. Re-activate all facts from snapshot
+            for f in facts_data:
+                fid = f["id"]
+                await db.execute(
+                    """UPDATE user_memory
+                       SET is_active = 1,
+                           status = 'active',
+                           superseded_by_id = NULL,
+                           updated_at = datetime('now')
+                       WHERE id = ? AND user_id = ?""",
+                    (fid, user_id),
+                )
+
+            # 3. Update dream log status
+            if dream_id:
+                await db.execute(
+                    "UPDATE dream_logs SET status = 'rolled_back' WHERE id = ?",
+                    (dream_id,),
+                )
+
+            await db.commit()
+        except Exception as e:
+            await db.rollback()
+            logger.error("[Rollback] Falha na transação de rollback:", exc_info=e)
+            raise
+
+    # Outside DB lock: refresh summaries and semantic cache fingerprint
+    try:
+        from backend.memory import refresh_memory_summaries, build_memory_fingerprint
+        await refresh_memory_summaries(user_id, use_llm=False)
+        await build_memory_fingerprint(user_id)
+    except Exception as e:
+        logger.warning("[Rollback] Erro ao recalcular resumos pós-rollback: %s", e)
+
+    return True
+
+
+async def update_memory_fact(
+    user_id: str,
+    fact_id: str,
+    fact: str,
+    category: str = None,
+) -> dict:
+    """
+    Inline edit of an existing memory fact:
+    - Validates ownership
+    - Updates fact, category (if given), increments version, updates updated_at
+    - Recalculates embedding
+    - Returns updated dict
+    """
+    emb = _try_embed_fact(fact)
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT id, category, fact, version, is_active FROM user_memory WHERE id = ? AND user_id = ?",
+            (fact_id, user_id),
+        ) as cur:
+            row = await cur.fetchone()
+        if not row:
+            raise ValueError("Fato não encontrado ou acesso não autorizado.")
+
+        new_category = category if category else row["category"]
+        new_version = (row["version"] or 1) + 1
+
+        if emb is not None:
+            await db.execute(
+                """UPDATE user_memory
+                   SET fact = ?, category = ?, version = ?, embedding = ?, updated_at = datetime('now')
+                   WHERE id = ? AND user_id = ?""",
+                (fact, new_category, new_version, emb, fact_id, user_id),
+            )
+        else:
+            await db.execute(
+                """UPDATE user_memory
+                   SET fact = ?, category = ?, version = ?, updated_at = datetime('now')
+                   WHERE id = ? AND user_id = ?""",
+                (fact, new_category, new_version, fact_id, user_id),
+            )
+        await db.commit()
+
+        async with db.execute(
+            """SELECT id, category, fact, fact_key, confidence, is_pinned, is_active, status,
+                      superseded_by_id, source_dream_id, consolidated_at, version, created_at, updated_at
+               FROM user_memory WHERE id = ?""",
+            (fact_id,),
+        ) as cur:
+            updated_row = await cur.fetchone()
+
+    try:
+        from backend.memory import build_memory_fingerprint
+        await build_memory_fingerprint(user_id)
+    except Exception:
+        pass
+
+    return dict(updated_row) if updated_row else {}
+
+
+async def list_dream_logs(user_id: str, limit: int = 20) -> list[dict]:
+    """Returns recent dream logs for user, enriched with can_rollback boolean."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            """SELECT id, user_id, snapshot_id, provider_id, model_id,
+                      facts_before, facts_after, facts_merged, facts_superseded,
+                      facts_created, facts_total_active, duration_ms, status,
+                      summary_notes, error_message, interrupted_fixed, created_at
+               FROM dream_logs
+               WHERE user_id = ?
+               ORDER BY created_at DESC
+               LIMIT ?""",
+            (user_id, limit),
+        ) as cur:
+            rows = await cur.fetchall()
+
+        logs = [dict(r) for r in rows]
+        if not logs:
+            return []
+
+        latest_success_id = None
+        for log in logs:
+            if log["status"] == "success":
+                latest_success_id = log["id"]
+                break
+
+        snap_ids = [l["snapshot_id"] for l in logs if l.get("snapshot_id")]
+        existing_snaps = set()
+        if snap_ids:
+            placeholders = ",".join("?" for _ in snap_ids)
+            async with db.execute(
+                f"SELECT id FROM memory_snapshots WHERE id IN ({placeholders})",
+                snap_ids,
+            ) as snap_cur:
+                for srow in await snap_cur.fetchall():
+                    existing_snaps.add(srow[0])
+
+        for log in logs:
+            log["can_rollback"] = bool(
+                log["id"] == latest_success_id
+                and log.get("snapshot_id")
+                and log["snapshot_id"] in existing_snaps
+            )
+
+        return logs
+
+
+async def list_memory_snapshots(user_id: str, limit: int = 10) -> list[dict]:
+    """Returns memory snapshots for user."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            """SELECT id, trigger_type, facts_count, snapshot_hash, is_compressed, created_at
+               FROM memory_snapshots
+               WHERE user_id = ?
+               ORDER BY created_at DESC
+               LIMIT ?""",
+            (user_id, limit),
+        ) as cur:
+            rows = await cur.fetchall()
+            return [dict(r) for r in rows]
+
+
+async def record_dream_log(log_data: dict) -> str:
+    """Inserts a dream_logs record."""
+    import uuid
+    log_id = log_data.get("id") or str(uuid.uuid4())
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            """INSERT INTO dream_logs
+               (id, user_id, snapshot_id, provider_id, model_id,
+                facts_before, facts_after, facts_merged, facts_superseded,
+                facts_created, facts_total_active, duration_ms, status,
+                summary_notes, error_message, interrupted_fixed, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))""",
+            (
+                log_id,
+                log_data["user_id"],
+                log_data.get("snapshot_id"),
+                log_data.get("provider_id", "auto"),
+                log_data.get("model_id", "auto"),
+                log_data.get("facts_before", 0),
+                log_data.get("facts_after", 0),
+                log_data.get("facts_merged", 0),
+                log_data.get("facts_superseded", 0),
+                log_data.get("facts_created", 0),
+                log_data.get("facts_total_active", 0),
+                log_data.get("duration_ms", 0),
+                log_data.get("status", "running"),
+                log_data.get("summary_notes", ""),
+                log_data.get("error_message", None),
+                log_data.get("interrupted_fixed", 0),
+            ),
+        )
+        await db.commit()
+    return log_id
+
+
+async def update_dream_log(dream_id: str, updates: dict) -> None:
+    """Updates fields of an existing dream_log record."""
+    if not updates:
+        return
+    set_clauses = [f"{k} = ?" for k in updates.keys()]
+    values = list(updates.values())
+    values.append(dream_id)
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            f"UPDATE dream_logs SET {', '.join(set_clauses)} WHERE id = ?",
+            values,
+        )
+        await db.commit()
 
 
 async def increment_memory_extraction_stats(user_id: str) -> None:

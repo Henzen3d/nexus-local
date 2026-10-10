@@ -32,6 +32,15 @@ melhorias/
 │   ├── 04-fase-interface-e-auditoria-ui.md
 │   └── 05-fase-testes-e-criterios-aceite.md
 │
+├── smart-router/               # 🧭 Auto-Roteador Inteligente de Modelos (Smart Intent Router)
+│   ├── README.md               # Hub e índice geral de navegação
+│   ├── 00-visao-geral.md       # Diagnóstico, problema e benchmark
+│   ├── 01-taxonomia-e-classificador.md # Taxonomia das 6 classes e motor < 2ms
+│   ├── 02-arquitetura-backend-e-integracao.md # Políticas, matriz e integração com failover
+│   ├── 03-interface-ui-e-experiencia-usuario.md # Opção 'Auto', badges e transparência
+│   ├── 04-metricas-telemetria-e-auditoria.md # KPIs, logs e cards de dashboard
+│   └── 05-roadmap-e-subtarefas-checklist.md # Checklist de execução em 5 fases
+│
 ├── novas-5-melhorias-ux/       # 🚀 As 5 Próximas Frentes de Melhoria UX/UI (Benchmarks 2026)
 │   ├── README.md               # Visão geral comparada (Claude, ChatGPT, DeepSeek, MiMo, Manus, MiniMax)
 │   ├── ROADMAP-CHECKLIST.md    # Checklist operacional consolidado de execução

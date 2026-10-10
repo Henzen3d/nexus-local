@@ -1,5 +1,7 @@
-import re
+import json
+import asyncio
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Optional
 
@@ -17,6 +19,11 @@ from backend.database import (
     get_memory_stats,
     add_memory_fact,
     set_memory_fact_pinned,
+    create_memory_snapshot,
+    rollback_memory_snapshot,
+    update_memory_fact,
+    list_dream_logs,
+    list_memory_snapshots,
     MEMORY_CATEGORIES,
 )
 from backend.memory import (
@@ -25,6 +32,12 @@ from backend.memory import (
     refresh_memory_summaries,
     parse_external_memory_export,
     EXTERNAL_MEMORY_EXPORT_PROMPT,
+)
+from backend.memory_dream import (
+    simulate_dream_consolidation,
+    execute_dream_consolidation,
+    DreamSafetyError,
+    DreamLLMError,
 )
 
 from backend.logging_config import get_logger
@@ -66,6 +79,25 @@ class MemoryImportTextIn(BaseModel):
 
 class PinUpdate(BaseModel):
     pinned: bool
+
+
+class DreamConfigIn(BaseModel):
+    dream_enabled: Optional[bool] = None
+    dream_min_idle_minutes: Optional[int] = None
+    dream_min_hours_between_runs: Optional[int] = None
+    dream_min_active_facts: Optional[int] = None
+    dream_provider_id: Optional[str] = None
+    dream_model_id: Optional[str] = None
+
+
+class FactUpdateIn(BaseModel):
+    fact: str
+    category: Optional[str] = None
+
+
+class DreamRunIn(BaseModel):
+    provider_id: Optional[str] = None
+    model_id: Optional[str] = None
 
 
 async def _meta_get(db, key: str) -> Optional[str]:
@@ -319,6 +351,11 @@ async def import_memory(body: MemoryImportIn, user: dict = Depends(get_current_u
     if mode not in ("merge", "replace"):
         raise HTTPException(status_code=400, detail="mode deve ser merge ou replace")
 
+    try:
+        await create_memory_snapshot(user["id"], "pre_import")
+    except Exception as snap_err:
+        logger.warning("[Memory Import] snapshot pré-import falhou: %s", snap_err)
+
     if mode == "replace":
         await clear_all_memory(user["id"])
 
@@ -418,6 +455,11 @@ async def import_memory_text(body: MemoryImportTextIn, user: dict = Depends(get_
                 "o bloco com seções Instructions / Identity / Career / Projects / Preferences."
             ),
         )
+
+    try:
+        await create_memory_snapshot(user["id"], "pre_import")
+    except Exception as snap_err:
+        logger.warning("[Memory Import Text] snapshot pré-import falhou: %s", snap_err)
 
     if mode == "replace":
         await clear_all_memory(user["id"])
@@ -536,6 +578,7 @@ async def delete_fact(fact_id: str, user: dict = Depends(get_current_user)):
     reserved = {
         "profile", "preview", "clear", "extractor-config",
         "summaries", "export", "import", "import-text", "import-prompt", "stats",
+        "facts", "dream-config", "dream-logs", "dream-preview", "dream-run-now", "snapshots",
     }
     if fact_id in reserved:
         raise HTTPException(status_code=400, detail="ID inválido")
@@ -558,3 +601,161 @@ async def clear_memory(user: dict = Depends(get_current_user)):
         "status": "ok",
         "message": "Toda a memória adaptativa foi apagada (fatos e resumos rolling).",
     }
+
+
+# =========================================================
+# DREAM MEMORY ENDPOINTS
+# =========================================================
+
+@router.get("/dream-config")
+async def get_dream_config(user: dict = Depends(get_current_user)):
+    """Retorna as configurações do Dream Consolidator salvas na tabela meta."""
+    if not user:
+        raise HTTPException(status_code=401, detail="Não autorizado")
+    db = await get_db()
+    try:
+        enabled_s = await _meta_get(db, "dream_enabled")
+        idle_s = await _meta_get(db, "dream_min_idle_minutes")
+        hours_s = await _meta_get(db, "dream_min_hours_between_runs")
+        min_facts_s = await _meta_get(db, "dream_min_active_facts")
+        provider_id = await _meta_get(db, "dream_provider_id") or ""
+        model_id = await _meta_get(db, "dream_model_id") or ""
+
+        return {
+            "dream_enabled": enabled_s not in ("0", "false", "False", "no") if enabled_s is not None else True,
+            "dream_min_idle_minutes": int(idle_s) if idle_s and idle_s.isdigit() else 15,
+            "dream_min_hours_between_runs": int(hours_s) if hours_s and hours_s.isdigit() else 24,
+            "dream_min_active_facts": int(min_facts_s) if min_facts_s and min_facts_s.isdigit() else 5,
+            "dream_provider_id": provider_id,
+            "dream_model_id": model_id,
+        }
+    finally:
+        await db.close()
+
+
+@router.put("/dream-config")
+async def save_dream_config(body: DreamConfigIn, user: dict = Depends(get_current_user)):
+    """Atualiza configurações de agendamento e modelo do Dream."""
+    if not user:
+        raise HTTPException(status_code=401, detail="Não autorizado")
+    db = await get_db()
+    try:
+        if body.dream_enabled is not None:
+            await _meta_set(db, "dream_enabled", "1" if body.dream_enabled else "0")
+        if body.dream_min_idle_minutes is not None:
+            await _meta_set(db, "dream_min_idle_minutes", str(max(1, body.dream_min_idle_minutes)))
+        if body.dream_min_hours_between_runs is not None:
+            await _meta_set(db, "dream_min_hours_between_runs", str(max(1, body.dream_min_hours_between_runs)))
+        if body.dream_min_active_facts is not None:
+            await _meta_set(db, "dream_min_active_facts", str(max(1, body.dream_min_active_facts)))
+        if body.dream_provider_id is not None:
+            await _meta_set(db, "dream_provider_id", body.dream_provider_id.strip())
+        if body.dream_model_id is not None:
+            await _meta_set(db, "dream_model_id", body.dream_model_id.strip())
+        await db.commit()
+        return {"status": "ok"}
+    finally:
+        await db.close()
+
+
+@router.get("/snapshots")
+async def get_snapshots(user: dict = Depends(get_current_user)):
+    """Lista snapshots de segurança disponíveis do usuário."""
+    if not user:
+        raise HTTPException(status_code=401, detail="Não autorizado")
+    return await list_memory_snapshots(user["id"])
+
+
+@router.post("/snapshots/{snapshot_id}/rollback")
+async def rollback_snapshot(snapshot_id: str, user: dict = Depends(get_current_user)):
+    """Executa a reversão segura em 1 clique para o último ciclo de consolidação."""
+    if not user:
+        raise HTTPException(status_code=401, detail="Não autorizado")
+    logs = await list_dream_logs(user["id"], limit=10)
+    matching_log = next((l for l in logs if l.get("snapshot_id") == snapshot_id), None)
+    if matching_log and not matching_log.get("can_rollback"):
+        raise HTTPException(status_code=400, detail="Apenas o ciclo de consolidação mais recente e ativo pode ser revertido.")
+
+    success = await rollback_memory_snapshot(user["id"], snapshot_id)
+    if not success:
+        raise HTTPException(status_code=400, detail="Snapshot não encontrado, expirado ou corrompido.")
+    return {"status": "ok", "message": "Rollback de memória concluído com sucesso."}
+
+
+@router.get("/dream-logs")
+async def get_dream_logs(user: dict = Depends(get_current_user)):
+    """Histórico do Diário de Sonhos com auditoria, taxas de compressão e can_rollback computado."""
+    if not user:
+        raise HTTPException(status_code=401, detail="Não autorizado")
+    return await list_dream_logs(user["id"])
+
+
+@router.put("/facts/{fact_id}")
+async def edit_fact(fact_id: str, body: FactUpdateIn, user: dict = Depends(get_current_user)):
+    """Edição inline direta de fato existente com auto-invalidação de cache semântico."""
+    if not user:
+        raise HTTPException(status_code=401, detail="Não autorizado")
+    txt = body.fact.strip()
+    if not txt:
+        raise HTTPException(status_code=400, detail="O texto do fato não pode ser vazio.")
+    try:
+        updated = await update_memory_fact(user["id"], fact_id, txt, body.category)
+        return {"status": "ok", "fact": updated}
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error("[Memory Fact Edit] erro ao atualizar fato %s:", fact_id, exc_info=e)
+        raise HTTPException(status_code=500, detail="Erro interno ao atualizar fato.")
+
+
+@router.post("/dream-preview")
+async def dream_preview(body: DreamRunIn = DreamRunIn(), user: dict = Depends(get_current_user)):
+    """Modo Simulação (Dry-Run Preview): calcula operações de fusão e descarte sem persistir alterações."""
+    if not user:
+        raise HTTPException(status_code=401, detail="Não autorizado")
+    try:
+        return await simulate_dream_consolidation(user["id"], body.provider_id, body.model_id)
+    except DreamSafetyError as e:
+        raise HTTPException(status_code=400, detail=f"Simulação bloqueada pelas regras de segurança: {e}")
+    except DreamLLMError as e:
+        raise HTTPException(status_code=502, detail=f"Erro na chamada do modelo de IA: {e}")
+    except Exception as e:
+        logger.error("[Dream Preview] erro inesperado:", exc_info=e)
+        raise HTTPException(status_code=500, detail=f"Erro na simulação: {e}")
+
+
+@router.post("/dream-run-now")
+async def dream_run_now(body: DreamRunIn = DreamRunIn(), user: dict = Depends(get_current_user)):
+    """Disparo manual sob demanda com Server-Sent Events (SSE) para streaming de progresso em tempo real."""
+    if not user:
+        raise HTTPException(status_code=401, detail="Não autorizado")
+
+    async def sse_stream():
+        queue = asyncio.Queue()
+
+        async def progress_cb(step: str, pct: int, msg: str):
+            await queue.put({"step": step, "pct": pct, "msg": msg})
+
+        async def worker():
+            try:
+                res = await execute_dream_consolidation(
+                    user_id=user["id"],
+                    trigger_type="dream_manual",
+                    custom_provider=body.provider_id,
+                    custom_model=body.model_id,
+                    progress_cb=progress_cb,
+                )
+                await queue.put({"step": "done", "pct": 100, "result": res})
+            except Exception as exc:
+                await queue.put({"step": "error", "pct": 0, "error": str(exc)})
+            finally:
+                await queue.put(None)
+
+        asyncio.create_task(worker())
+        while True:
+            item = await queue.get()
+            if item is None:
+                break
+            yield f"data: {json.dumps(item, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(sse_stream(), media_type="text/event-stream")

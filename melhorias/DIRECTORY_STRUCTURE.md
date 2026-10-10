@@ -19,6 +19,12 @@ nexuslocal/
 - `design-assistente-proativo.md` - 技术设计文档
 - `brainstorm-assistente-proativo.md` - 初步构想
 
+### dream-memory/（梦境记忆整合）
+- 00 到 05 阶段详细规划与架构设计
+
+### smart-router/（智能模型路由 Smart Intent Router）
+- 00 到 05 阶段完整架构、分类器设计、UI透明度与检查清单
+
 ### novas-5-melhorias-ux/（5项UX改进）
 1. `01-composer-action-pills.md` - Composer动作按钮
 2. `02-slash-commands-shortcuts.md` - 斜杠命令

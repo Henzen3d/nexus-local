@@ -350,6 +350,65 @@ export const api = {
       profile_instructions_updated: boolean
     }>('/memory/import-text', { method: 'POST', body: JSON.stringify(data) }),
 
+  // Dream Memory Consolidator
+  updateMemoryFact: (id: string, data: { fact: string; category?: string }) =>
+    fetchJSON<{ status: string; fact: any }>(`/memory/facts/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+  getDreamLogs: () => fetchJSON<DreamLogApi[]>('/memory/dream-logs'),
+  getMemorySnapshots: () => fetchJSON<DreamSnapshotApi[]>('/memory/snapshots'),
+  rollbackMemorySnapshot: (snapshotId: string) =>
+    fetchJSON<{ status: string; message: string }>(`/memory/snapshots/${snapshotId}/rollback`, {
+      method: 'POST',
+    }),
+  getDreamConfig: () => fetchJSON<DreamConfigApi>('/memory/dream-config'),
+  saveDreamConfig: (data: Partial<DreamConfigApi>) =>
+    fetchJSON<{ status: string }>('/memory/dream-config', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+  dreamPreview: (data?: { provider_id?: string; model_id?: string }) =>
+    fetchJSON<DreamPreviewResponse>('/memory/dream-preview', {
+      method: 'POST',
+      body: JSON.stringify(data || {}),
+    }),
+  dreamRunNowStream: async (
+    data?: { provider_id?: string; model_id?: string },
+    onEvent?: (event: { step: string; pct: number; msg?: string; result?: any; error?: string }) => void,
+    signal?: AbortSignal
+  ) => {
+    const token = localStorage.getItem('nexuslocal_token')
+    const headers: HeadersInit = { 'Content-Type': 'application/json' }
+    if (token) headers['Authorization'] = `Bearer ${token}`
+    const res = await fetch(BASE + '/memory/dream-run-now', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(data || {}),
+      signal,
+    })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const reader = res.body?.getReader()
+    if (!reader) return
+    const decoder = new TextDecoder()
+    let buffer = ''
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || ''
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          try {
+            const parsed = JSON.parse(line.slice(6))
+            if (onEvent) onEvent(parsed)
+          } catch {}
+        }
+      }
+    }
+  },
+
   // Projects (persistent context workspaces)
   listProjects: (sort = 'updated', q?: string) => {
     const params = new URLSearchParams({ sort })
@@ -417,6 +476,9 @@ export const api = {
 export interface MemoryStatsApi {
   active_facts: number
   inactive_facts: number
+  pinned_facts?: number
+  dream_count?: number
+  last_dream_at?: string | null
   by_category: Record<string, number>
   summaries_count: number
   last_fact_update?: string | null
@@ -450,4 +512,72 @@ export interface MemoryExtractorConfig {
   memory_extractor_enabled?: boolean
   memory_llm_summaries_enabled?: boolean
   resolved_source?: 'memory_extractor' | 'enhancer' | 'chat_fallback'
+}
+
+export interface DreamLogApi {
+  id: string
+  user_id: string
+  snapshot_id?: string | null
+  provider_id: string
+  model_id: string
+  facts_before: number
+  facts_after: number
+  facts_merged: number
+  facts_superseded: number
+  facts_created: number
+  facts_total_active: number
+  duration_ms: number
+  status: 'running' | 'success' | 'failed' | 'rolled_back' | 'aborted_safety' | 'purged_by_user'
+  summary_notes?: string | null
+  error_message?: string | null
+  can_rollback?: boolean
+  created_at: string
+}
+
+export interface DreamConfigApi {
+  dream_enabled: boolean
+  dream_min_idle_minutes: number
+  dream_min_hours_between_runs: number
+  dream_min_active_facts: number
+  dream_provider_id: string
+  dream_model_id: string
+}
+
+export interface DreamSnapshotApi {
+  id: string
+  trigger_type: string
+  facts_count: number
+  snapshot_hash: string
+  is_compressed: number
+  created_at: string
+}
+
+export interface DreamOperationApi {
+  action: 'merge' | 'supersede' | 'archive' | 'keep'
+  source_fact_ids?: string[]
+  old_fact_id?: string
+  fact_id?: string
+  new_fact?: {
+    category: string
+    fact_key?: string
+    fact: string
+    confidence: number
+    is_pinned: boolean
+  }
+  reason?: string
+}
+
+export interface DreamPreviewResponse {
+  summary_of_changes: string
+  operations: DreamOperationApi[]
+  facts_before: number
+  projected_active: number
+  actions_breakdown: {
+    merge: number
+    supersede: number
+    archive: number
+    keep: number
+  }
+  provider_id?: string
+  model_id?: string
 }

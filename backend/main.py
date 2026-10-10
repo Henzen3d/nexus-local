@@ -211,10 +211,14 @@ async def run_free_registry_sync_job():
             logger.error("Error in periodic free registry sync job", exc_info=e)
 
 
+_memory_pipeline_lock = asyncio.Lock()
+
+
 async def run_memory_idle_extraction_job():
     """
     M4: every 15 minutes, extract memory from conversations that have been
     idle for ~2 hours and not yet processed after last activity.
+    Coordinated via _memory_pipeline_lock with Dream Consolidator.
     """
     from backend.memory import process_idle_memory_extractions
 
@@ -222,7 +226,8 @@ async def run_memory_idle_extraction_job():
     await asyncio.sleep(90)
     while True:
         try:
-            n = await process_idle_memory_extractions()
+            async with _memory_pipeline_lock:
+                n = await process_idle_memory_extractions()
             if n:
                 logger.info("Memory idle job: %s conversa(s) processada(s)", n)
         except Exception as e:
@@ -259,9 +264,150 @@ async def warm_up_fastembed():
         logger.warning("fastembed warm-up falhou", exc_info=e)
 
 
+async def run_dream_consolidation_job():
+    """
+    Periodic background job for Dream Memory consolidation.
+    Checks user activity & idle state every 20 minutes:
+    - User has >= 5 active facts
+    - User idle for >= dream_min_idle_minutes (no messages in last 15 min)
+    - Min hours passed (e.g. 24h) since last successful dream OR >= 5 new conversations
+    - Circuit breaker: < 3 consecutive failures
+    - Coordinated via _memory_pipeline_lock so it never collides with idle extractor.
+    """
+    from backend.memory_dream import execute_dream_consolidation
+    from backend.database import get_db, list_dream_logs, get_user_memory
+    from datetime import datetime, timezone, timedelta
+
+    await asyncio.sleep(180)  # Initial delay after server boot
+    while True:
+        try:
+            db = await get_db()
+            try:
+                async with db.execute("SELECT value FROM meta WHERE key = 'dream_enabled'") as cur:
+                    row = await cur.fetchone()
+                    dream_enabled = row[0] not in ("0", "false", "False", "no") if row and row[0] else True
+
+                async with db.execute("SELECT value FROM meta WHERE key = 'dream_min_idle_minutes'") as cur:
+                    row = await cur.fetchone()
+                    min_idle_m = int(row[0]) if row and str(row[0]).isdigit() else 15
+
+                async with db.execute("SELECT value FROM meta WHERE key = 'dream_min_hours_between_runs'") as cur:
+                    row = await cur.fetchone()
+                    min_hours = int(row[0]) if row and str(row[0]).isdigit() else 24
+
+                async with db.execute("SELECT value FROM meta WHERE key = 'dream_min_active_facts'") as cur:
+                    row = await cur.fetchone()
+                    min_facts = int(row[0]) if row and str(row[0]).isdigit() else 5
+
+                if dream_enabled:
+                    async with db.execute("SELECT id FROM users") as cur:
+                        user_rows = await cur.fetchall()
+
+                    for (uid,) in user_rows:
+                        try:
+                            # 1. Idle check: no messages in the last min_idle_m minutes
+                            async with db.execute(
+                                """SELECT created_at FROM messages
+                                   WHERE conversation_id IN (SELECT id FROM conversations WHERE user_id = ?)
+                                   ORDER BY created_at DESC LIMIT 1""",
+                                (uid,),
+                            ) as cur:
+                                msg_row = await cur.fetchone()
+
+                            if msg_row and msg_row[0]:
+                                try:
+                                    msg_time = datetime.fromisoformat(msg_row[0].replace("Z", "+00:00"))
+                                    if datetime.now(timezone.utc) - msg_time < timedelta(minutes=min_idle_m):
+                                        continue  # Active recently; skip for now
+                                except Exception:
+                                    pass
+
+                            # 2. Check active facts count
+                            active_facts = await get_user_memory(uid, limit=200, active_only=True)
+                            if len(active_facts) < min_facts:
+                                continue
+
+                            # 3. Check circuit breaker (< 3 consecutive failures)
+                            logs = await list_dream_logs(uid, limit=3)
+                            if len(logs) >= 3 and all(l["status"] == "failed" for l in logs[:3]):
+                                logger.warning("[Dream Circuit Breaker] Pausando consolidação para usuário %s devido a 3 falhas seguidas", uid)
+                                continue
+
+                            # 4. Check time since last success
+                            last_success_time = None
+                            for l in logs:
+                                if l["status"] == "success":
+                                    last_success_time = l["created_at"]
+                                    break
+
+                            should_run = False
+                            if not last_success_time:
+                                should_run = True
+                            else:
+                                try:
+                                    last_dt = datetime.fromisoformat(last_success_time.replace("Z", "+00:00"))
+                                    hours_since = (datetime.now(timezone.utc) - last_dt).total_seconds() / 3600.0
+                                    if hours_since >= float(min_hours):
+                                        should_run = True
+                                    else:
+                                        # Check new conversations since last dream
+                                        async with db.execute(
+                                            "SELECT COUNT(*) FROM conversations WHERE user_id = ? AND created_at > ?",
+                                            (uid, last_success_time),
+                                        ) as c_cur:
+                                            (new_convs,) = await c_cur.fetchone()
+                                        if new_convs >= 5:
+                                            should_run = True
+                                except Exception:
+                                    should_run = True
+
+                            if should_run:
+                                async with _memory_pipeline_lock:
+                                    logger.info("[Dream Job] Executando consolidação automática para usuário %s...", uid)
+                                    await execute_dream_consolidation(uid, trigger_type="dream_activity")
+                                await asyncio.sleep(2)  # Cooldown between users
+                        except Exception as u_err:
+                            logger.error("[Dream Job] Erro na consolidação do usuário %s:", uid, exc_info=u_err)
+            finally:
+                await db.close()
+        except Exception as loop_err:
+            logger.error("[Dream Job] Erro no loop de consolidação periódica:", exc_info=loop_err)
+
+        await asyncio.sleep(20 * 60)  # Check every 20 minutes
+
+
+async def recover_interrupted_dreams():
+    """Detects dream_logs left with status='running' from abrupt shutdowns and restores safely."""
+    from backend.database import DB_PATH, rollback_memory_snapshot, update_dream_log
+    import aiosqlite
+    try:
+        async with aiosqlite.connect(DB_PATH) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT id, user_id, snapshot_id FROM dream_logs WHERE status = 'running'"
+            ) as cur:
+                rows = await cur.fetchall()
+
+        for r in rows:
+            lid = r["id"]
+            uid = r["user_id"]
+            sid = r["snapshot_id"]
+            logger.warning("[Dream Startup Recovery] Reparando sonho interrompido %s do usuário %s", lid, uid)
+            if sid:
+                await rollback_memory_snapshot(uid, sid)
+            await update_dream_log(lid, {
+                "status": "failed",
+                "error_message": "Servidor reiniciado abruptamente durante consolidação (recuperado).",
+                "interrupted_fixed": 1,
+            })
+    except Exception as e:
+        logger.error("[Dream Startup Recovery] Erro ao recuperar sonhos interrompidos:", exc_info=e)
+
+
 @app.on_event("startup")
 async def startup():
     await init_db()
+    await recover_interrupted_dreams()
     logger.info("NexusLocal iniciado - banco de dados pronto.")
     # Warm-up embedder before accepting heavy traffic (background task still lets HTTP start)
     asyncio.create_task(warm_up_fastembed())
@@ -271,6 +417,7 @@ async def startup():
     asyncio.create_task(run_day_reset_job())
     asyncio.create_task(run_free_registry_sync_job())
     asyncio.create_task(run_memory_idle_extraction_job())
+    asyncio.create_task(run_dream_consolidation_job())
     asyncio.create_task(run_project_memory_synthesis_job())
     
     # Warm-up do cache semântico (fastembed)

@@ -25,6 +25,7 @@ from backend.projects.embedder import (
     blob_to_embedding,
     cosine_similarity,
     embed_text_async,
+    is_embedder_ready,
 )
 
 from backend.logging_config import get_logger
