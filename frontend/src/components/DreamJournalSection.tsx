@@ -14,6 +14,7 @@ import {
   HelpCircle,
 } from 'lucide-react'
 import type { DreamLogApi } from '../api/client'
+import { describeDreamLog, dreamStepState } from '../lib/dreamLog'
 
 interface DreamJournalSectionProps {
   logs: DreamLogApi[]
@@ -46,14 +47,6 @@ export function DreamJournalSection({
     { id: 'flash_tx', label: t('memory.dreamStep4') },
     { id: 'cache_update', label: t('memory.dreamStep5') },
   ]
-
-  const getStepStatus = (stepIndex: number, currentPct: number) => {
-    // 5 steps approx 20% each
-    const stepThreshold = (stepIndex + 1) * 20
-    if (currentPct >= stepThreshold) return 'done'
-    if (currentPct >= stepThreshold - 20) return 'active'
-    return 'pending'
-  }
 
   return (
     <div
@@ -185,7 +178,7 @@ export function DreamJournalSection({
           {/* Step Checklist */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
             {stepsList.map((st, idx) => {
-              const status = getStepStatus(idx, liveProgress?.pct ?? 0)
+              const status = dreamStepState(idx, liveProgress?.step || 'snapshot')
               return (
                 <div
                   key={st.id}
@@ -342,13 +335,17 @@ export function DreamJournalSection({
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
           {logs.map((log) => {
-            const noise =
-              log.facts_before > 0
-                ? Math.max(
-                    0,
-                    Math.round(((log.facts_before - log.facts_after) / log.facts_before) * 100)
-                  )
-                : 0
+            const view = describeDreamLog(log)
+            const pillStyle = {
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '3px',
+              fontSize: '10.5px',
+              color: 'var(--muted-soft)',
+              background: 'var(--surface-card)',
+              padding: '2px 7px',
+              borderRadius: '4px',
+            } as const
 
             return (
               <div
@@ -422,7 +419,7 @@ export function DreamJournalSection({
 
                   {/* Rollback Button / Status Pill */}
                   <div>
-                    {log.can_rollback ? (
+                    {view.pill === 'rollback' ? (
                       <button
                         type="button"
                         onClick={() => setConfirmRollbackLog(log)}
@@ -445,48 +442,36 @@ export function DreamJournalSection({
                         <RotateCcw size={11} />
                         {rollingBackId === log.id ? t('common.loading') : t('memory.dreamRollbackBtn')}
                       </button>
-                    ) : !log.snapshot_id ? (
-                      <span
-                        title={t('memory.dreamSnapshotExpiredTooltip')}
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '3px',
-                          fontSize: '10.5px',
-                          color: 'var(--muted)',
-                          background: 'var(--surface-card)',
-                          padding: '2px 7px',
-                          borderRadius: '4px',
-                        }}
-                      >
+                    ) : view.pill === 'expired' ? (
+                      <span title={t('memory.dreamSnapshotExpiredTooltip')} style={pillStyle}>
                         <HelpCircle size={10} />
                         {t('memory.dreamSnapshotExpired')}
                       </span>
-                    ) : log.status === 'rolled_back' ? null : (
-                      <span
-                        title={t('memory.dreamRollbackTooltip')}
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '3px',
-                          fontSize: '10.5px',
-                          color: 'var(--muted-soft)',
-                          background: 'var(--surface-card)',
-                          padding: '2px 7px',
-                          borderRadius: '4px',
-                        }}
-                      >
+                    ) : view.pill === 'blocked' ? (
+                      <span title={t('memory.dreamRollbackTooltip')} style={pillStyle}>
                         <ShieldAlert size={10} />
                         {t('memory.dreamRollbackBlocked')}
                       </span>
-                    )}
+                    ) : view.pill === 'failed' ? (
+                      <span title={view.headline} style={{ ...pillStyle, color: 'var(--error, #ef4444)' }}>
+                        <AlertCircle size={10} />
+                        Falhou
+                      </span>
+                    ) : view.pill === 'running' ? (
+                      <span title={view.headline} style={pillStyle}>
+                        <Loader2 size={10} />
+                        Em andamento
+                      </span>
+                    ) : null}
                   </div>
                 </div>
 
                 {/* Metrics Breakdown */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--primary)' }}>
-                    {log.facts_before} fatos ➔ {log.facts_after} consolidados (-{noise}% de ruído)
+                  <span style={{ fontSize: '12px', fontWeight: 600, color: view.showNoise ? 'var(--primary)' : 'var(--error, #ef4444)' }}>
+                    {view.showNoise
+                      ? `${log.facts_before} fatos ➔ ${log.facts_after} consolidados (-${view.noisePct}% de ruído)`
+                      : view.headline}
                   </span>
                   {log.facts_merged > 0 && (
                     <span

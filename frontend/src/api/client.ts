@@ -392,6 +392,7 @@ export const api = {
     if (!reader) return
     const decoder = new TextDecoder()
     let buffer = ''
+    let sawTerminal = false
     while (true) {
       const { done, value } = await reader.read()
       if (done) break
@@ -402,11 +403,13 @@ export const api = {
         if (line.startsWith('data: ')) {
           try {
             const parsed = JSON.parse(line.slice(6))
+            if (parsed.step === 'done' || parsed.step === 'error' || parsed.error) sawTerminal = true
             if (onEvent) onEvent(parsed)
           } catch {}
         }
       }
     }
+    if (!sawTerminal) throw new Error('conexão interrompida antes do fim')
   },
 
   // Projects (persistent context workspaces)

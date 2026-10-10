@@ -36,6 +36,7 @@ from backend.memory import (
 from backend.memory_dream import (
     simulate_dream_consolidation,
     execute_dream_consolidation,
+    iter_sse_events,
     DreamSafetyError,
     DreamLLMError,
 )
@@ -752,10 +753,15 @@ async def dream_run_now(body: DreamRunIn = DreamRunIn(), user: dict = Depends(ge
                 await queue.put(None)
 
         asyncio.create_task(worker())
-        while True:
-            item = await queue.get()
-            if item is None:
-                break
-            yield f"data: {json.dumps(item, ensure_ascii=False)}\n\n"
+        async for chunk in iter_sse_events(queue, heartbeat_s=15):
+            yield chunk
 
-    return StreamingResponse(sse_stream(), media_type="text/event-stream")
+    return StreamingResponse(
+        sse_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )

@@ -1,3 +1,4 @@
+import asyncio
 import json
 import re
 import time
@@ -81,6 +82,7 @@ REGRAS DE OURO:
 8. ESTABILIDADE & ANTI-CHURN: Se um fato já estiver claro, denso e consolidado e não houver fatos novos ou contradições a seu respeito, MANTENHA-O com ação "keep". É proibido fazer alterações cosméticas de vocabulário, estilo ou pontuação.
 9. ATENUAÇÃO TEMPORAL: Se um fato descreve um evento pontual ocorrido há mais de 90 dias em relação à data de hoje e não for fixado (pinned), marque-o como "archive" se perdeu relevância durável, ou mantenha com confiança reduzida.
 10. ARQUIVAMENTO RESTRITO: Só marque ação "archive" para fatos comprovadamente efêmeros ou ruídos sem qualquer valor durável. Sempre forneça a justificativa em "reason".
+11. ALIAS DE ID: Cada fato chega com um alias curto no campo ID (f1, f2, f3). Copie esse alias exatamente em fact_id, old_fact_id e source_fact_ids. Nunca invente, encurte nem reescreva o ID.
 
 FORMATO DE RESPOSTA OBRIGATÓRIO (JSON PURO SEM MARKDOWN ADICIONAL):
 {
@@ -88,7 +90,7 @@ FORMATO DE RESPOSTA OBRIGATÓRIO (JSON PURO SEM MARKDOWN ADICIONAL):
   "operations": [
     {
       "action": "merge",
-      "source_fact_ids": ["id_1", "id_2"],
+      "source_fact_ids": ["f1", "f2"],
       "new_fact": {
         "category": "tech",
         "fact_key": "tech.frontend_stack",
@@ -99,7 +101,7 @@ FORMATO DE RESPOSTA OBRIGATÓRIO (JSON PURO SEM MARKDOWN ADICIONAL):
     },
     {
       "action": "supersede",
-      "old_fact_id": "id_3",
+      "old_fact_id": "f3",
       "new_fact": {
         "category": "personal",
         "fact_key": "location.city",
@@ -110,16 +112,180 @@ FORMATO DE RESPOSTA OBRIGATÓRIO (JSON PURO SEM MARKDOWN ADICIONAL):
     },
     {
       "action": "archive",
-      "fact_id": "id_5",
+      "fact_id": "f5",
       "reason": "Evento pontual ocorrido há mais de 90 dias sem valor contínuo"
     },
     {
       "action": "keep",
-      "fact_id": "id_4"
+      "fact_id": "f4"
     }
   ]
 }
 """
+
+
+DREAM_REQUEST_TOKEN_BUDGET = 6000
+_USER_PAYLOAD_PREFIX = "Fatos para Consolidação:\n"
+
+
+def estimate_tokens(text: str) -> int:
+    if not text:
+        return 0
+    return max(1, (len(text) + 3) // 4)
+
+
+def _fact_scope(fact: dict) -> str:
+    scope = fact.get("category") or "general"
+    key = fact.get("fact_key") or ""
+    if key.startswith("project."):
+        parts = key.split(".")
+        if len(parts) >= 2:
+            return f"project:{parts[1]}"
+    if key.startswith("family."):
+        return "family"
+    return scope
+
+
+def render_facts_payload(
+    facts: list[dict],
+    current_date: str,
+    alias_map: Optional[dict[str, str]] = None,
+) -> tuple[dict[str, str], str]:
+    """Monta o texto do lote usando aliases f1, f2… em vez do UUID."""
+    if alias_map is None:
+        alias_map = {f"f{i}": fact["id"] for i, fact in enumerate(facts, start=1)}
+    id_to_alias = {real_id: alias for alias, real_id in alias_map.items()}
+    lines = []
+    for fact in facts:
+        alias = id_to_alias[fact["id"]]
+        created = fact.get("created_at") or current_date
+        lines.append(
+            f"[ID: {alias} | CriadoEm: {created} | "
+            f"Pinned: {bool(fact.get('is_pinned'))} | Categoria: {fact.get('category')} | "
+            f"Escopo: {_fact_scope(fact)}] {fact.get('fact') or ''}"
+        )
+    return alias_map, "\n".join(lines)
+
+
+def split_facts_for_budget(
+    facts: list[dict],
+    system_prompt: str,
+    max_tokens: int = DREAM_REQUEST_TOKEN_BUDGET,
+) -> list[list[dict]]:
+    """Fatia fatos para o pedido (prompt + lote) caber no teto de tokens."""
+    if not facts:
+        return []
+    overhead = estimate_tokens(system_prompt) + estimate_tokens(_USER_PAYLOAD_PREFIX)
+    chunks: list[list[dict]] = []
+    current: list[dict] = []
+    current_tokens = overhead
+    for index, fact in enumerate(facts, start=1):
+        line = (
+            f"[ID: f{index} | CriadoEm: {fact.get('created_at') or ''} | "
+            f"Pinned: {bool(fact.get('is_pinned'))} | Categoria: {fact.get('category')} | "
+            f"Escopo: {_fact_scope(fact)}] {fact.get('fact') or ''}"
+        )
+        line_tokens = estimate_tokens(line) + 1
+        if current and current_tokens + line_tokens > max_tokens:
+            chunks.append(current)
+            current = [fact]
+            current_tokens = overhead + line_tokens
+        else:
+            current.append(fact)
+            current_tokens += line_tokens
+    if current:
+        chunks.append(current)
+    return chunks
+
+
+def _resolve_fact_token(token: Optional[str], alias_map: dict[str, str], ids: list[str]) -> Optional[str]:
+    if not token:
+        return token
+    if token in alias_map:
+        return alias_map[token]
+    if token in ids:
+        return token
+    if len(token) >= 8:
+        matches = [real_id for real_id in ids if real_id.startswith(token)]
+        if len(matches) == 1:
+            return matches[0]
+    return token
+
+
+def remap_operation_ids(
+    operations: list[DreamOperation],
+    alias_map: dict[str, str],
+    facts: list[dict],
+) -> None:
+    """Troca aliases (e prefixo único de UUID) pelo id real. ID inventado permanece."""
+    ids = [fact["id"] for fact in facts]
+    for op in operations:
+        if op.fact_id:
+            op.fact_id = _resolve_fact_token(op.fact_id, alias_map, ids)
+        if op.old_fact_id:
+            op.old_fact_id = _resolve_fact_token(op.old_fact_id, alias_map, ids)
+        if op.source_fact_ids:
+            op.source_fact_ids = [
+                _resolve_fact_token(source_id, alias_map, ids) or source_id
+                for source_id in op.source_fact_ids
+            ]
+
+
+def _llm_error_is_too_large(exc: Exception) -> bool:
+    text = str(exc).lower()
+    return "413" in text or "too large" in text or "request too large" in text
+
+
+async def analyze_facts(
+    facts: list[dict],
+    system_prompt: str,
+    caller: Callable[[str, str], Awaitable[str]],
+    max_tokens: int = DREAM_REQUEST_TOKEN_BUDGET,
+    current_date: Optional[str] = None,
+) -> tuple[list[DreamOperation], list[str]]:
+    """Chama o modelo em lotes que cabem no teto. 413 fatia de novo. Devolve IDs reais."""
+    current_date = current_date or datetime.date.today().isoformat()
+    alias_map, _full = render_facts_payload(facts, current_date)
+    chunks = split_facts_for_budget(facts, system_prompt, max_tokens=max_tokens)
+    all_ops: list[DreamOperation] = []
+    notes: list[str] = []
+
+    async def run_chunk(chunk: list[dict]) -> None:
+        if not chunk:
+            return
+        _map, payload = render_facts_payload(chunk, current_date, alias_map)
+        try:
+            raw = await caller(system_prompt, payload)
+        except DreamLLMError as exc:
+            if _llm_error_is_too_large(exc) and len(chunk) > 1:
+                mid = max(1, len(chunk) // 2)
+                await run_chunk(chunk[:mid])
+                await run_chunk(chunk[mid:])
+                return
+            raise
+        data = json.loads(raw)
+        schema = DreamResponseSchema(**data)
+        remap_operation_ids(schema.operations, alias_map, facts)
+        all_ops.extend(schema.operations)
+        if schema.summary_of_changes:
+            notes.append(schema.summary_of_changes)
+
+    for chunk in chunks:
+        await run_chunk(chunk)
+    return all_ops, notes
+
+
+async def iter_sse_events(queue: asyncio.Queue, heartbeat_s: float = 15.0):
+    """Emite keepalive enquanto o modelo não manda o próximo passo."""
+    while True:
+        try:
+            item = await asyncio.wait_for(queue.get(), timeout=heartbeat_s)
+        except asyncio.TimeoutError:
+            yield ": keepalive\n\n"
+            continue
+        if item is None:
+            break
+        yield f"data: {json.dumps(item, ensure_ascii=False)}\n\n"
 
 
 # =========================================================
@@ -491,27 +657,14 @@ async def simulate_dream_consolidation(
     current_date = datetime.date.today().isoformat()
     system_prompt = _DREAM_SYSTEM_PROMPT.replace("{CURRENT_DATE}", current_date)
 
-    formatted_lines = []
-    for f in active_facts:
-        scope = f.get("category") or "general"
-        if f.get("fact_key", "").startswith("project."):
-            parts = f["fact_key"].split(".")
-            if len(parts) >= 2:
-                scope = f"project:{parts[1]}"
-        elif f.get("fact_key", "").startswith("family."):
-            scope = "family"
+    async def caller(prompt: str, payload: str) -> str:
+        return await call_dream_llm(provider, model_name, p_id, prompt, payload)
 
-        line = (
-            f"[ID: {f['id']} | CriadoEm: {f.get('created_at', current_date)} | "
-            f"Pinned: {bool(f.get('is_pinned'))} | Categoria: {f.get('category')} | "
-            f"Escopo: {scope}] {f['fact']}"
-        )
-        formatted_lines.append(line)
-
-    payload_text = "\n".join(formatted_lines)
-    raw_response = await call_dream_llm(provider, model_name, p_id, system_prompt, payload_text)
-    data = json.loads(raw_response)
-    schema = DreamResponseSchema(**data)
+    operations, notes = await analyze_facts(active_facts, system_prompt, caller)
+    schema = DreamResponseSchema(
+        summary_of_changes=" ".join(notes) or "Simulação concluída.",
+        operations=operations,
+    )
 
     # Validação rigorosa dos limiares
     verify_dream_safety(active_facts, schema.operations)
@@ -587,29 +740,16 @@ async def execute_dream_consolidation(
         current_date = datetime.date.today().isoformat()
         system_prompt = _DREAM_SYSTEM_PROMPT.replace("{CURRENT_DATE}", current_date)
 
-        formatted_lines = []
-        for f in active_facts:
-            scope = f.get("category") or "general"
-            if f.get("fact_key", "").startswith("project."):
-                parts = f["fact_key"].split(".")
-                if len(parts) >= 2:
-                    scope = f"project:{parts[1]}"
-            elif f.get("fact_key", "").startswith("family."):
-                scope = "family"
-
-            line = (
-                f"[ID: {f['id']} | CriadoEm: {f.get('created_at', current_date)} | "
-                f"Pinned: {bool(f.get('is_pinned'))} | Categoria: {f.get('category')} | "
-                f"Escopo: {scope}] {f['fact']}"
-            )
-            formatted_lines.append(line)
-
-        payload_text = "\n".join(formatted_lines)
-
         await report("reasoning", 60, "Processando desduplicação, contradições e marcos temporais...")
-        raw_response = await call_dream_llm(provider, model_name, p_id, system_prompt, payload_text)
-        data = json.loads(raw_response)
-        schema = DreamResponseSchema(**data)
+
+        async def caller(prompt: str, payload: str) -> str:
+            return await call_dream_llm(provider, model_name, p_id, prompt, payload)
+
+        operations, notes = await analyze_facts(active_facts, system_prompt, caller, current_date=current_date)
+        schema = DreamResponseSchema(
+            summary_of_changes=" ".join(notes) or "Consolidação concluída.",
+            operations=operations,
+        )
 
         await report("validating", 80, "Verificando barreiras de integridade e retenção anti-ruído...")
         try:
@@ -659,8 +799,9 @@ async def execute_dream_consolidation(
         status_to_record = "aborted_safety" if isinstance(exc, DreamSafetyError) else "failed"
         await update_dream_log(dream_id, {
             "status": status_to_record,
-            "error_message": str(exc),
+            "error_message": str(exc)[:2000],
             "duration_ms": duration_ms,
+            "facts_after": len(active_facts),
         })
         logger.error("[Dream] Falha na execução da consolidação: %s", exc, exc_info=exc)
         raise exc
