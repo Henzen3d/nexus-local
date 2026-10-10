@@ -71,7 +71,7 @@ DATA DE REFERÊNCIA HOJE: {CURRENT_DATE}
 REGRAS DE OURO:
 1. PRESERVAÇÃO DA VERDADE: Nunca invente informações novas. Só sintetize ou reorganize com base no que já existe.
 2. ANCORAGEM TEMPORAL: Transforme referências temporais flutuantes ("ontem", "no mês passado", "atualmente", "ano que vem") em marcos absolutos baseando-se na data original informada na linha de cada fato (ex: [CriadoEm: 2026-03-10] "comecei no novo emprego semana passada" -> "Iniciou no novo emprego em 2026-03-03").
-3. RESOLUÇÃO DE CONTRADIÇÕES: Se o usuário dizia "mora em São Paulo" e depois diz "mudou-se para Curitiba", a informação mais recente PREVALECE. A informação antiga deve ser marcada como "supersede".
+3. RESOLUÇÃO DE CONTRADIÇÕES: Se o usuário dizia "mora em São Paulo" e depois diz "mudou-se para Curitiba", a informação mais recente PREVALECE. A informação antiga deve ser marcada como "supersede". PROIBIDO resolver contradição de número inventando um terceiro número. Se um fato diz 46 e outro diz 10, mantenha os dois números que já estão escritos. Não calcule ano de nascimento. Não escreva "ajustado por consistência".
 4. FUSÃO (MERGE): Agrupe múltiplos micro-fatos fragmentados do mesmo assunto em um único fato denso e informativo. Exemplo:
    Fato A: "Usa React no frontend"
    Fato B: "Prefere Tailwind e TypeScript"
@@ -83,6 +83,8 @@ REGRAS DE OURO:
 9. ATENUAÇÃO TEMPORAL: Se um fato descreve um evento pontual ocorrido há mais de 90 dias em relação à data de hoje e não for fixado (pinned), marque-o como "archive" se perdeu relevância durável, ou mantenha com confiança reduzida.
 10. ARQUIVAMENTO RESTRITO: Só marque ação "archive" para fatos comprovadamente efêmeros ou ruídos sem qualquer valor durável. Sempre forneça a justificativa em "reason".
 11. ALIAS DE ID: Cada fato chega com um alias curto no campo ID (f1, f2, f3). Copie esse alias exatamente em fact_id, old_fact_id e source_fact_ids. Nunca invente, encurte nem reescreva o ID.
+12. IDADE E NASCIMENTO: Nunca invente ano de nascimento. Nunca ajuste uma idade para bater com um ano que não estava nos fatos de origem. Se o fato diz ~46 anos, mantenha ~46. Filho não pode ser mais velho que o titular. Idade do titular não vira idade de filho.
+13. ESCOPO: identity.* é só o titular. Esposa, filho e casamento ficam em family.*. Não una dois project.<slug> diferentes num merge. Não fixe (pin) um fato que não estava fixado. Não introduza nome, número, CEP ou ano que não esteja nos fatos de origem, exceto a data de hoje e a ancoragem de "ontem/semana passada".
 
 FORMATO DE RESPOSTA OBRIGATÓRIO (JSON PURO SEM MARKDOWN ADICIONAL):
 {
@@ -325,6 +327,149 @@ async def iter_sse_events(queue: asyncio.Queue, heartbeat_s: float = 15.0):
 # =========================================================
 # VALIDAÇÃO DE SEGURANÇA E RETENÇÃO
 # =========================================================
+
+_RE_SYNTHESIS = re.compile(
+    r"ajustad[oa]\s+por\s+consist[eê]ncia|anteriormente\s+registrado\s+como|calculad[oa]\s+a\s+partir",
+    re.I,
+)
+_RE_NAME_BIGRAM = re.compile(
+    r"\b([A-ZÁÉÍÓÚÂÊÔÃÕÇ][\w'’-]{2,})\s+([A-ZÁÉÍÓÚÂÊÔÃÕÇ][\w'’-]{2,})"
+)
+_RE_LONG_NUMBER = re.compile(r"(?<!\d)(\d{2,})(?!\d)")
+_RE_RELATIVE_TIME = re.compile(
+    r"\b(ontem|anteontem|hoje|amanh[aã]|semana\s+passada|m[eê]s\s+passado|"
+    r"ano\s+que\s+vem|atualmente|h[aá]\s+\d+\s+dias)\b",
+    re.I,
+)
+_NAME_BIGRAM_SKIP = {
+    "filho", "filha", "esposa", "esposo", "stack", "react", "typescript",
+    "tailwind", "python", "css", "html", "api",
+}
+
+
+def project_slug(fact_key: str | None) -> str | None:
+    key = (fact_key or "").lower()
+    if not key.startswith("project."):
+        return None
+    parts = key.split(".")
+    return parts[1] if len(parts) > 1 else ""
+
+
+def number_grounded(num: str, source_text: str, today: str) -> bool:
+    if re.search(rf"(?<!\d){re.escape(num)}(?!\d)", source_text or ""):
+        return True
+    if num in set(re.findall(r"\d+", today or "")):
+        return True
+    if not _RE_RELATIVE_TIME.search(source_text or ""):
+        return False
+    year = int((today or "2000")[:4])
+    if len(num) == 4 and abs(int(num) - year) <= 1:
+        return True
+    if len(num) <= 2 and int(num) <= 31:
+        return True
+    return False
+
+
+def consolidation_block_reason(
+    new_key: str | None,
+    new_text: str,
+    source_facts: list[dict],
+    source_text: str,
+    today: str | None = None,
+) -> str | None:
+    """Motivo para descartar um merge/supersede. None = pode gravar."""
+    from backend.memory import identity_mixes_other_person, is_labeled_child_fact
+
+    today = today or datetime.date.today().isoformat()
+    text = new_text or ""
+    if _RE_SYNTHESIS.search(text):
+        return "sintese"
+    if identity_mixes_other_person(new_key, text):
+        return "identity_mistura_familia"
+    slugs = {project_slug(s.get("fact_key")) for s in source_facts}
+    slugs.discard(None)
+    if len(slugs) > 1:
+        return "projetos_cruzados"
+    if is_labeled_child_fact(new_key, text) and source_facts and not any(
+        is_labeled_child_fact(s.get("fact_key"), s.get("fact") or "") for s in source_facts
+    ):
+        return "papel_filho_sem_origem"
+    norm_source = (source_text or "").replace("/", " ").lower()
+    for first, second in _RE_NAME_BIGRAM.findall(text):
+        if first.lower() in _NAME_BIGRAM_SKIP or second.lower() in _NAME_BIGRAM_SKIP:
+            continue
+        bigram = f"{first} {second}".lower()
+        if bigram not in norm_source:
+            return f"nome:{first} {second}"
+    for num in _RE_LONG_NUMBER.findall(text):
+        if not number_grounded(num, source_text, today):
+            return f"numero:{num}"
+    return None
+
+
+def drop_impossible_age_rewrites(
+    facts_before: list[dict],
+    operations: list[DreamOperation],
+) -> list[DreamOperation]:
+    """Descarta merge/supersede que inventa ano de nascimento ou filho mais velho que o titular."""
+    from backend.memory import (
+        birth_years,
+        child_age_impossible,
+        holder_age_from_facts,
+        is_labeled_child_fact,
+        stated_ages,
+    )
+
+    by_id = {f["id"]: f for f in facts_before}
+    holder_age = holder_age_from_facts(facts_before)
+    kept: list[DreamOperation] = []
+    for op in operations:
+        nf = op.new_fact
+        if op.action not in ("merge", "supersede") or nf is None:
+            kept.append(op)
+            continue
+        source_ids = list(op.source_fact_ids or [])
+        if op.old_fact_id:
+            source_ids.append(op.old_fact_id)
+        source_facts = [by_id[sid] for sid in source_ids if sid in by_id]
+        source_text = " ".join((s.get("fact") or "") for s in source_facts)
+        invented_years = [y for y in birth_years(nf.fact) if str(y) not in source_text]
+        invented_ages = [
+            age for age in stated_ages(nf.fact)
+            if not re.search(rf"(?<!\d){age}(?!\d)", source_text or "")
+        ]
+        impossible_child = is_labeled_child_fact(nf.fact_key, nf.fact) and child_age_impossible(
+            nf.fact, holder_age
+        )
+        holder_relabeled = (
+            is_labeled_child_fact(nf.fact_key, nf.fact)
+            and stated_ages(nf.fact)
+            and source_ids
+            and not any(
+                is_labeled_child_fact(by_id.get(sid, {}).get("fact_key"), by_id.get(sid, {}).get("fact") or "")
+                for sid in source_ids
+            )
+        )
+        scope_reason = consolidation_block_reason(
+            nf.fact_key, nf.fact, source_facts, source_text
+        )
+        if invented_years or invented_ages or impossible_child or holder_relabeled or scope_reason:
+            logger.warning(
+                "[Dream] operação descartada (ano=%s, idade=%s, filho impossível=%s, reetiqueta=%s, escopo=%s): %s",
+                invented_years,
+                invented_ages,
+                impossible_child,
+                holder_relabeled,
+                scope_reason,
+                (nf.fact or "")[:160],
+            )
+            continue
+        sources_pinned = any(by_id.get(sid, {}).get("is_pinned") for sid in source_ids)
+        if nf.is_pinned and not sources_pinned:
+            nf.is_pinned = False
+        kept.append(op)
+    return kept
+
 
 def verify_dream_safety(facts_before: list[dict], operations: list[DreamOperation]) -> None:
     """
@@ -690,6 +835,7 @@ async def simulate_dream_consolidation(
         return await call_dream_llm(provider, model_name, p_id, prompt, payload)
 
     operations, notes = await analyze_facts(active_facts, system_prompt, caller)
+    operations = drop_impossible_age_rewrites(active_facts, operations)
     schema = DreamResponseSchema(
         summary_of_changes=" ".join(notes) or "Simulação concluída.",
         operations=operations,
@@ -775,6 +921,7 @@ async def execute_dream_consolidation(
             return await call_dream_llm(provider, model_name, p_id, prompt, payload)
 
         operations, notes = await analyze_facts(active_facts, system_prompt, caller, current_date=current_date)
+        operations = drop_impossible_age_rewrites(active_facts, operations)
         schema = DreamResponseSchema(
             summary_of_changes=" ".join(notes) or "Consolidação concluída.",
             operations=operations,

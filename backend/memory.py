@@ -1,3 +1,4 @@
+import datetime
 import json
 import re
 import hashlib
@@ -119,6 +120,89 @@ _RE_USER_SELF_AGE = re.compile(
 _RE_LIKELY_CHILD_AGE = re.compile(r"\b([5-9]|1[0-5])\s*anos?\b", re.I)
 _RE_GRADE = re.compile(r"\b(\d{1,2})[ªaºo°]?\s*s[eé]rie\b", re.I)
 _RE_SCHOOL_NAME = re.compile(r"\bescola\b", re.I)
+_RE_STATED_AGE = re.compile(r"~?\s*(\d{1,3})\s*anos?\b", re.I)
+_RE_BIRTH_YEAR = re.compile(
+    r"(?:nascid[oa]|nascimento|born)\D{0,24}((?:19|20)\d{2})|~\s*((?:19|20)\d{2})\b",
+    re.I,
+)
+_RE_CHILD_MARKER = re.compile(r"\b(filho|filha|escola|s[eé]rie)\b", re.I)
+_RE_OTHER_PERSON = re.compile(
+    r"\b(esposa|esposo|filho|filha|c[oô]njuge|namorad[oa]|casal\s+com|casad[oa]s?)\b",
+    re.I,
+)
+# "Gonçalves Filho" é sobrenome. "meu filho" não é.
+_RE_SURNAME_FILHO = re.compile(
+    r"\b([A-ZÁÉÍÓÚÂÊÔÃÕÇ][\w'’-]+)\s+Filho\b"
+)
+
+
+def without_surname_filho(text: str) -> str:
+    return _RE_SURNAME_FILHO.sub(r"\1", text or "")
+
+
+def has_family_word(text: str) -> bool:
+    return bool(_RE_FAMILY_WORD.search(without_surname_filho(text)))
+
+
+def has_specific_kinship(text: str) -> bool:
+    return bool(_RE_SPECIFIC_KINSHIP.search(without_surname_filho(text)))
+
+
+def identity_mixes_other_person(fact_key: str | None, text: str) -> bool:
+    """identity.* não pode carregar esposa, filho ou casamento. Isso é família."""
+    key = (fact_key or "").lower()
+    if not key.startswith("identity."):
+        return False
+    return bool(_RE_OTHER_PERSON.search(without_surname_filho(text or "")))
+
+
+def stated_ages(text: str) -> list[int]:
+    return [int(m) for m in _RE_STATED_AGE.findall(text or "")]
+
+
+def birth_years(text: str) -> list[int]:
+    years = []
+    for a, b in _RE_BIRTH_YEAR.findall(text or ""):
+        raw = a or b
+        if raw:
+            years.append(int(raw))
+    return years
+
+
+def is_adult_holder_age_text(text: str) -> bool:
+    """Idade >= 18 sem marca de filho/escola é do titular, não de dependente."""
+    if _RE_CHILD_MARKER.search(without_surname_filho(text or "")):
+        return False
+    return any(18 <= a <= 120 for a in stated_ages(text))
+
+
+def holder_age_from_facts(facts: list[dict]) -> int | None:
+    for f in facts or []:
+        key = (f.get("fact_key") or "").lower()
+        cat = (f.get("category") or "").lower()
+        if cat != "identity" and not key.startswith("identity."):
+            continue
+        adults = [a for a in stated_ages(f.get("fact") or "") if 18 <= a <= 120]
+        if adults:
+            return adults[0]
+    return None
+
+
+def child_age_impossible(text: str, holder_age: int | None) -> bool:
+    """Filho mais velho que o titular, ou nascido quando o titular tinha menos de 12."""
+    if not holder_age:
+        return False
+    if any(a >= holder_age for a in stated_ages(text)):
+        return True
+    holder_birth = datetime.date.today().year - holder_age
+    return any(y <= holder_birth + 12 for y in birth_years(text))
+
+
+def is_labeled_child_fact(fact_key: str | None, text: str) -> bool:
+    key = (fact_key or "").lower()
+    if any(tok in key for tok in ("child", ".son", "daughter", "filho", "filha")):
+        return True
+    return bool(re.match(r"\s*filho\s*\(?a\)?", text or "", re.I))
 
 # Canonical PT labels for family fact_keys (avoid collapsing to "familiar")
 _KINSHIP_FROM_KEY = (
@@ -139,7 +223,7 @@ def _looks_like_child_or_school_attr(text: str) -> bool:
     t = (text or "").strip()
     if not t:
         return False
-    if _RE_FAMILY_WORD.search(t):
+    if has_family_word(t):
         return True
     if _RE_GRADE.search(t):
         return True
@@ -169,7 +253,7 @@ def _kinship_label_from_text(fact: str) -> str | None:
     t = (fact or "").strip()
     if not t:
         return None
-    m = _RE_SPECIFIC_KINSHIP.search(t)
+    m = _RE_SPECIFIC_KINSHIP.search(without_surname_filho(t))
     if not m:
         return None
     w = m.group(1).lower()
@@ -268,7 +352,7 @@ def _enrich_family_fact(fact_key: str | None, fact: str) -> str:
         return raw
 
     # Already has specific kinship → keep (but clean pure-generic wrapper if mixed)
-    if _RE_SPECIFIC_KINSHIP.search(raw) and not _RE_GENERIC_FAMILIAR_PREFIX.match(raw):
+    if has_specific_kinship(raw) and not _RE_GENERIC_FAMILIAR_PREFIX.match(raw):
         return raw
 
     core = _strip_generic_familiar_prefix(raw)
@@ -276,7 +360,7 @@ def _enrich_family_fact(fact_key: str | None, fact: str) -> str:
         return raw
 
     # If after strip it already has specific kinship, keep
-    if _RE_SPECIFIC_KINSHIP.search(core):
+    if has_specific_kinship(core):
         return core
 
     label = _infer_kinship_label(fact_key, raw)
@@ -321,8 +405,10 @@ def _sanitize_extracted_item(item: dict) -> dict | None:
     if not fact:
         return None
 
-    # Force family.* for relative-related content
-    if _is_family_key(fact_key) or _RE_FAMILY_WORD.search(fact) or (
+    if identity_mixes_other_person(fact_key, fact):
+        fact_key = "family.household"
+        category = "personal"
+    if _is_family_key(fact_key) or has_family_word(fact) or (
         category == "identity" and _looks_like_child_or_school_attr(fact)
     ):
         if not _is_family_key(fact_key):
@@ -351,7 +437,8 @@ def _sanitize_extracted_item(item: dict) -> dict | None:
             fact_key = "family.child_profile"
         fact = _enrich_family_fact(fact_key, fact)
 
-    # Bare school/grade/young age under identity without family key
+    # Bare school/grade/young age under identity without family key.
+    # Idade adulta do titular (ex.: "Idade: ~46 anos") não vira filho.
     if category == "identity" and fact_key in (
         "identity.age",
         "identity.school",
@@ -359,7 +446,10 @@ def _sanitize_extracted_item(item: dict) -> dict | None:
         "identity.escola",
         "identity.serie",
     ):
-        if _looks_like_child_or_school_attr(fact) or not _RE_USER_SELF_AGE.search(fact):
+        adult_self = fact_key == "identity.age" and is_adult_holder_age_text(fact)
+        if not adult_self and (
+            _looks_like_child_or_school_attr(fact) or not _RE_USER_SELF_AGE.search(fact)
+        ):
             category = "personal"
             fact_key = {
                 "identity.age": "family.child_age",
@@ -427,6 +517,7 @@ async def repair_identity_family_confusion(user_id: str) -> int:
         # Still demote identity school/grade which almost never belong to identity alone
         pass
 
+    holder_age = holder_age_from_facts(facts)
     fixed = 0
     for f in facts:
         cat = (f.get("category") or "").lower()
@@ -435,11 +526,49 @@ async def repair_identity_family_confusion(user_id: str) -> int:
         if not text:
             continue
 
+        # identity.* com esposa/filho/casamento não é identidade do titular.
+        if key.startswith("identity.") and identity_mixes_other_person(key, text):
+            try:
+                async with aiosqlite.connect(DB_PATH) as db:
+                    await db.execute(
+                        "UPDATE user_memory SET is_active = 0, status = 'archived', "
+                        "updated_at = datetime('now') WHERE id = ? AND user_id = ?",
+                        (f.get("id"), user_id),
+                    )
+                    await db.commit()
+                await add_memory_fact(
+                    user_id=user_id,
+                    category="personal",
+                    fact=text,
+                    fact_key="family.household",
+                    source_conv_id=f.get("source_conv_id"),
+                    confidence=float(f.get("confidence") or 0.7),
+                )
+                fixed += 1
+            except Exception as e:
+                logger.error("[Memory Repair] falha ao tirar família da identidade:", exc_info=e)
+            continue
+
+        # Filho mais velho que o titular é alucinação (ex.: 49 anos com pai de 46).
+        if holder_age and is_labeled_child_fact(key, text) and child_age_impossible(text, holder_age):
+            try:
+                async with aiosqlite.connect(DB_PATH) as db:
+                    await db.execute(
+                        "UPDATE user_memory SET is_active = 0, status = 'archived', "
+                        "updated_at = datetime('now') WHERE id = ? AND user_id = ?",
+                        (f.get("id"), user_id),
+                    )
+                    await db.commit()
+                fixed += 1
+            except Exception as e:
+                logger.error("[Memory Repair] falha ao arquivar idade impossível:", exc_info=e)
+            continue
+
         should_demote = False
         if cat == "identity" and _looks_like_child_or_school_attr(text):
-            should_demote = True
+            if not (key in ("identity.age", "age", "identity.idade") and is_adult_holder_age_text(text)):
+                should_demote = True
         if cat == "identity" and key in (
-            "identity.age",
             "identity.school",
             "identity.grade",
             "identity.escola",
@@ -447,9 +576,15 @@ async def repair_identity_family_confusion(user_id: str) -> int:
         ):
             if has_adult_signal or _looks_like_child_or_school_attr(text):
                 should_demote = True
+        if cat == "identity" and key in ("identity.age", "age", "identity.idade"):
+            young = any(5 <= a <= 17 for a in stated_ages(text))
+            if not is_adult_holder_age_text(text) and (
+                _looks_like_child_or_school_attr(text) or young
+            ):
+                should_demote = True
         # Personal bullets that are bare child age/school without family prefix
         if cat == "personal" and not _is_family_key(key) and _looks_like_child_or_school_attr(text):
-            if not _RE_FAMILY_WORD.search(text) and (
+            if not has_family_word(text) and (
                 _RE_GRADE.search(text) or _RE_SCHOOL_NAME.search(text) or _RE_LIKELY_CHILD_AGE.search(text)
             ):
                 should_demote = True
@@ -496,7 +631,7 @@ async def repair_identity_family_confusion(user_id: str) -> int:
         has_generic = bool(_RE_GENERIC_FAMILIAR_PREFIX.match(text)) or bool(
             re.search(r"\(\s*familiar\s*\)", text, re.I)
         )
-        has_specific = bool(_RE_SPECIFIC_KINSHIP.search(text))
+        has_specific = has_specific_kinship(text)
         if not (_is_family_key(key) or has_generic or has_specific):
             continue
 
@@ -902,7 +1037,7 @@ def _facts_to_summary_md(facts: list[dict], title: str | None = None) -> str:
 
         if cat == "identity" and not _is_family_key(key) and not _looks_like_child_or_school_attr(text):
             identity.append(text)
-        elif _is_family_key(key) or _RE_FAMILY_WORD.search(text) or (
+        elif _is_family_key(key) or has_family_word(text) or (
             cat in ("identity", "personal") and _looks_like_child_or_school_attr(text)
         ):
             # Never put family attributes under "Identidade"; upgrade generic parentesco
@@ -1284,7 +1419,7 @@ def build_memory_block(
             continue
         if cat == "identity" and not _is_family_key(key) and not _looks_like_child_or_school_attr(fact_text):
             identity_lines.append(fact_text)
-        elif _is_family_key(key) or _RE_FAMILY_WORD.search(fact_text) or (
+        elif _is_family_key(key) or has_family_word(fact_text) or (
             cat in ("identity", "personal") and _looks_like_child_or_school_attr(fact_text)
         ):
             family_lines.append(
@@ -1606,8 +1741,7 @@ def _make_import_fact(
     # Family / kinship routing
     is_familyish = (
         section == "family"
-        or _RE_FAMILY_WORD.search(body)
-        or re.search(r"\b(esposa|esposo|filho|filha|wife|husband|son|daughter|c[oô]njuge)\b", body, re.I)
+        or has_family_word(body)
     )
     if is_familyish and section in ("identity", "family", "health", "updates", "preferences"):
         fact_key_cat = "personal"
@@ -1936,10 +2070,7 @@ def _parse_rich_markdown_profile(text: str) -> tuple[list[dict], list[str], list
                 continue
             # Nested family under identity when line mentions wife/son
             target = current_section
-            if current_section == "identity" and (
-                _RE_FAMILY_WORD.search(body)
-                or re.search(r"\b(esposa|filho|filha|wife|son)\b", body, re.I)
-            ):
+            if current_section == "identity" and has_family_word(body):
                 target = "family"
             if entity and current_section in ("career", "projects", "health", "preferences"):
                 entity_bits.append(body)
