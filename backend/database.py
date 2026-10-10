@@ -317,9 +317,6 @@ CREATE TABLE IF NOT EXISTS user_memory (
 );
 CREATE INDEX IF NOT EXISTS idx_user_memory_user ON user_memory(user_id);
 CREATE INDEX IF NOT EXISTS idx_user_memory_key ON user_memory(user_id, fact_key) WHERE is_active = 1;
-CREATE INDEX IF NOT EXISTS idx_user_memory_status ON user_memory(user_id, status) WHERE status = 'active';
-CREATE INDEX IF NOT EXISTS idx_user_memory_lineage ON user_memory(superseded_by_id) WHERE superseded_by_id IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_user_memory_dream_source ON user_memory(source_dream_id) WHERE source_dream_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS memory_snapshots (
     id             TEXT PRIMARY KEY,
