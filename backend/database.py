@@ -1235,10 +1235,7 @@ async def init_db():
                     facts_merged       INTEGER NOT NULL,
                     facts_superseded   INTEGER NOT NULL,
                     facts_created      INTEGER NOT NULL,
-                    facts_total_active INTEGER NOT NULL,
-                    duration_ms        INTEGER NOT NULL,
-                    status             TEXT DEFAULT 'pending' NOT NULL,
-                    summary_notes      TEXT,
+                    facts_total_active INTEGER NOT NULL,\n                    duration_ms        INTEGER NOT NULL,\n                    status             TEXT NOT NULL DEFAULT 'pending',\n                    summary_notes      TEXT,
                     error_message      TEXT,
                     interrupted_fixed  INTEGER DEFAULT 0,
                     created_at         TEXT DEFAULT (datetime('now'))
