@@ -1250,6 +1250,16 @@ async def init_db():
         except Exception as e:
             logger.error("[database migration] erro ao migrar memory_snapshots e dream_logs:", exc_info=e)
 
+        # dream_logs — garante coluna 'status'
+        try:
+            await db.execute("SELECT status FROM dream_logs LIMIT 1")
+        except aiosqlite.OperationalError:
+            try:
+                await db.execute("ALTER TABLE dream_logs ADD COLUMN status TEXT DEFAULT 'success'")
+                await db.commit()
+            except Exception:
+                pass  # tabela nova criada pelo SCHEMA, nada a migrar
+
         # Phase A+: user_profiles (server-side profile + memory_enabled)
         try:
             await db.execute("SELECT user_id FROM user_profiles LIMIT 1")
