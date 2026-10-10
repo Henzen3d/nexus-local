@@ -10,6 +10,7 @@ from backend.memory_dream import (
     DreamSafetyError,
     analyze_facts,
     estimate_tokens,
+    extract_json_payload,
     iter_sse_events,
     remap_operation_ids,
     render_facts_payload,
@@ -101,6 +102,18 @@ async def test_413_splits_chunk_and_remaps_aliases():
     assert notes
     assert len(ops) == 6
     assert {op.fact_id for op in ops} == {f["id"] for f in facts}
+
+
+def test_json_after_think_tag_is_extracted():
+    raw = '<think>vou fundir f1 e f2</think>\n{"summary_of_changes":"ok","operations":[{"action":"keep","fact_id":"f1"}]}'
+    parsed = json.loads(extract_json_payload(raw))
+    assert parsed["operations"][0]["fact_id"] == "f1"
+
+
+def test_json_only_inside_think_is_extracted():
+    raw = '<think>{"summary_of_changes":"dentro","operations":[]}</think>'
+    parsed = json.loads(extract_json_payload(raw))
+    assert parsed["summary_of_changes"] == "dentro"
 
 
 @pytest.mark.asyncio

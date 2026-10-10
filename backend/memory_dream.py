@@ -275,6 +275,40 @@ async def analyze_facts(
     return all_ops, notes
 
 
+_THINK_BLOCK = re.compile(r"<think>(.*?)</think>", re.DOTALL)
+
+
+def _slice_json_object(text: str) -> str:
+    text = (text or "").strip()
+    if text.startswith("```"):
+        lines = text.splitlines()
+        if len(lines) >= 3 and lines[-1].strip().startswith("```"):
+            text = "\n".join(lines[1:-1]).strip()
+        else:
+            text = re.sub(r"^```(?:json)?\s*", "", text)
+            text = re.sub(r"\s*```$", "", text).strip()
+    start = text.find("{")
+    end = text.rfind("}")
+    if start != -1 and end > start:
+        return text[start:end + 1]
+    return text
+
+
+def extract_json_payload(raw: str) -> str:
+    """Tira <think> e cerca markdown. Agnes 2.5 manda o JSON depois do raciocínio."""
+    text = raw or ""
+    insides = _THINK_BLOCK.findall(text)
+    outside = _THINK_BLOCK.sub("", text)
+    outside = re.sub(r"</?think>", "", outside)
+    outside_json = _slice_json_object(outside)
+    if outside_json.startswith("{") or outside_json.startswith("["):
+        return outside_json
+    inside_json = _slice_json_object("\n".join(insides))
+    if inside_json.startswith("{") or inside_json.startswith("["):
+        return inside_json
+    return outside_json
+
+
 async def iter_sse_events(queue: asyncio.Queue, heartbeat_s: float = 15.0):
     """Emite keepalive enquanto o modelo não manda o próximo passo."""
     while True:
@@ -476,13 +510,8 @@ async def call_dream_llm(
             else:
                 raise DreamLLMError(f"Provedor {provider} não suporta chat.")
 
-            full_response = full_response.strip()
-            if full_response.startswith("```"):
-                lines = full_response.splitlines()
-                if len(lines) >= 3:
-                    full_response = "\n".join(lines[1:-1]).strip()
+            full_response = extract_json_payload(full_response)
 
-            # Validação rápida de parse JSON
             json.loads(full_response)
             return full_response
 
