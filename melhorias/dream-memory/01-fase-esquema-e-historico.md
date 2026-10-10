@@ -98,17 +98,17 @@ CREATE INDEX IF NOT EXISTS idx_dream_logs_user ON dream_logs(user_id, created_at
 ## 3. Divisão de Tarefas e Subtarefas
 
 ### Tarefa 1.1: Migração Defensiva e Camada de Acesso a Dados
-- [ ] **1.1.1**: Adicionar checagem incremental e execução de migração para as novas colunas de `user_memory` na inicialização em [`backend/database.py`](file:///j:/Arquivos%20Osmar/Multi+/backend/database.py).
-- [ ] **1.1.2**: Implementar sincronizador defensivo: garantir que `is_active` reflita fielmente `status == 'active'` em todas as atualizações.
-- [ ] **1.1.3**: Criar as tabelas `memory_snapshots` e `dream_logs` no bloco `init_db()`.
-- [ ] **1.1.4**: Configurar `PRAGMA foreign_keys = ON;` no ciclo de conexão ou aplicar integridade referencial programática caso o SQLite rode em modo permissivo.
+- [x] **1.1.1**: Adicionar checagem incremental e execução de migração para as novas colunas de `user_memory` na inicialização em [`backend/database.py`](file:///j:/Arquivos%20Osmar/Multi+/backend/database.py).
+- [x] **1.1.2**: Implementar sincronizador defensivo: garantir que `is_active` reflita fielmente `status == 'active'` em todas as atualizações.
+- [x] **1.1.3**: Criar as tabelas `memory_snapshots` e `dream_logs` no bloco `init_db()`.
+- [x] **1.1.4**: Configurar `PRAGMA foreign_keys = ON;` no ciclo de conexão ou aplicar integridade referencial programática caso o SQLite rode em modo permissivo.
 
 ### Tarefa 1.2: Métodos de Snapshot, Rollback Cirúrgico e Purge de Privacidade
-- [ ] **1.2.1**: Implementar `create_memory_snapshot(user_id: str, trigger_type: str) -> tuple[str, str]`:
+- [x] **1.2.1**: Implementar `create_memory_snapshot(user_id: str, trigger_type: str) -> tuple[str, str]`:
   * Serializa os fatos ativos com `id`, `category`, `fact`, `fact_key`, `confidence`, `is_pinned`, `version`, `created_at`.
   * Suporta `trigger_type`: `'dream_nightly'`, `'dream_manual'`, `'pre_edit'` e `'pre_import'` (protege importações externas de JSON).
   * Calcula checksum SHA-256 e grava em `memory_snapshots`.
-- [ ] **1.2.2**: Implementar `rollback_memory_snapshot(user_id: str, snapshot_id: str) -> bool`:
+- [x] **1.2.2**: Implementar `rollback_memory_snapshot(user_id: str, snapshot_id: str) -> bool`:
   * **Regra de Rollback Único & Validação de Expiração:** Só permite reverter o sonho mais recente e cujo snapshot ainda conste na base (`can_rollback == True`).
   * Abre transação flash (`BEGIN IMMEDIATE`).
   * Valida o hash SHA-256 do snapshot antes de qualquer mutação.
@@ -117,32 +117,32 @@ CREATE INDEX IF NOT EXISTS idx_dream_logs_user ON dream_logs(user_id, created_at
   * **Preservação de Dados Novos:** NÃO toca em fatos inseridos pelo usuário ou extraídos em conversas após o snapshot que tenham `source_dream_id IS NULL`.
   * Atualiza o log em `dream_logs` para `status = 'rolled_back'`.
   * Recalcula embeddings, resumos rolling e fingerprint de cache semântico.
-- [ ] **1.2.3**: Implementar política de retenção automática: manter os 7 snapshots mais recentes por usuário, expurgando os anteriores.
-- [ ] **1.2.4**: Atualizar `clear_all_memory(user_id: str)` para conformidade com privacidade (LGPD/Direito ao Esquecimento):
+- [x] **1.2.3**: Implementar política de retenção automática: manter os 7 snapshots mais recentes por usuário, expurgando os anteriores.
+- [x] **1.2.4**: Atualizar `clear_all_memory(user_id: str)` para conformidade com privacidade (LGPD/Direito ao Esquecimento):
   * Remove todos os fatos (`user_memory` ativos e arquivados).
   * Remove todos os `memory_snapshots` vinculados ao usuário.
   * Remove resumos rolling em `user_memory_summaries`.
   * Marca registros em `dream_logs` como `purged_by_user`.
 
 ### Tarefa 1.3: Endpoints de API para Memória, Histórico e Rollback
-- [ ] **1.3.1**: `GET /api/memory/snapshots` — lista os snapshots disponíveis com timestamps, trigger_type e hashes.
-- [ ] **1.3.2**: `POST /api/memory/snapshots/{snapshot_id}/rollback` — executa o rollback atômico e cirúrgico.
-- [ ] **1.3.3**: `GET /api/memory/dream-logs` — lista histórico das últimas execuções, enriquecendo cada item com a flag computada:
+- [x] **1.3.1**: `GET /api/memory/snapshots` — lista os snapshots disponíveis com timestamps, trigger_type e hashes.
+- [x] **1.3.2**: `POST /api/memory/snapshots/{snapshot_id}/rollback` — executa o rollback atômico e cirúrgico.
+- [x] **1.3.3**: `GET /api/memory/dream-logs` — lista histórico das últimas execuções, enriquecendo cada item com a flag computada:
   `can_rollback = (log.id == latest_log_id) AND (log.snapshot_id IS NOT NULL) AND (snapshot_exists_in_db)`
-- [ ] **1.3.4**: `PUT /api/memory/facts/{fact_id}` — endpoint de edição inline direta de fato:
+- [x] **1.3.4**: `PUT /api/memory/facts/{fact_id}` — endpoint de edição inline direta de fato:
   * Valida posse do fato pelo usuário logado.
   * Atualiza texto e/ou categoria, incrementa `version`, atualiza `updated_at`.
   * Recalcula embedding com FastEmbed e invalida o `memory_fingerprint`.
-- [ ] **1.3.5**: Atualizar endpoint `POST /api/memory/import` para acionar `create_memory_snapshot(user_id, 'pre_import')` antes de mesclar novos fatos externos.
+- [x] **1.3.5**: Atualizar endpoint `POST /api/memory/import` para acionar `create_memory_snapshot(user_id, 'pre_import')` antes de mesclar novos fatos externos.
 
 ---
 
 ## 4. Critérios de Aceite (Definition of Done)
-* [ ] Migração do banco não quebra nenhuma query preexistente que filtre por `is_active = 1`.
-* [ ] Executar snapshot salva o estado íntegro dos fatos com hash SHA-256 verificado.
-* [ ] Rollback restaura com exatidão os fatos consolidados sem apagar novos fatos criados manualmente pelo usuário no intervalo.
-* [ ] Apenas o sonho mais recente e com snapshot íntegro existente pode sofrer reversão direta (`can_rollback == True`).
-* [ ] A importação de memória gera snapshot prévio permitindo reversão em caso de inconsistência externa.
-* [ ] O comando "Esquecer Tudo" elimina completamente snapshots e referências históricas do usuário.
+* [x] Migração do banco não quebra nenhuma query preexistente que filtre por `is_active = 1`.
+* [x] Executar snapshot salva o estado íntegro dos fatos com hash SHA-256 verificado.
+* [x] Rollback restaura com exatidão os fatos consolidados sem apagar novos fatos criados manualmente pelo usuário no intervalo.
+* [x] Apenas o sonho mais recente e com snapshot íntegro existente pode sofrer reversão direta (`can_rollback == True`).
+* [x] A importação de memória gera snapshot prévio permitindo reversão em caso de inconsistência externa.
+* [x] O comando "Esquecer Tudo" elimina completamente snapshots e referências históricas do usuário.
 
 

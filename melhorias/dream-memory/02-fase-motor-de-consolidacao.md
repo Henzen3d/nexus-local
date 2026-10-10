@@ -137,40 +137,40 @@ FORMATO DE RESPOSTA OBRIGATÓRIO (JSON PURO SEM MARKDOWN ADICIONAL):
 ## 4. Divisão de Tarefas e Subtarefas
 
 ### Tarefa 2.1: Modelos Pydantic e Validação Estrutural Estrita
-- [ ] **2.1.1**: Criar [`backend/memory_dream.py`](file:///j:/Arquivos%20Osmar/Multi+/backend/memory_dream.py) com modelos: `NewFactPayload`, `DreamOperation`, `DreamResponseSchema`.
-- [ ] **2.1.2**: Implementar validação cruzada que rejeita respostas LLM que façam referência a IDs inexistentes no lote submetido.
-- [ ] **2.1.3**: Adicionar filtro de preservação de fatos fixados: levantar exceção de validação caso um fato `is_pinned = 1` seja alvo de `archive` ou `supersede` sem herança do pin.
+- [x] **2.1.1**: Criar [`backend/memory_dream.py`](file:///j:/Arquivos%20Osmar/Multi+/backend/memory_dream.py) com modelos: `NewFactPayload`, `DreamOperation`, `DreamResponseSchema`.
+- [x] **2.1.2**: Implementar validação cruzada que rejeita respostas LLM que façam referência a IDs inexistentes no lote submetido.
+- [x] **2.1.3**: Adicionar filtro de preservação de fatos fixados: levantar exceção de validação caso um fato `is_pinned = 1` seja alvo de `archive` ou `supersede` sem herança do pin.
 
 ### Tarefa 2.2: Sanitização, Formatação e Injeção de Contexto Ollama
-- [ ] **2.2.1**: Formatador de entrada para o LLM injetando metadados estritos:
+- [x] **2.2.1**: Formatador de entrada para o LLM injetando metadados estritos:
   `[ID: {id} | CriadoEm: {created_at} | Pinned: {is_pinned} | Escopo: {scope}] {fact}`
-- [ ] **2.2.2**: Configurar explicitamente payload HTTP para o Ollama com `"options": {"num_ctx": 8192, "temperature": 0.05}` para impedir cortes silenciosos.
-- [ ] **2.2.3**: Injetar data de referência `{CURRENT_DATE}` resolvida no timezone do usuário.
+- [x] **2.2.2**: Configurar explicitamente payload HTTP para o Ollama com `"options": {"num_ctx": 8192, "temperature": 0.05}` para impedir cortes silenciosos.
+- [x] **2.2.3**: Injetar data de referência `{CURRENT_DATE}` resolvida no timezone do usuário.
 
 ### Tarefa 2.3: Pipeline de Duas Passadas, Isolamento de Projetos e Anti-Alucinação
-- [ ] **2.3.1**: Implementar agrupamento estrito: agrupa por categoria e sub-agrupa por slug de projeto (`project.<slug>.*`). Fatos de projetos distintos nunca entram no mesmo lote de merge.
-- [ ] **2.3.2**: Implementar `verify_safety_thresholds(facts_before, operations) -> bool`:
+- [x] **2.3.1**: Implementar agrupamento estrito: agrupa por categoria e sub-agrupa por slug de projeto (`project.<slug>.*`). Fatos de projetos distintos nunca entram no mesmo lote de merge.
+- [x] **2.3.2**: Implementar `verify_safety_thresholds(facts_before, operations) -> bool`:
   * Aborta e sinaliza `aborted_safety` se taxa de arquivamento/descarte > 60%.
   * Aborta se o saldo total de fatos cair abaixo de 20% do volume original sem justificativa explícita.
-- [ ] **2.3.3**: Aplicar regra de estabilidade (*anti-churn*): validar que fatos idênticos não sofram supersede por meras variações de pontuação.
+- [x] **2.3.3**: Aplicar regra de estabilidade (*anti-churn*): validar que fatos idênticos não sofram supersede por meras variações de pontuação.
 
 ### Tarefa 2.4: Transação Flash Desacoplada e Reconciliação
-- [ ] **2.4.1**: Implementar `apply_dream_operations(db, user_id, dream_id, operations) -> DreamStats`:
+- [x] **2.4.1**: Implementar `apply_dream_operations(db, user_id, dream_id, operations) -> DreamStats`:
   * Executa a escrita exclusivamente após o término da inferência LLM via transação curta `BEGIN IMMEDIATE`.
   * Atualiza simultaneamente `status` e `is_active`.
   * Grava `source_dream_id = dream_id` nos novos registros.
-- [ ] **2.4.2**: Pipelining de hardware: garantir que o modelo Ollama seja liberado da VRAM antes de engatilhar o batch do FastEmbed se o host tiver GPU de memória compartilhada.
-- [ ] **2.4.3**: Chamar `refresh_memory_summaries(user_id, use_llm=False)` para regenerar os resumos consolidados.
-- [ ] **2.4.4**: Calcular novo `build_memory_fingerprint` e atualizar timestamp de invalidação de cache.
+- [x] **2.4.2**: Pipelining de hardware: garantir que o modelo Ollama seja liberado da VRAM antes de engatilhar o batch do FastEmbed se o host tiver GPU de memória compartilhada.
+- [x] **2.4.3**: Chamar `refresh_memory_summaries(user_id, use_llm=False)` para regenerar os resumos consolidados.
+- [x] **2.4.4**: Calcular novo `build_memory_fingerprint` e atualizar timestamp de invalidação de cache.
 
 ---
 
 ## 5. Critérios de Aceite (Definition of Done)
-* [ ] Nenhuma chamada ao Ollama é executada sem o parâmetro explícito `num_ctx: 8192`.
-* [ ] Fatos de projetos distintos nunca são fundidos entre si.
-* [ ] Fatos já consolidados não sofrem reescrita cosmética diária sem fatos novos (zero churn desnecessário).
-* [ ] A transação de escrita no SQLite leva menos de 200ms, sem prender o banco durante a inferência do LLM.
-* [ ] Zero fatos com `is_pinned = 1` são perdidos, arquivados ou desfixados sem intenção expressa.
-* [ ] Os resumos rolling e o cache semântico refletem os dados consolidados imediatamente após o término do ciclo.
+* [x] Nenhuma chamada ao Ollama é executada sem o parâmetro explícito `num_ctx: 8192`.
+* [x] Fatos de projetos distintos nunca são fundidos entre si.
+* [x] Fatos já consolidados não sofrem reescrita cosmética diária sem fatos novos (zero churn desnecessário).
+* [x] A transação de escrita no SQLite leva menos de 200ms, sem prender o banco durante a inferência do LLM.
+* [x] Zero fatos com `is_pinned = 1` são perdidos, arquivados ou desfixados sem intenção expressa.
+* [x] Os resumos rolling e o cache semântico refletem os dados consolidados imediatamente após o término do ciclo.
 
 

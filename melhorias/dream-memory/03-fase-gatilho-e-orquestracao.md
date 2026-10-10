@@ -101,44 +101,44 @@ O ciclo só inicia se:
 ## 5. Divisão de Tarefas e Subtarefas
 
 ### Tarefa 3.1: Configurações do Dream na Tabela `meta`
-- [ ] **3.1.1**: Adicionar parâmetros persistentes em `meta`:
+- [x] **3.1.1**: Adicionar parâmetros persistentes em `meta`:
   * `dream_enabled`: `1`
   * `dream_cron_hour`: `3`
   * `dream_timezone`: `""` (vazio = detecta automaticamente pelo sistema)
   * `dream_min_conversations`: `5`
   * `dream_provider_id`: `""`
   * `dream_model_id`: `""`
-- [ ] **3.1.2**: Endpoints em [`backend/routers/memory.py`](file:///j:/Arquivos%20Osmar/Multi+/backend/routers/memory.py):
+- [x] **3.1.2**: Endpoints em [`backend/routers/memory.py`](file:///j:/Arquivos%20Osmar/Multi+/backend/routers/memory.py):
   * `GET /api/memory/dream-config`
   * `PUT /api/memory/dream-config`
   * `POST /api/memory/dream-preview` — **Modo Dry-Run:** calcula operações de merge/supersede/keep sem aplicá-las no banco.
   * `POST /api/memory/dream-run-now` — Disparo manual com Server-Sent Events (SSE) para streaming de progresso em tempo real.
 
 ### Tarefa 3.2: Orquestrador em `backend/main.py` e Startup
-- [ ] **3.2.1**: Implementar `run_dream_nightly_job()` com agendamento adaptativo e verificação a cada 30 minutos.
-- [ ] **3.2.2**: Criar `_memory_pipeline_lock = asyncio.Lock()` compartilhado entre idle extraction e dream.
-- [ ] **3.2.3**: **Recuperação de Interrupção no Startup:**
+- [x] **3.2.1**: Implementar `run_dream_nightly_job()` com agendamento adaptativo e verificação a cada 30 minutos.
+- [x] **3.2.2**: Criar `_memory_pipeline_lock = asyncio.Lock()` compartilhado entre idle extraction e dream.
+- [x] **3.2.3**: **Recuperação de Interrupção no Startup:**
   * Em `@app.on_event("startup")`, buscar registros em `dream_logs` com `status = 'running'`.
   * Se localizados, executar rollback seguro baseado no `snapshot_id`, registrando `status = 'failed'` e `interrupted_fixed = 1`.
-- [ ] **3.2.4**: Aplicar isolamento estrito de perfis familiares: garantir que apenas registros do titular sejam submetidos à consolidação.
+- [x] **3.2.4**: Aplicar isolamento estrito de perfis familiares: garantir que apenas registros do titular sejam submetidos à consolidação.
 
 ### Tarefa 3.3: Mecanismo de Circuit Breaker
-- [ ] **3.3.1**: Monitorar histórico recente em `dream_logs`: se as últimas 3 tentativas falharem, desativar temporariamente o agendamento automático para o usuário.
-- [ ] **3.3.2**: Emitir aviso no frontend com opção de rearmar o circuito.
+- [x] **3.3.1**: Monitorar histórico recente em `dream_logs`: se as últimas 3 tentativas falharem, desativar temporariamente o agendamento automático para o usuário.
+- [x] **3.3.2**: Emitir aviso no frontend com opção de rearmar o circuito.
 
 ### Tarefa 3.4: Auto-Detecção do Ollama e Conector Local
-- [ ] **3.4.1**: Provedor local assíncrono com checagem de integridade em `http://localhost:11434/api/tags`.
-- [ ] **3.4.2**: Injeção obrigatória de `num_ctx: 8192` nas chamadas ao Ollama para impedir truncamento silencioso.
-- [ ] **3.4.3**: Fallback transparente para chaves remotas gratuitas caso o serviço local esteja inacessível.
+- [x] **3.4.1**: Provedor local assíncrono com checagem de integridade em `http://localhost:11434/api/tags`.
+- [x] **3.4.2**: Injeção obrigatória de `num_ctx: 8192` nas chamadas ao Ollama para impedir truncamento silencioso.
+- [x] **3.4.3**: Fallback transparente para chaves remotas gratuitas caso o serviço local esteja inacessível.
 
 ---
 
 ## 6. Critérios de Aceite (Definition of Done)
-* [ ] A conexão do SQLite NUNCA é mantida aberta durante a execução do LLM (transação flash garantida).
-* [ ] O job noturno dispara com base no horário do fuso local do usuário, nunca apenas UTC puro.
-* [ ] Conflito de escrita entre o Dream e o extrator ocioso é nulo devido ao lock coordenado.
-* [ ] O desligamento forçado do servidor durante o sonho resulta em autorrecuperação íntegra ao religar.
-* [ ] Após 3 falhas seguidas, o sistema entra em circuit breaker e não insiste em loops noturnos com erro.
-* [ ] Perfis de dependentes/familiares nunca poluem a memória pessoal do titular.
+* [x] A conexão do SQLite NUNCA é mantida aberta durante a execução do LLM (transação flash garantida).
+* [x] O job noturno dispara com base no horário do fuso local do usuário, nunca apenas UTC puro.
+* [x] Conflito de escrita entre o Dream e o extrator ocioso é nulo devido ao lock coordenado.
+* [x] O desligamento forçado do servidor durante o sonho resulta em autorrecuperação íntegra ao religar.
+* [x] Após 3 falhas seguidas, o sistema entra em circuit breaker e não insiste em loops noturnos com erro.
+* [x] Perfis de dependentes/familiares nunca poluem a memória pessoal do titular.
 
 

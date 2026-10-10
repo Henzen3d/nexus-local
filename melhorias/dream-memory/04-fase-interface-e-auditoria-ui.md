@@ -88,31 +88,31 @@ No topo da listagem de fatos em `UserMemoryPanel.tsx`:
 ## 3. Divisão de Tarefas e Subtarefas
 
 ### Tarefa 4.1: Edição Inline de Fatos no Frontend
-- [ ] **4.1.1**: Adicionar estado de edição por ID (`editingFactId`, `editText`, `editCategory`) no [`UserMemoryPanel.tsx`](file:///j:/Arquivos%20Osmar/Multi+/frontend/src/components/UserMemoryPanel.tsx).
-- [ ] **4.1.2**: Implementar `api.updateMemoryFact(id, { fact, category })` no cliente API [`frontend/src/api/client.ts`](file:///j:/Arquivos%20Osmar/Multi+/frontend/src/api/client.ts).
-- [ ] **4.1.3**: Suporte visual para badges de fatos fixados (`Pin`) e familiares (`family.*`).
-- [ ] **4.1.4**: Recarregamento atômico de estados: após salvar edição ou executar rollback, disparar recarregamento simultâneo via `Promise.all([api.getUserMemory(), api.getMemoryStats(), api.getMemorySummaries()])` para evitar renderizações intermediárias descompassadas.
+- [x] **4.1.1**: Adicionar estado de edição por ID (`editingFactId`, `editText`, `editCategory`) no [`UserMemoryPanel.tsx`](file:///j:/Arquivos%20Osmar/Multi+/frontend/src/components/UserMemoryPanel.tsx).
+- [x] **4.1.2**: Implementar `api.updateMemoryFact(id, { fact, category })` no cliente API [`frontend/src/api/client.ts`](file:///j:/Arquivos%20Osmar/Multi+/frontend/src/api/client.ts).
+- [x] **4.1.3**: Suporte visual para badges de fatos fixados (`Pin`) e familiares (`family.*`).
+- [x] **4.1.4**: Recarregamento atômico de estados: após salvar edição ou executar rollback, disparar recarregamento simultâneo via `Promise.all([api.getUserMemory(), api.getMemoryStats(), api.getMemorySummaries()])` para evitar renderizações intermediárias descompassadas.
 
 ### Tarefa 4.2: Seção de Logs e Diário do Dream
-- [ ] **4.2.1**: Criar componente `DreamJournalCard.tsx` exibindo data, provedor/modelo, taxa de compressão e notas analíticas.
-- [ ] **4.2.2**: Adicionar botão *"Executar Agora"* com consumo do stream SSE para feedback em tempo real das 5 etapas.
-- [ ] **4.2.3**: Implementar botão de rollback respeitando a flag `can_rollback` da API. Se `can_rollback === false`, renderizar estado desabilitado com tooltip informativo.
+- [x] **4.2.1**: Criar componente `DreamJournalCard.tsx` exibindo data, provedor/modelo, taxa de compressão e notas analíticas.
+- [x] **4.2.2**: Adicionar botão *"Executar Agora"* com consumo do stream SSE para feedback em tempo real das 5 etapas.
+- [x] **4.2.3**: Implementar botão de rollback respeitando a flag `can_rollback` da API. Se `can_rollback === false`, renderizar estado desabilitado com tooltip informativo.
 
 ### Tarefa 4.3: Modal de Simulação (Dry-Run Preview)
-- [ ] **4.3.1**: Implementar `DreamPreviewModal.tsx` com visualização de diff lado a lado (antes vs depois).
-- [ ] **4.3.2**: Integração do botão *"Confirmar e Aplicar"* para efetivar a proposta simulada.
+- [x] **4.3.1**: Implementar `DreamPreviewModal.tsx` com visualização de diff lado a lado (antes vs depois).
+- [x] **4.3.2**: Integração do botão *"Confirmar e Aplicar"* para efetivar a proposta simulada.
 
 ### Tarefa 4.4: Internacionalização e Tokens de Design
-- [ ] **4.4.1**: Adicionar chaves de tradução em `pt-BR.json` e `en-US.json` para todas as ações (`merge`, `supersede`, `archive`, `keep`, `preview`, `rollback`, `expiredSnapshot`).
-- [ ] **4.4.2**: Alinhar tipografia editorial e espaçamentos aos tokens do [`DESIGN.md`](file:///j:/Arquivos%20Osmar/Multi+/DESIGN.md).
+- [x] **4.4.1**: Adicionar chaves de tradução em `pt-BR.json` e `en-US.json` para todas as ações (`merge`, `supersede`, `archive`, `keep`, `preview`, `rollback`, `expiredSnapshot`).
+- [x] **4.4.2**: Alinhar tipografia editorial e espaçamentos aos tokens do [`DESIGN.md`](file:///j:/Arquivos%20Osmar/Multi+/DESIGN.md).
 
 ---
 
 ## 4. Critérios de Aceite (Definition of Done)
-* [ ] O usuário consegue editar diretamente qualquer fato da lista em menos de 2 cliques.
-* [ ] O botão "Reverter" só fica ativo se `can_rollback === true` para o último ciclo; exibe estado expirado se o snapshot tiver sido purgado.
-* [ ] A listagem exibe claramente a quantidade de fatos ativos separados dos consolidados/arquivados.
-* [ ] A simulação (Dry-run) permite ao usuário revisar 100% das alterações antes de aplicá-las ao banco.
-* [ ] O disparo manual fornece feedback visual dinâmico em tempo real sem travar a interface.
+* [x] O usuário consegue editar diretamente qualquer fato da lista em menos de 2 cliques.
+* [x] O botão "Reverter" só fica ativo se `can_rollback === true` para o último ciclo; exibe estado expirado se o snapshot tiver sido purgado.
+* [x] A listagem exibe claramente a quantidade de fatos ativos separados dos consolidados/arquivados.
+* [x] A simulação (Dry-run) permite ao usuário revisar 100% das alterações antes de aplicá-las ao banco.
+* [x] O disparo manual fornece feedback visual dinâmico em tempo real sem travar a interface.
 
 
