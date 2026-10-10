@@ -119,4 +119,18 @@ O **NexusLocal** possui um sistema de memória em camadas implementado em [`back
 5. **[Fase 5: Testes Automatizados, Isolamento e Critérios de Aceite](file:///j:/Arquivos%20Osmar/Multi+/melhorias/dream-memory/05-fase-testes-e-criterios-aceite.md)**
    * Testes de ausência de lock de banco durante LLM, testes de isolamento de projetos e família, proteção anti-churn, atenuação temporal e telemetria de degradação a longo prazo.
 
+---
+
+## 5. Auditoria de Vulnerabilidades 2.0 e Planos de Otimização Avançada
+
+Após a implementação dos commits do Hermes (`37fda98`, `0a35f08`, `4dfd974`, `4fe3e0d`, `30682a6`), uma nova auditoria minuciosa mapeou riscos adicionais e lições da indústria (ChatGPT, Claude, Mem0), resultando nos novos planos de ação:
+
+* 📄 **[06: Auditoria de Falhas, Riscos e Lições do Mercado](file:///j:/Arquivos%20Osmar/Multi+/melhorias/dream-memory/06-auditoria-falhas-vulnerabilidades-online.md)**
+* 🛡️ **[07: Plano de Blindagem de Concorrência, Integridade e SQLite Resiliente](file:///j:/Arquivos%20Osmar/Multi+/melhorias/dream-memory/07-plano-blindagem-concorrencia-e-integridade.md)**
+* 🧠 **[08: Plano Anti-Amnésia, Clustering Semântico e Preservação de Nuances](file:///j:/Arquivos%20Osmar/Multi+/melhorias/dream-memory/08-plano-antiamnesia-clustering-e-semantica.md)**
+* ⚡ **[09: Plano de Escala, Desempenho e Busca Híbrida Ilimitada (FTS5 + Vetorial)](file:///j:/Arquivos%20Osmar/Multi+/melhorias/dream-memory/09-plano-escala-desempenho-e-retrieval-infinito.md)**
+* 🔐 **[10: Plano de Segurança PII/Secrets, Linhagem na UI e Desambiguação Ativa](file:///j:/Arquivos%20Osmar/Multi+/melhorias/dream-memory/10-plano-seguranca-pii-e-experiencia-ui.md)**
+* 🗺️ **[ROADMAP MESTRE DE CONSOLIDAÇÃO E OTIMIZAÇÃO](file:///j:/Arquivos%20Osmar/Multi+/melhorias/dream-memory/ROADMAP-CONSOLIDACAO-MEMORIA.md)**
+
+
 
