@@ -346,7 +346,7 @@ CREATE TABLE IF NOT EXISTS dream_logs (
     facts_created      INTEGER NOT NULL,
     facts_total_active INTEGER NOT NULL,
     duration_ms        INTEGER NOT NULL,
-    status             TEXT NOT NULL,
+    status             TEXT NOT NULL DEFAULT 'pending',
     summary_notes      TEXT,
     error_message      TEXT,
     interrupted_fixed  INTEGER DEFAULT 0,
