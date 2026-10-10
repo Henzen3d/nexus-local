@@ -1,6 +1,7 @@
 import aiosqlite
 import json
 import os
+from datetime import datetime
 from pathlib import Path
 
 from backend.logging_config import get_logger
@@ -317,6 +318,24 @@ CREATE TABLE IF NOT EXISTS user_memory (
 );
 CREATE INDEX IF NOT EXISTS idx_user_memory_user ON user_memory(user_id);
 CREATE INDEX IF NOT EXISTS idx_user_memory_key ON user_memory(user_id, fact_key) WHERE is_active = 1;
+
+-- FTS5 full-text search index for user_memory
+CREATE VIRTUAL TABLE IF NOT EXISTS user_memory_fts USING fts5(
+    fact,
+    category,
+    tokenize='unicode61 remove_diacritics 1',
+    content='user_memory',
+    content_rowid='rowid'
+);
+CREATE TRIGGER IF NOT EXISTS user_memory_fts_ai AFTER INSERT ON user_memory BEGIN
+    INSERT INTO user_memory_fts(rowid, fact, category) VALUES (new.rowid, new.fact, new.category);
+END;
+CREATE TRIGGER IF NOT EXISTS user_memory_fts_du AFTER UPDATE ON user_memory BEGIN
+    UPDATE user_memory_fts SET fact=new.fact, category=new.category WHERE rowid=old.rowid;
+END;
+CREATE TRIGGER IF NOT EXISTS user_memory_fts_del AFTER DELETE ON user_memory BEGIN
+    DELETE FROM user_memory_fts WHERE rowid=old.rowid;
+END;
 
 CREATE TABLE IF NOT EXISTS memory_snapshots (
     id             TEXT PRIMARY KEY,
@@ -1194,6 +1213,54 @@ async def init_db():
 
         # Backfill status and create dream indexes
         try:
+            await db.execute("SELECT status FROM user_memory LIMIT 1")
+        except aiosqlite.OperationalError:
+            try:
+                await db.execute("ALTER TABLE user_memory ADD COLUMN status TEXT DEFAULT 'active'")
+                await db.commit()
+                # Backfill existing facts
+                await db.execute("UPDATE user_memory SET status = 'active' WHERE status IS NULL")
+                await db.commit()
+                # Create dream indexes
+                await db.execute("CREATE INDEX IF NOT EXISTS idx_user_memory_dream ON user_memory(source_dream_id)")
+                await db.execute("CREATE INDEX IF NOT EXISTS idx_user_memory_consolidated ON user_memory(consolidated_at)")
+                await db.commit()
+            except Exception as e:
+                logger.error("[database migration] erro ao migrar status:", exc_info=e)
+
+        # Create FTS5 full-text search index for user_memory
+        try:
+            await db.execute("SELECT fact_text FROM user_memory_fts LIMIT 1")
+        except aiosqlite.OperationalError:
+            try:
+                await db.execute("""
+                    CREATE VIRTUAL TABLE IF NOT EXISTS user_memory_fts USING fts5(
+                        fact,
+                        category,
+                        tokenize='unicode61 remove_diacritics 1',
+                        content='user_memory',
+                        content_rowid='rowid'
+                    )
+                """)
+                await db.execute("""
+                    CREATE TRIGGER IF NOT EXISTS user_memory_fts_ai AFTER INSERT ON user_memory BEGIN
+                        INSERT INTO user_memory_fts(rowid, fact, category) VALUES (new.rowid, new.fact, new.category);
+                    END;
+                """)
+                await db.execute("""
+                    CREATE TRIGGER IF NOT EXISTS user_memory_fts_du AFTER UPDATE ON user_memory BEGIN
+                        UPDATE user_memory_fts SET fact=new.fact, category=new.category WHERE rowid=old.rowid;
+                    END;
+                """)
+                await db.execute("""
+                    CREATE TRIGGER IF NOT EXISTS user_memory_fts_del AFTER DELETE ON user_memory BEGIN
+                        DELETE FROM user_memory_fts WHERE rowid=old.rowid;
+                    END;
+                """)
+                await db.commit()
+                logger.info("[database migration] FTS5 index created for user_memory")
+            except Exception as e:
+                logger.error("[database migration] erro ao criar FTS5 index:", exc_info=e)
             await db.execute("UPDATE user_memory SET status = CASE WHEN is_active = 1 THEN 'active' ELSE 'archived' END WHERE status IS NULL OR status = ''")
             await db.execute("CREATE INDEX IF NOT EXISTS idx_user_memory_status ON user_memory(user_id, status) WHERE status = 'active'")
             await db.execute("CREATE INDEX IF NOT EXISTS idx_user_memory_lineage ON user_memory(superseded_by_id) WHERE superseded_by_id IS NOT NULL")
@@ -1549,21 +1616,14 @@ async def add_memory_fact(
                 await db.commit()
             return dup[0]
 
-        # 3. Insert new fact — respect cap of 200 active facts per user
+        # 3. Insert new fact — no artificial cap; memory grows without deletion
+        # (Alert if count exceeds reasonable threshold, but never auto-archive)
         async with db.execute(
             "SELECT COUNT(*) FROM user_memory WHERE user_id = ? AND is_active = 1", (user_id,)
         ) as cur:
             (count,) = await cur.fetchone()
-        if count >= 200:
-            # Archive the oldest, lowest-confidence non-pinned fact to make room
-            await db.execute(
-                """UPDATE user_memory SET is_active = 0, status = 'archived', updated_at = datetime('now') WHERE id = (
-                    SELECT id FROM user_memory
-                    WHERE user_id = ? AND is_active = 1 AND is_pinned = 0
-                    ORDER BY confidence ASC, updated_at ASC LIMIT 1
-                )""",
-                (user_id,),
-            )
+        if count > 50000:
+            logger.warning("[Memory] user %s exceeds 50k active facts — consider manual cleanup", user_id)
 
         fact_id = str(uuid.uuid4())
         await db.execute(
@@ -1658,6 +1718,7 @@ async def get_relevant_memory(
     if query_blob is not None and unpinned and _blob_to_embedding and _cosine_similarity:
         qvec = _blob_to_embedding(query_blob)
         scored = []
+        now = datetime.datetime.utcnow()
         for r in unpinned:
             emb = r.get("embedding")
             if emb:
@@ -1671,7 +1732,19 @@ async def get_relevant_memory(
                 ft = (r.get("fact") or "").lower()
                 sim = 0.15 if any(w in ft for w in qt.split() if len(w) > 3) else 0.0
             conf = float(r.get("confidence") or 0.5)
-            scored.append((0.7 * sim + 0.3 * conf, r))
+            # recency decay
+            updated = r.get("updated_at") or ""
+            if updated:
+                try:
+                    dt = datetime.fromisoformat(updated.replace("Z", "+00:00"))
+                    delta_days = max(0, (now - dt.replace(tzinfo=None)).total_seconds() / 86400)
+                    recency = 1.0 / (1.0 + 0.005 * delta_days)
+                except Exception:
+                    recency = 0.5
+            else:
+                recency = 0.5
+            score = 0.50 * sim + 0.20 * conf + 0.30 * recency
+            scored.append((score, r))
         scored.sort(key=lambda x: x[0], reverse=True)
         ranked = [r for _, r in scored]
     else:

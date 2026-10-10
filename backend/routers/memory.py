@@ -40,10 +40,16 @@ from backend.memory_dream import (
     DreamSafetyError,
     DreamLLMError,
 )
+from backend.memory_lock import memory_pipeline_lock
 
 from backend.logging_config import get_logger
 
 logger = get_logger(__name__)
+
+
+async def _error_sse(code: str, msg: str):
+    yield f"event: error\ndata: {{\"error\": \"{code}\", \"message\": {msg!r}}}\n\n"
+
 
 router = APIRouter(prefix="/api/memory", tags=["memory"])
 
@@ -714,6 +720,8 @@ async def dream_preview(body: DreamRunIn = DreamRunIn(), user: dict = Depends(ge
     """Modo Simulação (Dry-Run Preview): calcula operações de fusão e descarte sem persistir alterações."""
     if not user:
         raise HTTPException(status_code=401, detail="Não autorizado")
+    if memory_pipeline_lock.locked():
+        return {"error": "consolidacao_em_andamento", "message": "Uma consolidação já está em andamento. Aguarde a conclusão."}
     try:
         return await simulate_dream_consolidation(user["id"], body.provider_id, body.model_id)
     except DreamSafetyError as e:
@@ -730,6 +738,11 @@ async def dream_run_now(body: DreamRunIn = DreamRunIn(), user: dict = Depends(ge
     """Disparo manual sob demanda com Server-Sent Events (SSE) para streaming de progresso em tempo real."""
     if not user:
         raise HTTPException(status_code=401, detail="Não autorizado")
+    if memory_pipeline_lock.locked():
+        return StreamingResponse(
+            _error_sse("consolidacao_em_andamento", "Uma consolidação já está em andamento. Aguarde a conclusão."),
+            media_type="text/event-stream",
+        )
 
     async def sse_stream():
         queue = asyncio.Queue()

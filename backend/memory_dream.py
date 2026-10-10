@@ -805,7 +805,7 @@ async def simulate_dream_consolidation(
     Executa a análise do Dream sem persistir nenhuma alteração no banco.
     Retorna o relatório de diff estruturado para revisão do usuário.
     """
-    active_facts = await get_user_memory(user_id, limit=500, active_only=True)
+    active_facts = await get_user_memory(user_id, limit=5000, active_only=True)
     if not active_facts:
         return {
             "summary_of_changes": "Nenhum fato ativo encontrado para consolidação.",
@@ -892,7 +892,7 @@ async def execute_dream_consolidation(
     await report("snapshot", 15, "Criando snapshot de segurança e calculando hash SHA-256...")
     snap_id, snap_hash = await create_memory_snapshot(user_id, trigger_type)
 
-    active_facts = await get_user_memory(user_id, limit=500, active_only=True)
+    active_facts = await get_user_memory(user_id, limit=5000, active_only=True)
     if not active_facts:
         logger.info("[Dream] Usuário %s não possui fatos ativos. No-op.", user_id)
         return {"status": "no_op", "message": "Sem fatos ativos para consolidar."}
@@ -942,7 +942,7 @@ async def execute_dream_consolidation(
         await report("persisting", 90, "Gravando transação flash (<100ms) e calculando embeddings FastEmbed...")
         stats = await apply_dream_operations(user_id, dream_id, schema.operations, active_facts)
 
-        active_after = await get_user_memory(user_id, limit=500, active_only=True)
+        active_after = await get_user_memory(user_id, limit=5000, active_only=True)
         duration_ms = int((time.time() - start_time) * 1000)
 
         await update_dream_log(dream_id, {
