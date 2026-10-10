@@ -58,7 +58,7 @@ export function Button({
       {...props}
     >
       {leftIcon && <span className="btn-icon-slot btn-icon-left">{leftIcon}</span>}
-      {children}
+      {children as React.ReactNode}
       {rightIcon && <span className="btn-icon-slot btn-icon-right">{rightIcon}</span>}
     </button>
   )

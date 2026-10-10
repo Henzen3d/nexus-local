@@ -361,7 +361,7 @@ export function Sidebar() {
   
   const grouped = groupByDate(visibleConversations, {
     today: t('time.today'),
-    yesterday: t('time.yesterday').replace(/^./, (c) => c.toUpperCase()),
+    yesterday: t('time.yesterday').replace(/^./, (c: string) => c.toUpperCase()),
     last7Days: t('time.last7Days'),
     older: t('time.older'),
   })
