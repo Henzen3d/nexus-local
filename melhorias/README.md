@@ -104,6 +104,10 @@ melhorias/
 
 Spec e planos em [`intelligent-ui/`](intelligent-ui/README.md). Não implementado. A IA manda dados. O React atual desenha. Flag futura nasce desligada.
 
+## Image gen
+
+Docs em [`image-gen/`](image-gen/README.md). Não implementado. Pedido de imagem raster sai do modelo de chat e vai para Cloudflare Workers AI em background. A imagem volta no mesmo chat.
+
 ## 🚀 Frentes Ativas de Desenvolvimento
 
 Para acompanhar e executar as próximas melhorias de UX/UI, consulte a pasta [`novas-5-melhorias-ux/`](file:///j:/Arquivos%20Osmar/Multi+/melhorias/novas-5-melhorias-ux/):
