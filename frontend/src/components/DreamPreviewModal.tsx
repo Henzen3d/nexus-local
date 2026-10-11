@@ -182,6 +182,21 @@ export function DreamPreviewModal({
                     -{noiseReduction}%
                   </div>
                 </div>
+                {preview.clusters_count !== undefined && (
+                  <div
+                    style={{
+                      background: 'var(--surface-card)',
+                      border: '1px solid var(--hairline)',
+                      borderRadius: '10px',
+                      padding: '10px 14px',
+                    }}
+                  >
+                    <div style={{ fontSize: '11px', color: 'var(--muted)' }}>Clusters</div>
+                    <div style={{ fontSize: '18px', fontWeight: 700, color: '#8b5cf6', marginTop: 2 }}>
+                      {preview.clusters_count} temas
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Summary of changes */}

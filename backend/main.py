@@ -211,7 +211,7 @@ async def run_free_registry_sync_job():
             logger.error("Error in periodic free registry sync job", exc_info=e)
 
 
-_memory_pipeline_lock = asyncio.Lock()
+from backend.memory_lock import memory_pipeline_lock as _memory_pipeline_lock
 
 
 async def run_memory_idle_extraction_job():
@@ -323,7 +323,7 @@ async def run_dream_consolidation_job():
                                     pass
 
                             # 2. Check active facts count
-                            active_facts = await get_user_memory(uid, limit=200, active_only=True)
+                            active_facts = await get_user_memory(uid, limit=5000, active_only=True)
                             if len(active_facts) < min_facts:
                                 continue
 
@@ -407,6 +407,17 @@ async def recover_interrupted_dreams():
 @app.on_event("startup")
 async def startup():
     await init_db()
+    try:
+        from backend.database import DB_PATH
+        async with aiosqlite.connect(DB_PATH) as _boot_db:
+            async with _boot_db.execute("PRAGMA integrity_check(1);") as _cur:
+                _chk = await _cur.fetchone()
+                if _chk and _chk[0] == "ok":
+                    logger.info("[SQLite Boot] Integridade verificada com sucesso: ok")
+                else:
+                    logger.warning("[SQLite Boot] Alerta de integridade no banco: %s", _chk)
+    except Exception as _ie:
+        logger.warning("[SQLite Boot] Não foi possível rodar integrity_check: %s", _ie)
     await recover_interrupted_dreams()
     logger.info("NexusLocal iniciado - banco de dados pronto.")
     # Warm-up embedder before accepting heavy traffic (background task still lets HTTP start)

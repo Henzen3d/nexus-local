@@ -80,11 +80,15 @@ REGRAS DE OURO:
 6. DISTINÇÃO TITULAR vs FAMÍLIA/DEPENDENTES: Nunca misture atributos ou preferências de dependentes/cônjuge com os do titular. Mantenha fatos familiares isolados sob categoria 'personal' e chaves com prefixo "family.*".
 7. ISOLAMENTO DE PROJETOS DISTINTOS: Fatos com categoria "project" ou prefixo "project.<slug>" pertencem estritamente ao seu próprio escopo. NUNCA misture requisitos ou stacks de dois projetos diferentes.
 8. ESTABILIDADE & ANTI-CHURN: Se um fato já estiver claro, denso e consolidado e não houver fatos novos ou contradições a seu respeito, MANTENHA-O com ação "keep". É proibido fazer alterações cosméticas de vocabulário, estilo ou pontuação.
-9. ATENUAÇÃO TEMPORAL: Se um fato descreve um evento pontual ocorrido há mais de 90 dias em relação à data de hoje e não for fixado (pinned), marque-o como "archive" se perdeu relevância durável, ou mantenha com confiança reduzida.
-10. ARQUIVAMENTO RESTRITO: Só marque ação "archive" para fatos comprovadamente efêmeros ou ruídos sem qualquer valor durável. Sempre forneça a justificativa em "reason".
-11. ALIAS DE ID: Cada fato chega com um alias curto no campo ID (f1, f2, f3). Copie esse alias exatamente em fact_id, old_fact_id e source_fact_ids. Nunca invente, encurte nem reescreva o ID.
-12. IDADE E NASCIMENTO: Nunca invente ano de nascimento. Nunca ajuste uma idade para bater com um ano que não estava nos fatos de origem. Se o fato diz ~46 anos, mantenha ~46. Filho não pode ser mais velho que o titular. Idade do titular não vira idade de filho.
-13. ESCOPO: identity.* é só o titular. Esposa, filho e casamento ficam em family.*. Não una dois project.<slug> diferentes num merge. Não fixe (pin) um fato que não estava fixado. Não introduza nome, número, CEP ou ano que não esteja nos fatos de origem, exceto a data de hoje e a ancoragem de "ontem/semana passada".
+9. ATENUAÇÃO TEMPORAL VS. FATOS PERMANENTES:
+   - PROIBIDO ARQUIVAR FATOS BIOGRÁFICOS OU DURÁVEIS: Informações de formação acadêmica, histórico familiar, condições médicas/alergias, traços de identidade, preferências duradouras ou marcos profissionais NUNCA devem ser arquivadas por antiguidade, mesmo que tenham ocorrido há anos.
+   - ARQUIVAMENTO RESTRITO A EVENTOS EFÊMEROS E TAREFAS PASSADAS: Apenas arquive fatos que representavam ações passageiras pontuais já superadas (ex: "preciso consertar a torneira", "estou gripado hoje", "viajando no fim de semana"), desde que o evento tenha ocorrido há mais de 30 dias e não tenha impacto futuro.
+10. PRESERVAÇÃO DE CONDIÇÕES E CONTEXTO (ANTI-SMEAR):
+    Se o usuário especificou critérios condicionais (ex: "prefere X quando Y", "usa A para frontend mas B para scripts", "gosta de café de manhã mas chá à noite"), o fato consolidado resultante DEVE OBRIGATORIAMENTE manter ambas as condições explícitas. É estritamente proibido achatar para um genérico "usa ferramenta A e B" eliminando os critérios de escolha.
+11. ARQUIVAMENTO RESTRITO: Só marque ação "archive" para fatos comprovadamente efêmeros ou ruídos sem qualquer valor durável. Sempre forneça a justificativa em "reason".
+12. ALIAS DE ID: Cada fato chega com um alias curto no campo ID (f1, f2, f3). Copie esse alias exatamente em fact_id, old_fact_id e source_fact_ids. Nunca invente, encurte nem reescreva o ID.
+13. IDADE E NASCIMENTO: Nunca invente ano de nascimento. Nunca ajuste uma idade para bater com um ano que não estava nos fatos de origem. Se o fato diz ~46 anos, mantenha ~46. Filho não pode ser mais velho que o titular. Idade do titular não vira idade de filho.
+14. ESCOPO: identity.* é só o titular. Esposa, filho e casamento ficam em family.*. Não una dois project.<slug> diferentes num merge. Não fixe (pin) um fato que não estava fixado. Não introduza nome, número, CEP ou ano que não esteja nos fatos de origem, exceto a data de hoje e a ancoragem de "ontem/semana passada".
 
 FORMATO DE RESPOSTA OBRIGATÓRIO (JSON PURO SEM MARKDOWN ADICIONAL):
 {
@@ -169,32 +173,113 @@ def render_facts_payload(
     return alias_map, "\n".join(lines)
 
 
+def cluster_facts_semantically(facts: list[dict]) -> list[list[dict]]:
+    """
+    Agrupamento Semântico em 2 Níveis:
+    Nível 1: Segregação por escopo rígido (_fact_scope)
+    Nível 2: Afinidade semântica por cosseno dos embeddings (> 0.55) ou coesão temática
+    """
+    if not facts:
+        return []
+
+    from collections import defaultdict
+    by_scope = defaultdict(list)
+    for f in facts:
+        by_scope[_fact_scope(f)].append(f)
+
+    clusters: list[list[dict]] = []
+
+    _blob_to_embedding = _cosine_similarity = None
+    try:
+        from backend.cache.manager import (
+            _blob_to_embedding as _b2e,
+            _cosine_similarity as _cos,
+        )
+        _blob_to_embedding, _cosine_similarity = _b2e, _cos
+    except Exception:
+        pass
+
+    for scope, scope_facts in by_scope.items():
+        if len(scope_facts) <= 3 or not _blob_to_embedding or not _cosine_similarity:
+            clusters.append(scope_facts)
+            continue
+
+        unassigned = list(scope_facts)
+        while unassigned:
+            seed = unassigned.pop(0)
+            seed_emb = seed.get("embedding")
+            current_cluster = [seed]
+            if seed_emb:
+                try:
+                    seed_vec = _blob_to_embedding(seed_emb)
+                    remaining = []
+                    for other in unassigned:
+                        other_emb = other.get("embedding")
+                        if other_emb:
+                            try:
+                                sim = _cosine_similarity(seed_vec, _blob_to_embedding(other_emb))
+                                if sim >= 0.55:
+                                    current_cluster.append(other)
+                                    continue
+                            except Exception:
+                                pass
+                        remaining.append(other)
+                    unassigned = remaining
+                except Exception:
+                    pass
+            clusters.append(current_cluster)
+
+    return clusters
+
+
 def split_facts_for_budget(
     facts: list[dict],
     system_prompt: str,
     max_tokens: int = DREAM_REQUEST_TOKEN_BUDGET,
 ) -> list[list[dict]]:
-    """Fatia fatos para o pedido (prompt + lote) caber no teto de tokens."""
+    """Fatia fatos para o pedido (prompt + lote) caber no teto de tokens, preservando clusters semânticos."""
     if not facts:
         return []
     overhead = estimate_tokens(system_prompt) + estimate_tokens(_USER_PAYLOAD_PREFIX)
+    clusters = cluster_facts_semantically(facts)
+
     chunks: list[list[dict]] = []
     current: list[dict] = []
     current_tokens = overhead
-    for index, fact in enumerate(facts, start=1):
+
+    def _fact_line_tokens(fact: dict, idx: int) -> int:
         line = (
-            f"[ID: f{index} | CriadoEm: {fact.get('created_at') or ''} | "
+            f"[ID: f{idx} | CriadoEm: {fact.get('created_at') or ''} | "
             f"Pinned: {bool(fact.get('is_pinned'))} | Categoria: {fact.get('category')} | "
             f"Escopo: {_fact_scope(fact)}] {fact.get('fact') or ''}"
         )
-        line_tokens = estimate_tokens(line) + 1
-        if current and current_tokens + line_tokens > max_tokens:
+        return estimate_tokens(line) + 1
+
+    fact_counter = 1
+    for cluster in clusters:
+        cluster_tokens = sum(_fact_line_tokens(f, fact_counter + i) for i, f in enumerate(cluster))
+
+        if current and (current_tokens + cluster_tokens > max_tokens):
             chunks.append(current)
-            current = [fact]
-            current_tokens = overhead + line_tokens
+            current = []
+            current_tokens = overhead
+
+        if cluster_tokens <= (max_tokens - overhead):
+            current.extend(cluster)
+            current_tokens += cluster_tokens
+            fact_counter += len(cluster)
         else:
-            current.append(fact)
-            current_tokens += line_tokens
+            for f in cluster:
+                f_tok = _fact_line_tokens(f, fact_counter)
+                if current and (current_tokens + f_tok > max_tokens):
+                    chunks.append(current)
+                    current = [f]
+                    current_tokens = overhead + f_tok
+                else:
+                    current.append(f)
+                    current_tokens += f_tok
+                fact_counter += 1
+
     if current:
         chunks.append(current)
     return chunks
@@ -501,6 +586,26 @@ def verify_dream_safety(facts_before: list[dict], operations: list[DreamOperatio
             # Regra inegociável: herança do pin
             if has_pinned_source:
                 op.new_fact.is_pinned = True
+
+            # Barreira de nuance: preservação de densidade informativa (Plano 08 - Tarefa 3)
+            source_len = sum(len(existing_ids[sid].get("fact") or "") for sid in op.source_fact_ids if sid in existing_ids)
+            if len(op.source_fact_ids) >= 3 and source_len > 250 and len(op.new_fact.fact.strip()) < 65:
+                raise DreamSafetyError(
+                    f"Perda excessiva de nuance informativa no merge: {source_len} caracteres originais reduzidos para {len(op.new_fact.fact.strip())}."
+                )
+
+            # Barreira determinística de entidade (Plano 08 - Tarefa 4)
+            has_family = any(
+                (existing_ids[sid].get("fact_key") or "").startswith("family.") or existing_ids[sid].get("category") == "family"
+                for sid in op.source_fact_ids if sid in existing_ids
+            )
+            has_identity = any(
+                (existing_ids[sid].get("fact_key") or "").startswith("identity.") or existing_ids[sid].get("category") == "identity"
+                for sid in op.source_fact_ids if sid in existing_ids
+            )
+            if has_family and has_identity:
+                raise DreamSafetyError("Violação de Entidade: Fusão proibida entre fatos da família e identidade do titular.")
+
             resulting_active_count += 1
 
         elif op.action == "supersede":
@@ -549,6 +654,7 @@ async def resolve_dream_provider(user_id: str, custom_provider: str = None, cust
       4. Provedor padrão do chat
     """
     async with aiosqlite.connect(dbmod.DB_PATH) as db:
+        await db.execute("PRAGMA busy_timeout = 10000;")
         # 1. Custom ou parâmetros dedicados do Dream em meta
         p_id = custom_provider
         m_id = custom_model
@@ -690,12 +796,18 @@ async def apply_dream_operations(
     new_facts_to_embed = []
 
     async with aiosqlite.connect(dbmod.DB_PATH) as db:
+        await db.execute("PRAGMA busy_timeout = 10000;")
         await db.execute("BEGIN IMMEDIATE")
+        from backend.memory_sanitize import sanitize_memory_text
         try:
             for op in operations:
                 if op.action == "merge":
-                    new_id = str(uuid.uuid4())
                     nf = op.new_fact
+                    clean_fact, drop_sec = sanitize_memory_text(nf.fact)
+                    if drop_sec or not clean_fact.strip():
+                        continue
+                    nf.fact = clean_fact
+                    new_id = str(uuid.uuid4())
                     emb = _try_embed_fact(nf.fact)
                     await db.execute(
                         """INSERT INTO user_memory
@@ -714,14 +826,18 @@ async def apply_dream_operations(
                             """UPDATE user_memory
                                SET is_active = 0, status = 'merged', superseded_by_id = ?,
                                    consolidated_at = datetime('now'), updated_at = datetime('now')
-                               WHERE id = ? AND user_id = ?""",
+                               WHERE id = ? AND user_id = ? AND is_active = 1""",
                             (new_id, sid, user_id),
                         )
                         facts_merged_count += 1
 
                 elif op.action == "supersede":
-                    new_id = str(uuid.uuid4())
                     nf = op.new_fact
+                    clean_fact, drop_sec = sanitize_memory_text(nf.fact)
+                    if drop_sec or not clean_fact.strip():
+                        continue
+                    nf.fact = clean_fact
+                    new_id = str(uuid.uuid4())
                     emb = _try_embed_fact(nf.fact)
                     await db.execute(
                         """INSERT INTO user_memory
@@ -739,7 +855,7 @@ async def apply_dream_operations(
                         """UPDATE user_memory
                            SET is_active = 0, status = 'superseded', superseded_by_id = ?,
                                consolidated_at = datetime('now'), updated_at = datetime('now')
-                           WHERE id = ? AND user_id = ?""",
+                           WHERE id = ? AND user_id = ? AND is_active = 1""",
                         (new_id, op.old_fact_id, user_id),
                     )
                     facts_superseded_count += 1
@@ -749,7 +865,7 @@ async def apply_dream_operations(
                         """UPDATE user_memory
                            SET is_active = 0, status = 'archived',
                                consolidated_at = datetime('now'), updated_at = datetime('now')
-                           WHERE id = ? AND user_id = ?""",
+                           WHERE id = ? AND user_id = ? AND is_active = 1""",
                         (op.fact_id, user_id),
                     )
                     facts_archived_count += 1
@@ -767,6 +883,7 @@ async def apply_dream_operations(
     if new_facts_to_embed:
         try:
             async with aiosqlite.connect(dbmod.DB_PATH) as db:
+                await db.execute("PRAGMA busy_timeout = 10000;")
                 for fid, txt in new_facts_to_embed:
                     emb = _try_embed_fact(txt)
                     if emb is not None:
@@ -850,12 +967,15 @@ async def simulate_dream_consolidation(
 
     projected_active = breakdown["keep"] + breakdown["merge"] + breakdown["supersede"]
 
+    clusters = cluster_facts_semantically(active_facts)
+
     return {
         "summary_of_changes": schema.summary_of_changes,
         "operations": [op.dict() for op in schema.operations],
         "facts_before": len(active_facts),
         "projected_active": projected_active,
         "actions_breakdown": breakdown,
+        "clusters_count": len(clusters),
         "provider_id": p_id,
         "model_id": m_id,
     }

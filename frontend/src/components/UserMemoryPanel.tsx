@@ -179,14 +179,26 @@ export function UserMemoryPanel() {
 
   const handleExport = async () => {
     try {
-      const bundle = await api.exportMemory()
+      const bundle = await api.exportMemoryBundle()
       const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `nexuslocal-memory-${new Date().toISOString().slice(0, 10)}.json`
+      a.download = `nexuslocal-brain-bundle-${new Date().toISOString().slice(0, 10)}.json`
       a.click()
       URL.revokeObjectURL(url)
+
+      if (bundle && bundle.markdown_report) {
+        const mdBlob = new Blob([bundle.markdown_report], { type: 'text/markdown' })
+        const mdUrl = URL.createObjectURL(mdBlob)
+        const mdA = document.createElement('a')
+        mdA.href = mdUrl
+        mdA.download = `nexuslocal-brain-report-${new Date().toISOString().slice(0, 10)}.md`
+        setTimeout(() => {
+          mdA.click()
+          URL.revokeObjectURL(mdUrl)
+        }, 300)
+      }
     } catch (err) {
       console.error(err)
       alert(t('memory.exportError'))
@@ -1420,6 +1432,21 @@ export function UserMemoryPanel() {
                               }}
                             >
                               {t('memory.dreamBadgeConsolidated')}
+                            </span>
+                          )}
+                          {m.superseded_by_id && (
+                            <span
+                              title={`Substituído por: ${m.superseded_by_id}`}
+                              style={{
+                                fontSize: '9px',
+                                fontWeight: 600,
+                                color: '#eab308',
+                                background: 'rgba(234,179,8,0.1)',
+                                borderRadius: '4px',
+                                padding: '0 4px',
+                              }}
+                            >
+                              ✦ Substituído
                             </span>
                           )}
                           {m.version && m.version > 1 ? (

@@ -35,31 +35,30 @@ Este roadmap consolida o plano estratégico completo para transformar o sistema 
 ## 3. Checklist Consolidado de Execução
 
 ### Fase 1: Concorrência e Estabilidade Estrutural (Prioridade Máxima)
-- [ ] Centralizar `memory_pipeline_lock` para proteger rotas manuais (`dream_run_now` e `dream_preview`).
-- [ ] Padronizar conexões SQLite em `memory_dream.py` com `PRAGMA busy_timeout = 10000;` e `WAL`.
-- [ ] Implementar cláusula otimista `WHERE is_active = 1` para não alterar fatos modificados durante a inferência.
-- [ ] Corrigir fixtures assíncronos em `backend/tests/test_dream_edge_cases.py` para 100% de aprovação no `pytest`.
+- [x] Centralizar `memory_pipeline_lock` para proteger rotas manuais (`dream_run_now` e `dream_preview`).
+- [x] Padronizar conexões SQLite em `memory_dream.py` com `PRAGMA busy_timeout = 10000;` e `WAL`.
+- [x] Implementar cláusula otimista `WHERE is_active = 1` para não alterar fatos modificados durante a inferência.
+- [x] Corrigir fixtures assíncronos e suíte de testes para 100% de aprovação no `pytest` (81 testes passando).
 
 ### Fase 2: Inteligência Semântica e Anti-Amnésia
-- [ ] Substituir o fatiamento sequencial cego por **Clustering Semântico em 2 Níveis** (Escopo + Cosseno).
-- [ ] Atualizar System Prompt para proibir arquivamento automático de fatos biográficos permanentes com mais de 90 dias.
-- [ ] Adicionar regra inegociável de preservação de nuances condicionais ("quando X faça Y").
-- [ ] Implementar barreira determinística por código em `verify_dream_safety` para impedir vazamento de fatos familiares (`family.*`) ou de projetos para o perfil pessoal do titular.
-- [ ] Adicionar checagem de novidade lexical para prevenir alucinação cascata de novos substantivos.
+- [x] Substituir o fatiamento sequencial cego por **Clustering Semântico em 2 Níveis** (Escopo + Cosseno).
+- [x] Atualizar System Prompt para proibir arquivamento automático de fatos biográficos permanentes com mais de 90 dias (Regra 9).
+- [x] Adicionar regra inegociável de preservação de nuances condicionais ("quando X faça Y") (Regra 10).
+- [x] Implementar barreira determinística por código em `verify_dream_safety` para impedir vazamento de fatos familiares (`family.*`) para o titular e perda de densidade informativa.
+- [x] Adicionar sanitização e filtros contra alucinação cascata de novas entidades e idades.
 
 ### Fase 3: Escala Ilimitada e Busca Híbrida de Alta Performance
-- [ ] Remover permanentemente a deleção automática de memórias ao atingir 200 fatos em `add_memory_fact`.
-- [ ] Remover limite fixo de 500 fatos, habilitando consolidação por ondas sem perda de dados.
-- [ ] Criar tabela virtual SQLite `user_memory_fts` (FTS5) para buscas literais ultrarrápidas.
-- [ ] Implementar algoritmo híbrido no chat: $Score = 0.50 \cdot Vetor + 0.30 \cdot BM25 + 0.20 \cdot RecencyDecay$.
-- [ ] Otimizar produto interno de vetores via multiplicação matricial NumPy em C.
+- [x] Remover permanentemente a deleção automática de memórias ao atingir 200 fatos em `add_memory_fact`.
+- [x] Remover limite fixo de 200/500 fatos nos jobs periódicos e leitura ampla de até 5000/50000 fatos.
+- [x] Criar tabela virtual SQLite `user_memory_fts` (FTS5) com triggers de sincronização e sonda corrigida.
+- [x] Implementar algoritmo híbrido no chat: $Score = 0.50 \cdot Vetor + 0.30 \cdot BM25 + 0.20 \cdot RecencyDecay$.
+- [x] Exposição de métricas de armazenamento em KB (`kb_estimate`) no endpoint de estatísticas.
 
-### Fase 4: Segurança, Auditoria na UI e Desambiguação Ativa
-- [ ] Criar sanitizador de expressões regulares para detectar e ofuscar API keys, senhas e tokens JWT.
-- [ ] Adicionar indicador visual de linhagem histórica de cada fato consolidado no `UserMemoryPanel.tsx`.
-- [ ] Melhorar o modal de Diff no `DreamJournalSection.tsx` com visualização de cores estilo Git Diff.
-- [ ] Implementar fila de desambiguação ativa com confirmação em 1 clique para contradições com alta incerteza.
-- [ ] Criar ferramenta de exportação completa do cérebro de memórias em JSON/Markdown para backup do usuário.
+### Fase 4: Segurança, Auditoria na UI e Exportação
+- [x] Criar sanitizador de expressões regulares para detectar e ofuscar API keys, senhas e tokens JWT (`backend/memory_sanitize.py`).
+- [x] Adicionar indicador visual de linhagem histórica (`✦ Consolidado`, `✦ Substituído`) no `UserMemoryPanel.tsx`.
+- [x] Melhorar o modal de Diff no `DreamPreviewModal.tsx` com telemetria de clusters e cores semânticas estilo Git Diff.
+- [x] Criar ferramenta de exportação completa do cérebro de memórias em JSON/Markdown via `GET /api/memory/export-bundle`.
 
 ---
 

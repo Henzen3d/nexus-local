@@ -1230,7 +1230,7 @@ async def init_db():
 
         # Create FTS5 full-text search index for user_memory
         try:
-            await db.execute("SELECT fact_text FROM user_memory_fts LIMIT 1")
+            await db.execute("SELECT fact FROM user_memory_fts LIMIT 1")
         except aiosqlite.OperationalError:
             try:
                 await db.execute("""
@@ -1559,8 +1559,15 @@ async def add_memory_fact(
 ) -> str:
     """Upserts a memory fact. If fact_key matches an existing active fact, updates it in-place."""
     import uuid
+    from backend.memory_sanitize import sanitize_memory_text
+    fact, drop_secret = sanitize_memory_text(fact)
+    if drop_secret or not fact.strip():
+        logger.warning("[Security] add_memory_fact: Fato descartado por conter apenas segredos/credenciais.")
+        return ""
+
     emb = _try_embed_fact(fact)
     async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("PRAGMA busy_timeout = 10000;")
         # 1. Try to match by fact_key (stable key = definitive identity of a fact)
         if fact_key:
             async with db.execute(
@@ -1660,17 +1667,21 @@ async def get_relevant_memory(
     limit: int = MEMORY_INJECT_LIMIT,
 ) -> list[dict]:
     """
-    Semantic recall: pinned facts first, then top-K by embedding similarity to query.
-    Falls back to confidence order if embedder unavailable.
+    Busca Híbrida Avançada (FTS5 BM25 + Vetorial FastEmbed + Recency Decay).
+    Fórmula: Score = 0.50 * Vetor + 0.30 * BM25 + 0.20 * Recency.
+    Fatos fixados (is_pinned = 1) são priorizados no topo.
     """
     import asyncio
+    import re
+    from datetime import datetime
 
     async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("PRAGMA busy_timeout = 10000;")
         db.row_factory = aiosqlite.Row
-        # embedding column may be missing on very old DBs mid-migration
+
         try:
             async with db.execute(
-                """SELECT id, category, fact, fact_key, source_conv_id, confidence,
+                """SELECT rowid, id, category, fact, fact_key, source_conv_id, confidence,
                           is_pinned, is_active, updated_at, embedding
                    FROM user_memory
                    WHERE user_id = ? AND is_active = 1""",
@@ -1679,7 +1690,7 @@ async def get_relevant_memory(
                 rows = [dict(r) for r in await cur.fetchall()]
         except Exception:
             async with db.execute(
-                """SELECT id, category, fact, fact_key, source_conv_id, confidence,
+                """SELECT rowid, id, category, fact, fact_key, source_conv_id, confidence,
                           is_pinned, is_active, updated_at
                    FROM user_memory
                    WHERE user_id = ? AND is_active = 1""",
@@ -1687,13 +1698,37 @@ async def get_relevant_memory(
             ) as cur:
                 rows = [dict(r) for r in await cur.fetchall()]
 
-    if not rows:
-        return []
+        if not rows:
+            return []
+
+        # 1. Consulta FTS5 para pontuação textual BM25
+        bm25_scores: dict[int, float] = {}
+        if query_text and query_text.strip():
+            tokens = re.findall(r"\b[\w-]+\b", query_text)
+            clean_tokens = [t.replace("-", "") for t in tokens if len(t) >= 2][:10]
+            if clean_tokens:
+                fts_query = " OR ".join(f'"{c}"' for c in clean_tokens if c)
+                try:
+                    async with db.execute(
+                        """SELECT rowid, bm25(user_memory_fts)
+                           FROM user_memory_fts
+                           WHERE user_memory_fts MATCH ?
+                           LIMIT 100""",
+                        (fts_query,),
+                    ) as fts_cur:
+                        for rowid_val, bm_val in await fts_cur.fetchall():
+                            if bm_val is not None:
+                                # bm25 é negativo no SQLite (menor = melhor, ex: -5.0)
+                                # normaliza monotonicamente para escala [0.0, 1.0]
+                                pos_bm = max(0.0, -float(bm_val))
+                                bm25_scores[rowid_val] = min(1.0, pos_bm / (1.0 + pos_bm))
+                except Exception as fe:
+                    logger.debug("[get_relevant_memory] FTS5 query bypass: %s", fe)
 
     pinned = [r for r in rows if r.get("is_pinned")]
     unpinned = [r for r in rows if not r.get("is_pinned")]
 
-    # Embed query (optional fastembed)
+    # 2. Embed query (opcional via FastEmbed)
     query_blob = None
     _embed_text = _blob_to_embedding = _cosine_similarity = None
     _HAS_NUMPY = False
@@ -1715,46 +1750,56 @@ async def get_relevant_memory(
         except Exception:
             query_blob = None
 
-    if query_blob is not None and unpinned and _blob_to_embedding and _cosine_similarity:
-        qvec = _blob_to_embedding(query_blob)
+    now = datetime.utcnow()
+
+    if unpinned:
+        qvec = _blob_to_embedding(query_blob) if (query_blob is not None and _blob_to_embedding) else None
         scored = []
-        now = datetime.datetime.utcnow()
         for r in unpinned:
+            # Similaridade vetorial
+            sim = 0.0
             emb = r.get("embedding")
-            if emb:
+            if qvec is not None and emb and _cosine_similarity and _blob_to_embedding:
                 try:
-                    sim = _cosine_similarity(qvec, _blob_to_embedding(emb))
+                    sim = float(_cosine_similarity(qvec, _blob_to_embedding(emb)))
                 except Exception:
                     sim = 0.0
-            else:
-                # keyword soft score
-                qt = query_text.lower()
-                ft = (r.get("fact") or "").lower()
-                sim = 0.15 if any(w in ft for w in qt.split() if len(w) > 3) else 0.0
-            conf = float(r.get("confidence") or 0.5)
-            # recency decay
+
+            # Pontuação textual BM25 (ou soft keyword fallback se FTS5 não capturou)
+            rowid_val = r.get("rowid")
+            bm_score = bm25_scores.get(rowid_val, 0.0)
+            if bm_score == 0.0 and query_text:
+                qt_lower = query_text.lower()
+                ft_lower = (r.get("fact") or "").lower()
+                if any(w in ft_lower for w in qt_lower.split() if len(w) > 3):
+                    bm_score = 0.25
+
+            # Recency decay (meia-vida suave de delta em dias)
             updated = r.get("updated_at") or ""
             if updated:
                 try:
                     dt = datetime.fromisoformat(updated.replace("Z", "+00:00"))
-                    delta_days = max(0, (now - dt.replace(tzinfo=None)).total_seconds() / 86400)
+                    delta_days = max(0.0, (now - dt.replace(tzinfo=None)).total_seconds() / 86400.0)
                     recency = 1.0 / (1.0 + 0.005 * delta_days)
                 except Exception:
                     recency = 0.5
             else:
                 recency = 0.5
-            score = 0.50 * sim + 0.20 * conf + 0.30 * recency
+
+            # Fusão híbrida ponderada
+            if qvec is not None:
+                score = 0.50 * sim + 0.30 * bm_score + 0.20 * recency
+            else:
+                score = 0.60 * bm_score + 0.40 * recency
+
             scored.append((score, r))
+
         scored.sort(key=lambda x: x[0], reverse=True)
         ranked = [r for _, r in scored]
     else:
-        ranked = sorted(
-            unpinned,
-            key=lambda r: (float(r.get("confidence") or 0), r.get("updated_at") or ""),
-            reverse=True,
-        )
+        ranked = []
 
-    # Merge: all pinned + ranked unpinned, cap limit
+    # Merge: todos os pinned + unpinned ranqueados até o limit
     seen = set()
     result = []
     for r in pinned + ranked:
@@ -1762,11 +1807,13 @@ async def get_relevant_memory(
         if rid in seen:
             continue
         seen.add(rid)
-        # strip heavy blob from response
-        r = {k: v for k, v in r.items() if k != "embedding"}
-        result.append(r)
+        r_copy = dict(r)
+        r_copy.pop("embedding", None)
+        r_copy.pop("rowid", None)
+        result.append(r_copy)
         if len(result) >= limit:
             break
+
     return result
 
 
@@ -1905,10 +1952,27 @@ async def get_memory_stats(user_id: str) -> dict:
         if extractions_day_date != today:
             extractions_today = 0
 
+        async with db.execute(
+            "SELECT COUNT(*) FROM user_memory WHERE user_id = ? AND source_dream_id IS NOT NULL",
+            (user_id,),
+        ) as cur:
+            (consolidated_facts,) = await cur.fetchone()
+
+        async with db.execute(
+            "SELECT COUNT(*), SUM(LENGTH(fact)) FROM user_memory WHERE user_id = ?",
+            (user_id,),
+        ) as cur:
+            tot_row = await cur.fetchone()
+            tot_cnt = tot_row[0] if tot_row else 0
+            txt_len = tot_row[1] if (tot_row and tot_row[1]) else 0
+            kb_estimate = round((txt_len + tot_cnt * 650) / 1024, 1)
+
     return {
         "active_facts": active_facts or 0,
         "inactive_facts": inactive_facts or 0,
         "pinned_facts": pinned_facts or 0,
+        "consolidated_facts": consolidated_facts or 0,
+        "kb_estimate": kb_estimate or 0.0,
         "dream_count": dream_count or 0,
         "last_dream_at": last_dream_at,
         "by_category": by_category,

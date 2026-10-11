@@ -327,6 +327,68 @@ async def export_memory(user: dict = Depends(get_current_user)):
     }
 
 
+@router.get("/export-bundle")
+async def export_memory_bundle(user: dict = Depends(get_current_user)):
+    """
+    Plano 10: Exportação completa do cérebro de memória (JSON estruturado + Relatório Markdown).
+    Inclui todos os fatos (ativos e histórico), linhagem consolidada e snapshots.
+    """
+    if not user:
+        raise HTTPException(status_code=401, detail="Não autorizado")
+    uid = user["id"]
+    profile = await get_user_profile(uid)
+    active_facts = await get_user_memory(uid, limit=50000, active_only=True)
+    all_facts = await get_user_memory(uid, limit=50000, active_only=False)
+    summaries = await list_memory_summaries(uid)
+    snapshots = await list_memory_snapshots(uid, limit=50)
+    dream_logs = await list_dream_logs(uid, limit=50)
+
+    from datetime import datetime, timezone
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    md_lines = [
+        "# 🧠 Backup de Memória do NexusLocal",
+        f"> **Usuário:** {profile.get('display_name') or uid} | **Exportado em:** {now_iso}\n",
+        "## 1. Perfil e Instruções",
+        f"- **Nome:** {profile.get('full_name') or 'N/A'}",
+        f"- **Ocupação:** {profile.get('occupation') or 'N/A'}",
+        f"- **Instruções Personalizadas:** {profile.get('custom_instructions') or 'Nenhuma'}\n",
+        f"## 2. Fatos Ativos ({len(active_facts)})",
+    ]
+    for f in active_facts:
+        pin = "📌 " if f.get("is_pinned") else ""
+        cat = f"[{f.get('category', 'geral').upper()}]"
+        key = f" (`{f.get('fact_key')}`)" if f.get("fact_key") else ""
+        lineage = " *(Consolidado)*" if f.get("source_dream_id") else ""
+        md_lines.append(f"- {pin}{cat}{key} {f.get('fact')}{lineage}")
+
+    archived_facts = [f for f in all_facts if not f.get("is_active")]
+    if archived_facts:
+        md_lines.append(f"\n## 3. Histórico e Fatos Arquivados ({len(archived_facts)})")
+        for f in archived_facts:
+            st = f"[{f.get('status', 'arquivado').upper()}]"
+            sub = f" -> substituído por `{f.get('superseded_by_id')}`" if f.get("superseded_by_id") else ""
+            md_lines.append(f"- {st} {f.get('fact')}{sub}")
+
+    return {
+        "format": "nexuslocal-memory-bundle-v2",
+        "exported_at": now_iso,
+        "user_id": uid,
+        "stats": {
+            "active_facts": len(active_facts),
+            "archived_facts": len(archived_facts),
+            "snapshots_count": len(snapshots),
+            "dream_logs_count": len(dream_logs),
+        },
+        "profile": profile,
+        "active_facts": active_facts,
+        "all_facts": all_facts,
+        "summaries": summaries,
+        "snapshots": snapshots,
+        "markdown_report": "\n".join(md_lines),
+    }
+
+
 @router.get("/import-prompt")
 async def get_import_prompt(user: dict = Depends(get_current_user)):
     """
@@ -723,7 +785,8 @@ async def dream_preview(body: DreamRunIn = DreamRunIn(), user: dict = Depends(ge
     if memory_pipeline_lock.locked():
         return {"error": "consolidacao_em_andamento", "message": "Uma consolidação já está em andamento. Aguarde a conclusão."}
     try:
-        return await simulate_dream_consolidation(user["id"], body.provider_id, body.model_id)
+        async with memory_pipeline_lock:
+            return await simulate_dream_consolidation(user["id"], body.provider_id, body.model_id)
     except DreamSafetyError as e:
         raise HTTPException(status_code=400, detail=f"Simulação bloqueada pelas regras de segurança: {e}")
     except DreamLLMError as e:
@@ -752,13 +815,14 @@ async def dream_run_now(body: DreamRunIn = DreamRunIn(), user: dict = Depends(ge
 
         async def worker():
             try:
-                res = await execute_dream_consolidation(
-                    user_id=user["id"],
-                    trigger_type="dream_manual",
-                    custom_provider=body.provider_id,
-                    custom_model=body.model_id,
-                    progress_cb=progress_cb,
-                )
+                async with memory_pipeline_lock:
+                    res = await execute_dream_consolidation(
+                        user_id=user["id"],
+                        trigger_type="dream_manual",
+                        custom_provider=body.provider_id,
+                        custom_model=body.model_id,
+                        progress_cb=progress_cb,
+                    )
                 await queue.put({"step": "done", "pct": 100, "result": res})
             except Exception as exc:
                 await queue.put({"step": "error", "pct": 0, "error": str(exc)})

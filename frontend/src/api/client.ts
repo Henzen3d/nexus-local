@@ -356,6 +356,7 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify(data),
     }),
+  exportMemoryBundle: () => fetchJSON<any>('/memory/export-bundle'),
   getDreamLogs: () => fetchJSON<DreamLogApi[]>('/memory/dream-logs'),
   getMemorySnapshots: () => fetchJSON<DreamSnapshotApi[]>('/memory/snapshots'),
   rollbackMemorySnapshot: (snapshotId: string) =>
@@ -583,4 +584,5 @@ export interface DreamPreviewResponse {
   }
   provider_id?: string
   model_id?: string
+  clusters_count?: number
 }
