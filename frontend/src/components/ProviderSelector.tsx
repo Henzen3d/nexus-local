@@ -7,7 +7,7 @@ import { BottomSheet } from './ui/BottomSheet'
 
 export function ProviderSelector() {
   const { t } = useTranslation()
-  const { models, selectedProviderId, selectProvider, loadModels, isStreaming } = useStore()
+  const { models, selectedProviderId, selectProvider, selectModel, loadModels, isStreaming } = useStore()
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
   const isMobile = useIsMobile()
@@ -41,6 +41,7 @@ export function ProviderSelector() {
     new Map(models.map((m) => [m.provider_id, m.provider_name])).entries()
   ).map(([id, name]) => ({ id, name }))
 
+  const isAuto = selectedProviderId === 'auto'
   const selected = providers.find((p) => p.id === selectedProviderId)
 
   if (providers.length === 0) return null
@@ -48,6 +49,12 @@ export function ProviderSelector() {
   const handleSelectProvider = (providerId: string) => {
     if (isStreaming) return
     selectProvider(providerId)
+    setOpen(false)
+  }
+
+  const handleSelectAuto = () => {
+    if (isStreaming) return
+    selectModel('auto', 'auto')
     setOpen(false)
   }
 
@@ -62,13 +69,29 @@ export function ProviderSelector() {
         aria-haspopup={isMobile ? 'dialog' : 'listbox'}
       >
         <span className="provider-trigger-name">
-          {selected ? selected.name : t('chat.selectProvider')}
+          {selected
+            ? selected.name
+            : isAuto
+              ? `🎯 ${t('chat.autoProvider', { defaultValue: 'Auto (Todos)' })}`
+              : t('chat.selectProvider')}
         </span>
         <ChevronDown size={13} className={`chevron ${open ? 'open' : ''}`} />
       </button>
 
       {open && !isMobile && (
         <div className="provider-dropdown" role="listbox">
+          <button
+            type="button"
+            role="option"
+            aria-selected={isAuto}
+            className={`provider-option ${isAuto ? 'selected' : ''}`}
+            onClick={handleSelectAuto}
+          >
+            <span className="provider-option-name" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span>🎯</span>
+              <span>{t('chat.autoProviderOption', { defaultValue: 'Auto (Todos os Provedores)' })}</span>
+            </span>
+          </button>
           {providers.map((prov) => (
             <button
               key={prov.id}
@@ -90,6 +113,18 @@ export function ProviderSelector() {
         title={t('chat.selectProvider')}
       >
         <div className="nl-sheet-list">
+          <button
+            type="button"
+            className={`nl-sheet-option ${isAuto ? 'selected' : ''}`}
+            onClick={handleSelectAuto}
+          >
+            <div className="nl-sheet-option-body">
+              <span className="nl-sheet-option-name">
+                🎯 {t('chat.autoProviderOption', { defaultValue: 'Auto (Todos os Provedores)' })}
+              </span>
+            </div>
+            {isAuto && <Check size={18} className="nl-sheet-option-check" strokeWidth={2.5} />}
+          </button>
           {providers.map((prov) => {
             const isSelected = prov.id === selectedProviderId
             return (

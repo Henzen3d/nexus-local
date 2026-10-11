@@ -101,6 +101,8 @@
     "webSearchOff": "Activar búsqueda web 🌐",
     "selectModel": "Seleccionar modelo",
     "selectProvider": "Seleccionar proveedor",
+    "autoProvider": "Auto (Todos)",
+    "autoProviderOption": "Auto (Todos los Proveedores)",
     "autoRouter": "Auto (Enrutamiento Inteligente)",
     "autoRouterShort": "Auto (Enrutador)",
     "autoRouterBadge": "PREDETERMINADO",

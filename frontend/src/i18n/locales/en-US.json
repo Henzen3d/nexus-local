@@ -106,6 +106,8 @@
     "webSearchOff": "Enable web search",
     "selectModel": "Select model",
     "selectProvider": "Select provider",
+    "autoProvider": "Auto (All)",
+    "autoProviderOption": "Auto (All Providers)",
     "autoRouter": "Auto (Smart Routing)",
     "autoRouterShort": "Auto (Router)",
     "autoRouterBadge": "DEFAULT",

@@ -33,7 +33,7 @@ export function ModelSelector() {
     return () => document.removeEventListener('keydown', handler)
   }, [open, isMobile])
 
-  const filteredModels = selectedProviderId
+  const filteredModels = (selectedProviderId && selectedProviderId !== 'auto')
     ? models.filter((m) => m.provider_id === selectedProviderId)
     : models
 
@@ -153,6 +153,11 @@ export function ModelSelector() {
               >
                 <span className="model-option-name">
                   {m.display_name}
+                  {(selectedProviderId === 'auto' || !selectedProviderId) && (
+                    <span className="model-option-provider-tag">
+                      ({m.provider_name})
+                    </span>
+                  )}
                   {m.quota_status === 'exhausted' && (
                     <span className="custom-tooltip-trigger tooltip-up" data-tooltip={t('chat.rateLimitExhausted')} style={{ display: 'inline-flex', alignItems: 'center' }}>
                       <AlertCircle size={11} style={{ marginLeft: 5, color: 'var(--error)', verticalAlign: 'middle' }} />
@@ -217,7 +222,14 @@ export function ModelSelector() {
               >
                 <div className="nl-sheet-option-body">
                   <div className="nl-sheet-option-row">
-                    <span className="nl-sheet-option-name">{m.display_name}</span>
+                    <span className="nl-sheet-option-name">
+                      {m.display_name}
+                      {(selectedProviderId === 'auto' || !selectedProviderId) && (
+                        <span className="model-option-provider-tag">
+                          ({m.provider_name})
+                        </span>
+                      )}
+                    </span>
                     {m.quota_status === 'exhausted' && (
                       <AlertCircle size={14} className="nl-sheet-option-warn" />
                     )}
