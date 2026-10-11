@@ -6,7 +6,7 @@ Este documento fornece uma visão técnica e funcional abrangente do **NexusLoca
 
 ## 1. Visão Geral do Projeto
 
-O **NexusLocal** é uma interface de chat local projetada para integrar e orquestrar múltiplos modelos de linguagem (LLMs) usando chaves de API de provedores com tiers gratuitos (como Groq, Gemini, OpenRouter, Cerebras, NVIDIA NIM, SambaNova, SiliconFlow, FreeTheAI, LLM7.io e LongCat).
+O **NexusLocal** é uma interface de chat local projetada para integrar e orquestrar múltiplos modelos de linguagem (LLMs) usando chaves de API de provedores com tiers gratuitos (como Groq, Gemini, OpenRouter, Cerebras, NVIDIA NIM, SiliconFlow, FreeTheAI, LLM7.io, Cloudflare e LongCat).
 
 ### Stack Tecnológica
 *   **Backend**: Python 3 + FastAPI + WebSockets (para streaming em tempo real) + `aiosqlite` (driver SQLite assíncrono).

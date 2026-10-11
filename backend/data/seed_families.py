@@ -24,8 +24,8 @@ FAMILIES = [
         "description": "Modelo open-source altamente versátil de 70 bilhões de parâmetros.",
         "members": [
             {"model_id": "siliconflow/llama-3.3-70b", "fallback_order": 1},
-            {"model_id": "huggingface/llama-3.3-70b", "fallback_order": 2},
-            {"model_id": "cloudflare/llama-3.3-70b-fast", "fallback_order": 3}
+            {"model_id": "cloudflare/llama-3.3-70b-fast", "fallback_order": 2},
+            {"model_id": "huggingface/llama-3.3-70b", "fallback_order": 3}
         ]
     },
     {

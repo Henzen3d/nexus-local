@@ -1,7 +1,7 @@
 # ⬡ NexusLocal
 
 > **Tired of hit-the-wall rate limits and "Wait 3 Hours" screens on Claude and ChatGPT?**  
-> NexusLocal is a local-first chat interface that aggregates and orchestrates multiple free-tier LLM APIs (Gemini, Groq, SambaNova, OpenRouter, and more) so you can keep coding and chatting without interruptions.
+> NexusLocal is a local-first chat interface that aggregates and orchestrates multiple free-tier LLM APIs (Gemini, Groq, OpenRouter, Cloudflare, and more) so you can keep coding and chatting without interruptions.
 
 ---
 
@@ -34,7 +34,7 @@ Commercial chat services lock you out once you reach their rigid limits. NexusLo
 | **Google Gemini** | 1500 req/day (Generous limits) | [Google AI Studio](https://aistudio.google.com/apikey) |
 | **Groq** | ~14k req/day (Ultra-fast inference) | [Groq Console](https://console.groq.com) |
 | **OpenRouter** | 50+ free models | [OpenRouter Keys](https://openrouter.ai/keys) |
-| **SambaNova** | High-speed Llama 3.3 405B access | [SambaNova Cloud](https://cloud.sambanova.ai) |
+| **Cloudflare** | Workers AI serverless free models | [Cloudflare AI](https://dash.cloudflare.com) |
 | **Cerebras** | Insanely fast Llama inference | [Cerebras Cloud](https://cloud.cerebras.ai) |
 | **NVIDIA NIM** | $25 initial developer credits | [NVIDIA Build](https://build.nvidia.com) |
 | **SiliconFlow** | Multi-LLM provider registry | [SiliconFlow](https://siliconflow.cn) |

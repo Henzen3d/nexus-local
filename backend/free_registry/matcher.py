@@ -32,9 +32,13 @@ async def match_registry_to_models(db) -> dict:
     registry_cols = [d[0] for d in cursor.description]
     registry_entries = [dict(zip(registry_cols, r)) for r in registry_rows]
     
-    # 2. Busca todos os modelos locais do BD
+    # 2. Busca todos os modelos locais do BD e provedores com tier gratuito ativo
     async with db.execute("SELECT id, name, provider_id FROM models") as cursor:
         local_rows = await cursor.fetchall()
+
+    async with db.execute("SELECT id FROM providers WHERE is_free = 1") as cursor:
+        free_prov_rows = await cursor.fetchall()
+    free_provider_ids = {r[0] for r in free_prov_rows}
         
     # Mapeia provider_id -> lista de models locais
     local_models_by_provider = {}
@@ -64,6 +68,15 @@ async def match_registry_to_models(db) -> dict:
                 "provider_name": provider_name,
                 "model_id_raw": entry.get("model_id_raw"),
                 "reason": "Provider not mapped"
+            })
+            continue
+
+        # Não marca modelos de provedores pagos (ex: sambanova, huggingface, zenmux) como free
+        if provider_id not in free_provider_ids:
+            report["unmatched"].append({
+                "provider_name": provider_name,
+                "model_id_raw": entry.get("model_id_raw"),
+                "reason": f"Provider '{provider_id}' is not in free tier"
             })
             continue
             

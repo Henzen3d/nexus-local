@@ -517,7 +517,7 @@ DEFAULT_PROVIDERS = [
         "id": "huggingface",
         "name": "Hugging Face",
         "base_url": "https://router.huggingface.co/v1",
-        "is_free": 1,
+        "is_free": 0,
         "models": [
             ("huggingface/llama-3.3-70b", "meta-llama/Llama-3.3-70B-Instruct", "Llama 3.3 70B (HuggingFace)", 128000),
             ("huggingface/qwen-2.5-coder", "Qwen/Qwen2.5-Coder-32B-Instruct", "Qwen 2.5 Coder 32B (HuggingFace)", 131072),
@@ -1145,12 +1145,13 @@ async def init_db():
         except Exception as e:
             logger.error("[database migration] erro ao atualizar confirmed_free para provedores free:", exc_info=e)
 
-        # SambaNova encerrou o free tier aberto e agora exige cartão/plano de pagamento
+        # SambaNova e Hugging Face não oferecem mais free tier aberto para LLMs
         try:
-            await db.execute("UPDATE providers SET is_free = 0 WHERE id = 'sambanova'")
+            await db.execute("UPDATE providers SET is_free = 0 WHERE id IN ('sambanova', 'huggingface')")
+            await db.execute("UPDATE models SET confirmed_free = 0 WHERE provider_id IN ('sambanova', 'huggingface')")
             await db.commit()
         except Exception as e:
-            logger.error("[database migration] erro ao atualizar status do sambanova:", exc_info=e)
+            logger.error("[database migration] erro ao atualizar status do sambanova e huggingface:", exc_info=e)
 
         # ZenMux opera sob modelo PAYG e exige saldo/créditos pagos (HTTP 403 access_denied)
         try:
