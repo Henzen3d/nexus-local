@@ -55,15 +55,22 @@ export function ModelSelector() {
     return idx !== -1 ? idx + 1 : null
   }
 
-  const selected = providerModels.find((m) => m.id === selectedModelId)
-    ?? models.find((m) => m.id === selectedModelId)
+  const isAuto = selectedModelId === 'auto'
+  const selected = isAuto
+    ? null
+    : (providerModels.find((m) => m.id === selectedModelId) ?? models.find((m) => m.id === selectedModelId))
 
   const handleSelect = (m: Model) => {
     selectModel(m.id, m.provider_id)
     setOpen(false)
   }
 
-  if (providerModels.length === 0) {
+  const handleSelectAuto = () => {
+    selectModel('auto', 'auto')
+    setOpen(false)
+  }
+
+  if (providerModels.length === 0 && !isAuto) {
     return (
       <div className="model-selector" ref={ref}>
         <button className="model-trigger" disabled>
@@ -87,13 +94,51 @@ export function ModelSelector() {
       >
         {isStreaming && <span className="pulse-dot" />}
         <span className="model-trigger-name">
-          {selected ? selected.display_name : t('chat.selectModel')}
+          {isAuto
+            ? `🎯 ${t('chat.autoRouter', { defaultValue: 'Auto (Roteador Inteligente)' })}`
+            : (selected ? selected.display_name : t('chat.selectModel'))}
         </span>
         <ChevronDown size={13} className={`chevron ${open ? 'open' : ''}`} />
       </button>
 
       {open && !isMobile && (
         <div className="model-dropdown" role="listbox">
+          {/* Opção Nobre Fixada no Topo: Auto (Roteamento Inteligente) */}
+          <button
+            type="button"
+            role="option"
+            aria-selected={isAuto}
+            className={`model-option ${isAuto ? 'selected' : ''}`}
+            onClick={handleSelectAuto}
+            style={{
+              borderBottom: '1px solid var(--border-subtle, rgba(255,255,255,0.08))',
+              background: isAuto ? 'var(--accent-subtle, rgba(99, 102, 241, 0.15))' : undefined,
+              paddingTop: '8px',
+              paddingBottom: '8px',
+            }}
+          >
+            <span className="model-option-name" style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}>
+              <span style={{ fontSize: '13px' }}>🎯</span>
+              <span>{t('chat.autoRouter', { defaultValue: 'Auto (Roteamento Inteligente)' })}</span>
+              <span style={{
+                fontSize: '9px',
+                padding: '1px 5px',
+                borderRadius: '8px',
+                background: 'var(--accent, #6366f1)',
+                color: '#fff',
+                letterSpacing: '0.04em',
+                fontWeight: 700,
+              }}>
+                {t('chat.autoRouterBadge', { defaultValue: 'PADRÃO' })}
+              </span>
+            </span>
+            <span className="model-option-right">
+              <span className="model-option-ctx" style={{ color: 'var(--text-muted)', fontSize: '11px' }}>
+                {t('chat.autoRouterSub', { defaultValue: 'Smart' })}
+              </span>
+            </span>
+          </button>
+
           {providerModels.map((m) => {
             const tooltip = getQuotaTooltip(m, i18nHook.language)
             return (
@@ -138,6 +183,28 @@ export function ModelSelector() {
         title={t('chat.selectModel')}
       >
         <div className="nl-sheet-list">
+          {/* Opção Auto no mobile */}
+          <button
+            type="button"
+            className={`nl-sheet-option ${isAuto ? 'selected' : ''}`}
+            onClick={handleSelectAuto}
+          >
+            <div className="nl-sheet-option-body">
+              <div className="nl-sheet-option-row">
+                <span className="nl-sheet-option-name" style={{ fontWeight: 600 }}>
+                  🎯 {t('chat.autoRouter', { defaultValue: 'Auto (Roteamento Inteligente)' })}
+                </span>
+                <span style={{ fontSize: '10px', padding: '1px 6px', borderRadius: '10px', background: 'var(--accent, #6366f1)', color: '#fff', fontWeight: 700 }}>
+                  {t('chat.autoRouterBadge', { defaultValue: 'PADRÃO' })}
+                </span>
+              </div>
+              <span className="nl-sheet-option-meta">
+                {t('chat.autoRouterDesc', { defaultValue: 'Seleciona a melhor IA por contexto, cota e tipo de tarefa' })}
+              </span>
+            </div>
+            {isAuto && <Check size={18} className="nl-sheet-option-check" strokeWidth={2.5} />}
+          </button>
+
           {providerModels.map((m) => {
             const isSelected = m.id === selectedModelId
             const meta = getModelMeta(m, t)
@@ -145,7 +212,7 @@ export function ModelSelector() {
               <button
                 key={m.id}
                 type="button"
-                className={`nl-sheet-option ${isSelected ? 'selected' : ''} ${m.quota_status === 'exhausted' ? 'exhausted' : ''}`}
+                className={`nl-sheet-option ${isSelected ? 'selected' : ''}`}
                 onClick={() => handleSelect(m)}
               >
                 <div className="nl-sheet-option-body">

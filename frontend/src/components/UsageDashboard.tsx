@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Activity, BarChart3, Clock, AlertTriangle, Layers, Calendar } from 'lucide-react'
+import { Activity, BarChart3, Clock, AlertTriangle, Layers, Calendar, Target, Zap, ShieldCheck } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { api } from '../api/client'
 import {
@@ -17,22 +17,25 @@ import {
 export function UsageDashboard() {
   const { t, i18n } = useTranslation()
   const [stats, setStats] = useState<any>(null)
-  const [loading, setLoading] = useState(true)
   const [failovers, setFailovers] = useState<any[]>([])
   const [quotas, setQuotas] = useState<any[]>([])
+  const [autoRouterStats, setAutoRouterStats] = useState<any>(null)
   const [days, setDays] = useState(30)
+  const [loading, setLoading] = useState(true)
 
   const load = async () => {
     try {
       setLoading(true)
-      const [statsData, failoversData, quotasData] = await Promise.all([
+      const [statsData, failoversData, quotasData, routerData] = await Promise.all([
         api.getDashboardStats(days),
         api.getDashboardFailovers(15),
-        api.getDashboardQuotas()
+        api.getDashboardQuotas(),
+        api.getAutoRouterStats(days).catch(() => null)
       ])
       setStats(statsData)
       setFailovers(failoversData)
       setQuotas(quotasData)
+      setAutoRouterStats(routerData)
     } catch (err) {
       console.error(err)
     } finally {
@@ -190,6 +193,122 @@ export function UsageDashboard() {
           </div>
         </div>
       </div>
+
+      {/* ── Auto-Router Inteligente KPIs e Distribuição de Intenções (Fase 5.2 & 5.3) ── */}
+      {autoRouterStats && (
+        <div className="admin-section" style={{ marginTop: '24px', padding: '20px', background: 'var(--surface)', borderRadius: '10px', border: '1px solid var(--hairline)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+            <h4 style={{ margin: 0, fontSize: '15px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Target size={16} className="text-primary" />
+              {t('autoRouter.statsTitle', { defaultValue: 'Telemetria do Auto-Roteador Inteligente' })}
+            </h4>
+            <span style={{ fontSize: '12px', padding: '3px 8px', borderRadius: '6px', background: 'var(--surface-soft)', color: 'var(--accent, #6366f1)', fontWeight: 600 }}>
+              {t('autoRouter.policy', { defaultValue: 'Política' })}: {autoRouterStats.active_policy}
+            </span>
+          </div>
+
+          {/* Cards de Métricas do Roteador */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '14px', marginBottom: '20px' }}>
+            <div style={{ background: 'var(--surface-soft)', padding: '14px', borderRadius: '8px', border: '1px solid var(--hairline)' }}>
+              <div style={{ fontSize: '11px', color: 'var(--muted)', fontWeight: 600, textTransform: 'uppercase', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Zap size={13} className="text-primary" /> {t('autoRouter.latency', { defaultValue: 'Latência do Router' })}
+              </div>
+              <div style={{ fontSize: '22px', fontWeight: 700, color: 'var(--success, #10b981)' }}>
+                {autoRouterStats.avg_latency_ms} ms
+              </div>
+              <div style={{ fontSize: '11px', color: 'var(--muted)', marginTop: '2px' }}>Meta: &lt; 2.0ms</div>
+            </div>
+
+            <div style={{ background: 'var(--surface-soft)', padding: '14px', borderRadius: '8px', border: '1px solid var(--hairline)' }}>
+              <div style={{ fontSize: '11px', color: 'var(--muted)', fontWeight: 600, textTransform: 'uppercase', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <ShieldCheck size={13} className="text-primary" /> {t('autoRouter.accuracy', { defaultValue: 'Confiança Média' })}
+              </div>
+              <div style={{ fontSize: '22px', fontWeight: 700, color: 'var(--ink)' }}>
+                {autoRouterStats.avg_confidence}%
+              </div>
+              <div style={{ fontSize: '11px', color: 'var(--muted)', marginTop: '2px' }}>Tarefas identificadas</div>
+            </div>
+
+            <div style={{ background: 'var(--surface-soft)', padding: '14px', borderRadius: '8px', border: '1px solid var(--hairline)' }}>
+              <div style={{ fontSize: '11px', color: 'var(--muted)', fontWeight: 600, textTransform: 'uppercase', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Activity size={13} className="text-primary" /> {t('autoRouter.savedTokens', { defaultValue: 'Cota Poupada' })}
+              </div>
+              <div style={{ fontSize: '22px', fontWeight: 700, color: 'var(--cyan, #06b6d4)' }}>
+                ~{autoRouterStats.estimated_saved_tokens.toLocaleString()}
+              </div>
+              <div style={{ fontSize: '11px', color: 'var(--muted)', marginTop: '2px' }}>Tokens preservados</div>
+            </div>
+
+            <div style={{ background: 'var(--surface-soft)', padding: '14px', borderRadius: '8px', border: '1px solid var(--hairline)' }}>
+              <div style={{ fontSize: '11px', color: 'var(--muted)', fontWeight: 600, textTransform: 'uppercase', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Target size={13} className="text-primary" /> {t('autoRouter.autoRouteRate', { defaultValue: 'Taxa Roteada' })}
+              </div>
+              <div style={{ fontSize: '22px', fontWeight: 700, color: 'var(--ink)' }}>
+                {autoRouterStats.auto_route_rate}%
+              </div>
+              <div style={{ fontSize: '11px', color: 'var(--muted)', marginTop: '2px' }}>{autoRouterStats.total_auto_routed} de {autoRouterStats.total_calls} msgs</div>
+            </div>
+          </div>
+
+          {/* Distribuição de Intenções */}
+          <div style={{ background: 'var(--surface-soft)', padding: '16px', borderRadius: '8px', border: '1px solid var(--hairline)' }}>
+            <h5 style={{ margin: '0 0 14px 0', fontSize: '13px', fontWeight: 600 }}>
+              {t('autoRouter.intentDistribution', { defaultValue: 'Distribuição de Tarefas por Intenção' })}
+            </h5>
+            {autoRouterStats.intent_distribution && autoRouterStats.intent_distribution.length > 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {autoRouterStats.intent_distribution.map((item: any) => {
+                  const intentIcons: Record<string, string> = {
+                    code_engineering: '💻',
+                    deep_reasoning: '🧠',
+                    trivial_quick: '⚡',
+                    creative_longform: '✍️',
+                    multimodal_vision: '👁️',
+                    web_research: '🌐',
+                    general_chat: '💬',
+                  }
+                  const icon = intentIcons[item.intent] || '🎯'
+                  const label = t(`autoRouter.${item.intent.replace(/_([a-z])/g, (_: any, c: string) => c.toUpperCase())}`, { defaultValue: item.intent })
+                  return (
+                    <div key={item.intent}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12.5px', marginBottom: '4px' }}>
+                        <span style={{ fontWeight: 500, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span>{icon}</span>
+                          <span>{label}</span>
+                        </span>
+                        <span style={{ color: 'var(--muted)' }}>
+                          {item.percentage}% ({item.count} msgs)
+                        </span>
+                      </div>
+                      <div style={{ width: '100%', height: '7px', background: 'var(--surface)', borderRadius: '4px', overflow: 'hidden' }}>
+                        <div
+                          style={{
+                            width: `${item.percentage}%`,
+                            height: '100%',
+                            background: item.intent === 'code_engineering'
+                              ? 'var(--accent, #6366f1)'
+                              : item.intent === 'deep_reasoning'
+                              ? 'var(--purple, #a855f7)'
+                              : item.intent === 'trivial_quick'
+                              ? 'var(--success, #10b981)'
+                              : 'var(--primary, #3b82f6)',
+                            borderRadius: '4px',
+                            transition: 'width 0.4s ease',
+                          }}
+                        />
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            ) : (
+              <div style={{ padding: '20px', textAlign: 'center', color: 'var(--muted)', fontSize: '12.5px' }}>
+                Nenhuma chamada auto-roteada registrada ainda no período selecionado. Selecione o modelo "Auto" no chat para visualizar as métricas.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Quotas & Provider Status Section (Phase 8.4) */}
       <div className="admin-section" style={{ marginTop: '24px', padding: '16px', background: 'var(--surface)', borderRadius: '8px', border: '1px solid var(--hairline)' }}>

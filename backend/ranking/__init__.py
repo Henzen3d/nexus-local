@@ -11,3 +11,13 @@ from .failover import (
     NoAvailableModelError,
     ResolvedModel,
 )
+from .smart_router import (
+    IntentKey,
+    ComplexityTier,
+    RoutingPolicy,
+    IntentClassificationResult,
+    AutoRouteDecision,
+    classify_intent,
+    select_best_model,
+)
+

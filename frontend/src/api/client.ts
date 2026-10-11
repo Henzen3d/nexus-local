@@ -251,6 +251,13 @@ export const api = {
   getDashboardStats: (days: number = 30) => fetchJSON<any>(`/dashboard/stats?days=${days}`),
   getDashboardFailovers: (limit: number = 50) => fetchJSON<any[]>(`/dashboard/failovers?limit=${limit}`),
   getDashboardQuotas: () => fetchJSON<any[]>('/dashboard/quotas'),
+  getAutoRouterStats: (days: number = 30) => fetchJSON<any>(`/dashboard/auto-router/stats?days=${days}`),
+  getAutoRouterPolicy: () => fetchJSON<{ policy: string }>('/dashboard/auto-router/policy'),
+  setAutoRouterPolicy: (policy: string) =>
+    fetchJSON<{ status: string; policy: string }>('/dashboard/auto-router/policy', {
+      method: 'POST',
+      body: JSON.stringify({ policy }),
+    }),
 
   // Ranking Weights
   getRankingWeights: () => fetchJSON<any>('/ranking/weights'),

@@ -272,6 +272,11 @@ CREATE TABLE IF NOT EXISTS model_usage_log (
     was_fallback           INTEGER DEFAULT 0,  -- 1 se foi failover automático
     fallback_from_model_id TEXT,
     fallback_reason        TEXT,          -- 'rate_limit' | 'error' | 'manual'
+    was_auto_routed        INTEGER DEFAULT 0,  -- 1 se foi roteado automaticamente
+    route_intent           TEXT,               -- 'code_engineering', 'trivial_quick', etc.
+    route_confidence       REAL,               -- 0.0 a 1.0
+    route_latency_ms       REAL,               -- Latência do classificador (< 2.0ms)
+    route_policy           TEXT,               -- 'economical_free', 'balanced_smart', 'max_performance'
     created_at             TEXT DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_usage_model ON model_usage_log(model_id, created_at);
@@ -1092,6 +1097,11 @@ async def init_db():
             ("fallback_from_model_id", "TEXT"),
             ("fallback_reason", "TEXT"),
             ("tokens_est", "INTEGER DEFAULT 0"),
+            ("was_auto_routed", "INTEGER DEFAULT 0"),
+            ("route_intent", "TEXT"),
+            ("route_confidence", "REAL"),
+            ("route_latency_ms", "REAL"),
+            ("route_policy", "TEXT"),
         ]:
             try:
                 await db.execute(f"SELECT {col} FROM model_usage_log LIMIT 1")
@@ -1101,6 +1111,21 @@ async def init_db():
                     await db.commit()
                 except Exception:
                     pass
+
+        try:
+            await db.execute("CREATE INDEX IF NOT EXISTS idx_usage_auto ON model_usage_log(was_auto_routed, route_intent)")
+            await db.commit()
+        except Exception:
+            pass
+
+        # Smart router default policy
+        try:
+            await db.execute(
+                "INSERT OR IGNORE INTO meta (key, value) VALUES ('router_policy', 'balanced_smart')"
+            )
+            await db.commit()
+        except Exception:
+            pass
 
         # model_quota_status — colunas do registry de cotas free
         for col, col_type in [
@@ -2655,4 +2680,44 @@ async def check_and_deactivate_model(model_id: str, error_msg: str, db=None) -> 
         except Exception as e:
             logger.error("Error auto-disabling model '%s':", model_id, exc_info=e)
     return False
+
+
+async def get_router_policy(db=None) -> str:
+    """Retorna a política configurada para o Smart Router ('economical_free' | 'balanced_smart' | 'max_performance')."""
+    should_close = False
+    if db is None:
+        db = await get_db()
+        should_close = True
+    try:
+        async with db.execute("SELECT value FROM meta WHERE key = 'router_policy'") as cur:
+            row = await cur.fetchone()
+            if row and row[0]:
+                return row[0]
+            return "balanced_smart"
+    finally:
+        if should_close:
+            await db.close()
+
+
+async def set_router_policy(policy: str, db=None) -> str:
+    """Atualiza a política configurada para o Smart Router."""
+    valid_policies = {"economical_free", "balanced_smart", "max_performance"}
+    policy_norm = policy.lower().strip() if policy else "balanced_smart"
+    if policy_norm not in valid_policies:
+        policy_norm = "balanced_smart"
+    should_close = False
+    if db is None:
+        db = await get_db()
+        should_close = True
+    try:
+        await db.execute(
+            "INSERT INTO meta (key, value) VALUES ('router_policy', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (policy_norm,)
+        )
+        await db.commit()
+        return policy_norm
+    finally:
+        if should_close:
+            await db.close()
+
 

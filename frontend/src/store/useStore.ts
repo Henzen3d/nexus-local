@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Artifact, Conversation, ConversationDetail, Message, Model, CacheStats, CacheSettings, FusionStatusEntry, Attachment, WebSearchSource } from '../types'
+import type { Artifact, Conversation, ConversationDetail, Message, Model, CacheStats, CacheSettings, FusionStatusEntry, Attachment, WebSearchSource, AutoRouteDecisionInfo } from '../types'
 import { api } from '../api/client'
 import { detectInitialLocale } from '../i18n'
 
@@ -58,11 +58,13 @@ function persistModelSelection(modelId: string, providerId: string) {
     localStorage.setItem('nexuslocal_selected_model_id', modelId)
     localStorage.setItem('nexuslocal_selected_provider_id', providerId)
 
-    const map = readLastModelByProvider()
-    map[providerId] = modelId
-    const mapJson = JSON.stringify(map)
-    localStorage.setItem(_scopedKey('last_model_by_provider'), mapJson)
-    localStorage.setItem('nexuslocal_last_model_by_provider', mapJson)
+    if (providerId && providerId !== 'auto') {
+      const map = readLastModelByProvider()
+      map[providerId] = modelId
+      const mapJson = JSON.stringify(map)
+      localStorage.setItem(_scopedKey('last_model_by_provider'), mapJson)
+      localStorage.setItem('nexuslocal_last_model_by_provider', mapJson)
+    }
   } catch {
     /* ignore quota / private mode */
   }
@@ -77,6 +79,11 @@ function resolveModelSelection(
   if (!models.length) return { modelId: null, providerId: null }
 
   const lastByProvider = readLastModelByProvider()
+
+  // 0) modo Auto explicitamente selecionado
+  if (preferredModelId === 'auto') {
+    return { modelId: 'auto', providerId: 'auto' }
+  }
 
   // 1) modelo persistido/atual ainda existe
   if (preferredModelId) {
@@ -164,7 +171,9 @@ interface AppState {
   favoriteConversation: (id: string) => Promise<void>
   loadAllArtifacts: (search?: string) => Promise<void>
   appendToken: (token: string) => void
-  finalizeStream: (messageId: string, artifactMeta?: { id: string; type: string; title: string }, artifacts?: { id: string; type: string; title: string }[], relayUsed?: boolean, relayModel?: string | null, webSearchUsed?: boolean, webSearchQuery?: string, webSearchSources?: WebSearchSource[]) => void
+  finalizeStream: (messageId: string, artifactMeta?: { id: string; type: string; title: string }, artifacts?: { id: string; type: string; title: string }[], relayUsed?: boolean, relayModel?: string | null, webSearchUsed?: boolean, webSearchQuery?: string, webSearchSources?: WebSearchSource[], wasFallback?: boolean) => void
+  lastAutoRouteDecision: AutoRouteDecisionInfo | null
+  setAutoRouteDecision: (decision: AutoRouteDecisionInfo | null) => void
   setStreaming: (v: boolean) => void
   addUserMessage: (content: string, attachments?: Attachment[]) => void
   setConversationCreated: (id: string, title: string) => void
@@ -523,23 +532,27 @@ export const useStore = create<AppState>((set, get) => ({
     relayModel?: string | null,
     webSearchUsed?: boolean,
     webSearchQuery?: string,
-    webSearchSources?: WebSearchSource[]
+    webSearchSources?: WebSearchSource[],
+    wasFallback?: boolean
   ) => {
-    const { streamingContent, selectedModelId, models } = get()
-    const activeModel = models.find((m) => m.id === selectedModelId)
+    const { streamingContent, selectedModelId, models, lastAutoRouteDecision } = get()
+    const resolvedModelId = lastAutoRouteDecision?.chosen_model_id || selectedModelId
+    const activeModel = models.find((m) => m.id === resolvedModelId)
     const msg: Message = {
       id: messageId,
       role: 'assistant',
       content: streamingContent,
-      model_id: selectedModelId ?? undefined,
+      model_id: resolvedModelId ?? undefined,
       created_at: new Date().toISOString(),
-      model_display_name: activeModel?.display_name,
-      provider: activeModel?.provider_name,
+      model_display_name: lastAutoRouteDecision?.chosen_model_name || activeModel?.display_name,
+      provider: lastAutoRouteDecision?.provider_id || activeModel?.provider_name,
       relay_used: relayUsed,
       relay_model: relayModel,
       web_search_used: webSearchUsed,
       web_search_query: webSearchQuery,
       web_search_sources: webSearchSources,
+      was_fallback: wasFallback,
+      auto_route: lastAutoRouteDecision,
       // Popula os metadados do artifact no objeto de mensagem para que o badge seja exibido
       ...(artifactMeta
         ? { artifact_id: artifactMeta.id, artifact_type: artifactMeta.type, artifact_title: artifactMeta.title }
@@ -550,8 +563,12 @@ export const useStore = create<AppState>((set, get) => ({
       messages: [...s.messages, msg],
       streamingContent: '',
       isStreaming: false,
+      lastAutoRouteDecision: null,
     }))
   },
+
+  lastAutoRouteDecision: null,
+  setAutoRouteDecision: (decision: AutoRouteDecisionInfo | null) => set({ lastAutoRouteDecision: decision }),
 
   setStreaming: (v: boolean) => set({ isStreaming: v }),
 

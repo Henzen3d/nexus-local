@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from backend.logging_config import get_logger
 from backend.providers.base import RateLimitError
@@ -83,6 +83,9 @@ async def stream_from_llm(
     model_id: str,
     provider_id: str,
     history: list[dict],
+    temperature: float | None = None,
+    max_tokens: int | None = None,
+    auto_route_decision: Any | None = None,
 ) -> tuple[str, str, str] | None:
     """Executa o streaming LLM com failover cascade.
 
@@ -134,7 +137,13 @@ async def stream_from_llm(
             })
 
         try:
-            async for token in provider.stream_chat(model=model_name, messages=history):
+            stream_kwargs: dict[str, Any] = {}
+            if temperature is not None:
+                stream_kwargs["temperature"] = float(temperature)
+            if max_tokens is not None:
+                stream_kwargs["max_tokens"] = int(max_tokens)
+
+            async for token in provider.stream_chat(model=model_name, messages=history, **stream_kwargs):
                 token_str = str(token)
                 full_response += token_str
                 await ws.send_json({"type": "token", "content": token_str})
@@ -143,18 +152,35 @@ async def stream_from_llm(
             await record_request(current_model_id, db)
             success = True
 
-            if resolved.was_failover:
+            was_auto = 1 if auto_route_decision else 0
+            if resolved.was_failover or was_auto:
                 log_id = str(uuid.uuid4())
+                route_intent_val = (
+                    auto_route_decision.intent.value
+                    if hasattr(auto_route_decision, "intent") and hasattr(auto_route_decision.intent, "value")
+                    else str(getattr(auto_route_decision, "intent", ""))
+                ) if auto_route_decision else None
+                route_conf_val = getattr(auto_route_decision, "confidence", None)
+                route_lat_val = getattr(auto_route_decision, "decision_latency_ms", None)
+                route_policy_val = getattr(auto_route_decision, "policy", None)
+
                 await db.execute(
                     """INSERT INTO model_usage_log
                        (id, model_id, provider_id, conversation_id, user_id,
-                        was_fallback, fallback_from_model_id, fallback_reason)
-                       VALUES (?, ?, ?, ?, ?, 1, ?, ?)""",
+                        was_fallback, fallback_from_model_id, fallback_reason,
+                        was_auto_routed, route_intent, route_confidence, route_latency_ms, route_policy)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (
                         log_id, current_model_id, current_provider_id,
                         conversation_id, user_id,
-                        original_model_id,
-                        resolved.failover_reason or "rate_limit",
+                        1 if resolved.was_failover else 0,
+                        original_model_id if resolved.was_failover else None,
+                        resolved.failover_reason or "rate_limit" if resolved.was_failover else None,
+                        was_auto,
+                        route_intent_val,
+                        route_conf_val,
+                        route_lat_val,
+                        route_policy_val,
                     ),
                 )
                 await db.commit()
@@ -220,6 +246,9 @@ async def resolve_and_stream(
     history: list[dict],
     context_fingerprint: str,
     bypass_cache: bool,
+    temperature: float | None = None,
+    max_tokens: int | None = None,
+    auto_route_decision: Any | None = None,
 ) -> tuple[str, "CacheHit | None", str, str] | None:
     """Fluxo completo: tenta cache, depois LLM com failover.
 
@@ -235,7 +264,8 @@ async def resolve_and_stream(
         return full_response, cache_hit, model_id, provider_id
 
     result = await stream_from_llm(
-        ws, db, conversation_id, user_id, model_id, provider_id, history
+        ws, db, conversation_id, user_id, model_id, provider_id, history,
+        temperature=temperature, max_tokens=max_tokens, auto_route_decision=auto_route_decision,
     )
     if result is None:
         return None

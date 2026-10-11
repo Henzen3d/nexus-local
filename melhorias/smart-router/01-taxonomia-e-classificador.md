@@ -19,11 +19,11 @@ Para permitir uma distribuição cirúrgica de carga entre os modelos conectados
 
 | Categoria (`IntentKey`) | Descrição e Exemplos Típicos | Perfil Ideal de Modelo | Exemplos no NexusLocal |
 | :--- | :--- | :--- | :--- |
-| **`TRIVIAL_QUICK`** | Saudações (*"bom dia"*, *"olá"*), perguntas fáticas curtas, formatação de texto simples, traduções pontuais de palavras. | Throughput altíssimo (> 150 tok/s), custo zero, baixa latência. | Groq Llama 3.1 8B, SambaNova Llama 3.2 3B |
+| **`TRIVIAL_QUICK`** | Saudações (*"bom dia"*, *"olá"*), perguntas fáticas curtas, formatação de texto simples, traduções pontuais de palavras isoladas. | Throughput altíssimo (> 150 tok/s), custo zero, baixa latência. | Groq Llama 3.1 8B, Cerebras Llama 3.1 8B, Cloudflare Llama 3.1 8B |
 | **`CODE_ENGINEERING`** | Código, depuração de erros, stack traces, queries SQL, criação de APIs, refatoração e regex. | Especialista em raciocínio estruturado, contexto de código e precisão sintática. | Qwen 2.5 Coder 32B/7B, Groq Llama 3.3 70B, Claude 3.5 Sonnet |
 | **`DEEP_REASONING`** | Problemas lógicos, equações matemáticas, enigmas, planejamento de sistemas, tomada de decisão com prós/contras complexos. | Modelos com capacidades nativas de reflexão (*Thinking* / Raciocínio Passo a Passo). | DeepSeek-R1, Gemini 2.0 Flash Thinking, QwQ-32B |
 | **`CREATIVE_LONGFORM`** | Redação de artigos, e-mails executivos formais, criação literária, reescrita de tom, roteiros. | Modelos com alta fluência verbal, vocabulário rico e nuances de escrita natural. | Llama 3.3 70B, Gemini 2.5 Flash, Mistral Large |
-| **`MULTIMODAL_VISION`** | O prompt contém imagens anexadas (fotos, prints, diagramas) ou PDFs escaneados. | Modelos com visão computacional ativa ou suporte via Vision Relay. | Gemini 2.0 Flash (Multimodal), Llama 3.2 11B Vision |
+| **`MULTIMODAL_VISION`** | O prompt contém imagens anexadas (fotos, prints, diagramas) ou o histórico ativo refere imagens anteriores. | Modelos com visão computacional ativa ou suporte via Vision Relay. | Gemini 2.0 Flash (Multimodal), Llama 3.2 11B Vision |
 | **`WEB_RESEARCH`** | Perguntas sobre eventos em tempo real, notícias, cotações, dados após a data de corte ou toggle web ativo. | Modelos rápidos com forte habilidade de sintetizar snippets de busca. | Gemini 2.0 Flash, Groq Llama 3.3 70B |
 
 ---
@@ -33,53 +33,63 @@ Para permitir uma distribuição cirúrgica de carga entre os modelos conectados
 Além da intenção, o roteador calcula a escala de profundidade exigida:
 
 ```
-[ Tier 1: Leve ]   ➔ Pergunta direta (< 150 caracteres), resposta objetiva.
+[ Tier 1: Leve ]   ➔ Pergunta direta (< 150 caracteres), resposta objetiva e sem inércia pesada prévia.
 [ Tier 2: Médio ]  ➔ Pergunta com contexto moderado ou instruções de múltiplos passos.
 [ Tier 3: Pesado ] ➔ Análise profunda, código longo, arquivos anexos ou raciocínio encadeado.
 ```
 
 ---
 
-## 3. Pipeline de Classificação em 2 Estágios
+## 3. Pipeline de Classificação em 3 Estágios (Blindado contra Falhas de 2ª Escala)
 
-Para cumprir a exigência inegociável de **execução ultrarrápida (< 2ms)** sem sobrecarregar a CPU nem chamar APIs externas:
+Para cumprir a exigência inegociável de **execução ultrarrápida (< 2ms)** sem cometer erros clássicos de amnésia ou quebra de contexto:
 
 ```
-                                  Prompt & Metadados
-                                          │
-                                          ▼
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│                           ESTÁGIO 1: Filtros Determinísticos                    │
-│                                                                                 │
-│  [A] Análise de Anexos:                                                         │
-│      Se attachment.type == 'image' ➔ Força MULTIMODAL_VISION imediato.          │
-│                                                                                 │
-│  [B] Análise de Toggle Web:                                                     │
-│      Se webSearchActive == True ➔ Prioriza WEB_RESEARCH.                        │
-│                                                                                 │
-│  [C] Heurística Trivial Instantânea:                                            │
-│      Se len(prompt) < 25 chars E match em saudações/curtas                      │
-│      ➔ TRIVIAL_QUICK com confiança 1.0 (tempo: 0.1ms).                          │
-└────────────────────────────────────────┬────────────────────────────────────────┘
+                          Prompt Atual + Histórico de Mensagens + Metadados
+                                                  │
+                                                  ▼
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│             ESTÁGIO 0: Histerese de Tópico & Memória de Sessão (Anti-Amnésia)          │
+│                                                                                        │
+│  [A] Multimodalidade Retrospectiva:                                                    │
+│      Se attachment.type == 'image' OU history_has_unresolved_images == True            │
+│      ➔ Força MULTIMODAL_VISION (evita quebrar turnos subsequentes sobre a foto).       │
+│                                                                                        │
+│  [B] Inércia de Contexto Técnico (Topic Momentum):                                     │
+│      Se prompt atual é curto (< 35 chars, ex: "e no Windows?", "como corrijo isso?")   │
+│      E histórico recente está classificado como CODE_ENGINEERING ou DEEP_REASONING     │
+│      ➔ Mantém a classe técnica! NÃO rebaixa para TRIVIAL_QUICK.                        │
+└────────────────────────────────────────┬───────────────────────────────────────────────┘
+                                         │ (Se não interceptado por inércia)
+                                         ▼
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│             ESTÁGIO 1: Filtros Determinísticos Instantâneos (< 0.2ms)                  │
+│                                                                                        │
+│  [C] Análise de Toggle Web:                                                            │
+│      Se webSearchActive == True ➔ Prioriza WEB_RESEARCH.                               │
+│                                                                                        │
+│  [D] Heurística Trivial Pura:                                                          │
+│      Se conversa é nova (turn == 1) E match em saudações/fáticas                       │
+│      ➔ TRIVIAL_QUICK com confiança 1.0.                                                │
+└────────────────────────────────────────┬───────────────────────────────────────────────┘
                                          │ (Se não for determinístico)
                                          ▼
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│                           ESTÁGIO 2: Extrator de Sinais Léxicos                 │
-│                                                                                 │
-│  Regex de Código:                                                               │
-│    • Presença de ```, def, class, import, function, const, SELECT, WHERE,       │
-│      curl, traceback, error line, =>, {}, [], !=                                │
-│                                                                                 │
-│  Regex de Raciocínio & Matemática:                                              │
-│    • calcule, prove, deduza, probabilidade, equação, teorema, lógica,           │
-│      enigma, compare detalhadamente, analise criticamente                       │
-│                                                                                 │
-│  Extensão do Texto e Histórico:                                                 │
-│    • tokens estimados > 800 ou conversa longa ➔ Aumenta ComplexityTier          │
-└────────────────────────────────────────┬────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│             ESTÁGIO 2: Extrator de Sinais Léxicos e Restrições de Contexto             │
+│                                                                                        │
+│  Regex de Código:                                                                      │
+│    • ```, def, class, import, function, const, SELECT, WHERE, curl, traceback, etc.    │
+│                                                                                        │
+│  Regex de Raciocínio & Matemática:                                                     │
+│    • calcule, prove, deduza, probabilidade, equação, teorema, analise criticamente     │
+│                                                                                        │
+│  Cálculo de Restrição de Janela (Context Window Guard):                                │
+│    • Estima total_tokens = len(prompt + history) // 3.5                                │
+│    • Exige: model.context_length >= estimated_tokens + 2048                            │
+└────────────────────────────────────────┬───────────────────────────────────────────────┘
                                          │
                                          ▼
-                              Resultado da Classificação
+                             Resultado da Classificação
 ```
 
 ---
@@ -109,13 +119,18 @@ class ComplexityTier(int, Enum):
 
 @dataclass
 class IntentClassificationResult:
-    """Resultado da inferência rápida de intenção antes do envio da requisição."""
+    """Resultado da inferência rápida de intenção com blindagem de segunda escala."""
     intent: IntentKey
     complexity: ComplexityTier
     confidence: float                     # 0.0 a 1.0
-    matched_signals: List[str]            # Ex: ['code_fence', 'sql_keywords', 'long_context']
-    reason_label_pt: str                  # Ex: "Tarefa de Código & Programação"
+    matched_signals: List[str]            # Ex: ['topic_momentum_code', 'sql_keywords']
+    reason_label_pt: str                  # Ex: "Código & Programação (Continuidade)"
     suggested_family: Optional[str] = None # Ex: "qwen-2.5-coder" ou "deepseek-r1"
+    
+    # Parâmetros de mitigação de 2ª escala:
+    min_context_length_required: int = 4096 # Garante que o modelo suporte o histórico
+    inherited_from_history: bool = False    # True se preservou a inércia do tópico anterior
+    recommended_temperature: float = 0.2    # 0.1-0.2 para código; 0.6 para reasoning; 0.7 para criativo
     processing_time_ms: float = 0.0
 ```
 

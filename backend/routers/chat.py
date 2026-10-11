@@ -113,7 +113,12 @@ async def websocket_chat(ws: WebSocket):
                 use_memory = use_memory.lower() not in ("0", "false", "no", "off")
             fusion_mode = req.get("fusion", False)
 
-            if (not user_message and not attachment_ids) or not model_id or not provider_id:
+            is_auto = (model_id == "auto" or not model_id)
+            if (not user_message and not attachment_ids):
+                await ws.send_json({"type": "error", "message": "Mensagem ou anexo requerido."})
+                continue
+
+            if not is_auto and (not model_id or not provider_id):
                 await ws.send_json({"type": "error", "message": "Campos obrigatórios faltando."})
                 continue
 
@@ -145,6 +150,67 @@ async def _process_turn(
 ):
     """Processa um turno completo de chat (uma mensagem do usuário)."""
     user_id = user["id"]
+    is_auto = (model_id == "auto" or not model_id)
+    auto_route_decision = None
+
+    # ── Auto-Router Inteligente (Smart Intent Router) ────────────────
+    if is_auto:
+        prev_model_id = None
+        prev_intent = None
+        raw_history = []
+        if conversation_id:
+            async with db.execute(
+                "SELECT model_id FROM messages WHERE conversation_id = ? AND role = 'assistant' ORDER BY created_at DESC LIMIT 1",
+                (conversation_id,)
+            ) as cur:
+                row = await cur.fetchone()
+                if row and row[0]:
+                    prev_model_id = row[0]
+            async with db.execute(
+                "SELECT route_intent FROM model_usage_log WHERE conversation_id = ? AND was_auto_routed = 1 ORDER BY created_at DESC LIMIT 1",
+                (conversation_id,)
+            ) as cur:
+                row = await cur.fetchone()
+                if row and row[0]:
+                    prev_intent = row[0]
+            async with db.execute(
+                "SELECT role, content FROM messages WHERE conversation_id = ? ORDER BY created_at ASC",
+                (conversation_id,)
+            ) as cur:
+                raw_history = [{"role": r[0], "content": r[1]} for r in await cur.fetchall()]
+
+        from backend.ranking.smart_router import classify_intent, select_best_model
+        from backend.database import get_router_policy
+
+        intent_res = classify_intent(
+            prompt=user_message,
+            attachments=attachment_ids,
+            web_search=bool(req.get("web_search", False)),
+            history=raw_history,
+            previous_intent=prev_intent,
+        )
+        policy = await get_router_policy(db)
+        auto_route_decision = await select_best_model(
+            intent_res, policy, db, previous_model_id=prev_model_id
+        )
+        model_id = auto_route_decision.chosen_model_id
+        provider_id = auto_route_decision.provider_id
+
+        # Emite evento auto_route_decision com transparência antes dos primeiros tokens
+        await ws.send_json({
+            "type": "auto_route_decision",
+            "chosen_model_id": auto_route_decision.chosen_model_id,
+            "chosen_model_name": auto_route_decision.chosen_model_name,
+            "provider_id": auto_route_decision.provider_id,
+            "intent": auto_route_decision.intent.value,
+            "reason_pt": auto_route_decision.reason_pt,
+            "confidence": auto_route_decision.confidence,
+            "policy": auto_route_decision.policy,
+            "temperature": auto_route_decision.temperature,
+            "decision_latency_ms": auto_route_decision.decision_latency_ms,
+            "matched_signals": auto_route_decision.matched_signals,
+        })
+
 
     # ── Ensure conversation ─────────────────────────────────────────
     conversation_id, _proj_id, created_payload = await ensure_conversation(
@@ -207,10 +273,12 @@ async def _process_turn(
         )
         return
 
-    # ── Resolve: cache or LLM with failover ────────────────────────
+    # ── Resolve: cache or LLM com failover & parâmetros adaptativos ──
     result = await resolve_and_stream(
         ws, db, conversation_id, user_id, model_id, provider_id,
         history, context_fingerprint, bypass_cache,
+        temperature=auto_route_decision.temperature if auto_route_decision else None,
+        auto_route_decision=auto_route_decision,
     )
     if result is None:
         return

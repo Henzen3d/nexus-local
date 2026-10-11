@@ -127,9 +127,19 @@ export function useChat() {
             msg.relay_model,
             msg.web_search_used,
             msg.web_search_query,
-            msg.web_search_sources
+            msg.web_search_sources,
+            msg.was_fallback
           )
           s.loadConversations()
+          break
+        case 'auto_route_decision':
+          s.setAutoRouteDecision(msg)
+          break
+        case 'failover_notice':
+          s.showToast(
+            `Failover: ${msg.original_model} esgotado. Alternando para ${msg.fallback_model}...`,
+            'info'
+          )
           break
         case 'search_start':
           s.showToast(i18n.t('chat.searchingWeb', { query: msg.query }), 'info')

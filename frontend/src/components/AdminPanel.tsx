@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import {
   Eye, EyeOff, Save, ToggleLeft, ToggleRight, Database, Sparkles, Users, Trash2, X, Monitor, Sun, Moon, Search, ChevronDown, ChevronRight,
   ChevronLeft, Info, Settings, CreditCard, Shield, Sliders, Volume2, Lock, Link2, LogOut, Check, User, Palette, Type, Smartphone, Trash, Activity,
-  Award, Languages, Brain, Share2, ExternalLink, Key
+  Award, Languages, Brain, Share2, ExternalLink, Key, Compass
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { api } from '../api/client'
@@ -21,12 +21,13 @@ import { UsageDashboard } from './UsageDashboard'
 import { RankingWeightsSettings } from './RankingWeightsSettings'
 import { RankingsView } from './RankingsView'
 import { UserMemoryPanel } from './UserMemoryPanel'
+import { AutoRouterSettings } from './AutoRouterSettings'
 import { CreateFamilyUser, FamilyUserKeys } from './FamilyAccountTools'
 import { canShowRegisterUserButton } from '../lib/registerUser'
 import { playSpeech, saveTtsPrefs, useTtsPrefs } from '../lib/ttsPlayer'
 import { useIsMobile } from '../hooks/useIsMobile'
 
-type Tab = 'general' | 'providers' | 'rankings' | 'cache' | 'tools' | 'users' | 'dashboard' | 'memory'
+type Tab = 'general' | 'providers' | 'router' | 'rankings' | 'cache' | 'tools' | 'users' | 'dashboard' | 'memory'
 
 export function AdminPanel() {
   const isMobile = useIsMobile()
@@ -476,6 +477,17 @@ function AdminPanelMobile() {
                   {activeModelsCount > 0 && <span className="settings-list-item-counter">{t('settings.activatedCount', { count: activeModelsCount })}</span>}
                   <ChevronRight size={16} />
                 </div>
+              </div>
+
+              <div className="settings-list-item" onClick={() => { pushScreen('router'); triggerHaptic() }}>
+                <div className="settings-list-item-left">
+                  <Compass size={16} style={{ color: 'var(--primary)' }} className="settings-list-item-icon" />
+                  <div>
+                    <span className="settings-list-item-label">{t("autoRouter.title", { defaultValue: "Roteador Inteligente" })}</span>
+                    <span className="settings-list-item-subtitle">{t("autoRouter.subtitle", { defaultValue: "Políticas de roteamento automático" })}</span>
+                  </div>
+                </div>
+                <ChevronRight size={16} />
               </div>
 
               <div className="settings-list-item" onClick={() => { pushScreen('rankings'); triggerHaptic() }}>
@@ -1483,6 +1495,16 @@ function AdminPanelMobile() {
         </div>
       )}
 
+      {/* SCREEN 17: Roteador Inteligente Screen */}
+      {currentScreen === 'router' && (
+        <div className="settings-mobile-container-view">
+          <Header title={t("autoRouter.title", { defaultValue: "Roteador Inteligente" })} />
+          <div className="settings-mobile-content" style={{ padding: '16px' }}>
+            <AutoRouterSettings />
+          </div>
+        </div>
+      )}
+
 
       {/* ─────────────────────────────────────────────────────────────────────────────
          BOTTOM SHEETS FOR QUICK SELECT preference rows
@@ -2151,6 +2173,7 @@ function AdminPanelDesktop() {
   const menuItems = [
     { id: 'general' as Tab, label: t('settings.general'), icon: <Monitor size={14} /> },
     { id: 'providers' as Tab, label: t('settings.providersModels'), icon: <Sparkles size={14} /> },
+    { id: 'router' as Tab, label: t('autoRouter.title', { defaultValue: 'Roteador Inteligente' }), icon: <Compass size={14} /> },
     { id: 'rankings' as Tab, label: t('settings.modelRankings'), icon: <Award size={14} /> },
     // Dashboard is admin-only (API uses require_admin after security phase)
     ...(user?.role === 'admin' ? [{ id: 'dashboard' as Tab, label: t('settings.usage'), icon: <Activity size={14} /> }] : []),
@@ -2632,6 +2655,11 @@ function AdminPanelDesktop() {
             {/* 8. Memory Tab */}
             {tab === 'memory' && (
               <UserMemoryPanel />
+            )}
+
+            {/* 9. Router Tab */}
+            {tab === 'router' && (
+              <AutoRouterSettings />
             )}
 
           </div>

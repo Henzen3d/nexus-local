@@ -14,6 +14,7 @@ import { markdownComponents } from './markdownComponents'
 import { AdapterRegistry } from '../adapters/AdapterRegistry'
 import { AIMetadataDisplay } from './AIMetadataDisplay'
 import { playSpeech, useTtsPlay } from '../lib/ttsPlayer'
+import { AutoRouteBadge } from './AutoRouteBadge'
 
 // ─── ThinkingBlock — componente independente de modelo ─────────────────────────
 // ─── ThinkingBlock — componente independente de modelo ─────────────────────────
@@ -519,6 +520,14 @@ export function MessageBubble({ message }: Props) {
               />
             </>
           )}
+
+          {message.auto_route && (
+            <>
+              <span className="meta-sep">·</span>
+              <AutoRouteBadge decision={message.auto_route} />
+            </>
+          )}
+
           
           {/* Exibição opcional de metadados de performance da IA (Fase 8.3) */}
           <AIMetadataDisplay metadata={metadata} visible={false} />

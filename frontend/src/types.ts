@@ -45,7 +45,22 @@ export interface Message {
   web_search_query?: string
   web_search_sources?: WebSearchSource[]
   was_fallback?: boolean
+  auto_route?: AutoRouteDecisionInfo | null
 }
+
+export interface AutoRouteDecisionInfo {
+  chosen_model_id: string
+  chosen_model_name: string
+  provider_id: string
+  intent: string
+  reason_pt: string
+  confidence: number
+  policy: string
+  temperature: number
+  decision_latency_ms: number
+  matched_signals?: string[]
+}
+
 
 export interface Conversation {
   id: string
@@ -229,6 +244,7 @@ export type WSMessage =
   | { type: 'fusion_refined_prompt'; prompt: string }
   | { type: 'artifact'; id: string; artifact_type: 'html' | 'markdown' | 'svg' | 'code' | 'jsx'; title: string; conv_id: string; msg_id: string }
   | { type: 'search_start'; query: string }
+  | ({ type: 'auto_route_decision' } & AutoRouteDecisionInfo)
 
 export interface ProjectContextFileChunk {
   filename: string | null
