@@ -94,3 +94,35 @@ async def move_attachments_to_conversation(attachment_ids: list[str], conversati
             (message_id, new_storage_rel, new_thumb_rel, att_id)
         )
     await db.commit()
+
+
+def save_attachment_for_conversation(
+    file_content: bytes, filename: str, attachment_id: str, conversation_id: str
+) -> tuple[str, str | None]:
+    """Salva anexo diretamente no diretório final da conversa (storage/attachments/{conv_id})."""
+    conv_dir = STORAGE_DIR / conversation_id
+    conv_dir.mkdir(parents=True, exist_ok=True)
+
+    safe_filename = os.path.basename(filename)
+    dest_filename = f"{attachment_id}_{safe_filename}"
+    file_rel_path = f"{conversation_id}/{dest_filename}"
+    dest_path = get_absolute_path(file_rel_path)
+    with open(dest_path, "wb") as f:
+        f.write(file_content)
+
+    thumb_rel_path = None
+    try:
+        thumb_filename = f"{attachment_id}_thumb.jpg"
+        thumb_rel_path = f"{conversation_id}/{thumb_filename}"
+        thumb_path = get_absolute_path(thumb_rel_path)
+        with Image.open(dest_path) as img:
+            if img.mode in ("RGBA", "P"):
+                img = img.convert("RGB")
+            img.thumbnail((240, 240))
+            img.save(thumb_path, "JPEG", quality=85)
+    except Exception as e:
+        logger.error("Failed to generate thumbnail for generated image:", exc_info=e)
+        thumb_rel_path = None
+
+    return file_rel_path, thumb_rel_path
+

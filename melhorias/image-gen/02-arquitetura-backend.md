@@ -18,10 +18,10 @@ Toques em código existente, e só estes:
 
 | Arquivo | Mudança |
 |---|---|
-| `backend/database.py` | migração incremental das tabelas abaixo, no estilo `try/except sqlite3.OperationalError` de `supports_vision`. Índice só depois do `ALTER`/`CREATE` da migração, nunca no `SCHEMA` inicial para coluna nova |
-| `backend/providers/base.py` | `CloudflareProvider.run_image(...)` |
-| `backend/main.py` | include do router; start/stop do worker no lifespan |
-| `backend/routers/chat.py` | registrar o socket aberto por `user_id`; no turno, chamar o classificador |
+| `backend/database.py` | migração incremental em `init_db()`: `image_models`, `image_gen_config`, `image_gen_tasks` e `ALTER TABLE user_api_keys ADD COLUMN account_id TEXT;` (no estilo `try/except sqlite3.OperationalError` de `supports_vision`). Índices só depois do `ALTER`/`CREATE` da migração |
+| `backend/providers/base.py` | `CloudflareProvider.run_image(model, prompt, steps, account_id=...)` tratando Content-Type binário (`image/*`) e JSON |
+| `backend/main.py` | include do router `image_gen`; start/stop do worker e do `asyncio.Event` no lifespan |
+| `backend/routers/chat.py` | registrar sockets por `user_id`; classificar intent antes do stream; checagem precoce de teto diário; em `/imagem` puro emitir `stream_end` (destrava composer do frontend); disparar `task_notify_event.set()` |
 | `backend/orchestration/persist_turn.py` | se o turno tem job de imagem, não persistir artefato `svg` |
 | `backend/orchestration/resolve_request.py` | injetar o hint anti-SVG só quando `image_intent` e o chat model ainda for chamado |
 
@@ -66,6 +66,10 @@ CREATE TABLE IF NOT EXISTS image_gen_tasks (
     started_at       TEXT,
     completed_at     TEXT
 );
+
+-- Coluna nova na tabela existente de chaves (para Account ID da Cloudflare):
+-- Executado em try/except sqlite3.OperationalError:
+ALTER TABLE user_api_keys ADD COLUMN account_id TEXT;
 ```
 
 Índices, depois da migração:
@@ -101,53 +105,76 @@ Pura, sem LLM, sem rede. Teste unitário com a tabela de frases do `00`. Ordem:
 Dentro de `_process_turn`, depois de autenticar e antes do stream:
 
 1. Se `image_gen_config.enabled` e intent `raster`:
-   - criar `message_id` do assistente já com texto curto ("Gerando imagem…") e `image_gen_tasks` em `pending`
-   - emitir no socket atual `{"type":"image_pending","task_id","msg_id","conv_id","prompt"}`
-   - se o pedido foi slash puro, encerrar o turno aqui
-   - senão, acrescentar ao system prompt desta chamada apenas: "O usuário pediu uma imagem raster. Não escreva SVG, não escreva código de imagem, não descreva tags. Uma imagem será anexada em separado."
+   - Checagem precoce de teto diário: `SELECT COUNT(*) FROM image_gen_tasks WHERE user_id = :u AND status != 'failed' AND created_at >= date('now', 'start of day')`. Se `>= daily_cap_per_user`, emitir erro imediato no WebSocket ("Limite diário atingido") e abortar a geração de imagem sem poluir o histórico com placeholders.
+   - Criar `message_id` do assistente no banco já com texto curto inicial ("Gerando imagem…") e inserir linha em `image_gen_tasks` com `status = 'pending'`.
+   - Despertar o worker imediatamente via `task_notify_event.set()` (zero latência de espera por polling).
+   - Emitir no socket atual `{"type":"image_pending","task_id","msg_id","conv_id","prompt"}`.
+   - **Se o pedido foi slash puro (`/imagem ...`):**
+     - Despachar evento `stream_end` (com `finish_reason: "image_pending"` e `message_id`) no WebSocket para destrancar imediatamente o composer no frontend (`isStreaming = false`).
+     - Encerrar o turno aqui, sem chamar nenhum modelo de chat LLM.
+   - **Senão (pedido misto com texto):**
+     - Acrescentar ao system prompt desta chamada apenas: *"O usuário pediu uma imagem raster. Não escreva SVG, não escreva código de imagem, não descreva tags. Uma imagem será anexada em separado."*
+     - O turno de texto prossegue via streaming normal.
 2. No fim do turno, `detect_and_save_artifacts` recebe a flag e descarta detecção `svg`.
 
-O hint não entra no system prompt permanente. Só naquela chamada. Não muda o prefixo cacheado das outras conversas além do necessário desta requisição. Aceitável: é o mesmo tipo de injeção que web search já faz por turno.
+O hint não entra no system prompt permanente. Só naquela chamada. Não muda o prefixo cacheado das outras conversas além do necessário desta requisição.
 
 ## Worker
 
-Sobe no lifespan de `backend/main.py`. Para no shutdown.
+Sobe no lifespan de `backend/main.py` gerenciado por task assíncrona. Para no shutdown.
 
-Loop:
+Estrutura do loop (reativo via `asyncio.Event` + timeout para heartbeat de recuperação):
 
-1. `recover`: tasks em `generating` com `started_at` mais velho que 3 minutos voltam para `pending`. Cobre kill do processo.
-2. Claim atômico de uma `pending`:
+```python
+task_notify_event = asyncio.Event()
 
-```sql
-UPDATE image_gen_tasks
-   SET status = 'generating', started_at = datetime('now')
- WHERE id = (
-   SELECT id FROM image_gen_tasks
-    WHERE status = 'pending'
-    ORDER BY created_at
-    LIMIT 1
- )
- AND status = 'pending';
+async def image_worker_loop():
+    while not shutdown_event.is_set():
+        try:
+            # Espera evento de nova task; timeout de 60s atua como heartbeat de recovery
+            await asyncio.wait_for(task_notify_event.wait(), timeout=60.0)
+        except asyncio.TimeoutError:
+            pass
+        task_notify_event.clear()
+
+        # 1. Recover: tasks em 'generating' com started_at > 3 min voltam para 'pending'
+        await queue.recover_stale_tasks(timeout_seconds=180)
+
+        # 2. Processa tasks pending da fila uma a uma
+        while (task := await queue.claim_next_task()):
+            await process_image_task(task)
 ```
 
-SQLite serializa o write. Uma instância do backend. Não precisa de Redis.
+Processamento de cada task (`process_image_task`):
+1. **Validação de chaves:** Buscar `api_key` e `account_id` em `user_api_keys` para o `user_id`. Se faltar token ou account_id → marcar `status = 'failed'` com erro amigável "Falta a chave ou Account ID da Cloudflare na sua conta", atualizar mensagem e notificar socket.
+2. **Revalidação de teto:** Contar tasks com `status != 'failed'` criadas desde `00:00 UTC`. Se exceder o teto diário → marcar `failed` com mensagem de cota.
+3. **Execução:** Chamar `CloudflareProvider.run_image(model, prompt, steps, account_id=account_id)` com timeout de 60s. Em caso de 429 (`RateLimitError`) → marcar `failed` com mensagem "Cota diária da Cloudflare atingida".
+4. **Armazenamento:**
+   - Salvar os bytes JPEG diretamente no diretório da conversa (`storage/attachments/{conversation_id}/{filename}`) via `save_file(..., conversation_id=conv_id, is_image=True)`.
+   - Inserir linha na tabela `attachments` vinculada ao `message_id` do placeholder.
+   - **Limpeza do placeholder:** Executar `UPDATE messages SET content = '' WHERE id = :message_id` (remove o texto provisório "Gerando imagem…" para que não persista após o reload da tela).
+   - Atualizar a task: `status = 'ready'`, `completed_at = datetime('now')`.
+5. **Tratamento de falha:** Se ocorrer erro, `UPDATE image_gen_tasks SET status = 'failed', error_message = :err`, e `UPDATE messages SET content = :err_display WHERE id = :message_id`.
+6. **Notificação WebSocket:** Broadcast seguro para os sockets abertos do usuário (ver abaixo).
 
-3. Contar tasks `ready` do `user_id` desde 00:00 UTC. Se `>= daily_cap_per_user`, falhar com mensagem de teto, sem chamar a API.
-4. Token e account id do `user_id`. Sem par → fail claro. Não usar `CLOUDFLARE_ACCOUNT_ID` do ambiente nem token de outro usuário. `run_image` recebe o account id desse usuário; `_run_url` hoje lê o `base_url` compartilhado, então a chamada de imagem monta a URL com o account id do usuário, não com o do seed.
-5. `run_image`. Timeout 60s. 429 → `RateLimitError` já existe; marcar failed com "cota Cloudflare cheia, tenta depois do reset 00:00 UTC". Não fazer retry em loop.
-6. Bytes JPEG → `save_file()` em `backend/attachments/storage.py` (`save_file(file_content, filename, attachment_id, is_image=True)`). Inserir linha em `attachments` com `message_id` do placeholder.
-7. Status `ready`. Avisar sockets.
-
-Falha: status `failed`, `error_message` curta, mesmo evento WS com `status: "failed"`. O placeholder troca o spinner pelo erro. Sem stack trace para o usuário.
-
-Paralelismo: 1. Não subir para 4 porque a doc do Hermes usa 4. Aqui a cota é compartilhada pelo account id da Cloudflare daquele usuário.
+Paralelismo: 1 (evita saturar a cota da conta familiar e locks desnecessários).
 
 ## Entrega no socket que já existe
 
-`chat.py` guarda `dict[user_id, set[WebSocket]]` enquanto a conexão vive. Tira no `finally`.
+`chat.py` mantém um registro `dict[user_id, set[WebSocket]]`. Cada WebSocket é adicionado na conexão e descartado no `finally`.
 
-Evento, mesmo estilo do `artifact` que o frontend já entende:
+Broadcast defensivo contra sockets fechados ou desconexões súbitas:
+```python
+async def notify_user_sockets(user_id: str, message: dict):
+    sockets = list(user_sockets.get(user_id, set()))
+    for ws in sockets:
+        try:
+            await ws.send_json(message)
+        except Exception:
+            user_sockets.get(user_id, set()).discard(ws)
+```
 
+Evento emitido:
 ```json
 {
   "type": "image_ready",
@@ -156,26 +183,27 @@ Evento, mesmo estilo do `artifact` que o frontend já entende:
   "conv_id": "...",
   "status": "ready",
   "attachment_id": "...",
-  "url": "/api/attachments/..."
+  "url": "/attachments/conv_id/filename.jpg"
 }
 ```
 
-`status: "failed"` no mesmo tipo, com `error`.
+> **Atenção à rota:** A URL do arquivo estático é `/attachments/{storage_path}`, e **NÃO** `/api/attachments/...` (que contém apenas endpoints de upload e exclusão). O frontend e o backend (`conversations.py`) servem anexos montados em `/attachments`.
 
-Se não houver socket, não é erro. A mensagem e o attachment já foram gravados. `GET` da conversa tem que devolver o attachment como qualquer imagem enviada pelo usuário hoje. Reusar a rota de attachment existente. Não inventar `/attachments/{filename}` solto.
+Se não houver socket conectado no momento em que a imagem fica pronta, a entrega não falha: o anexo e a mensagem já estão gravados no SQLite. O próximo `GET /api/conversations/{id}` trará a mensagem com seu `attachments: [...]` normalmente.
 
 ## `run_image`
 
-Não passar pelo `stream_chat`.
+Não passa pelo `stream_chat`. Executa no `CloudflareProvider`:
 
 ```python
-async def run_image(self, model: str, prompt: str, steps: int = 4) -> bytes:
-    # POST self._run_url(model)
-    # body: {"prompt": prompt[:2048], "steps": min(steps, 8)}
-    # header Authorization: Bearer {self.api_key}
-    # timeout 60s
-    # extrair base64 do envelope confirmado no spike
-    # devolver bytes JPEG
+async def run_image(self, model: str, prompt: str, steps: int = 4, account_id: str | None = None) -> bytes:
+    # URL: https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/run/{model}
+    # Headers: Authorization: Bearer {self.api_key}, Content-Type: application/json
+    # Body: {"prompt": prompt[:2048], "steps": min(steps, 8)}
+    # Resposta:
+    #   - Se Content-Type contém 'image/' ou 'octet-stream': return resp.content
+    #   - Se Content-Type for 'application/json': extrair base64 de resp.json()['result']['image']
+    #   - Se status de erro HTTP: extrair mensagem amigável e levantar ProviderAPIError / RateLimitError
 ```
 
 O parser do envelope fica isolado e testado com um fixture JSON gravado no spike. Sem o fixture, o teste não inventa o formato.

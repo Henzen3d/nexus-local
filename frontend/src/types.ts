@@ -195,6 +195,7 @@ export interface Provider {
   is_free: boolean
   models: ProviderModel[]
   masked_key?: string
+  account_id?: string | null
 }
 
 export interface WebSearchConfig {
@@ -245,6 +246,9 @@ export type WSMessage =
   | { type: 'artifact'; id: string; artifact_type: 'html' | 'markdown' | 'svg' | 'code' | 'jsx'; title: string; conv_id: string; msg_id: string }
   | { type: 'search_start'; query: string }
   | ({ type: 'auto_route_decision' } & AutoRouteDecisionInfo)
+  | { type: 'image_pending'; conversation_id: string; message_id: string; task_id: string; prompt: string }
+  | { type: 'image_ready'; conversation_id: string; message_id: string; task_id: string; attachment: Attachment }
+  | { type: 'image_failed'; conversation_id: string; message_id: string; task_id: string; error: string }
 
 export interface ProjectContextFileChunk {
   filename: string | null
@@ -345,4 +349,41 @@ export interface NormalizedResponse {
   isThinking?: boolean;
   toolCalls?: ToolCall[];
   metadata?: NormalizedMetadata;
+}
+
+// ─── Image Generation ──────────────────────────────────────────────────────────
+
+export interface ImageGenConfig {
+  enabled: boolean
+  auto_detect: boolean
+  provider_id: string
+  model_id: string
+  steps: number
+  width: number
+  height: number
+  daily_cap_per_user: number
+}
+
+export interface ImageModel {
+  id: string
+  provider_id: string
+  model_id: string
+  display_name: string
+  default_steps: number
+  max_steps: number
+  is_active: boolean
+}
+
+export interface ImageTask {
+  id: string
+  conversation_id: string
+  user_id: string
+  prompt: string
+  provider_id: string
+  model_id: string
+  status: 'pending' | 'processing' | 'completed' | 'failed'
+  error_message?: string | null
+  attachment_id?: string | null
+  created_at: string
+  completed_at?: string | null
 }

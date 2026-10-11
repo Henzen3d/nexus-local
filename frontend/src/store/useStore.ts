@@ -238,6 +238,9 @@ interface AppState {
   showToast: (message: string, type?: 'success' | 'error' | 'info') => void
   hideToast: () => void
   addErrorMessage: (content: string) => void
+  handleImagePending: (event: { conversation_id: string; message_id: string; task_id: string; prompt: string }) => void
+  handleImageReady: (event: { conversation_id: string; message_id: string; task_id: string; attachment: Attachment }) => void
+  handleImageFailed: (event: { conversation_id: string; message_id: string; task_id: string; error: string }) => void
 }
 
 export const useStore = create<AppState>((set, get) => ({
@@ -489,6 +492,85 @@ export const useStore = create<AppState>((set, get) => ({
 
   hideToast: () => {
     set({ toast: null })
+  },
+
+  handleImagePending: (event) => {
+    const { activeConversationId, messages } = get()
+    if (event.conversation_id !== activeConversationId) return
+
+    const existing = messages.find((m) => m.id === event.message_id)
+    if (existing) return
+
+    const msg: Message = {
+      id: event.message_id,
+      role: 'assistant',
+      content: `🎨 Gerando imagem: "${event.prompt}"...`,
+      created_at: new Date().toISOString(),
+      provider: 'cloudflare',
+      model_display_name: 'Flux 1 Schnell',
+    }
+    set((s) => ({
+      messages: [...s.messages, msg],
+      isStreaming: false,
+    }))
+  },
+
+  handleImageReady: (event) => {
+    const { activeConversationId, messages } = get()
+    if (event.conversation_id !== activeConversationId) {
+      get().showToast('Imagem gerada com sucesso!', 'success')
+      return
+    }
+
+    const updated = messages.map((m) => {
+      if (m.id === event.message_id) {
+        const atts = m.attachments || []
+        const hasAtt = atts.some((a) => a.id === event.attachment.id)
+        const newAtts = hasAtt ? atts : [...atts, event.attachment]
+        const cleanContent = m.content.startsWith('🎨 Gerando imagem:') ? '' : m.content
+        return {
+          ...m,
+          content: cleanContent,
+          attachments: newAtts,
+        }
+      }
+      return m
+    })
+
+    const exists = messages.some((m) => m.id === event.message_id)
+    if (!exists) {
+      const newMsg: Message = {
+        id: event.message_id,
+        role: 'assistant',
+        content: '',
+        created_at: new Date().toISOString(),
+        provider: 'cloudflare',
+        model_display_name: 'Flux 1 Schnell',
+        attachments: [event.attachment],
+      }
+      set((s) => ({ messages: [...s.messages, newMsg], isStreaming: false }))
+    } else {
+      set({ messages: updated, isStreaming: false })
+    }
+
+    get().showToast('Imagem gerada com sucesso!', 'success')
+  },
+
+  handleImageFailed: (event) => {
+    const { activeConversationId, messages } = get()
+    if (event.conversation_id === activeConversationId) {
+      const updated = messages.map((m) => {
+        if (m.id === event.message_id) {
+          return {
+            ...m,
+            content: `⚠️ Falha ao gerar imagem: ${event.error}`,
+          }
+        }
+        return m
+      })
+      set({ messages: updated, isStreaming: false })
+    }
+    get().showToast(`Falha na geração da imagem: ${event.error}`, 'error')
   },
 
   setConversationCreated: (id: string, title: string) => {

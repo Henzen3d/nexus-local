@@ -233,17 +233,72 @@ class CloudflareProvider(BaseProvider):
     We extract the account_id and build the correct /ai/run/ URL.
     """
 
-    def _run_url(self, model: str) -> str:
-        # Extract account_id from the base_url
-        # base_url format: https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/v1
-        import re
-        m = re.search(r"/accounts/([^/]+)/ai", self.base_url)
-        if m:
-            account_id = m.group(1)
-        else:
-            # fallback: treat base_url as the accounts prefix
-            account_id = "unknown"
+    def _run_url(self, model: str, account_id: str | None = None) -> str:
+        if not account_id:
+            import re
+            m = re.search(r"/accounts/([^/]+)/ai", self.base_url)
+            if m:
+                account_id = m.group(1)
+            else:
+                account_id = "unknown"
         return f"https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/run/{model}"
+
+    async def run_image(
+        self,
+        model: str,
+        prompt: str,
+        steps: int = 4,
+        account_id: str | None = None,
+    ) -> bytes:
+        import base64
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "prompt": prompt[:2048],
+            "steps": max(1, min(int(steps), 8)),
+        }
+        url = self._run_url(model, account_id=account_id)
+
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.post(url, headers=headers, json=payload)
+            if response.status_code == 429:
+                retry_after_raw = response.headers.get("Retry-After")
+                retry_after = int(retry_after_raw) if retry_after_raw and retry_after_raw.isdigit() else None
+                raise RateLimitError(retry_after=retry_after, provider="cloudflare")
+            if response.status_code != 200:
+                body = response.text
+                try:
+                    err_json = response.json()
+                    errors = err_json.get("errors") or []
+                    if errors and isinstance(errors, list) and "message" in errors[0]:
+                        msg = errors[0]["message"]
+                    else:
+                        msg = body
+                except Exception:
+                    msg = body
+                raise RuntimeError(f"Cloudflare error {response.status_code}: {msg}")
+
+            content_type = response.headers.get("content-type", "").lower()
+            if "image/" in content_type or "octet-stream" in content_type:
+                return response.content
+
+            try:
+                data = response.json()
+            except Exception:
+                return response.content
+
+            if isinstance(data, dict):
+                result = data.get("result")
+                if isinstance(result, dict) and "image" in result:
+                    return base64.b64decode(result["image"])
+                elif "image" in data:
+                    return base64.b64decode(data["image"])
+                elif isinstance(result, str):
+                    return base64.b64decode(result)
+
+            raise RuntimeError("Formato de resposta inesperado da Cloudflare Workers AI")
 
     async def stream_chat(
         self,

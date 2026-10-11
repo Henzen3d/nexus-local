@@ -131,6 +131,7 @@ async def detect_and_save_artifacts(
     conversation_id: str,
     assistant_msg_id: str,
     full_response: str,
+    skip_svg: bool = False,
 ) -> list[dict]:
     """
     Detecta artifacts na resposta, persiste-os no banco e emite eventos WS.
@@ -144,6 +145,8 @@ async def detect_and_save_artifacts(
     try:
         detected_list = detect_artifacts(full_response)
         for detected in detected_list:
+            if skip_svg and detected.get("type") == "svg":
+                continue
             art_id = await save_artifact(db, conversation_id, assistant_msg_id, detected)
             artifacts_list.append(
                 {"id": art_id, "type": detected["type"], "title": detected["title"]}

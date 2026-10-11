@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import {
   Eye, EyeOff, Save, ToggleLeft, ToggleRight, Database, Sparkles, Users, Trash2, X, Monitor, Sun, Moon, Search, ChevronDown, ChevronRight,
   ChevronLeft, Info, Settings, CreditCard, Shield, Sliders, Volume2, Lock, Link2, LogOut, Check, User, Palette, Type, Smartphone, Trash, Activity,
-  Award, Languages, Brain, Share2, ExternalLink, Key, Compass
+  Award, Languages, Brain, Share2, ExternalLink, Key, Compass, Image as ImageIcon
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { api } from '../api/client'
@@ -14,6 +14,7 @@ import { CachePanel } from './CachePanel'
 import { EnhancerSettings } from './EnhancerSettings'
 import { FusionSettings } from './FusionSettings'
 import { VisionRelaySettings } from './VisionRelaySettings'
+import { ImageGenSettings } from './ImageGenSettings'
 import { WebSearchSettings } from './WebSearchSettings'
 import { FreeRegistrySettings } from './FreeRegistrySettings'
 import { FamilySettings } from './FamilySettings'
@@ -136,13 +137,14 @@ function AdminPanelMobile() {
 
   const loadTools = async () => {
     try {
-      const [cfgEnh, cfgFus, cfgVis, cfgWeb] = await Promise.all([
+      const [cfgEnh, cfgFus, cfgVis, cfgWeb, cfgImg] = await Promise.all([
         api.getEnhancerConfig().then(c => c.enhancer_enabled ? 1 : 0).catch(() => 0),
         api.getFusionConfig().then(c => c.enabled ? 1 : 0).catch(() => 0),
         api.getVisionRelayConfig().then(c => c.enabled ? 1 : 0).catch(() => 0),
         api.getWebSearchConfig().then(c => c.heuristic_enabled || c.api_key ? 1 : 0).catch(() => 0),
+        api.getImageGenConfig().then(c => c.enabled ? 1 : 0).catch(() => 0),
       ])
-      setToolsCount(cfgEnh + cfgFus + cfgVis + cfgWeb)
+      setToolsCount(cfgEnh + cfgFus + cfgVis + cfgWeb + cfgImg)
     } catch {}
   }
 
@@ -163,11 +165,12 @@ function AdminPanelMobile() {
 
   const saveKey = async (id: string) => {
     if (keys[id]?.trim()) {
-      await api.setOwnProviderKey(id, keys[id].trim())
+      await api.setOwnProviderKey(id, keys[id].trim(), id === 'cloudflare' ? cfAccountId.trim() : undefined)
     }
     if (user?.role === 'admin' && id === 'cloudflare') {
       await api.updateProvider(id, {
         base_url: `https://api.cloudflare.com/client/v4/accounts/${cfAccountId.trim()}/ai/v1`,
+        account_id: cfAccountId.trim(),
       })
     }
     setSaved((s) => ({ ...s, [id]: true }))
@@ -1101,6 +1104,17 @@ function AdminPanelMobile() {
                 <ChevronRight size={16} />
               </div>
 
+              <div className="settings-list-item" onClick={() => pushScreen('image_gen_settings')}>
+                <div className="settings-list-item-left">
+                  <ImageIcon size={16} className="settings-list-item-icon" />
+                  <div>
+                    <span className="settings-list-item-label">Geração de Imagens</span>
+                    <span className="settings-list-item-subtitle">Flux 1 Schnell via Cloudflare Workers AI</span>
+                  </div>
+                </div>
+                <ChevronRight size={16} />
+              </div>
+
               <div className="settings-list-item" onClick={() => pushScreen('web_search_settings')}>
                 <div className="settings-list-item-left">
                   <Info size={16} className="settings-list-item-icon" />
@@ -1162,6 +1176,15 @@ function AdminPanelMobile() {
           <Header title={t("settings.visionRelay")} />
           <div className="settings-mobile-content">
             <VisionRelaySettings />
+          </div>
+        </div>
+      )}
+
+      {currentScreen === 'image_gen_settings' && (
+        <div className="settings-mobile-container-view">
+          <Header title={t("toolsSettings.imageGenTitle", { defaultValue: "Geração de Imagens" })} />
+          <div className="settings-mobile-content">
+            <ImageGenSettings />
           </div>
         </div>
       )}
@@ -1756,11 +1779,12 @@ function AdminPanelDesktop() {
 
   const saveKey = async (id: string) => {
     if (keys[id]?.trim()) {
-      await api.setOwnProviderKey(id, keys[id].trim())
+      await api.setOwnProviderKey(id, keys[id].trim(), id === 'cloudflare' ? cfAccountId.trim() : undefined)
     }
     if (user?.role === 'admin' && id === 'cloudflare') {
       await api.updateProvider(id, {
         base_url: `https://api.cloudflare.com/client/v4/accounts/${cfAccountId.trim()}/ai/v1`,
+        account_id: cfAccountId.trim(),
       })
     }
     setSaved((s) => ({ ...s, [id]: true }))
@@ -2562,6 +2586,8 @@ function AdminPanelDesktop() {
                   <FusionSettings />
                   <div className="admin-divider" style={{ margin: 0 }} />
                   <VisionRelaySettings />
+                  <div className="admin-divider" style={{ margin: 0 }} />
+                  <ImageGenSettings />
                   <div className="admin-divider" style={{ margin: 0 }} />
                   <WebSearchSettings />
                   <div className="admin-divider" style={{ margin: 0 }} />

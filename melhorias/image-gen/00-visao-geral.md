@@ -45,21 +45,22 @@ usuário pede imagem
         |
         +- turno de chat continua (não espera a imagem)
         |     hint no system: não emitir SVG nem código de imagem
-        |     /imagem puro pula o modelo de chat
+        |     /imagem puro: grava user_msg, cria placeholder assistente,
+        |                   despacha stream_end (destrava composer) e pula LLM de texto
         |
-        +- INSERT image_gen_tasks status=pending
+        +- INSERT image_gen_tasks status=pending (desperta worker via asyncio.Event)
                  |
                  worker (lifespan do FastAPI, 1 por vez)
                  |
                  CloudflareProvider._run_url + POST JSON
                  |
-                 save_file() em storage/attachments
+                 save_file() em storage/attachments/{conv_id}
                  |
-                 UPDATE mensagem placeholder + attachment
+                 UPDATE mensagem placeholder (limpa texto 'Gerando imagem…') + INSERT attachments
                  |
                  se /ws/chat desse usuário ainda estiver aberto:
-                     evento image_ready
-                 senão: a imagem já está no banco; o próximo load da conversa mostra
+                     evento image_ready (url: /attachments/...)
+                 senão: a imagem já está no banco; o próximo load da conversa mostra (MessageBubble renderiza attachments de assistente)
 ```
 
 O socket de chat não fecha no fim do turno. `backend/routers/chat.py` fica num `while True` com ping a cada 25s. Dá para empurrar `image_ready` na mesma conexão. Não abrir um segundo WebSocket.

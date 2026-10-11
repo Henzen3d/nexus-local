@@ -76,6 +76,7 @@ export const api = {
     enabled?: boolean
     base_url?: string
     share_admin_key?: boolean
+    account_id?: string
   }) =>
     fetchJSON(`/admin/providers/${id}`, {
       method: 'PATCH',
@@ -173,10 +174,10 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify({ api_key }),
     }),
-  setOwnProviderKey: (providerId: string, api_key: string) =>
+  setOwnProviderKey: (providerId: string, api_key: string, account_id?: string) =>
     fetchJSON(`/me/providers/${providerId}/key`, {
       method: 'PUT',
-      body: JSON.stringify({ api_key }),
+      body: JSON.stringify({ api_key, account_id }),
     }),
 
   // Attachments
@@ -482,6 +483,19 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(data || {}),
     }),
+
+  // Image Generation
+  getImageGenConfig: () => fetchJSON<import('../types').ImageGenConfig>('/image-gen/config'),
+  saveImageGenConfig: (data: Partial<import('../types').ImageGenConfig>) =>
+    fetchJSON<{ ok: boolean; config: import('../types').ImageGenConfig }>('/image-gen/config', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  getImageModels: () => fetchJSON<import('../types').ImageModel[]>('/image-gen/models'),
+  getImageTasks: (conversationId?: string) => {
+    const params = conversationId ? `?conversation_id=${encodeURIComponent(conversationId)}` : ''
+    return fetchJSON<import('../types').ImageTask[]>(`/image-gen/tasks${params}`)
+  },
 }
 
 export interface MemoryStatsApi {

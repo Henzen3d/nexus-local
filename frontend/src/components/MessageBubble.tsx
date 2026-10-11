@@ -477,6 +477,43 @@ export function MessageBubble({ message }: Props) {
                   )}
                 </div>
               )}
+
+              {message.attachments && message.attachments.length > 0 && (
+                <div className="message-assistant-attachments" style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {message.attachments.filter(a => a.file_type === 'image').map(att => {
+                    const backendUrl = import.meta.env.VITE_API_URL || ''
+                    const cleanBackendUrl = backendUrl.endsWith('/api') ? backendUrl.slice(0, -4) : backendUrl
+                    const fileUrl = att.file_url ? (att.file_url.startsWith('http') ? att.file_url : cleanBackendUrl + att.file_url) : ''
+                    return (
+                      <div key={att.id} className="generated-image-card" style={{ maxWidth: '512px', borderRadius: '12px', overflow: 'hidden', border: '1px solid var(--hairline)', background: 'var(--surface-soft)' }}>
+                        <img
+                          src={fileUrl}
+                          alt={att.filename}
+                          style={{ width: '100%', height: 'auto', display: 'block', cursor: 'zoom-in' }}
+                          onClick={() => window.open(fileUrl, '_blank')}
+                        />
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: 'var(--surface)', borderTop: '1px solid var(--hairline)' }}>
+                          <span style={{ fontSize: '12px', color: 'var(--ink-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{att.filename}</span>
+                          <a
+                            href={fileUrl}
+                            download={att.filename}
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '12px', color: 'var(--primary)', textDecoration: 'none', fontWeight: 500 }}
+                          >
+                            <Download size={13} /> {t('chat.download', { defaultValue: 'Baixar' })}
+                          </a>
+                        </div>
+                      </div>
+                    )
+                  })}
+                  {message.attachments.filter(a => a.file_type !== 'image').length > 0 && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                      {message.attachments.filter(a => a.file_type !== 'image').map(att => (
+                        <AttachmentChip key={att.id} attachment={att} readonly />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </>
           ) : (
             <>

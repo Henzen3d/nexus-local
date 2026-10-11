@@ -49,6 +49,30 @@ logger = get_logger(__name__)
 
 router = APIRouter()
 
+_user_sockets: dict[str, set[WebSocket]] = {}
+
+
+def register_socket(user_id: str, ws: WebSocket) -> None:
+    _user_sockets.setdefault(user_id, set()).add(ws)
+
+
+def unregister_socket(user_id: str, ws: WebSocket) -> None:
+    if user_id in _user_sockets:
+        _user_sockets[user_id].discard(ws)
+        if not _user_sockets[user_id]:
+            _user_sockets.pop(user_id, None)
+
+
+async def notify_user_sockets(user_id: str, message: dict) -> None:
+    """Disparo defensivo para todos os sockets ativos do usuário."""
+    sockets = list(_user_sockets.get(user_id, set()))
+    for ws in sockets:
+        try:
+            await ws.send_json(message)
+        except Exception:
+            if user_id in _user_sockets:
+                _user_sockets[user_id].discard(ws)
+
 
 @router.websocket("/ws/chat")
 async def websocket_chat(ws: WebSocket):
@@ -65,6 +89,9 @@ async def websocket_chat(ws: WebSocket):
         return
 
     await ws.accept()
+    user_id = user["id"]
+    register_socket(user_id, ws)
+
     try:
         await ws.send_json({"type": "ready"})
     except Exception:
@@ -134,6 +161,8 @@ async def websocket_chat(ws: WebSocket):
     except WebSocketDisconnect:
         pass
     finally:
+        if user and "id" in user:
+            unregister_socket(user["id"], ws)
         if keepalive_task is not None:
             keepalive_task.cancel()
             try:
@@ -152,6 +181,98 @@ async def _process_turn(
     user_id = user["id"]
     is_auto = (model_id == "auto" or not model_id)
     auto_route_decision = None
+
+    # ── Image Generation Intent Check ───────────────────────────────
+    image_job_created = False
+    img_prompt = None
+
+    from backend.image_gen.config import get_image_gen_config
+    from backend.image_gen.intent import classify_image_intent
+
+    img_config = await get_image_gen_config(db)
+    is_slash = user_message.startswith(("/imagem", "/img", "/image"))
+
+    if img_config.enabled and (img_config.auto_detect or is_slash):
+        image_intent = classify_image_intent(user_message)
+        if image_intent == "raster":
+            is_pure_slash = is_slash
+            if is_slash:
+                parts = user_message.split(maxsplit=1)
+                img_prompt = parts[1].strip() if len(parts) > 1 else ""
+            else:
+                img_prompt = user_message.strip()
+
+            if not img_prompt:
+                await ws.send_json({"type": "error", "message": "Prompt de imagem vazio."})
+                if is_pure_slash:
+                    await ws.send_json({"type": "stream_end"})
+                    return
+            else:
+                from backend.image_gen.queue import count_daily_tasks, insert_image_task
+                from backend.image_gen.worker import notify_new_task
+
+                daily_count = await count_daily_tasks(db, user_id)
+                if daily_count >= img_config.daily_cap_per_user:
+                    await ws.send_json({
+                        "type": "error",
+                        "message": f"Limite diário de imagens atingido ({img_config.daily_cap_per_user}/dia).",
+                    })
+                    if is_pure_slash:
+                        await ws.send_json({"type": "stream_end"})
+                        return
+                elif is_pure_slash:
+                    # Slash puro (/imagem ...): grava conversa, user message, placeholder e fecha o turno imediatamente
+                    conversation_id, _proj_id, created_payload = await ensure_conversation(
+                        db, conversation_id, user_id, user_message,
+                        img_config.model_id or "cloudflare/flux-1-schnell",
+                        img_config.provider_id or "cloudflare",
+                        request_project_id,
+                    )
+                    if created_payload:
+                        created_payload["conversation_id"] = conversation_id
+                        await ws.send_json(created_payload)
+
+                    await save_user_message(
+                        db, conversation_id, user_message,
+                        img_config.model_id or "cloudflare/flux-1-schnell",
+                        img_config.provider_id or "cloudflare",
+                    )
+
+                    placeholder_msg_id = str(uuid.uuid4())
+                    await save_assistant_message(
+                        db, conversation_id, placeholder_msg_id, "Gerando imagem…",
+                        img_config.model_id or "cloudflare/flux-1-schnell",
+                        img_config.provider_id or "cloudflare",
+                    )
+
+                    task_id = await insert_image_task(
+                        db,
+                        conversation_id=conversation_id,
+                        user_id=user_id,
+                        message_id=placeholder_msg_id,
+                        prompt=img_prompt,
+                        model_id=img_config.model_id,
+                    )
+                    notify_new_task()
+
+                    await ws.send_json({
+                        "type": "image_pending",
+                        "task_id": task_id,
+                        "msg_id": placeholder_msg_id,
+                        "conv_id": conversation_id,
+                        "prompt": img_prompt,
+                    })
+
+                    # Despacha stream_end imediatamente para destravar o composer
+                    await ws.send_json({
+                        "type": "stream_end",
+                        "message_id": placeholder_msg_id,
+                        "conversation_id": conversation_id,
+                        "finish_reason": "image_pending",
+                    })
+                    return
+                else:
+                    image_job_created = True
 
     # ── Auto-Router Inteligente (Smart Intent Router) ────────────────
     if is_auto:
@@ -226,6 +347,34 @@ async def _process_turn(
         db, conversation_id, user_message, model_id, provider_id
     )
 
+    # ── Job de imagem em paralelo para pedido misto ─────────────────
+    if image_job_created and img_prompt:
+        from backend.image_gen.queue import insert_image_task
+        from backend.image_gen.worker import notify_new_task
+
+        placeholder_msg_id = str(uuid.uuid4())
+        await save_assistant_message(
+            db, conversation_id, placeholder_msg_id, "Gerando imagem…",
+            img_config.model_id or "cloudflare/flux-1-schnell",
+            img_config.provider_id or "cloudflare",
+        )
+        task_id = await insert_image_task(
+            db,
+            conversation_id=conversation_id,
+            user_id=user_id,
+            message_id=placeholder_msg_id,
+            prompt=img_prompt,
+            model_id=img_config.model_id,
+        )
+        notify_new_task()
+        await ws.send_json({
+            "type": "image_pending",
+            "task_id": task_id,
+            "msg_id": placeholder_msg_id,
+            "conv_id": conversation_id,
+            "prompt": img_prompt,
+        })
+
     # ── Attachments ─────────────────────────────────────────────────
     if attachment_ids:
         await move_attachments_to_conversation(attachment_ids, conversation_id, user_msg_id, db)
@@ -259,6 +408,9 @@ async def _process_turn(
         provider_id, user_message, history, project_context_debug,
         BASE_SYSTEM_PROMPT, user_mem_text,
     )
+
+    if image_job_created:
+        system_instruction += "\n\nO usuário pediu uma imagem raster que está sendo gerada separadamente. Não escreva código SVG nem gere tags de imagem neste turno."
 
     history = [{"role": "system", "content": system_instruction}] + history
 
@@ -303,7 +455,7 @@ async def _process_turn(
 
     # ── Detect + save artifacts ─────────────────────────────────────
     artifacts_list = await detect_and_save_artifacts(
-        db, ws, conversation_id, assistant_msg_id, full_response
+        db, ws, conversation_id, assistant_msg_id, full_response, skip_svg=image_job_created
     )
 
     # ── Stream end ──────────────────────────────────────────────────

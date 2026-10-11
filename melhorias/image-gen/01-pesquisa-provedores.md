@@ -60,21 +60,29 @@ Input publicado:
 - `prompt` string, obrigatório, 1–2048 caracteres
 - `steps` inteiro, máximo 8, default 4
 
-O exemplo de Worker diz que `response.image` é JPEG em base64. O curl da REST não mostra o envelope. Na prática a REST da Cloudflare embrulha em `{success, result}`. A primeira tarefa da execução é gravar o JSON real de uma chamada (sem o base64 no git) e fixar o parser. Não chutar o campo.
+O exemplo de Worker diz que `response.image` é JPEG em base64. Na REST API direta (`/ai/run/{model}`), a Cloudflare pode devolver de duas formas dependendo da rota e versão:
+- `Content-Type: image/jpeg` (ou binário direto nos bytes do body)
+- `Content-Type: application/json` com envelope `{"success": true, "result": {"image": "<base64>"}, "errors": []}`
+
+Portanto, `run_image` **não deve assumir cegamente nenhum dos dois formatos**: deve checar o header `Content-Type` da resposta:
+1. Se iniciar com `image/` ou `application/octet-stream`: extrair os bytes binários diretamente (`resp.content`).
+2. Se for `application/json`: decodificar JSON, validar `result.image` e converter `base64.b64decode()`.
+3. Se status 4xx/5xx: capturar `errors[0].message` do JSON para mensagem amigável (sem vazar internals).
+A primeira tarefa da execução (Fase 0 - Spike) é gravar uma chamada real e fixar esses parsers com fixture.
 
 O Nexus já fala com essa API para chat. `CloudflareProvider` em `backend/providers/base.py`:
 
 - `base_url` esperado: `https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/v1`
-- `_run_url(model)` monta `.../ai/run/{model}`
-- `stream_chat` manda `messages` e lê SSE. Modelo de imagem não fala esse protocolo. Nova função no mesmo provider, por exemplo `run_image(model, prompt, steps) -> bytes`. Não criar provider paralelo.
+- `_run_url(model, account_id=None)` monta `.../accounts/{account_id}/ai/run/{model}`
+- `stream_chat` manda `messages` e lê SSE. Modelo de imagem não fala esse protocolo. Nova função no mesmo provider: `run_image(model, prompt, steps, account_id=None) -> bytes`. Não criar provider paralelo.
 
 ## Chaves — decisão confirmada
 
 2026-10-11: uma chave por usuário. Sem chave da casa. Sem fallback para token do servidor, do wrangler do Vale (`~/.config/.wrangler/`) ou de `GEMINI_API_KEY`.
 
-`user_api_keys` guarda só o token. A REST da Cloudflare também exige account id na URL. O `{account_id}` que `database.py` troca por `CLOUDFLARE_ACCOUNT_ID` do ambiente é a conta do servidor. Token de outra conta, nessa URL, leva 401 e ainda por cima gastaria a cota errada se o token fosse da casa.
+`user_api_keys` originalmente guardava apenas `(user_id, provider_id, api_key)`. Como a REST da Cloudflare exige o Account ID na URL (`accounts/{account_id}/ai/run/{model}`), a tabela `user_api_keys` receberá a coluna `account_id TEXT` via migração incremental segura (`ALTER TABLE user_api_keys ADD COLUMN account_id TEXT;` dentro de `init_db()`).
 
-Na execução, gravar o account id junto da chave do usuário (coluna nova ou tabela pequena; não reutilizar o env). Sem o par token+account id daquele usuário, a task falha com pedido de configuração. A cota de 10.000 neurons é por conta Cloudflare, não por token: cada usuário na própria conta tem a cota dele.
+O `{account_id}` padrão do ambiente (`CLOUDFLARE_ACCOUNT_ID`) pertence ao host/servidor e **nunca** deve ser usado para requisições de outros usuários (geraria 401/403 e gastaria cotas indevidas). Cada usuário cadastra seu token + account id no modal de chaves. Sem o par token + account id daquele usuário, a task falha imediatamente com solicitação de configuração. Como a cota de 10.000 neurons é por conta Cloudflare, cada membro da família usa os 10k neurons da sua própria conta.
 
 ## O que a execução deve revalidar no dia em que for codar
 

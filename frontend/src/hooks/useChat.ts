@@ -179,6 +179,15 @@ export function useChat() {
         case 'fusion_refined_prompt':
           s.setFusionRefinedPrompt(msg.prompt)
           break
+        case 'image_pending':
+          s.handleImagePending(msg)
+          break
+        case 'image_ready':
+          s.handleImageReady(msg)
+          break
+        case 'image_failed':
+          s.handleImageFailed(msg)
+          break
         case 'error':
           console.error('[WS error]', msg.message)
           s.setStreaming(false)

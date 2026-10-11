@@ -33,6 +33,7 @@ from backend.routers.account import router as account_router
 from backend.routers.memory import router as memory_router
 from backend.routers.projects import router as projects_router
 from backend.routers.tts import router as tts_router
+from backend.routers.image_gen import router as image_gen_router
 
 app = FastAPI(title="NexusLocal", version="1.0.0")
 
@@ -73,6 +74,7 @@ app.include_router(families_router)
 app.include_router(dashboard_router)
 app.include_router(ranking_router)
 app.include_router(tts_router)
+app.include_router(image_gen_router)
 
 
 
@@ -439,6 +441,23 @@ async def startup():
     except Exception as e:
         logger.warning("Falha ao iniciar warm-up do cache", exc_info=e)
 
+    # Iniciar background worker de Image Generation
+    try:
+        from backend.image_gen.worker import start_image_worker
+        await start_image_worker()
+        logger.info("[ImageGen Worker] Worker iniciado no startup")
+    except Exception as e:
+        logger.warning("[ImageGen Worker] Falha ao iniciar worker de imagem", exc_info=e)
+
+
+@app.on_event("shutdown")
+async def shutdown():
+    try:
+        from backend.image_gen.worker import stop_image_worker
+        await stop_image_worker()
+        logger.info("[ImageGen Worker] Worker finalizado no shutdown")
+    except Exception as e:
+        logger.warning("[ImageGen Worker] Falha ao parar worker de imagem", exc_info=e)
 
 
 @app.get("/health")

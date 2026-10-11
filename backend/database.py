@@ -226,6 +226,46 @@ CREATE TABLE IF NOT EXISTS web_search_log (
 );
 
 -- =========================================================
+-- IMAGE GENERATION MODULE (especializado, fora do chat selector)
+-- =========================================================
+
+CREATE TABLE IF NOT EXISTS image_models (
+    id            TEXT PRIMARY KEY,
+    provider_id   TEXT NOT NULL,
+    name          TEXT NOT NULL,
+    display_name  TEXT NOT NULL,
+    notes         TEXT,
+    enabled       INTEGER DEFAULT 1
+);
+
+CREATE TABLE IF NOT EXISTS image_gen_config (
+    id                  INTEGER PRIMARY KEY DEFAULT 1,
+    enabled             INTEGER DEFAULT 0,
+    auto_detect         INTEGER DEFAULT 1,
+    provider_id         TEXT,
+    model_id            TEXT,
+    steps               INTEGER DEFAULT 4,
+    width               INTEGER DEFAULT 1024,
+    height              INTEGER DEFAULT 1024,
+    daily_cap_per_user  INTEGER DEFAULT 20
+);
+
+CREATE TABLE IF NOT EXISTS image_gen_tasks (
+    id               TEXT PRIMARY KEY,
+    conversation_id  TEXT NOT NULL,
+    user_id          TEXT NOT NULL,
+    message_id       TEXT NOT NULL,
+    prompt           TEXT NOT NULL,
+    status           TEXT NOT NULL,
+    model_id         TEXT,
+    error_message    TEXT,
+    created_at       TEXT DEFAULT (datetime('now')),
+    started_at       TEXT,
+    completed_at     TEXT,
+    attachment_id    TEXT
+);
+
+-- =========================================================
 -- RANKING & FAILOVER TABLES (Fase 1)
 -- =========================================================
 
@@ -1520,6 +1560,117 @@ async def init_db():
                 logger.info("[OK] conversations.project_id: added")
             except Exception as e:
                 logger.error("[database migration] erro ao adicionar project_id em conversations:", exc_info=e)
+
+        # Incremental migration for image generation module
+        try:
+            await db.execute("SELECT id FROM image_models LIMIT 1")
+        except aiosqlite.OperationalError:
+            try:
+                await db.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS image_models (
+                        id            TEXT PRIMARY KEY,
+                        provider_id   TEXT NOT NULL,
+                        name          TEXT NOT NULL,
+                        display_name  TEXT NOT NULL,
+                        notes         TEXT,
+                        enabled       INTEGER DEFAULT 1
+                    );
+                    """
+                )
+                await db.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS image_gen_config (
+                        id                  INTEGER PRIMARY KEY DEFAULT 1,
+                        enabled             INTEGER DEFAULT 0,
+                        auto_detect         INTEGER DEFAULT 1,
+                        provider_id         TEXT,
+                        model_id            TEXT,
+                        steps               INTEGER DEFAULT 4,
+                        width               INTEGER DEFAULT 1024,
+                        height              INTEGER DEFAULT 1024,
+                        daily_cap_per_user  INTEGER DEFAULT 20
+                    );
+                    """
+                )
+                await db.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS image_gen_tasks (
+                        id               TEXT PRIMARY KEY,
+                        conversation_id  TEXT NOT NULL,
+                        user_id          TEXT NOT NULL,
+                        message_id       TEXT NOT NULL,
+                        prompt           TEXT NOT NULL,
+                        status           TEXT NOT NULL,
+                        model_id         TEXT,
+                        error_message    TEXT,
+                        created_at       TEXT DEFAULT (datetime('now')),
+                        started_at       TEXT,
+                        completed_at     TEXT
+                    );
+                    """
+                )
+                await db.commit()
+            except Exception as e:
+                logger.error("[database migration] erro ao criar tabelas de image_gen:", exc_info=e)
+
+        # Migração incremental: account_id em user_api_keys
+        try:
+            await db.execute("SELECT account_id FROM user_api_keys LIMIT 1")
+        except aiosqlite.OperationalError:
+            try:
+                await db.execute("ALTER TABLE user_api_keys ADD COLUMN account_id TEXT")
+                await db.commit()
+            except Exception as e:
+                logger.error("[database migration] erro ao adicionar account_id em user_api_keys:", exc_info=e)
+
+        # Migração incremental: attachment_id em image_gen_tasks
+        try:
+            await db.execute("SELECT attachment_id FROM image_gen_tasks LIMIT 1")
+        except aiosqlite.OperationalError:
+            try:
+                await db.execute("ALTER TABLE image_gen_tasks ADD COLUMN attachment_id TEXT")
+                await db.commit()
+            except Exception as e:
+                logger.error("[database migration] erro ao adicionar attachment_id em image_gen_tasks:", exc_info=e)
+
+        # Índices de image_gen_tasks
+        try:
+            await db.execute("CREATE INDEX IF NOT EXISTS idx_image_tasks_status ON image_gen_tasks(status, created_at)")
+            await db.execute("CREATE INDEX IF NOT EXISTS idx_image_tasks_user_day ON image_gen_tasks(user_id, created_at)")
+            await db.commit()
+        except Exception as e:
+            logger.error("[database migration] erro ao criar índices de image_gen_tasks:", exc_info=e)
+
+        # Seed do modelo FLUX e config padrão
+        try:
+            await db.execute(
+                """
+                INSERT INTO image_models (id, provider_id, name, display_name, notes, enabled)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    name=excluded.name,
+                    display_name=excluded.display_name,
+                    notes=excluded.notes
+                """,
+                (
+                    "cloudflare/flux-1-schnell",
+                    "cloudflare",
+                    "@cf/black-forest-labs/flux-1-schnell",
+                    "FLUX.1 Schnell (Cloudflare, cota diária grátis)",
+                    "~57.6 neurons/imagem (~173 imagens/dia grátis)",
+                    1,
+                )
+            )
+            await db.execute(
+                """
+                INSERT OR IGNORE INTO image_gen_config (id, enabled, auto_detect, provider_id, model_id, steps, width, height, daily_cap_per_user)
+                VALUES (1, 0, 1, 'cloudflare', 'cloudflare/flux-1-schnell', 4, 1024, 1024, 20)
+                """
+            )
+            await db.commit()
+        except Exception as e:
+            logger.error("[database migration] erro no seed de image_gen:", exc_info=e)
 
         await claim_global_provider_keys(db)
         logger.error("[OK] Ranking & Failover tables: initialized")

@@ -271,7 +271,8 @@ async def list_providers(current_user: dict = Depends(get_current_user)):
                       CASE WHEN k.api_key IS NOT NULL AND TRIM(k.api_key) != '' THEN 1 ELSE 0 END as has_personal_key,
                       p.enabled, p.is_free,
                       NULLIF(TRIM(k.api_key), '') as active_key,
-                      0 as share_admin_key
+                      0 as share_admin_key,
+                      k.account_id
                FROM providers p
                LEFT JOIN user_api_keys k ON k.provider_id = p.id AND k.user_id = ?
                WHERE p.id != 'free_registry'
@@ -286,6 +287,7 @@ async def list_providers(current_user: dict = Depends(get_current_user)):
             has_personal_key = bool(p[3])
             active_key = (p[6] or "").strip()
             share_admin_key = bool(p[7])
+            account_id = (p[8] or "").strip() if len(p) > 8 and p[8] else ""
             # Sentinela "free" no DB não é chave real — resolve via env (ZenMux etc.)
             if is_key_sentinel(active_key):
                 active_key = ""
@@ -315,6 +317,7 @@ async def list_providers(current_user: dict = Depends(get_current_user)):
                 "base_url": p[2],
                 "has_key": has_usable_key,
                 "has_personal_key": has_personal_key,
+                "account_id": account_id,
                 "is_shared": is_shared,
                 "share_admin_key": share_admin_key,
                 "share_admin_keys_global": share_admin_keys_global,
@@ -415,11 +418,20 @@ async def update_provider(provider_id: str, body: ProviderUpdate, current_user: 
             )
         if body.api_key is not None and body.api_key.strip():
             # Insere ou atualiza na tabela user_api_keys
+            acc_id = None
+            if provider_id == "cloudflare":
+                cf_url = body.base_url or ""
+                import re
+                m = re.search(r"/accounts/([^/]+)/ai", cf_url)
+                if m:
+                    acc_id = m.group(1)
             await db.execute(
-                """INSERT INTO user_api_keys (user_id, provider_id, api_key)
-                   VALUES (?, ?, ?)
-                   ON CONFLICT(user_id, provider_id) DO UPDATE SET api_key = excluded.api_key""",
-                (current_user["id"], provider_id, body.api_key.strip()),
+                """INSERT INTO user_api_keys (user_id, provider_id, api_key, account_id)
+                   VALUES (?, ?, ?, ?)
+                   ON CONFLICT(user_id, provider_id) DO UPDATE SET
+                       api_key = excluded.api_key,
+                       account_id = COALESCE(excluded.account_id, user_api_keys.account_id)""",
+                (current_user["id"], provider_id, body.api_key.strip(), acc_id),
             )
             should_sync = True
         if body.enabled is not None:
