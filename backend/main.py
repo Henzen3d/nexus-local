@@ -408,6 +408,7 @@ async def recover_interrupted_dreams():
 async def startup():
     await init_db()
     try:
+        import aiosqlite
         from backend.database import DB_PATH
         async with aiosqlite.connect(DB_PATH) as _boot_db:
             async with _boot_db.execute("PRAGMA integrity_check(1);") as _cur:
