@@ -417,3 +417,17 @@ Na tela de **Configurações → Memória adaptativa**:
 2. **Proteção Inegociável a Fatos Fixados:** Fatos com `is_pinned = 1` nunca são arquivados ou desfixados pelo consolidador.
 3. **Reversão Cirúrgica de 1 Clique:** O rollback restaura o estado anterior ao sonho sem apagar nem afetar novos fatos que o usuário tiver criado posteriormente.
 
+---
+
+## 8. Diretrizes Operacionais de Produção e Host (Hermes Agent & Deploy)
+
+1. **Banco de Dados em Produção (`nexuslocal.db`):**
+   * Contém mais de 1600 modelos catalogados e o estado operacional ativo.
+   * `PRAGMA integrity_check;` deve ser sempre executado antes de intervenções sensíveis.
+2. **Regra Inegociável de Testes:**
+   * **Testes unitários e de integração (`pytest`) NUNCA devem ser executados diretamente contra o `nexuslocal.db` ao vivo.**
+   * Todas as execuções de teste devem apontar para uma cópia temporária do banco ou banco descartável.
+3. **Ausência de Índice GitNexus:**
+   * O host do Hermes **NÃO possui** índice GitNexus nem rotina de indexação semântica de repositório. Prompts e automações de deploy não devem requisitar indexação de código.
+
+
