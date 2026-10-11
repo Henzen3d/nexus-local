@@ -799,6 +799,20 @@
     "dreamEditError": "Failed to save fact update.",
     "dreamIncludeHistory": "Include consolidated history",
     "dreamActiveCountWithHistory": "{{active}} active (+ {{history}} in history)",
-    "dreamHistoryBadge": "History ({{status}})"
+    "dreamHistoryBadge": "History ({{status}})",
+    "dreamJournalLatestBadge": "Most recent",
+    "dreamJournalShowRecent": "View previous runs ({{count}} more)",
+    "dreamJournalCollapse": "Collapse history",
+    "dreamJournalViewAllModal": "View full history ({{total}} consolidations)",
+    "dreamJournalFullHistoryTitle": "Full Dream Journal History",
+    "dreamJournalFullHistoryDesc": "Detailed chronological log of all executed memory consolidation cycles.",
+    "dreamJournalSearchPlaceholder": "Search by model, provider, date, or summary...",
+    "dreamJournalTotalRuns": "{{count}} recorded consolidations",
+    "dreamJournalNoFilterResults": "No consolidation cycle matches the applied filters.",
+    "dreamJournalFilterAll": "All",
+    "dreamJournalFilterSuccess": "Success",
+    "dreamJournalFilterRolledBack": "Rolled back",
+    "dreamJournalFilterFailed": "Failed",
+    "dreamJournalShowingCount": "Showing {{shown}} of {{total}} consolidations"
   }
 }

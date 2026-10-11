@@ -799,6 +799,20 @@
     "dreamEditError": "Erro ao salvar alteração do fato.",
     "dreamIncludeHistory": "Incluir histórico consolidado",
     "dreamActiveCountWithHistory": "{{active}} ativos (+ {{history}} no histórico)",
-    "dreamHistoryBadge": "Histórico ({{status}})"
+    "dreamHistoryBadge": "Histórico ({{status}})",
+    "dreamJournalLatestBadge": "Mais recente",
+    "dreamJournalShowRecent": "Ver execuções anteriores ({{count}} mais)",
+    "dreamJournalCollapse": "Recolher histórico",
+    "dreamJournalViewAllModal": "Ver histórico completo ({{total}} consolidações)",
+    "dreamJournalFullHistoryTitle": "Histórico Completo do Diário de Sonhos",
+    "dreamJournalFullHistoryDesc": "Registro cronológico detalhado de todos os ciclos de consolidação de memória executados.",
+    "dreamJournalSearchPlaceholder": "Buscar por modelo, provedor, data ou resumo...",
+    "dreamJournalTotalRuns": "{{count}} consolidações registradas",
+    "dreamJournalNoFilterResults": "Nenhum ciclo de consolidação corresponde aos filtros aplicados.",
+    "dreamJournalFilterAll": "Todos",
+    "dreamJournalFilterSuccess": "Sucesso",
+    "dreamJournalFilterRolledBack": "Revertidos",
+    "dreamJournalFilterFailed": "Falhas",
+    "dreamJournalShowingCount": "Exibindo {{shown}} de {{total}} consolidações"
   }
 }

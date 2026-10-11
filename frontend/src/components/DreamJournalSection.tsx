@@ -6,15 +6,15 @@ import {
   Zap,
   RotateCcw,
   CheckCircle2,
-  Clock,
-  Layers,
-  ShieldAlert,
   Loader2,
-  AlertCircle,
-  HelpCircle,
+  ChevronDown,
+  ChevronUp,
+  History,
 } from 'lucide-react'
 import type { DreamLogApi } from '../api/client'
-import { describeDreamLog, dreamStepState } from '../lib/dreamLog'
+import { dreamStepState } from '../lib/dreamLog'
+import { DreamLogCard } from './DreamLogCard'
+import { DreamFullHistoryModal } from './DreamFullHistoryModal'
 
 interface DreamJournalSectionProps {
   logs: DreamLogApi[]
@@ -39,6 +39,8 @@ export function DreamJournalSection({
 }: DreamJournalSectionProps) {
   const { t } = useTranslation()
   const [confirmRollbackLog, setConfirmRollbackLog] = useState<DreamLogApi | null>(null)
+  const [isExpanded, setIsExpanded] = useState(false)
+  const [isFullModalOpen, setIsFullModalOpen] = useState(false)
 
   const stepsList = [
     { id: 'snapshot', label: t('memory.dreamStep1') },
@@ -47,6 +49,9 @@ export function DreamJournalSection({
     { id: 'flash_tx', label: t('memory.dreamStep4') },
     { id: 'cache_update', label: t('memory.dreamStep5') },
   ]
+
+  // Limite inteligente: apenas o último por padrão, até 5 se expandido
+  const displayedLogs = isExpanded ? logs.slice(0, 5) : logs.slice(0, 1)
 
   return (
     <div
@@ -226,12 +231,13 @@ export function DreamJournalSection({
           style={{
             position: 'fixed',
             inset: 0,
-            background: 'rgba(0,0,0,0.55)',
+            background: 'rgba(0,0,0,0.6)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            zIndex: 10001,
+            zIndex: 10005,
             padding: '20px',
+            backdropFilter: 'blur(3px)',
           }}
         >
           <div
@@ -334,203 +340,156 @@ export function DreamJournalSection({
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          {logs.map((log) => {
-            const view = describeDreamLog(log)
-            const pillStyle = {
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '3px',
-              fontSize: '10.5px',
-              color: 'var(--muted-soft)',
-              background: 'var(--surface-card)',
-              padding: '2px 7px',
-              borderRadius: '4px',
-            } as const
+          {/* Cards exibidos (apenas o último por padrão, até 5 se expandido) */}
+          {displayedLogs.map((log, index) => (
+            <DreamLogCard
+              key={log.id}
+              log={log}
+              isLatest={index === 0}
+              onRollbackClick={(l) => setConfirmRollbackLog(l)}
+              rollingBackId={rollingBackId}
+              isLiveRunning={isLiveRunning}
+            />
+          ))}
 
-            return (
-              <div
-                key={log.id}
+          {/* Controle de expansão: quando retraído e existem mais logs */}
+          {!isExpanded && logs.length > 1 && (
+            <button
+              type="button"
+              onClick={() => setIsExpanded(true)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+                width: '100%',
+                padding: '9px 14px',
+                borderRadius: '8px',
+                border: '1px dashed var(--hairline)',
+                background: 'var(--surface-soft)',
+                color: 'var(--ink)',
+                fontSize: '12px',
+                fontWeight: 500,
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = 'var(--primary)'
+                e.currentTarget.style.color = 'var(--primary)'
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = 'var(--hairline)'
+                e.currentTarget.style.color = 'var(--ink)'
+              }}
+            >
+              <ChevronDown size={14} />
+              <span>
+                {t('memory.dreamJournalShowRecent', {
+                  count: Math.min(4, logs.length - 1),
+                  defaultValue: `Ver execuções anteriores (${Math.min(4, logs.length - 1)} mais)`,
+                })}
+              </span>
+              <span
                 style={{
-                  background: 'var(--surface-soft)',
-                  border: '1px solid var(--hairline)',
+                  fontSize: '10.5px',
+                  padding: '1px 6px',
                   borderRadius: '10px',
-                  padding: '12px 14px',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '8px',
+                  background: 'var(--surface-card)',
+                  color: 'var(--muted)',
+                  border: '1px solid var(--hairline)',
                 }}
               >
-                <div
+                +{logs.length - 1} no histórico
+              </span>
+            </button>
+          )}
+
+          {/* Controles de navegação: quando expandido */}
+          {isExpanded && (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: '10px',
+                marginTop: '2px',
+                paddingTop: '6px',
+                borderTop: '1px dashed var(--hairline)',
+              }}
+            >
+              {/* Botão de Recolher */}
+              <button
+                type="button"
+                onClick={() => setIsExpanded(false)}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  padding: '6px 12px',
+                  borderRadius: '6px',
+                  border: '1px solid var(--hairline)',
+                  background: 'var(--surface-soft)',
+                  color: 'var(--muted)',
+                  fontSize: '11.5px',
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                  transition: 'color 0.15s ease',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--ink)')}
+                onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--muted)')}
+              >
+                <ChevronUp size={13} />
+                {t('memory.dreamJournalCollapse', { defaultValue: 'Recolher histórico' })}
+              </button>
+
+              {/* Botão para abrir modal completo com todos os logs */}
+              {logs.length > 5 && (
+                <button
+                  type="button"
+                  onClick={() => setIsFullModalOpen(true)}
                   style={{
-                    display: 'flex',
+                    display: 'inline-flex',
                     alignItems: 'center',
-                    justifyContent: 'space-between',
-                    flexWrap: 'wrap',
-                    gap: '8px',
+                    gap: '6px',
+                    padding: '6px 14px',
+                    borderRadius: '6px',
+                    border: '1px solid rgba(204, 120, 92, 0.35)',
+                    background: 'rgba(204, 120, 92, 0.08)',
+                    color: 'var(--primary)',
+                    fontSize: '11.5px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = 'rgba(204, 120, 92, 0.15)'
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'rgba(204, 120, 92, 0.08)'
                   }}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                    <span
-                      style={{
-                        fontSize: '12.5px',
-                        fontWeight: 600,
-                        color: 'var(--ink)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '4px',
-                      }}
-                    >
-                      <Clock size={12} style={{ color: 'var(--muted)' }} />
-                      {new Date(log.created_at).toLocaleString([], {
-                        month: 'short',
-                        day: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
-                    </span>
-                    <span
-                      style={{
-                        fontSize: '10.5px',
-                        fontFamily: 'ui-monospace, monospace',
-                        background: 'var(--surface-card)',
-                        border: '1px solid var(--hairline)',
-                        borderRadius: '4px',
-                        padding: '1px 6px',
-                        color: 'var(--muted)',
-                      }}
-                    >
-                      {log.provider_id} · {log.model_id}
-                    </span>
-                    {log.status === 'rolled_back' && (
-                      <span
-                        style={{
-                          fontSize: '10px',
-                          fontWeight: 700,
-                          borderRadius: '4px',
-                          padding: '1px 6px',
-                          background: 'rgba(239, 68, 68, 0.1)',
-                          color: 'var(--error, #ef4444)',
-                        }}
-                      >
-                        REVERTIDO
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Rollback Button / Status Pill */}
-                  <div>
-                    {view.pill === 'rollback' ? (
-                      <button
-                        type="button"
-                        onClick={() => setConfirmRollbackLog(log)}
-                        disabled={rollingBackId === log.id || isLiveRunning}
-                        title={t('memory.dreamRollbackBtn')}
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '4px',
-                          padding: '4px 10px',
-                          borderRadius: '6px',
-                          border: '1px solid var(--hairline)',
-                          background: 'var(--canvas)',
-                          color: 'var(--error, #ef4444)',
-                          fontSize: '11px',
-                          fontWeight: 600,
-                          cursor: 'pointer',
-                        }}
-                      >
-                        <RotateCcw size={11} />
-                        {rollingBackId === log.id ? t('common.loading') : t('memory.dreamRollbackBtn')}
-                      </button>
-                    ) : view.pill === 'expired' ? (
-                      <span title={t('memory.dreamSnapshotExpiredTooltip')} style={pillStyle}>
-                        <HelpCircle size={10} />
-                        {t('memory.dreamSnapshotExpired')}
-                      </span>
-                    ) : view.pill === 'blocked' ? (
-                      <span title={t('memory.dreamRollbackTooltip')} style={pillStyle}>
-                        <ShieldAlert size={10} />
-                        {t('memory.dreamRollbackBlocked')}
-                      </span>
-                    ) : view.pill === 'failed' ? (
-                      <span title={view.headline} style={{ ...pillStyle, color: 'var(--error, #ef4444)' }}>
-                        <AlertCircle size={10} />
-                        Falhou
-                      </span>
-                    ) : view.pill === 'running' ? (
-                      <span title={view.headline} style={pillStyle}>
-                        <Loader2 size={10} />
-                        Em andamento
-                      </span>
-                    ) : null}
-                  </div>
-                </div>
-
-                {/* Metrics Breakdown */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: '12px', fontWeight: 600, color: view.showNoise ? 'var(--primary)' : 'var(--error, #ef4444)' }}>
-                    {view.showNoise
-                      ? `${log.facts_before} fatos ➔ ${log.facts_after} consolidados (-${view.noisePct}% de ruído)`
-                      : view.headline}
-                  </span>
-                  {log.facts_merged > 0 && (
-                    <span
-                      style={{
-                        fontSize: '10.5px',
-                        color: 'var(--muted)',
-                        background: 'var(--surface-card)',
-                        padding: '1px 6px',
-                        borderRadius: '4px',
-                      }}
-                    >
-                      {log.facts_merged} fundidos
-                    </span>
-                  )}
-                  {log.facts_superseded > 0 && (
-                    <span
-                      style={{
-                        fontSize: '10.5px',
-                        color: 'var(--muted)',
-                        background: 'var(--surface-card)',
-                        padding: '1px 6px',
-                        borderRadius: '4px',
-                      }}
-                    >
-                      {log.facts_superseded} atualizados
-                    </span>
-                  )}
-                  <span
-                    style={{
-                      fontSize: '10.5px',
-                      color: 'var(--muted)',
-                      background: 'var(--surface-card)',
-                      padding: '1px 6px',
-                      borderRadius: '4px',
-                    }}
-                  >
-                    0 fixados alterados
-                  </span>
-                </div>
-
-                {/* Notes / summary if present */}
-                {log.summary_notes && (
-                  <p
-                    style={{
-                      margin: 0,
-                      fontSize: '12px',
-                      color: 'var(--body)',
-                      lineHeight: 1.45,
-                      fontStyle: 'italic',
-                    }}
-                  >
-                    "{log.summary_notes}"
-                  </p>
-                )}
-              </div>
-            )
-          })}
+                  <History size={13} />
+                  {t('memory.dreamJournalViewAllModal', {
+                    total: logs.length,
+                    defaultValue: `Ver histórico completo (${logs.length} consolidações)`,
+                  })}
+                </button>
+              )}
+            </div>
+          )}
         </div>
       )}
+
+      {/* Modal Dedicado para o Histórico Completo */}
+      <DreamFullHistoryModal
+        isOpen={isFullModalOpen}
+        logs={logs}
+        onClose={() => setIsFullModalOpen(false)}
+        onRollback={(log) => setConfirmRollbackLog(log)}
+        rollingBackId={rollingBackId}
+        isLiveRunning={isLiveRunning}
+      />
     </div>
   )
 }
