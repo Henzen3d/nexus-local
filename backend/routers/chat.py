@@ -281,6 +281,8 @@ async def _process_turn(
                     await ws.send_json({
                         "type": "image_pending",
                         "task_id": task_id,
+                        "message_id": placeholder_msg_id,
+                        "conversation_id": conversation_id,
                         "msg_id": placeholder_msg_id,
                         "conv_id": conversation_id,
                         "prompt": img_prompt,
@@ -393,6 +395,8 @@ async def _process_turn(
         await ws.send_json({
             "type": "image_pending",
             "task_id": task_id,
+            "message_id": placeholder_msg_id,
+            "conversation_id": conversation_id,
             "msg_id": placeholder_msg_id,
             "conv_id": conversation_id,
             "prompt": img_prompt,

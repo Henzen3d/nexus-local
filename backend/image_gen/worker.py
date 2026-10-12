@@ -1,5 +1,7 @@
 import asyncio
 import hashlib
+import os
+import re
 import uuid
 from typing import Optional
 
@@ -17,6 +19,38 @@ from backend.logging_config import get_logger
 from backend.providers.base import CloudflareProvider, RateLimitError
 
 logger = get_logger(__name__)
+
+_ACCOUNT_RE = re.compile(r"/accounts/([^/]+)/ai")
+
+
+def resolve_cloudflare_account_id(
+    explicit: str | None,
+    base_url: str | None = None,
+    env_value: str | None = None,
+) -> str | None:
+    """Account ID da linha do usuário, senão da URL do provedor, senão do ambiente."""
+    for candidate in (explicit,):
+        if candidate and candidate.strip() and candidate.strip() != "{account_id}":
+            return candidate.strip()
+    if base_url:
+        match = _ACCOUNT_RE.search(base_url)
+        if match and match.group(1) != "{account_id}":
+            return match.group(1)
+    if env_value is None:
+        env_value = os.getenv("CLOUDFLARE_ACCOUNT_ID", "")
+    if env_value and env_value.strip() and env_value.strip() != "{account_id}":
+        return env_value.strip()
+    return None
+
+
+def image_failed_event(task_id: str, message_id: str, conversation_id: str, error: str) -> dict:
+    return {
+        "type": "image_failed",
+        "task_id": task_id,
+        "message_id": message_id,
+        "conversation_id": conversation_id,
+        "error": error,
+    }
 
 task_notify_event = asyncio.Event()
 shutdown_event = asyncio.Event()
@@ -49,20 +83,33 @@ async def process_image_task(task: dict):
         api_key = row[0].strip() if row and row[0] else None
         account_id = row[1].strip() if row and row[1] else None
 
+        if api_key and not account_id:
+            async with db.execute(
+                "SELECT base_url FROM providers WHERE id = 'cloudflare'"
+            ) as cur:
+                prow = await cur.fetchone()
+            account_id = resolve_cloudflare_account_id(
+                None, prow[0] if prow else None
+            )
+            if account_id:
+                await db.execute(
+                    """UPDATE user_api_keys
+                       SET account_id = ?
+                       WHERE user_id = ? AND provider_id = 'cloudflare'
+                         AND (account_id IS NULL OR trim(account_id) = '')""",
+                    (account_id, user_id),
+                )
+                await db.commit()
+
         if not api_key or not account_id:
             err_msg = "Falta configurar o API Token e Account ID da Cloudflare nas configurações da sua conta."
             logger.warning("[image_gen worker] Task %s abortada: usuário %s sem chaves Cloudflare", task_id, user_id)
             await fail_image_task(db, task_id, err_msg)
             await db.execute("UPDATE messages SET content = ? WHERE id = ?", (err_msg, msg_id))
             await db.commit()
-            await _safe_notify_sockets(user_id, {
-                "type": "image_ready",
-                "task_id": task_id,
-                "msg_id": msg_id,
-                "conv_id": conv_id,
-                "status": "failed",
-                "error": err_msg,
-            })
+            await _safe_notify_sockets(
+                user_id, image_failed_event(task_id, msg_id, conv_id, err_msg)
+            )
             return
 
         # 2. Configurações gerais e modelo
@@ -75,14 +122,9 @@ async def process_image_task(task: dict):
             await fail_image_task(db, task_id, err_msg)
             await db.execute("UPDATE messages SET content = ? WHERE id = ?", (err_msg, msg_id))
             await db.commit()
-            await _safe_notify_sockets(user_id, {
-                "type": "image_ready",
-                "task_id": task_id,
-                "msg_id": msg_id,
-                "conv_id": conv_id,
-                "status": "failed",
-                "error": err_msg,
-            })
+            await _safe_notify_sockets(
+                user_id, image_failed_event(task_id, msg_id, conv_id, err_msg)
+            )
             return
 
         # Busca nome do modelo na tabela image_models
@@ -112,14 +154,9 @@ async def process_image_task(task: dict):
             await fail_image_task(db, task_id, err_msg)
             await db.execute("UPDATE messages SET content = ? WHERE id = ?", (err_msg, msg_id))
             await db.commit()
-            await _safe_notify_sockets(user_id, {
-                "type": "image_ready",
-                "task_id": task_id,
-                "msg_id": msg_id,
-                "conv_id": conv_id,
-                "status": "failed",
-                "error": err_msg,
-            })
+            await _safe_notify_sockets(
+                user_id, image_failed_event(task_id, msg_id, conv_id, err_msg)
+            )
             return
         except Exception as e:
             err_msg = f"Não foi possível gerar a imagem: {str(e)}"
@@ -127,14 +164,9 @@ async def process_image_task(task: dict):
             await fail_image_task(db, task_id, err_msg)
             await db.execute("UPDATE messages SET content = ? WHERE id = ?", (err_msg, msg_id))
             await db.commit()
-            await _safe_notify_sockets(user_id, {
-                "type": "image_ready",
-                "task_id": task_id,
-                "msg_id": msg_id,
-                "conv_id": conv_id,
-                "status": "failed",
-                "error": err_msg,
-            })
+            await _safe_notify_sockets(
+                user_id, image_failed_event(task_id, msg_id, conv_id, err_msg)
+            )
             return
 
         # 4. Gravação do arquivo JPEG gerado e criação do attachment
@@ -169,11 +201,17 @@ async def process_image_task(task: dict):
         await _safe_notify_sockets(user_id, {
             "type": "image_ready",
             "task_id": task_id,
-            "msg_id": msg_id,
-            "conv_id": conv_id,
-            "status": "ready",
-            "attachment_id": att_id,
-            "url": f"/attachments/{file_rel}",
+            "message_id": msg_id,
+            "conversation_id": conv_id,
+            "attachment": {
+                "id": att_id,
+                "filename": filename,
+                "mime_type": "image/jpeg",
+                "file_type": "image",
+                "size_bytes": size_bytes,
+                "file_url": f"/attachments/{file_rel}",
+                "thumbnail_url": f"/attachments/{thumb_rel}" if thumb_rel else None,
+            },
         })
 
     except Exception as e:
@@ -182,14 +220,10 @@ async def process_image_task(task: dict):
             await fail_image_task(db, task_id, f"Erro interno: {str(e)}")
             await db.execute("UPDATE messages SET content = 'Erro ao processar imagem.' WHERE id = ?", (msg_id,))
             await db.commit()
-            await _safe_notify_sockets(user_id, {
-                "type": "image_ready",
-                "task_id": task_id,
-                "msg_id": msg_id,
-                "conv_id": conv_id,
-                "status": "failed",
-                "error": "Erro interno ao gerar imagem.",
-            })
+            await _safe_notify_sockets(
+                user_id,
+                image_failed_event(task_id, msg_id, conv_id, "Erro interno ao gerar imagem."),
+            )
         except Exception:
             pass
     finally:
