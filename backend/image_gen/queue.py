@@ -18,6 +18,7 @@ async def insert_image_task(
     Insere uma nova tarefa na fila com status 'pending'.
     Suporta:
       - insert_image_task(db, conversation_id, user_id, message_id, prompt, model_id=None)
+      - insert_image_task(db, conversation_id=..., user_id=..., message_id=..., prompt=..., model_id=...)
       - insert_image_task(conversation_id, user_id, message_id, prompt, provider_id=..., model_id=..., db=None)
     """
     task_id = f"img_{uuid.uuid4().hex}"
@@ -25,11 +26,12 @@ async def insert_image_task(
 
     if args and isinstance(args[0], aiosqlite.Connection):
         db = args[0]
-        conversation_id = args[1]
-        user_id = args[2]
-        message_id = args[3]
-        prompt = args[4]
-        model_id = args[5] if len(args) > 5 else kwargs.get("model_id")
+        rest = args[1:]
+        conversation_id = rest[0] if len(rest) > 0 else kwargs.get("conversation_id")
+        user_id = rest[1] if len(rest) > 1 else kwargs.get("user_id")
+        message_id = rest[2] if len(rest) > 2 else kwargs.get("message_id")
+        prompt = rest[3] if len(rest) > 3 else kwargs.get("prompt")
+        model_id = rest[4] if len(rest) > 4 else kwargs.get("model_id")
     else:
         conversation_id = args[0] if len(args) > 0 else kwargs.get("conversation_id")
         user_id = args[1] if len(args) > 1 else kwargs.get("user_id")

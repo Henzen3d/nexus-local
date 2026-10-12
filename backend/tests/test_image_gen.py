@@ -148,6 +148,23 @@ async def test_image_gen_db_and_queue(monkeypatch):
         assert failed["status"] == "failed"
         assert failed["error_message"] == "Simulated error"
 
+        # 9. Chamada do chat: db posicional e o resto por nome
+        async with aiosqlite.connect(tmp_db_path) as db:
+            mixed_id = await insert_image_task(
+                db,
+                conversation_id="c1",
+                user_id="u1",
+                message_id="m-mixed",
+                prompt="chamada mista db + kwargs",
+                model_id="cloudflare/flux-1-schnell",
+            )
+        assert mixed_id.startswith("img_")
+        claimed_mixed = await claim_next_task()
+        assert claimed_mixed is not None
+        assert claimed_mixed["id"] == mixed_id
+        assert claimed_mixed["prompt"] == "chamada mista db + kwargs"
+        await fail_image_task(mixed_id, error_message="cleanup mixed")
+
     finally:
         # Remove arquivo temporário
         if os.path.exists(tmp_db_path):

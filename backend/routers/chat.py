@@ -161,11 +161,24 @@ async def websocket_chat(ws: WebSocket):
             if not user_message and attachment_ids:
                 user_message = "(arquivo anexado)"
 
-            await _process_turn(
-                ws, db, req, user, conversation_id, user_message, model_id,
-                provider_id, bypass_cache, attachment_ids, request_project_id,
-                project_context_debug, use_memory, fusion_mode,
-            )
+            try:
+                await _process_turn(
+                    ws, db, req, user, conversation_id, user_message, model_id,
+                    provider_id, bypass_cache, attachment_ids, request_project_id,
+                    project_context_debug, use_memory, fusion_mode,
+                )
+            except WebSocketDisconnect:
+                raise
+            except Exception:
+                logger.exception("turno de chat falhou")
+                try:
+                    await ws.send_json({
+                        "type": "error",
+                        "message": "Falha ao processar a mensagem.",
+                    })
+                    await ws.send_json({"type": "stream_end", "finish_reason": "error"})
+                except Exception:
+                    break
 
     except WebSocketDisconnect:
         pass
