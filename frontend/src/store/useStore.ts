@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import type { Artifact, Conversation, ConversationDetail, Message, Model, CacheStats, CacheSettings, FusionStatusEntry, Attachment, WebSearchSource, AutoRouteDecisionInfo, UiEnvelope, ProgressBlock, ProcessStep } from '../types'
 import { api } from '../api/client'
 import { detectInitialLocale } from '../i18n'
+import { effectivePreferredModel } from '../lib/modelSelection'
 
 // ── Persistência de provedor/modelo (por usuário quando possível) ───────────
 
@@ -17,6 +18,26 @@ function _scopedKey(suffix: string): string {
   return `nexuslocal_${suffix}`
 }
 
+function isAutoOptIn(): boolean {
+  if (typeof window === 'undefined') return false
+  try {
+    return localStorage.getItem(_scopedKey('auto_opt_in')) === '1'
+  } catch {
+    return false
+  }
+}
+
+function setAutoOptIn(on: boolean) {
+  if (typeof window === 'undefined') return
+  try {
+    const key = _scopedKey('auto_opt_in')
+    if (on) localStorage.setItem(key, '1')
+    else localStorage.removeItem(key)
+  } catch {
+    /* ignore */
+  }
+}
+
 function readPersistedModelSelection(): {
   modelId: string | null
   providerId: string | null
@@ -26,9 +47,12 @@ function readPersistedModelSelection(): {
     const modelId = localStorage.getItem(_scopedKey('selected_model_id'))
     const providerId = localStorage.getItem(_scopedKey('selected_provider_id'))
     // fallback legado (global)
+    const rawModelId = modelId || localStorage.getItem('nexuslocal_selected_model_id')
+    const rawProviderId = providerId || localStorage.getItem('nexuslocal_selected_provider_id')
+    const preferred = effectivePreferredModel(rawModelId, isAutoOptIn())
     return {
-      modelId: modelId || localStorage.getItem('nexuslocal_selected_model_id'),
-      providerId: providerId || localStorage.getItem('nexuslocal_selected_provider_id'),
+      modelId: preferred,
+      providerId: preferred === 'auto' ? 'auto' : preferred ? rawProviderId : null,
     }
   } catch {
     return { modelId: null, providerId: null }
@@ -57,6 +81,7 @@ function persistModelSelection(modelId: string, providerId: string) {
     // legado global (compat)
     localStorage.setItem('nexuslocal_selected_model_id', modelId)
     localStorage.setItem('nexuslocal_selected_provider_id', providerId)
+    setAutoOptIn(modelId === 'auto')
 
     if (providerId && providerId !== 'auto') {
       const map = readLastModelByProvider()
@@ -79,20 +104,20 @@ function resolveModelSelection(
   if (!models.length) return { modelId: null, providerId: null }
 
   const lastByProvider = readLastModelByProvider()
+  const preferred = effectivePreferredModel(preferredModelId, isAutoOptIn())
 
-  // 0) modo Auto explicitamente selecionado
-  if (preferredModelId === 'auto') {
+  if (preferred === 'auto') {
     return { modelId: 'auto', providerId: 'auto' }
   }
 
   // 1) modelo persistido/atual ainda existe
-  if (preferredModelId) {
-    const found = models.find((m) => m.id === preferredModelId)
+  if (preferred) {
+    const found = models.find((m) => m.id === preferred)
     if (found) return { modelId: found.id, providerId: found.provider_id }
   }
 
   // 2) provedor persistido: último modelo daquele provedor, senão o primeiro da lista
-  if (preferredProviderId) {
+  if (preferredProviderId && preferredProviderId !== 'auto') {
     const lastId = lastByProvider[preferredProviderId]
     if (lastId) {
       const last = models.find((m) => m.id === lastId && m.provider_id === preferredProviderId)

@@ -3055,11 +3055,20 @@ html[data-theme="light"] .model-cockpit-popover {
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 10px;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: inherit;
 }
 
 html[data-theme="light"] .cockpit-auto-card {
   background: var(--surface-cream-soft, rgba(0, 0, 0, 0.02));
   border-color: var(--hairline);
+}
+
+button.cockpit-auto-card:active {
+  transform: none;
 }
 
 .cockpit-auto-info {

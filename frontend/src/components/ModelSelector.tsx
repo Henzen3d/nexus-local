@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useMemo } from 'react'
 import { ChevronDown, AlertCircle, Check, ChevronRight } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useStore } from '../store/useStore'
+import { pickManualFallback } from '../lib/modelSelection'
 import { RankBadge } from './RankBadge'
 import { useIsMobile } from '../hooks/useIsMobile'
 import { BottomSheet } from './ui/BottomSheet'
@@ -26,6 +27,7 @@ export function ModelSelector({ compact = false, className = '' }: ModelSelector
     selectedModelId,
     selectedProviderId,
     selectModel,
+    loadModels,
     isStreaming,
     modelSortMode,
   } = useStore()
@@ -37,6 +39,12 @@ export function ModelSelector({ compact = false, className = '' }: ModelSelector
   const isMobile = useIsMobile()
 
   const isAuto = selectedModelId === 'auto'
+  const wantManualRef = useRef(false)
+
+  useEffect(() => {
+    // O header não monta mais ProviderSelector, que era quem carregava o catálogo no chat.
+    loadModels()
+  }, [loadModels])
 
   // Guarda a última seleção manual para restauração instantânea ao desligar Auto
   const lastManualModelIdRef = useRef<string>(
@@ -117,32 +125,58 @@ export function ModelSelector({ compact = false, className = '' }: ModelSelector
     selectModel(m.id, m.provider_id)
     lastManualModelIdRef.current = m.id
     lastManualProviderIdRef.current = m.provider_id
+    wantManualRef.current = false
     setOpen(false)
   }
 
-  const handleToggleAuto = () => {
-    if (isAuto) {
-      // Restaura seleção manual anterior
-      const fallback =
-        models.find((m) => m.id === lastManualModelIdRef.current) ||
-        models[0]
-      if (fallback) {
-        selectModel(fallback.id, fallback.provider_id)
-      }
-    } else {
-      // Ativa Smart Router
-      if (selectedModelId && selectedModelId !== 'auto') {
-        lastManualModelIdRef.current = selectedModelId
-        lastManualProviderIdRef.current = selectedProviderId || ''
-      }
-      selectModel('auto', 'auto')
+  const applyManual = () => {
+    const fallback = pickManualFallback(
+      models,
+      lastManualModelIdRef.current,
+      lastManualProviderIdRef.current,
+    )
+    if (!fallback) {
+      wantManualRef.current = true
+      return false
     }
+    wantManualRef.current = false
+    lastManualModelIdRef.current = fallback.id
+    lastManualProviderIdRef.current = fallback.provider_id
+    selectModel(fallback.id, fallback.provider_id)
+    return true
   }
+
+  const handleToggleAuto = () => {
+    if (isStreaming) return
+    if (isAuto) {
+      applyManual()
+      return
+    }
+    wantManualRef.current = false
+    if (selectedModelId && selectedModelId !== 'auto') {
+      lastManualModelIdRef.current = selectedModelId
+      lastManualProviderIdRef.current = selectedProviderId || ''
+    }
+    selectModel('auto', 'auto')
+  }
+
+  useEffect(() => {
+    if (!wantManualRef.current || !isAuto || models.length === 0) return
+    applyManual()
+  }, [models, isAuto])
 
   const renderCockpitContent = () => (
     <>
       {/* CAMADA 1: Auto-Roteamento Inteligente (Smart Router) */}
-      <div className="cockpit-auto-card">
+      <button
+        type="button"
+        className="cockpit-auto-card"
+        onClick={handleToggleAuto}
+        disabled={isStreaming}
+        role="switch"
+        aria-checked={isAuto}
+        aria-label={t('chat.smartRouter', { defaultValue: 'Roteamento Inteligente' })}
+      >
         <div className="cockpit-auto-info">
           <span className="cockpit-auto-icon">🎯</span>
           <div className="cockpit-auto-texts">
@@ -156,16 +190,13 @@ export function ModelSelector({ compact = false, className = '' }: ModelSelector
             </span>
           </div>
         </div>
-        <button
-          type="button"
+        <span
           className={`nexus-toggle-switch ${isAuto ? 'active' : ''}`}
-          onClick={handleToggleAuto}
-          aria-label={t('chat.smartRouter', { defaultValue: 'Roteamento Inteligente' })}
-          aria-checked={isAuto}
+          aria-hidden="true"
         >
           <span className="nexus-toggle-thumb" />
-        </button>
-      </div>
+        </span>
+      </button>
 
       {/* CAMADA 2: Filtro Horizontal de Provedores (Abas em Pílulas) */}
       <div className="cockpit-provider-tabs" role="tablist">
