@@ -21,6 +21,11 @@ export const markdownComponents: Components = {
       Boolean(className && /language-/.test(className)) ||
       (raw.includes('\n') && raw.length > 40)
 
+    // Não renderiza blocos nexus-ui como código bruto — eles são desenhados pelo DynamicRenderer
+    if (className && /language-nexus(-ui)?(\/1)?\b/i.test(className)) {
+      return null
+    }
+
     if (isFenced) {
       return <CodeBlock language={className}>{raw}</CodeBlock>
     }

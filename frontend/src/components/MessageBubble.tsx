@@ -16,6 +16,7 @@ import { AIMetadataDisplay } from './AIMetadataDisplay'
 import { playSpeech, useTtsPlay } from '../lib/ttsPlayer'
 import { AutoRouteBadge } from './AutoRouteBadge'
 import { DynamicRenderer } from '../ui/DynamicRenderer'
+import { stripUiFences, extractClientUi } from '../lib/nexusUi'
 
 // ─── ThinkingBlock — componente independente de modelo ─────────────────────────
 // ─── ThinkingBlock — componente independente de modelo ─────────────────────────
@@ -311,7 +312,22 @@ export function MessageBubble({ message }: Props) {
   // A flag de thinking agora é fornecida diretamente pelo adapter
   const isThinking = message.role === 'assistant' && (parsedResponse.isThinking ?? false)
 
-  const cleanedContent = cleanContentForArtifacts(answer, artifacts)
+  // Intelligent UI: resolve envelope via message.ui_blocks ou fallback client-side a partir do texto
+  const { effectiveUiEnvelope, textWithoutUi } = React.useMemo(() => {
+    if (message.ui_blocks) {
+      return {
+        effectiveUiEnvelope: message.ui_blocks,
+        textWithoutUi: stripUiFences(answer),
+      }
+    }
+    const extracted = extractClientUi(answer)
+    return {
+      effectiveUiEnvelope: extracted.envelope,
+      textWithoutUi: extracted.cleanText,
+    }
+  }, [message.ui_blocks, answer])
+
+  const cleanedContent = cleanContentForArtifacts(textWithoutUi, artifacts)
 
   return (
     <div className={`message ${message.role}`}>
@@ -378,7 +394,7 @@ export function MessageBubble({ message }: Props) {
               )}
 
               {/* Intelligent UI: renderizador de blocos visuais e micro-ferramentas */}
-              {message.ui_blocks && <DynamicRenderer envelope={message.ui_blocks} />}
+              {effectiveUiEnvelope && <DynamicRenderer envelope={effectiveUiEnvelope} />}
 
               {artifacts.length > 0 && (
                 <div className="artifact-chat-card-list">
@@ -654,6 +670,8 @@ export function StreamingBubble({ content }: { content: string }) {
   // Componente de cursor piscando — só exibe fora do ThinkingBlock
   const showCursor = !isThinking
 
+  const streamText = stripUiFences(deferredResponse)
+
   return (
     <div className="message assistant streaming">
       <AssistantAvatar />
@@ -676,7 +694,7 @@ export function StreamingBubble({ content }: { content: string }) {
         )}
 
         {/* Resposta com renderização progressiva */}
-        {deferredResponse && (
+        {streamText && (
           <div
             className="assistant-response streaming-content"
             style={isStale ? { opacity: 0.92 } : undefined}
@@ -685,7 +703,7 @@ export function StreamingBubble({ content }: { content: string }) {
               remarkPlugins={[remarkGfm]}
               components={markdownComponents}
             >
-              {deferredResponse}
+              {streamText}
             </ReactMarkdown>
           </div>
         )}

@@ -456,9 +456,7 @@ async def _process_turn(
     full_response, cache_hit, model_id, provider_id = result
 
     # ── Intelligent UI: extração de fence antes de persistir ──────────
-    ui_envelope = None
-    if os.getenv("INTELLIGENT_UI_ENABLED", "false").lower() in ("true", "1", "yes"):
-        full_response, ui_envelope = extract_ui(full_response)
+    full_response, ui_envelope = extract_ui(full_response)
 
     # ── Persist assistant message ───────────────────────────────────
     assistant_msg_id = await save_assistant_message(
@@ -502,7 +500,7 @@ async def _process_turn(
         "web_search_query": web_search_query,
         "web_search_sources": web_search_sources,
     }
-    if os.getenv("INTELLIGENT_UI_ENABLED", "false").lower() in ("true", "1", "yes"):
+    if ui_envelope:
         stream_end_payload["ui_blocks"] = ui_envelope
 
     await ws.send_json(stream_end_payload)

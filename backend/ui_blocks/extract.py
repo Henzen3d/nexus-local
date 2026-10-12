@@ -7,21 +7,26 @@ from typing import Any
 
 from backend.ui_blocks.validate import validate_envelope
 
-# Regex para fences nexus-ui fechados
+# Regex para fences nexus-ui fechados (aceita ```nexus-ui, ```nexus-ui/1, ```nexus e ```chart com JSON)
 FENCE_CLOSED_REGEX = re.compile(
-    r"```nexus-ui\s*([\s\S]*?)\s*```",
+    r"```(?:nexus-ui(?:/1)?|nexus)\s*([\s\S]*?)\s*```",
     re.MULTILINE,
 )
 
-# Regex para fence nexus-ui aberto (stream incompleto ou fence não fechado)
+FENCE_CHART_CLOSED_REGEX = re.compile(
+    r"```(?:chart|ui)\s*(\{[\s\S]*?\})\s*```",
+    re.MULTILINE,
+)
+
+# Regex para fence aberto (stream incompleto ou fence não fechado)
 FENCE_OPEN_REGEX = re.compile(
-    r"```nexus-ui[\s\S]*$",
+    r"```(?:nexus-ui(?:/1)?|nexus)[\s\S]*$",
     re.MULTILINE,
 )
 
 
 def extract_ui(text: str) -> tuple[str, dict[str, Any] | None]:
-    """Extrai o último fence nexus-ui da prosa.
+    """Extrai o último fence de UI da prosa.
 
     Retorna (prosa_limpa, envelope_validado). Se nenhum envelope for válido,
     retorna (prosa_limpa, None).
@@ -29,24 +34,31 @@ def extract_ui(text: str) -> tuple[str, dict[str, Any] | None]:
     if not isinstance(text, str) or not text:
         return text or "", None
 
-    # Verifica se há fences fechados
+    # 1. Tenta padrão primário nexus-ui
     closed_matches = list(FENCE_CLOSED_REGEX.finditer(text))
-
     if closed_matches:
-        # Se houver mais de um, usar apenas o último (spec seção 4)
         last_match = closed_matches[-1]
         raw_json = last_match.group(1).strip()
         envelope = validate_envelope(raw_json)
 
         # Remove todos os fences fechados da prosa
         cleaned_text = FENCE_CLOSED_REGEX.sub("", text)
-        # Remove também qualquer fence aberto remanescente após os fechados
         cleaned_text = FENCE_OPEN_REGEX.sub("", cleaned_text).rstrip()
 
         return cleaned_text, envelope
 
-    # Se não há fechado, verifica se há fence aberto
-    if "```nexus-ui" in text:
+    # 2. Tenta padrão alternativo ```chart { ... }``` (caso o modelo gere fence de gráfico direto)
+    chart_matches = list(FENCE_CHART_CLOSED_REGEX.finditer(text))
+    if chart_matches:
+        last_match = chart_matches[-1]
+        raw_json = last_match.group(1).strip()
+        envelope = validate_envelope(raw_json)
+        if envelope:
+            cleaned_text = FENCE_CHART_CLOSED_REGEX.sub("", text).rstrip()
+            return cleaned_text, envelope
+
+    # 3. Se não há fechado, verifica se há fence aberto em streaming
+    if "```nexus-ui" in text or "```nexus" in text:
         cleaned_text = FENCE_OPEN_REGEX.sub("", text).rstrip()
         return cleaned_text, None
 

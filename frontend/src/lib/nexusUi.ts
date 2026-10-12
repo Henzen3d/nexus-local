@@ -1,6 +1,7 @@
 /**
  * Parser e validador do contrato nexus-ui/1 espelhado no frontend.
- * Garante que somente envelopes estritamente válidos sejam renderizados.
+ * Garante que somente envelopes estritamente válidos sejam renderizados,
+ * com tolerância e auto-recuperação (auto-healing) para variações de LLMs.
  */
 
 import type {
@@ -80,109 +81,120 @@ export function isAllowedImageUrl(
 }
 
 function validateProgress(item: Record<string, unknown>): ProgressBlock | null {
-  if (typeof item.label !== 'string' || item.label.length < 1 || item.label.length > 80) {
-    return null
-  }
-
-  const hasValue = 'value' in item
-  const hasMax = 'max' in item
-  if (hasValue !== hasMax) return null
+  const label = typeof item.label === 'string' && item.label.trim() ? item.label.trim().slice(0, 80) : 'Progresso'
 
   let cleanValue: number | undefined
   let cleanMax: number | undefined
 
-  if (hasValue && hasMax) {
-    const val = item.value
-    const mx = item.max
-    if (typeof val !== 'number' || typeof mx !== 'number') return null
-    if (Number.isNaN(val) || Number.isNaN(mx) || !Number.isFinite(val) || !Number.isFinite(mx)) return null
-    if (mx < 1 || mx > 1000 || val < 0 || val > mx) return null
-    cleanValue = val
-    cleanMax = mx
+  if (item.value !== undefined && item.max !== undefined) {
+    const val = Number(item.value)
+    const mx = Number(item.max)
+    if (!Number.isNaN(val) && !Number.isNaN(mx) && Number.isFinite(val) && Number.isFinite(mx)) {
+      if (mx >= 1 && mx <= 1000 && val >= 0 && val <= mx) {
+        cleanValue = Math.round(val * 100) / 100
+        cleanMax = Math.round(mx * 100) / 100
+      }
+    }
   }
 
   const cleanSteps: ProgressBlock['steps'] = []
-  if (Array.isArray(item.steps)) {
-    if (item.steps.length > 12) return null
+  if (Array.isArray(item.steps) && item.steps.length > 0) {
     let activeCount = 0
     const seenStepIds = new Set<string>()
 
-    for (const s of item.steps) {
-      if (!s || typeof s !== 'object') return null
+    for (let idx = 0; idx < item.steps.slice(0, 12).length; idx++) {
+      const s = item.steps[idx]
+      if (!s || typeof s !== 'object') continue
       const step = s as Record<string, unknown>
-      if (typeof step.id !== 'string' || !ID_REGEX.test(step.id) || seenStepIds.has(step.id)) return null
-      if (typeof step.label !== 'string' || step.label.length < 1 || step.label.length > 80) return null
-      if (step.state !== 'pending' && step.state !== 'active' && step.state !== 'done' && step.state !== 'error') {
-        return null
+
+      let stepId = typeof step.id === 'string' && ID_REGEX.test(step.id) ? step.id : `step_${idx + 1}`
+      if (seenStepIds.has(stepId)) stepId = `step_${idx + 1}`
+      seenStepIds.add(stepId)
+
+      const sLabel = typeof step.label === 'string' ? step.label.trim().slice(0, 80) : `Etapa ${idx + 1}`
+      const rawState = String(step.state || 'pending').toLowerCase().trim()
+      let sState: 'pending' | 'active' | 'done' | 'error' = 'pending'
+
+      if (['done', 'concluido', 'concluído', 'completed'].includes(rawState)) {
+        sState = 'done'
+      } else if (['active', 'ativo', 'executando', 'running'].includes(rawState)) {
+        sState = 'active'
+        activeCount++
+      } else if (['error', 'erro', 'failed', 'falha'].includes(rawState)) {
+        sState = 'error'
       }
-      seenStepIds.add(step.id)
-      if (step.state === 'active') activeCount++
+
       cleanSteps.push({
-        id: step.id,
-        label: step.label,
-        state: step.state,
+        id: stepId,
+        label: sLabel,
+        state: sState,
       })
     }
-    if (activeCount > 1) return null
+
+    if (activeCount > 1) {
+      let lastActive = false
+      for (let i = cleanSteps.length - 1; i >= 0; i--) {
+        if (cleanSteps[i].state === 'active') {
+          if (!lastActive) lastActive = true
+          else cleanSteps[i].state = 'done'
+        }
+      }
+    }
   }
 
-  if (cleanValue === undefined && (!cleanSteps || cleanSteps.length === 0)) {
+  if (cleanValue === undefined && cleanSteps.length === 0) {
     return null
   }
 
   const out: ProgressBlock = {
-    id: item.id as string,
+    id: (item.id as string) || 'progress_1',
     type: 'progress',
-    label: item.label,
+    label,
   }
   if (cleanValue !== undefined) {
     out.value = cleanValue
     out.max = cleanMax
   }
-  if (cleanSteps && cleanSteps.length > 0) {
+  if (cleanSteps.length > 0) {
     out.steps = cleanSteps
   }
   return out
 }
 
 function validateCard(item: Record<string, unknown>): CardBlock | null {
-  if (typeof item.title !== 'string' || item.title.length < 1 || item.title.length > 80) {
-    return null
-  }
+  const title = typeof item.title === 'string' && item.title.trim() ? item.title.trim().slice(0, 80) : 'Informações'
 
   const out: CardBlock = {
-    id: item.id as string,
+    id: (item.id as string) || 'card_1',
     type: 'card',
-    title: item.title,
+    title,
   }
 
-  if (typeof item.body === 'string') {
-    if (item.body.length > 400) return null
-    out.body = item.body
+  if (item.body !== undefined && item.body !== null) {
+    out.body = String(item.body).slice(0, 400)
   }
 
   if (Array.isArray(item.facts)) {
-    if (item.facts.length > 6) return null
     const cleanFacts = []
-    for (const f of item.facts) {
-      if (!f || typeof f !== 'object') return null
+    for (const f of item.facts.slice(0, 6)) {
+      if (!f || typeof f !== 'object') continue
       const fact = f as Record<string, unknown>
-      if (typeof fact.label !== 'string' || fact.label.length < 1 || fact.label.length > 40) return null
-      if (typeof fact.value !== 'string' || fact.value.length < 1 || fact.value.length > 40) return null
-      cleanFacts.push({ label: fact.label, value: fact.value })
+      const label = String(fact.label || '').trim().slice(0, 40)
+      const val = String(fact.value || '').trim().slice(0, 40)
+      if (label && val) {
+        cleanFacts.push({ label, value: val })
+      }
     }
-    out.facts = cleanFacts
+    if (cleanFacts.length > 0) {
+      out.facts = cleanFacts
+    }
   }
 
   if (item.image && typeof item.image === 'object') {
     const img = item.image as Record<string, unknown>
-    if (
-      typeof img.url === 'string' &&
-      typeof img.alt === 'string' &&
-      img.alt.length >= 1 &&
-      img.alt.length <= 120
-    ) {
-      out.image = { url: img.url.trim(), alt: img.alt }
+    if (typeof img.url === 'string' && img.url.trim()) {
+      const alt = typeof img.alt === 'string' ? img.alt.slice(0, 120) : title
+      out.image = { url: img.url.trim(), alt }
     }
   }
 
@@ -190,179 +202,244 @@ function validateCard(item: Record<string, unknown>): CardBlock | null {
 }
 
 function validateChart(item: Record<string, unknown>): ChartBlock | null {
-  if (typeof item.title !== 'string' || item.title.length < 1 || item.title.length > 80) return null
-  if (item.kind !== 'bar' && item.kind !== 'line' && item.kind !== 'compare') return null
-  if (typeof item.x_key !== 'string' || item.x_key.length < 1 || item.x_key.length > 40) return null
-  if (!Array.isArray(item.series)) return null
+  const title = typeof item.title === 'string' && item.title.trim() ? item.title.trim().slice(0, 80) : 'Gráfico Comparativo'
+  let kind = String(item.kind || 'bar').toLowerCase() as 'bar' | 'line' | 'compare'
+  if (!['bar', 'line', 'compare'].includes(kind)) kind = 'bar'
 
-  if (item.kind === 'bar' && item.series.length !== 1) return null
-  if (item.kind === 'line' && (item.series.length < 1 || item.series.length > 3)) return null
-  if (item.kind === 'compare' && (item.series.length < 2 || item.series.length > 4)) return null
+  const xKey = typeof item.x_key === 'string' && item.x_key.trim() ? item.x_key.trim().slice(0, 40) : 'x'
+  if (!Array.isArray(item.series) || item.series.length === 0) return null
 
-  const cleanSeries = []
-  const seenSeriesKeys = new Set<string>()
-  for (const s of item.series) {
-    if (!s || typeof s !== 'object') return null
-    const ser = s as Record<string, unknown>
-    if (typeof ser.key !== 'string' || ser.key.length < 1 || ser.key.length > 40 || seenSeriesKeys.has(ser.key)) {
-      return null
+  // Normalização de series aninhadas (formato Chart.js / Highcharts gerado por LLMs)
+  const firstS = item.series[0] as Record<string, unknown> | undefined
+  if (firstS && Array.isArray(firstS.rows)) {
+    const cleanSeries: { key: string; label: string }[] = []
+    const rowsByX: Record<string, Record<string, string | number>> = {}
+
+    for (let idx = 0; idx < item.series.slice(0, 4).length; idx++) {
+      const s = item.series[idx] as Record<string, unknown>
+      if (!s || typeof s !== 'object') continue
+      const sKey = `series_${idx + 1}`
+      const sLabel = String(s.name || s.label || `Série ${idx + 1}`).slice(0, 60)
+      cleanSeries.push({ key: sKey, label: sLabel })
+
+      if (Array.isArray(s.rows)) {
+        for (const r of s.rows) {
+          if (!r || typeof r !== 'object') continue
+          const rowObj = r as Record<string, unknown>
+          const xVal = rowObj.x ?? rowObj[xKey] ?? rowObj.label
+          if (xVal === undefined || xVal === null) continue
+          const xStr = String(xVal).slice(0, 40)
+          const yNum = Number(rowObj.y ?? 0)
+          if (!rowsByX[xStr]) {
+            rowsByX[xStr] = { [xKey]: xStr }
+          }
+          rowsByX[xStr][sKey] = Number.isFinite(yNum) ? yNum : 0
+        }
+      }
     }
-    const label = typeof ser.label === 'string' && ser.label.length <= 60 ? ser.label : ser.key
-    seenSeriesKeys.add(ser.key)
-    cleanSeries.push({ key: ser.key, label })
+
+    const cleanRows = Object.values(rowsByX).slice(0, 24)
+    if (cleanSeries.length > 1 && kind === 'bar') kind = 'compare'
+
+    return {
+      id: (item.id as string) || 'chart_1',
+      type: 'chart',
+      title,
+      kind,
+      x_key: xKey,
+      series: cleanSeries,
+      rows: cleanRows,
+    }
   }
 
-  if (!Array.isArray(item.rows) || item.rows.length < 1 || item.rows.length > 24) return null
-  const cleanRows = []
+  // Formato padrão plano
+  const cleanSeries: { key: string; label: string }[] = []
+  const seenKeys = new Set<string>()
 
-  for (const r of item.rows) {
-    if (!r || typeof r !== 'object') return null
+  for (let idx = 0; idx < item.series.slice(0, 4).length; idx++) {
+    const s = item.series[idx] as Record<string, unknown>
+    if (!s || typeof s !== 'object') continue
+    const sKey = String(s.key || `s_${idx + 1}`).slice(0, 40)
+    const sLabel = String(s.label || s.name || sKey).slice(0, 60)
+    if (seenKeys.has(sKey)) continue
+    seenKeys.add(sKey)
+    cleanSeries.push({ key: sKey, label: sLabel })
+  }
+
+  if (cleanSeries.length === 0) return null
+  if (kind === 'bar' && cleanSeries.length !== 1) return null
+  if (kind === 'line' && (cleanSeries.length < 1 || cleanSeries.length > 3)) return null
+  if (kind === 'compare' && (cleanSeries.length < 2 || cleanSeries.length > 4)) return null
+
+  if (!Array.isArray(item.rows) || item.rows.length === 0) return null
+  const cleanRows: Record<string, string | number>[] = []
+
+  for (const r of item.rows.slice(0, 24)) {
+    if (!r || typeof r !== 'object') continue
     const row = r as Record<string, unknown>
-    if (!(item.x_key in row)) return null
-    const xVal = row[item.x_key]
-    if (typeof xVal !== 'string' && typeof xVal !== 'number') return null
-    const strX = String(xVal)
-    if (strX.length < 1 || strX.length > 40) return null
-
-    const cleanRowObj: Record<string, string | number> = { [item.x_key]: strX }
-
-    for (const sKey of seenSeriesKeys) {
-      if (!(sKey in row)) return null
-      const numVal = row[sKey]
-      if (typeof numVal !== 'number' || Number.isNaN(numVal) || !Number.isFinite(numVal)) return null
-      cleanRowObj[sKey] = numVal
+    let xVal = row[xKey]
+    if (xVal === undefined) {
+      for (const k of Object.keys(row)) {
+        if (!seenKeys.has(k)) {
+          xVal = row[k]
+          break
+        }
+      }
     }
-    cleanRows.push(cleanRowObj)
+    if (xVal === undefined || xVal === null) continue
+    const rowObj: Record<string, string | number> = { [xKey]: String(xVal).slice(0, 40) }
+    let hasNum = false
+
+    for (const sKey of seenKeys) {
+      const num = Number(row[sKey] ?? 0)
+      if (Number.isFinite(num)) {
+        rowObj[sKey] = num
+        hasNum = true
+      } else {
+        rowObj[sKey] = 0
+      }
+    }
+
+    if (hasNum) cleanRows.push(rowObj)
   }
+
+  if (cleanRows.length === 0) return null
 
   return {
-    id: item.id as string,
+    id: (item.id as string) || 'chart_1',
     type: 'chart',
-    title: item.title,
-    kind: item.kind,
-    x_key: item.x_key,
+    title,
+    kind,
+    x_key: xKey,
     series: cleanSeries,
     rows: cleanRows,
   }
 }
 
 function validateControls(item: Record<string, unknown>): ControlsBlock | null {
-  if (typeof item.title !== 'string' || item.title.length < 1 || item.title.length > 80) return null
-  if (typeof item.submit_label !== 'string' || item.submit_label.length < 1 || item.submit_label.length > 32) return null
-  if (!Array.isArray(item.fields) || item.fields.length < 1 || item.fields.length > 4) return null
+  const title = typeof item.title === 'string' && item.title.trim() ? item.title.trim().slice(0, 80) : 'Controles'
+  const submitLabel =
+    typeof item.submit_label === 'string' && item.submit_label.trim() ? item.submit_label.trim().slice(0, 32) : 'Enviar'
 
-  const cleanFields = []
-  const seenFieldIds = new Set<string>()
-  const selectFieldIds = new Set<string>()
+  if (!Array.isArray(item.fields) || item.fields.length === 0) return null
 
-  for (const f of item.fields) {
-    if (!f || typeof f !== 'object') return null
-    const field = f as Record<string, unknown>
-    if (typeof field.id !== 'string' || !FIELD_ID_REGEX.test(field.id) || seenFieldIds.has(field.id)) return null
-    seenFieldIds.add(field.id)
-    const label = typeof field.label === 'string' && field.label.length <= 60 ? field.label : field.id
+  const cleanFields: ControlsBlock['fields'] = []
+  const seenIds = new Set<string>()
+  const selectFields: string[] = []
 
-    if (field.kind === 'text') {
+  for (let idx = 0; idx < item.fields.slice(0, 6).length; idx++) {
+    const f = item.fields[idx] as Record<string, unknown>
+    if (!f || typeof f !== 'object') continue
+
+    let fId = typeof f.id === 'string' && FIELD_ID_REGEX.test(f.id) ? f.id : `f_${idx + 1}`
+    if (seenIds.has(fId)) fId = `f_${idx + 1}`
+    seenIds.add(fId)
+
+    const fKind = f.kind as 'text' | 'select' | 'number' | 'range'
+    const fLabel = String(f.label || fId).slice(0, 60)
+
+    if (fKind === 'text') {
       cleanFields.push({
-        id: field.id,
-        kind: 'text' as const,
-        label,
-        placeholder: typeof field.placeholder === 'string' ? field.placeholder.slice(0, 200) : undefined,
+        id: fId,
+        kind: 'text',
+        label: fLabel,
+        placeholder: typeof f.placeholder === 'string' ? f.placeholder.slice(0, 200) : undefined,
       })
-    } else if (field.kind === 'number' || field.kind === 'range') {
-      const mn = field.min
-      const mx = field.max
-      if (typeof mn !== 'number' || typeof mx !== 'number') return null
-      if (Number.isNaN(mn) || Number.isNaN(mx) || !Number.isFinite(mn) || !Number.isFinite(mx)) return null
-      if (mn >= mx || mx - mn > 1_000_000) return null
+    } else if (fKind === 'number' || fKind === 'range') {
+      const mn = Number(f.min ?? 0)
+      const mx = Number(f.max ?? 100)
+      const step = Number(f.step ?? 1)
+      const def = f.default !== undefined ? Number(f.default) : undefined
       cleanFields.push({
-        id: field.id,
-        kind: field.kind as 'number' | 'range',
-        label,
-        min: mn,
-        max: mx,
-        step: typeof field.step === 'number' && field.step > 0 ? field.step : 1,
-        default: typeof field.default === 'number' && field.default >= mn && field.default <= mx ? field.default : mn,
+        id: fId,
+        kind: fKind,
+        label: fLabel,
+        min: Number.isFinite(mn) ? mn : 0,
+        max: Number.isFinite(mx) && mx > mn ? mx : 100,
+        step: Number.isFinite(step) && step > 0 ? step : 1,
+        default: def !== undefined && Number.isFinite(def) ? def : undefined,
       })
-    } else if (field.kind === 'select') {
-      if (!Array.isArray(field.options) || field.options.length < 2 || field.options.length > 8) return null
-      const cleanOpts = []
-      const seenOpts = new Set<string>()
-      for (const o of field.options) {
-        if (!o || typeof o !== 'object') return null
+    } else if (fKind === 'select') {
+      if (!Array.isArray(f.options) || f.options.length < 2) continue
+      const cleanOpts: { value: string; label: string }[] = []
+      const seenVals = new Set<string>()
+
+      for (const o of f.options) {
+        if (!o || typeof o !== 'object') continue
         const opt = o as Record<string, unknown>
-        if (typeof opt.value !== 'string' || !SELECT_VALUE_REGEX.test(opt.value) || seenOpts.has(opt.value)) return null
-        seenOpts.add(opt.value)
-        const optLabel = typeof opt.label === 'string' && opt.label.length >= 1 ? opt.label.slice(0, 40) : opt.value
-        cleanOpts.push({ value: opt.value, label: optLabel })
+        const val = String(opt.value || '').trim()
+        const lbl = String(opt.label || val).trim().slice(0, 40)
+        if (!val || seenVals.has(val)) continue
+        seenVals.add(val)
+        cleanOpts.push({ value: val, label: lbl })
       }
-      cleanFields.push({
-        id: field.id,
-        kind: 'select' as const,
-        label,
-        options: cleanOpts,
-      })
-      selectFieldIds.add(field.id)
-    } else {
-      return null
+
+      if (cleanOpts.length >= 2) {
+        cleanFields.push({
+          id: fId,
+          kind: 'select',
+          label: fLabel,
+          options: cleanOpts,
+        })
+        selectFields.push(fId)
+      }
     }
   }
+
+  if (cleanFields.length === 0) return null
 
   let cleanComputed: ControlsBlock['computed'] | undefined
   if (item.computed && typeof item.computed === 'object') {
     const comp = item.computed as Record<string, unknown>
-    if (
-      typeof comp.template === 'string' &&
-      comp.template.length <= 200 &&
-      typeof comp.formula === 'string' &&
-      comp.formula.length <= 300
-    ) {
-      cleanComputed = { template: comp.template, formula: comp.formula }
-    } else {
-      return null
+    if (typeof comp.template === 'string' && typeof comp.formula === 'string') {
+      cleanComputed = {
+        template: comp.template.slice(0, 200),
+        formula: comp.formula.slice(0, 300),
+      }
     }
   }
 
-  if (!item.action || typeof item.action !== 'object') return null
-  const act = item.action as Record<string, unknown>
-  if (act.name !== 'send_message' && act.name !== 'set_model') return null
+  const act = (item.action || {}) as Record<string, unknown>
+  const actionName = act.name === 'set_model' ? 'set_model' : 'send_message'
+  const outAction: ControlsBlock['action'] = {
+    name: actionName,
+  }
 
-  if (act.name === 'send_message') {
-    if (typeof act.template !== 'string' || act.template.length < 1 || act.template.length > 500) return null
-    const matches = Array.from(act.template.matchAll(PLACEHOLDER_REGEX)).map((m) => m[1])
-    const validKeys = new Set(seenFieldIds)
+  if (actionName === 'send_message') {
+    const tmpl = typeof act.template === 'string' ? act.template : 'Enviar dados'
+    const placeholders = Array.from(tmpl.matchAll(PLACEHOLDER_REGEX)).map((m) => m[1])
+    const validKeys = new Set(seenIds)
     if (cleanComputed) validKeys.add('resultado')
-    for (const ph of matches) {
+    for (const ph of placeholders) {
       if (!validKeys.has(ph)) return null
     }
-  } else if (act.name === 'set_model') {
-    if (typeof act.field !== 'string' || !selectFieldIds.has(act.field)) return null
+    outAction.template = tmpl.slice(0, 500)
+  } else if (actionName === 'set_model') {
+    const targetField = typeof act.field === 'string' ? act.field : selectFields[0]
+    if (!targetField || !selectFields.includes(targetField)) return null
+    outAction.field = targetField
   }
 
   const out: ControlsBlock = {
-    id: item.id as string,
+    id: (item.id as string) || 'controls_1',
     type: 'controls',
-    title: item.title,
-    submit_label: item.submit_label,
+    title,
+    submit_label: submitLabel,
     fields: cleanFields,
-    action: {
-      name: act.name as 'send_message' | 'set_model',
-      template: typeof act.template === 'string' ? act.template : undefined,
-      field: typeof act.field === 'string' ? act.field : undefined,
-    },
+    action: outAction,
   }
   if (cleanComputed) out.computed = cleanComputed
   return out
 }
 
 function validateSandbox(item: Record<string, unknown>): SandboxBlock | null {
-  if (typeof item.title !== 'string' || item.title.length < 1 || item.title.length > 80) return null
+  const title = typeof item.title === 'string' && item.title.trim() ? item.title.trim().slice(0, 80) : 'Simulação'
   if (typeof item.html !== 'string' || item.html.length < 1 || item.html.length > 20000) return null
 
   const out: SandboxBlock = {
-    id: item.id as string,
+    id: (item.id as string) || 'sandbox_1',
     type: 'sandbox',
-    title: item.title,
+    title,
     html: item.html,
     initial_height:
       typeof item.initial_height === 'number' && item.initial_height >= 120 && item.initial_height <= 800
@@ -401,26 +478,50 @@ export function parseUiEnvelope(raw: unknown): UiEnvelope | null {
     return null
   }
 
-  if (data.v !== 1) return null
-  if (!Array.isArray(data.blocks) || data.blocks.length === 0) return null
+  // Normalização de bloco único ou ausência de "blocks"
+  if (!Array.isArray(data.blocks)) {
+    if (data.type || data.kind || data.steps || data.fields || data.html || data.facts || data.body || data.title) {
+      data = { v: 1, blocks: [data] }
+    } else {
+      return null
+    }
+  }
+
+  data.v = 1
 
   const cleanBlocks: UiBlock[] = []
   const seenIds = new Set<string>()
 
-  for (const item of data.blocks.slice(0, MAX_BLOCKS)) {
+  for (let idx = 0; idx < (data.blocks as unknown[]).slice(0, MAX_BLOCKS).length; idx++) {
+    const item = (data.blocks as unknown[])[idx]
     if (!item || typeof item !== 'object') continue
-    const obj = item as Record<string, unknown>
-    if (typeof obj.id !== 'string' || !ID_REGEX.test(obj.id) || seenIds.has(obj.id)) continue
+    const obj = { ...(item as Record<string, unknown>) }
+
+    let bType = obj.type as string | undefined
+    if (!bType) {
+      if (obj.kind && obj.series) bType = 'chart'
+      else if (obj.steps || (obj.value !== undefined && obj.max !== undefined)) bType = 'progress'
+      else if (obj.fields) bType = 'controls'
+      else if (obj.html) bType = 'sandbox'
+      else bType = 'card'
+      obj.type = bType
+    }
+
+    let bId = obj.id as string | undefined
+    if (typeof bId !== 'string' || !ID_REGEX.test(bId) || seenIds.has(bId)) {
+      bId = `${bType || 'block'}_${idx + 1}`
+    }
+    obj.id = bId
 
     let validated: UiBlock | null = null
-    if (obj.type === 'progress') validated = validateProgress(obj)
-    else if (obj.type === 'card') validated = validateCard(obj)
-    else if (obj.type === 'chart') validated = validateChart(obj)
-    else if (obj.type === 'controls') validated = validateControls(obj)
-    else if (obj.type === 'sandbox') validated = validateSandbox(obj)
+    if (bType === 'progress') validated = validateProgress(obj)
+    else if (bType === 'card') validated = validateCard(obj)
+    else if (bType === 'chart') validated = validateChart(obj)
+    else if (bType === 'controls') validated = validateControls(obj)
+    else if (bType === 'sandbox') validated = validateSandbox(obj)
 
     if (validated) {
-      seenIds.add(obj.id)
+      seenIds.add(bId)
       cleanBlocks.push(validated)
     }
   }
@@ -431,4 +532,49 @@ export function parseUiEnvelope(raw: unknown): UiEnvelope | null {
     v: 1,
     blocks: cleanBlocks,
   }
+}
+
+/**
+ * Remove blocos nexus-ui e chart fences do texto para exibição limpa em Markdown.
+ */
+export function stripUiFences(text: string): string {
+  if (!text) return ''
+  return text
+    .replace(/```(?:nexus-ui(?:\/1)?|nexus)\s*[\s\S]*?```/g, '')
+    .replace(/```(?:chart|ui)\s*\{[\s\S]*?\}\s*```/g, '')
+    .replace(/```(?:nexus-ui(?:\/1)?|nexus)[\s\S]*$/g, '')
+    .trim()
+}
+
+/**
+ * Extrai e valida envelopes client-side a partir do texto caso o backend não tenha enviado ui_blocks.
+ */
+export function extractClientUi(text: string): { envelope: UiEnvelope | null; cleanText: string } {
+  if (!text) return { envelope: null, cleanText: text || '' }
+
+  // 1. Padrão primário: ```nexus-ui
+  const nexusRegex = /```(?:nexus-ui(?:\/1)?|nexus)\s*([\s\S]*?)```/g
+  const matches = Array.from(text.matchAll(nexusRegex))
+  if (matches.length > 0) {
+    const lastMatch = matches[matches.length - 1]
+    const rawJson = lastMatch[1].trim()
+    const envelope = parseUiEnvelope(rawJson)
+    if (envelope) {
+      return { envelope, cleanText: stripUiFences(text) }
+    }
+  }
+
+  // 2. Padrão alternativo: ```chart { ... }
+  const chartRegex = /```(?:chart|ui)\s*(\{[\s\S]*?\})\s*```/g
+  const chartMatches = Array.from(text.matchAll(chartRegex))
+  if (chartMatches.length > 0) {
+    const lastMatch = chartMatches[chartMatches.length - 1]
+    const rawJson = lastMatch[1].trim()
+    const envelope = parseUiEnvelope(rawJson)
+    if (envelope) {
+      return { envelope, cleanText: stripUiFences(text) }
+    }
+  }
+
+  return { envelope: null, cleanText: text }
 }

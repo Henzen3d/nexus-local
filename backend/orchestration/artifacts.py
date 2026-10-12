@@ -20,6 +20,7 @@ logger = get_logger(__name__)
 _EXCLUDED_LANGS_FROM_CODE = {
     "html", "svg", "xml", "jsx", "tsx", "markdown", "md",
     "bash", "sh", "shell", "zsh", "powershell", "ps1", "cmd", "bat", "plaintext", "txt",
+    "nexus-ui", "nexus", "nexus_ui",
 }
 
 
