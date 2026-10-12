@@ -44,7 +44,7 @@ Este arquivo é a base de conhecimento de regras de comportamento e restrições
    6. **Health Check & Logs:**
       ```bash
       docker compose ps
-      docker exec nexus_backend curl -fsS http://localhost:8000/health
+      docker exec nexus_backend python -c "import urllib.request; print(urllib.request.urlopen('http://localhost:8000/health').read().decode())"
       docker compose logs --tail=40 backend
       ```
 
