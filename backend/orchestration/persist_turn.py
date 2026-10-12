@@ -146,6 +146,20 @@ async def save_web_search_metadata(
     await db.commit()
 
 
+async def save_process_steps(db, message_id: str, steps: list[dict] | None) -> None:
+    """Grava a árvore de pesquisa/ações na mensagem do assistente."""
+    if not steps:
+        return
+    try:
+        await db.execute(
+            "UPDATE messages SET process_steps = ? WHERE id = ?",
+            (json.dumps(steps), message_id),
+        )
+        await db.commit()
+    except Exception as e:
+        logger.error("Erro ao salvar process_steps:", exc_info=e)
+
+
 async def detect_and_save_artifacts(
     db,
     ws,

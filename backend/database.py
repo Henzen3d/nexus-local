@@ -1001,6 +1001,12 @@ async def init_db():
             await db.execute("ALTER TABLE messages ADD COLUMN web_search_sources TEXT")
             await db.commit()
 
+        try:
+            await db.execute("SELECT process_steps FROM messages LIMIT 1")
+        except aiosqlite.OperationalError:
+            await db.execute("ALTER TABLE messages ADD COLUMN process_steps TEXT")
+            await db.commit()
+
         # Incremental migration check for fusion_config.grounding_enabled
         try:
             await db.execute("SELECT grounding_enabled FROM fusion_config LIMIT 1")

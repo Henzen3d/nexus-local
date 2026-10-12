@@ -32,6 +32,7 @@ from backend.orchestration.persist_turn import (
     save_ui_blocks,
     save_user_message,
     save_web_search_metadata,
+    save_process_steps,
 )
 from backend.ui_blocks.extract import extract_ui
 from backend.ui_blocks.should_offer import should_offer_ui
@@ -389,7 +390,7 @@ async def _process_turn(
         await move_attachments_to_conversation(attachment_ids, conversation_id, user_msg_id, db)
 
     # ── Web Search ──────────────────────────────────────────────────
-    web_search_used, web_search_query, web_search_sources, search_results, search_config = (
+    web_search_used, web_search_query, web_search_sources, search_results, search_config, process_steps = (
         await _resolve_web_search(
             ws, db, req, user_message, user_msg_id, user_id, conversation_id
         )
@@ -490,6 +491,7 @@ async def _process_turn(
     await save_web_search_metadata(
         db, user_msg_id, web_search_used, web_search_query, web_search_sources
     )
+    await save_process_steps(db, assistant_msg_id, process_steps)
 
     # ── Detect + save artifacts ─────────────────────────────────────
     artifacts_list = await detect_and_save_artifacts(
@@ -519,6 +521,7 @@ async def _process_turn(
         "web_search_used": bool(web_search_used),
         "web_search_query": web_search_query,
         "web_search_sources": web_search_sources,
+        "process_steps": process_steps,
         "process_duration_ms": round((time.perf_counter() - process_started_at) * 1000),
         "source_count": len(web_search_sources),
     }
@@ -538,17 +541,18 @@ async def _process_turn(
 
 async def _resolve_web_search(
     ws, db, req, user_message, user_msg_id, user_id, conversation_id
-) -> tuple[bool, str, list, list, dict | None]:
+) -> tuple[bool, str, list, list, dict | None, list]:
     """Resolve e executa web search se aplicável.
 
     Returns (web_search_used, web_search_query, web_search_sources,
-             search_results, search_config).
+             search_results, search_config, process_steps).
     """
     web_search_requested = req.get("web_search", False)
     web_search_used = False
     web_search_query = ""
     web_search_sources: list = []
     search_results: list = []
+    process_steps: list[dict] = []
 
     search_config = await get_web_search_config(db)
 
@@ -572,6 +576,18 @@ async def _resolve_web_search(
         await ws.send_json({"type": "search_start", "query": web_search_query})
 
         async def send_ws_event(evt: dict):
+            if evt.get("type") == "process_step_start":
+                process_steps.append({
+                    "id": evt.get("id"),
+                    "type": evt.get("step_type") or "tool",
+                    "title": evt.get("title") or "",
+                    "detail": evt.get("detail"),
+                    "status": "running",
+                })
+            elif evt.get("type") == "process_step_end":
+                for step in process_steps:
+                    if step.get("id") == evt.get("id"):
+                        step["status"] = evt.get("status") or "completed"
             try:
                 await ws.send_json(evt)
             except Exception:
@@ -632,4 +648,4 @@ async def _resolve_web_search(
             search_results = []
             scraped_pages = []
 
-    return web_search_used, web_search_query, web_search_sources, search_results, search_config
+    return web_search_used, web_search_query, web_search_sources, search_results, search_config, process_steps

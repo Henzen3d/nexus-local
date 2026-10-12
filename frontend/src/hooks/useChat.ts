@@ -157,7 +157,8 @@ export function useChat() {
             msg.web_search_sources,
             msg.was_fallback,
             msg.ui_blocks,
-            msg.process_duration_ms
+            msg.process_duration_ms,
+            msg.process_steps
           )
           s.loadConversations()
           break
@@ -186,7 +187,7 @@ export function useChat() {
           s.startProcessStep({
             id: msg.id,
             type: msg.step_type,
-            title: msg.step_type === 'search' ? i18n.t('chat.processSearching') : msg.title,
+            title: msg.title || (msg.step_type === 'search' ? i18n.t('chat.processSearching') : msg.step_type),
             detail: msg.detail,
             status: 'running',
           })

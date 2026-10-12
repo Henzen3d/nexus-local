@@ -87,7 +87,8 @@ async def get_conversation(conversation_id: str, current_user: dict = Depends(ge
             raise HTTPException(status_code=403, detail="Acesso não autorizado a esta conversa.")
 
         async with db.execute(
-            """SELECT m.id, m.role, m.content, m.model_id, m.created_at, mod.display_name, p.name, m.provider, m.relay_used, m.relay_model
+            """SELECT m.id, m.role, m.content, m.model_id, m.created_at, mod.display_name, p.name, m.provider, m.relay_used, m.relay_model,
+                      m.web_search_used, m.web_search_query, m.web_search_sources, m.process_steps
                FROM messages m
                LEFT JOIN models mod ON m.model_id = mod.id
                LEFT JOIN providers p ON mod.provider_id = p.id
@@ -167,29 +168,58 @@ async def get_conversation(conversation_id: str, current_user: dict = Depends(ge
         except Exception:
             pass
 
+        def _loads(raw):
+            if not raw:
+                return None
+            if isinstance(raw, (list, dict)):
+                return raw
+            try:
+                return json.loads(raw)
+            except Exception:
+                return None
+
+        built = []
+        pending_search = None
+        for m in messages:
+            item = {
+                "id": m[0],
+                "role": m[1],
+                "content": m[2],
+                "model_id": m[3],
+                "created_at": m[4],
+                "model_display_name": m[5] or (m[3].split('/')[-1] if m[3] else None),
+                "provider": m[6] or m[7] or (m[3].split('/')[0] if m[3] and '/' in m[3] else None),
+                "relay_used": bool(m[8]),
+                "relay_model": m[9],
+                "artifacts": msg_artifacts.get(m[0], []),
+                "attachments": msg_attachments.get(m[0], []),
+                "ui_blocks": msg_ui_blocks.get(m[0]),
+                "web_search_used": bool(m[10]) if len(m) > 10 else False,
+                "web_search_query": m[11] if len(m) > 11 else None,
+                "web_search_sources": _loads(m[12]) if len(m) > 12 else None,
+                "process_steps": _loads(m[13]) if len(m) > 13 else None,
+            }
+            if item["role"] == "user" and item["web_search_used"]:
+                pending_search = {
+                    "web_search_used": True,
+                    "web_search_query": item["web_search_query"],
+                    "web_search_sources": item["web_search_sources"] or [],
+                }
+            elif item["role"] == "assistant" and pending_search:
+                item["web_search_used"] = item["web_search_used"] or pending_search["web_search_used"]
+                item["web_search_query"] = item["web_search_query"] or pending_search["web_search_query"]
+                if not item["web_search_sources"]:
+                    item["web_search_sources"] = pending_search["web_search_sources"]
+                pending_search = None
+            built.append(item)
+
         return {
             "id": conv[0], "title": conv[1], "model_id": conv[2],
             "provider_id": conv[3], "created_at": conv[4],
             "is_favorite": bool(conv[6]), "favorited_at": conv[7],
             "project_tag": conv[8] if len(conv) > 8 else None,
             "project_id": conv[9] if len(conv) > 9 else None,
-            "messages": [
-                {
-                    "id": m[0],
-                    "role": m[1],
-                    "content": m[2],
-                    "model_id": m[3],
-                    "created_at": m[4],
-                    "model_display_name": m[5] or (m[3].split('/')[-1] if m[3] else None),
-                    "provider": m[6] or m[7] or (m[3].split('/')[0] if m[3] and '/' in m[3] else None),
-                    "relay_used": bool(m[8]),
-                    "relay_model": m[9],
-                    "artifacts": msg_artifacts.get(m[0], []),
-                    "attachments": msg_attachments.get(m[0], []),
-                    "ui_blocks": msg_ui_blocks.get(m[0]),
-                }
-                for m in messages
-            ],
+            "messages": built,
         }
     finally:
         await db.close()

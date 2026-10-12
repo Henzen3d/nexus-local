@@ -247,7 +247,7 @@ interface AppState {
   beginProcess: (thinkingTitle?: string) => void
   startProcessStep: (step: ProcessStep) => void
   updateProcessStep: (id: string, update: Partial<Pick<ProcessStep, 'detail' | 'subSteps' | 'status'>>) => void
-  finalizeStream: (messageId: string, artifactMeta?: { id: string; type: string; title: string }, artifacts?: { id: string; type: string; title: string }[], relayUsed?: boolean, relayModel?: string | null, webSearchUsed?: boolean, webSearchQuery?: string, webSearchSources?: WebSearchSource[], wasFallback?: boolean, uiBlocks?: UiEnvelope | null, processDurationMs?: number) => void
+  finalizeStream: (messageId: string, artifactMeta?: { id: string; type: string; title: string }, artifacts?: { id: string; type: string; title: string }[], relayUsed?: boolean, relayModel?: string | null, webSearchUsed?: boolean, webSearchQuery?: string, webSearchSources?: WebSearchSource[], wasFallback?: boolean, uiBlocks?: UiEnvelope | null, processDurationMs?: number, serverSteps?: ProcessStep[]) => void
   handleUiProgress: (block: ProgressBlock) => void
   lastAutoRouteDecision: AutoRouteDecisionInfo | null
   setAutoRouteDecision: (decision: AutoRouteDecisionInfo | null) => void
@@ -694,10 +694,17 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   beginProcess: (thinkingTitle = 'Thinking') => {
-    set((s) => s.processStartedAt ? { isStreaming: true } : {
-      isStreaming: true,
-      processSteps: [{ id: 'thinking', type: 'think', title: thinkingTitle, status: 'running' }],
-      processStartedAt: Date.now(),
+    set((s) => {
+      const thinkStep = { id: 'thinking', type: 'think' as const, title: thinkingTitle, status: 'running' as const }
+      const already = s.processSteps.some((step) => step.id === 'thinking')
+      const processSteps = already
+        ? s.processSteps.map((step) => step.id === 'thinking' ? { ...step, ...thinkStep } : step)
+        : [...s.processSteps, thinkStep]
+      return {
+        isStreaming: true,
+        processSteps,
+        processStartedAt: s.processStartedAt ?? Date.now(),
+      }
     })
   },
 
@@ -731,12 +738,18 @@ export const useStore = create<AppState>((set, get) => ({
     webSearchSources?: WebSearchSource[],
     wasFallback?: boolean,
     uiBlocks?: UiEnvelope | null,
-    processDurationMs?: number
+    processDurationMs?: number,
+    serverSteps?: ProcessStep[]
   ) => {
     const { streamingContent, selectedModelId, models, lastAutoRouteDecision, processSteps, processStartedAt } = get()
     const resolvedModelId = lastAutoRouteDecision?.chosen_model_id || selectedModelId
     const activeModel = models.find((m) => m.id === resolvedModelId)
-    const completedSteps = processSteps.map((step) => ({
+    const clientSteps = processSteps
+    const clientHasSearch = clientSteps.some((step) => step.type === 'search' || step.type === 'navigate')
+    const baseSteps = clientHasSearch || !serverSteps?.length
+      ? clientSteps
+      : [...serverSteps, ...clientSteps.filter((step) => step.type === 'think')]
+    const completedSteps = baseSteps.map((step) => ({
       ...step,
       status: step.status === 'failed' ? 'failed' as const : 'completed' as const,
     }))

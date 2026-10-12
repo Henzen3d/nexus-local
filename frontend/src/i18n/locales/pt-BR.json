@@ -117,6 +117,7 @@
     "processLabel": "Etapas da resposta",
     "processThinking": "Raciocinando",
     "processSearching": "Pesquisando na web",
+    "processReading": "Lendo página",
     "processWorking": "⚡ Trabalhando há {{time}}",
     "processDone": "Trabalhou por {{time}}",
     "processDoneResearch": "Pensou e pesquisou por {{time}}",

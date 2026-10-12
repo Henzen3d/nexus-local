@@ -18,6 +18,7 @@ import { AutoRouteBadge } from './AutoRouteBadge'
 import { DynamicRenderer } from '../ui/DynamicRenderer'
 import { stripUiFences, extractClientUi } from '../lib/nexusUi'
 import { ExecutionSequence } from './ExecutionSequence'
+import { mergeProcessTree } from '../lib/processTree'
 
 // ─── ThinkingBlock — componente independente de modelo ─────────────────────────
 // ─── ThinkingBlock — componente independente de modelo ─────────────────────────
@@ -371,23 +372,22 @@ export function MessageBubble({ message }: Props) {
                 </div>
               )}
 
-              {message.process_steps?.length ? (
+              {message.role === 'assistant' && (reasoning || message.process_steps?.length || message.web_search_used) ? (
                 <ExecutionSequence
-                  steps={message.process_steps}
+                  steps={mergeProcessTree(
+                    message.process_steps,
+                    {
+                      used: message.web_search_used,
+                      query: message.web_search_query,
+                      sources: message.web_search_sources,
+                    },
+                    { searching: t('chat.processSearching'), reading: t('chat.processReading', { defaultValue: 'Lendo página' }) },
+                  )}
                   isWorking={false}
                   durationMs={message.process_duration_ms}
                   thinkingContent={reasoning || undefined}
                 />
-              ) : (
-                <>
-                  {message.web_search_used && message.web_search_sources && message.web_search_sources.length > 0 && (
-                    <WebSearchSources sources={message.web_search_sources} query={message.web_search_query} />
-                  )}
-                  {(reasoning !== null || isThinking) && (
-                    <ThinkingBlock content={reasoning || ''} isThinking={isThinking} />
-                  )}
-                </>
-              )}
+              ) : null}
 
               {cleanedContent && (
                 <div className="assistant-response">

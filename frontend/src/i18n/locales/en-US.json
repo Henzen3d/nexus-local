@@ -117,6 +117,7 @@
     "processLabel": "Response steps",
     "processThinking": "Reasoning",
     "processSearching": "Searching the web",
+    "processReading": "Reading page",
     "processWorking": "⚡ Working for {{time}}",
     "processDone": "Worked for {{time}}",
     "processDoneResearch": "Thought and searched for {{time}}",
