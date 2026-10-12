@@ -12,6 +12,8 @@ import os
 import sys
 import tempfile
 from pathlib import Path
+
+os.environ.setdefault("JWT_SECRET", "test-reasoning-secret")
 import pytest
 import aiosqlite
 
