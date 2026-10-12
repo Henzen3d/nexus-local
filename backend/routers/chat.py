@@ -420,6 +420,13 @@ async def _process_turn(
     if image_job_created:
         system_instruction += "\n\nO usuário pediu uma imagem raster que está sendo gerada separadamente. Não escreva código SVG nem gere tags de imagem neste turno."
 
+    if web_search_used:
+        system_instruction += (
+            "\n\nPESQUISA NA WEB: A pesquisa online já foi executada para esta pergunta e os resultados atualizados estão presentes no contexto. "
+            "Responda diretamente com base nessas informações e fontes fornecidas, agindo como um assistente conectado e utilizando os dados obtidos, "
+            "SEM afirmar que não possui acesso à internet ou que não pode acessar a web."
+        )
+
     # ── Intelligent UI: oferta de catálogo condicional (Spec Seção 8) ───
     if os.getenv("INTELLIGENT_UI_ENABLED", "false").lower() in ("true", "1", "yes"):
         if should_offer_ui(user_message):

@@ -681,6 +681,14 @@ export function StreamingBubble({ content }: { content: string }) {
 
   const streamText = stripUiFences(deferredResponse)
 
+  // A fase de preparação ativa (busca web / thinking) termina assim que os primeiros tokens
+  // da resposta final começam a ser gerados.
+  const isStillWorking = isThinking || !streamText.trim()
+  const prepDurationRef = useRef<number | null>(null)
+  if (!isStillWorking && prepDurationRef.current === null && processStartedAt) {
+    prepDurationRef.current = Math.max(500, Date.now() - processStartedAt)
+  }
+
   return (
     <div className="message assistant streaming">
       <AssistantAvatar />
@@ -696,8 +704,9 @@ export function StreamingBubble({ content }: { content: string }) {
 
         <ExecutionSequence
           steps={processSteps}
-          isWorking
+          isWorking={isStillWorking}
           startedAt={processStartedAt}
+          durationMs={prepDurationRef.current ?? undefined}
           thinkingContent={reasoning || undefined}
         />
 

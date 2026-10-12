@@ -29,9 +29,8 @@ BASE_SYSTEM_PROMPT = (
     "Importante: NÃO dê instruções de empacotamento, compactação ZIP, instalação de pipelines de CI/CD ou "
     "scripts de automação (como scripts BASH ou Node.js para criar o arquivo), a menos que o usuário "
     "solicite isso explicitamente. O download e a visualização do arquivo são gerenciados automaticamente pela interface.\n"
-    "RESTRIÇÃO CRÍTICA: Você NÃO possui acesso a nenhuma ferramenta externa (search_web, read_file, buscar_paginas_web, "
-    "buscar_google, ler_arquivo, ou qualquer outra). NÃO tente chamar ou invocar ferramentas. "
-    "Responda sempre diretamente com base no contexto e histórico fornecidos."
+    "RESTRIÇÃO DE FERRAMENTAS: Você não deve gerar chamadas fictícias de ferramentas ou blocos simulados de function calling em texto. "
+    "Responda sempre diretamente em linguagem natural ou código com base no contexto, nas fontes anexadas e no histórico fornecidos."
 )
 
 

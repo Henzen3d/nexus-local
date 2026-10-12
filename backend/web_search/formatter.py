@@ -17,9 +17,9 @@ def format_search_results(results: list[dict], query: str, template: str = None)
         except Exception:
             pass
 
-    return f"""Resultados de busca para "{query}":
+    return f"""Resultados de pesquisa na web para "{query}":
 
 {formatted_results}
 
 ---
-Use essas informações para responder a pergunta do usuário abaixo, citando as fontes quando relevante."""
+Instruções: Os resultados da pesquisa web acima já foram consultados pelo sistema e estão disponíveis para você. Utilize essas informações diretamente como fatos e dados atualizados para responder à pergunta do usuário, citando as fontes quando relevante. Não afirme que não possui acesso à internet ou que não pode acessar a web, pois a pesquisa já foi realizada com sucesso."""
