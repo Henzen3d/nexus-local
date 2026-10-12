@@ -414,3 +414,14 @@ async def test_resolve_and_stream_reasoning_behavior():
                 os.remove(tmp_path)
             except Exception:
                 pass
+
+
+def test_parse_reasoning_levels_does_not_require_local_import():
+    """GET /admin/providers 500'd because json lived only inside sync_provider_models."""
+    from backend.routers.admin import parse_reasoning_levels
+
+    assert parse_reasoning_levels('["low", "high"]') == ["low", "high"]
+    assert parse_reasoning_levels(None) is None
+    assert parse_reasoning_levels("") is None
+    assert parse_reasoning_levels(["medium"]) == ["medium"]
+    assert parse_reasoning_levels("not-json") is None

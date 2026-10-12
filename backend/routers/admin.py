@@ -2,6 +2,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 import httpx
+import json
 import os
 import re
 import uuid
@@ -17,6 +18,18 @@ from backend.auth import get_current_user, require_admin, hash_password
 from backend.free_registry.sync import sync_free_registry
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
+
+
+def parse_reasoning_levels(raw):
+    """Decode reasoning_levels stored as JSON text. Never raises — a bad row must not 500 the provider list."""
+    if raw is None or raw == "":
+        return None
+    if not isinstance(raw, str):
+        return raw
+    try:
+        return json.loads(raw)
+    except (TypeError, ValueError):
+        return None
 
 
 def derive_display_name(model_id: str) -> str:
@@ -338,7 +351,7 @@ async def list_providers(current_user: dict = Depends(get_current_user)):
                         "confirmed_free": bool(m[5]),
                         "supports_vision": bool(m[6]) if len(m) > 6 else False,
                         "reasoning_control": m[7] if len(m) > 7 and m[7] else "none",
-                        "reasoning_levels": (json.loads(m[8]) if m[8] and isinstance(m[8], str) else m[8]) if len(m) > 8 else None,
+                        "reasoning_levels": parse_reasoning_levels(m[8]) if len(m) > 8 else None,
                         "reasoning_default": m[9] if len(m) > 9 else None,
                         "reasoning_control_source": m[10] if len(m) > 10 and m[10] else "unset",
                     }
@@ -401,12 +414,7 @@ async def list_all_models(current_user: dict = Depends(get_current_user)):
             if hide_unconfirmed and is_free_provider and not confirmed_free:
                 continue
 
-            reasoning_levels_val = None
-            if r[18]:
-                try:
-                    reasoning_levels_val = json.loads(r[18]) if isinstance(r[18], str) else r[18]
-                except Exception:
-                    reasoning_levels_val = None
+            reasoning_levels_val = parse_reasoning_levels(r[18]) if len(r) > 18 else None
                 
             result.append({
                 "id": r[0], "display_name": r[1], "context_length": r[2],
