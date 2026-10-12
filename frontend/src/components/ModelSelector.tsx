@@ -1,5 +1,15 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
-import { ChevronDown, AlertCircle, Check, ChevronRight } from 'lucide-react'
+import {
+  ChevronDown,
+  AlertCircle,
+  Check,
+  ChevronRight,
+  ChevronLeft,
+  Route,
+  Server,
+  Cpu,
+  Search,
+} from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useStore } from '../store/useStore'
 import { pickManualFallback } from '../lib/modelSelection'
@@ -12,6 +22,8 @@ interface ModelSelectorProps {
   compact?: boolean
   className?: string
 }
+
+type SubmenuType = 'none' | 'providers' | 'models'
 
 function formatContext(tokens?: number): string | null {
   if (!tokens || tokens <= 0) return null
@@ -33,8 +45,10 @@ export function ModelSelector({ compact = false, className = '' }: ModelSelector
   } = useStore()
 
   const [open, setOpen] = useState(false)
+  const [activeSubmenu, setActiveSubmenu] = useState<SubmenuType>('none')
   const [providerFilter, setProviderFilter] = useState<string>('all')
-  const [showAllModels, setShowAllModels] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+
   const ref = useRef<HTMLDivElement>(null)
   const isMobile = useIsMobile()
 
@@ -42,7 +56,6 @@ export function ModelSelector({ compact = false, className = '' }: ModelSelector
   const wantManualRef = useRef(false)
 
   useEffect(() => {
-    // O header não monta mais ProviderSelector, que era quem carregava o catálogo no chat.
     loadModels()
   }, [loadModels])
 
@@ -63,11 +76,17 @@ export function ModelSelector({ compact = false, className = '' }: ModelSelector
     }
   }, [selectedModelId, selectedProviderId])
 
+  const handleClose = () => {
+    setOpen(false)
+    setActiveSubmenu('none')
+    setSearchQuery('')
+  }
+
   useEffect(() => {
     if (!open || isMobile) return
     const handleClickOutside = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false)
+        handleClose()
       }
     }
     document.addEventListener('mousedown', handleClickOutside)
@@ -77,11 +96,17 @@ export function ModelSelector({ compact = false, className = '' }: ModelSelector
   useEffect(() => {
     if (!open || isMobile) return
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false)
+      if (e.key === 'Escape') {
+        if (activeSubmenu !== 'none') {
+          setActiveSubmenu('none')
+        } else {
+          handleClose()
+        }
+      }
     }
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [open, isMobile])
+  }, [open, activeSubmenu, isMobile])
 
   // Lista de provedores únicos disponíveis no catálogo
   const availableProviders = useMemo(() => {
@@ -92,7 +117,16 @@ export function ModelSelector({ compact = false, className = '' }: ModelSelector
     return Array.from(set).sort()
   }, [models])
 
-  // Filtragem visual por provedor (sem alterar o modelo selecionado no store)
+  // Nome formatado do provedor atualmente selecionado no filtro
+  const currentProviderLabel = useMemo(() => {
+    if (providerFilter === 'all') {
+      return t('chat.allProviders', { defaultValue: 'Todos' })
+    }
+    const modelWithProvider = models.find((m) => m.provider_id === providerFilter)
+    return modelWithProvider?.provider_name || providerFilter
+  }, [providerFilter, models, t])
+
+  // Filtragem visual por provedor
   const filteredModels = useMemo(() => {
     if (providerFilter === 'all') return models
     return models.filter((m) => m.provider_id === providerFilter)
@@ -110,11 +144,32 @@ export function ModelSelector({ compact = false, className = '' }: ModelSelector
     })
   }, [filteredModels, modelSortMode])
 
-  // Modelos exibidos (com limite inicial de 6 se não expandido)
-  const displayedModels = useMemo(() => {
-    if (showAllModels || sortedModels.length <= 6) return sortedModels
-    return sortedModels.slice(0, 6)
-  }, [sortedModels, showAllModels])
+  // 3 principais modelos exibidos no menu inicial
+  const top3Models = useMemo(() => {
+    if (sortedModels.length <= 3) return sortedModels
+    // Se o modelo manual ativo estiver no filtro atual, garante ele entre os 3 (como primeiro)
+    if (!isAuto && selectedModelId) {
+      const currentSelected = sortedModels.find((m) => m.id === selectedModelId)
+      if (currentSelected) {
+        const others = sortedModels.filter((m) => m.id !== selectedModelId)
+        return [currentSelected, ...others.slice(0, 2)]
+      }
+    }
+    return sortedModels.slice(0, 3)
+  }, [sortedModels, isAuto, selectedModelId])
+
+  // Modelos filtrados pela barra de busca do submenu "Mais modelos"
+  const searchFilteredModels = useMemo(() => {
+    if (!searchQuery.trim()) return sortedModels
+    const q = searchQuery.toLowerCase().trim()
+    return sortedModels.filter(
+      (m) =>
+        m.display_name.toLowerCase().includes(q) ||
+        m.id.toLowerCase().includes(q) ||
+        (m.provider_name && m.provider_name.toLowerCase().includes(q)) ||
+        (m.provider_id && m.provider_id.toLowerCase().includes(q))
+    )
+  }, [sortedModels, searchQuery])
 
   const selectedModel = useMemo(() => {
     if (isAuto) return null
@@ -126,7 +181,7 @@ export function ModelSelector({ compact = false, className = '' }: ModelSelector
     lastManualModelIdRef.current = m.id
     lastManualProviderIdRef.current = m.provider_id
     wantManualRef.current = false
-    setOpen(false)
+    handleClose()
   }
 
   const applyManual = () => {
@@ -165,9 +220,143 @@ export function ModelSelector({ compact = false, className = '' }: ModelSelector
     applyManual()
   }, [models, isAuto])
 
-  const renderCockpitContent = () => (
+  // Submenu: Seleção de Provedores
+  const renderProvidersSubmenu = () => (
+    <div className="cockpit-submenu-content">
+      {isMobile && (
+        <div className="cockpit-submenu-header">
+          <button
+            type="button"
+            className="cockpit-back-btn"
+            onClick={() => setActiveSubmenu('none')}
+          >
+            <ChevronLeft size={16} />
+            <span>{t('chat.back', { defaultValue: 'Voltar' })}</span>
+          </button>
+          <span className="cockpit-submenu-title">
+            {t('chat.providerLabel', { defaultValue: 'Provedor' })}
+          </span>
+        </div>
+      )}
+      <div className="cockpit-submenu-list" role="listbox">
+        <button
+          type="button"
+          className={`cockpit-submenu-item ${providerFilter === 'all' ? 'selected' : ''}`}
+          onClick={() => {
+            setProviderFilter('all')
+            setActiveSubmenu('none')
+          }}
+        >
+          <span>{t('chat.allProvidersOption', { defaultValue: 'Todos os provedores' })}</span>
+          {providerFilter === 'all' && <Check size={14} color="var(--primary)" strokeWidth={2.5} />}
+        </button>
+        {availableProviders.map((prov) => {
+          const isSelected = providerFilter === prov
+          const provModel = models.find((m) => m.provider_id === prov)
+          const provName = provModel?.provider_name || prov
+          return (
+            <button
+              key={prov}
+              type="button"
+              className={`cockpit-submenu-item ${isSelected ? 'selected' : ''}`}
+              onClick={() => {
+                setProviderFilter(prov)
+                setActiveSubmenu('none')
+              }}
+            >
+              <span>{provName}</span>
+              {isSelected && <Check size={14} color="var(--primary)" strokeWidth={2.5} />}
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+
+  // Submenu: Catálogo Completo de Modelos
+  const renderModelsSubmenu = () => (
+    <div className="cockpit-submenu-content">
+      {isMobile && (
+        <div className="cockpit-submenu-header">
+          <button
+            type="button"
+            className="cockpit-back-btn"
+            onClick={() => {
+              setActiveSubmenu('none')
+              setSearchQuery('')
+            }}
+          >
+            <ChevronLeft size={16} />
+            <span>{t('chat.back', { defaultValue: 'Voltar' })}</span>
+          </button>
+          <span className="cockpit-submenu-title">
+            {t('chat.moreModels', { defaultValue: 'Mais modelos' })}
+          </span>
+        </div>
+      )}
+      <div className="cockpit-search-box">
+        <Search size={13} className="cockpit-search-icon" />
+        <input
+          type="text"
+          className="cockpit-search-input"
+          placeholder={t('chat.searchModels', { defaultValue: 'Buscar modelos…' })}
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          autoFocus={!isMobile}
+        />
+      </div>
+      <div className="cockpit-submenu-list all-models-scroll" role="listbox">
+        {searchFilteredModels.map((m) => {
+          const isSelected = !isAuto && selectedModelId === m.id
+          const ctxText = formatContext(m.context_length)
+          const isExhausted = m.quota_status === 'exhausted'
+          return (
+            <button
+              key={`${m.provider_id}-${m.id}`}
+              type="button"
+              role="option"
+              aria-selected={isSelected}
+              className={`cockpit-model-item ${isSelected ? 'selected' : ''}`}
+              onClick={() => handleSelectModel(m)}
+              disabled={isExhausted}
+            >
+              <div className="cockpit-model-main">
+                <span className="cockpit-model-name">{m.display_name}</span>
+                <div className="cockpit-model-meta">
+                  <span className="cockpit-model-provider">{m.provider_name || m.provider_id}</span>
+                  {m.nexuslocal_score !== undefined && (
+                    <RankBadge score={m.nexuslocal_score} />
+                  )}
+                  {ctxText && <span className="cockpit-model-ctx">{ctxText}</span>}
+                  {isExhausted && (
+                    <span
+                      className="cockpit-model-exhausted"
+                      title={t('chat.quotaExhausted', { defaultValue: 'Cota esgotada' })}
+                    >
+                      <AlertCircle size={12} color="var(--error)" />
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className="cockpit-model-right">
+                {isSelected && <Check size={15} color="var(--primary)" strokeWidth={2.5} />}
+              </div>
+            </button>
+          )
+        })}
+        {searchFilteredModels.length === 0 && (
+          <div className="cockpit-no-results">
+            <span>{t('conversations.noSearchResults', { defaultValue: 'Nenhum resultado' })}</span>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+
+  // Menu Principal
+  const renderMainMenu = () => (
     <>
-      {/* CAMADA 1: Auto-Roteamento Inteligente (Smart Router) */}
+      {/* Opção 1: Roteamento Inteligente (Smart Router) sem emoji */}
       <button
         type="button"
         className="cockpit-auto-card"
@@ -178,7 +367,9 @@ export function ModelSelector({ compact = false, className = '' }: ModelSelector
         aria-label={t('chat.smartRouter', { defaultValue: 'Roteamento Inteligente' })}
       >
         <div className="cockpit-auto-info">
-          <span className="cockpit-auto-icon">🎯</span>
+          <div className="cockpit-svg-icon-wrap" aria-hidden="true">
+            <Route size={15} strokeWidth={2} />
+          </div>
           <div className="cockpit-auto-texts">
             <span className="cockpit-auto-title">
               {t('chat.smartRouter', { defaultValue: 'Roteamento Inteligente' })}
@@ -198,44 +389,34 @@ export function ModelSelector({ compact = false, className = '' }: ModelSelector
         </span>
       </button>
 
-      {/* CAMADA 2: Filtro Horizontal de Provedores (Abas em Pílulas) */}
-      <div className="cockpit-provider-tabs" role="tablist">
-        <button
-          type="button"
-          className={`provider-tab-pill ${providerFilter === 'all' ? 'active' : ''}`}
-          onClick={() => {
-            setProviderFilter('all')
-            setShowAllModels(false)
-          }}
-          role="tab"
-          aria-selected={providerFilter === 'all'}
-        >
-          {t('chat.allProviders', { defaultValue: 'Todos' })}
-        </button>
-        {availableProviders.map((prov) => (
-          <button
-            key={prov}
-            type="button"
-            className={`provider-tab-pill ${providerFilter === prov ? 'active' : ''}`}
-            onClick={() => {
-              setProviderFilter(prov)
-              setShowAllModels(false)
-            }}
-            role="tab"
-            aria-selected={providerFilter === prov}
-          >
-            {prov}
-          </button>
-        ))}
-      </div>
+      <div className="cockpit-divider" />
 
-      {/* CAMADA 3: Lista de Modelos Reais do Catálogo */}
-      <div className="cockpit-model-list" role="listbox">
-        {displayedModels.map((m) => {
+      {/* Opção 2: Seletor de Provedor com Seta Lateral */}
+      <button
+        type="button"
+        className={`cockpit-nav-row ${activeSubmenu === 'providers' ? 'active' : ''}`}
+        onClick={() => setActiveSubmenu(activeSubmenu === 'providers' ? 'none' : 'providers')}
+        onMouseEnter={() => !isMobile && setActiveSubmenu('providers')}
+        aria-expanded={activeSubmenu === 'providers'}
+      >
+        <div className="cockpit-nav-left">
+          <Server size={14} strokeWidth={1.8} className="cockpit-row-icon" />
+          <span>{t('chat.providerLabel', { defaultValue: 'Provedor' })}</span>
+        </div>
+        <div className="cockpit-nav-right">
+          <span className="cockpit-nav-value">{currentProviderLabel}</span>
+          <ChevronRight size={14} className="cockpit-nav-chevron" />
+        </div>
+      </button>
+
+      <div className="cockpit-divider" />
+
+      {/* Opção 3: Os 3 Principais Modelos */}
+      <div className="cockpit-model-list-compact" role="listbox">
+        {top3Models.map((m) => {
           const isSelected = !isAuto && selectedModelId === m.id
           const ctxText = formatContext(m.context_length)
           const isExhausted = m.quota_status === 'exhausted'
-
           return (
             <button
               key={`${m.provider_id}-${m.id}`}
@@ -257,7 +438,10 @@ export function ModelSelector({ compact = false, className = '' }: ModelSelector
                   )}
                   {ctxText && <span className="cockpit-model-ctx">{ctxText}</span>}
                   {isExhausted && (
-                    <span className="cockpit-model-exhausted" title={t('chat.quotaExhausted', { defaultValue: 'Cota esgotada' })}>
+                    <span
+                      className="cockpit-model-exhausted"
+                      title={t('chat.quotaExhausted', { defaultValue: 'Cota esgotada' })}
+                    >
                       <AlertCircle size={12} color="var(--error)" />
                     </span>
                   )}
@@ -269,20 +453,27 @@ export function ModelSelector({ compact = false, className = '' }: ModelSelector
             </button>
           )
         })}
-
-        {sortedModels.length > 6 && !showAllModels && (
-          <button
-            type="button"
-            className="cockpit-more-btn"
-            onClick={() => setShowAllModels(true)}
-          >
-            <span>
-              {t('chat.moreModels', { defaultValue: 'Mais modelos' })} ({sortedModels.length - 6})
-            </span>
-            <ChevronRight size={14} />
-          </button>
-        )}
       </div>
+
+      {/* Opção 4: Mais Modelos > */}
+      <button
+        type="button"
+        className={`cockpit-nav-row ${activeSubmenu === 'models' ? 'active' : ''}`}
+        onClick={() => setActiveSubmenu(activeSubmenu === 'models' ? 'none' : 'models')}
+        onMouseEnter={() => !isMobile && setActiveSubmenu('models')}
+        aria-expanded={activeSubmenu === 'models'}
+      >
+        <div className="cockpit-nav-left">
+          <Cpu size={14} strokeWidth={1.8} className="cockpit-row-icon" />
+          <span>{t('chat.moreModels', { defaultValue: 'Mais modelos' })}</span>
+        </div>
+        <div className="cockpit-nav-right">
+          {sortedModels.length > 3 && (
+            <span className="cockpit-nav-badge">{sortedModels.length}</span>
+          )}
+          <ChevronRight size={14} className="cockpit-nav-chevron" />
+        </div>
+      </button>
     </>
   )
 
@@ -300,39 +491,74 @@ export function ModelSelector({ compact = false, className = '' }: ModelSelector
 
   return (
     <div className={`model-selector ${compact ? 'compact' : ''} ${className}`.trim()} ref={ref}>
+      {/* Botão de Trigger (Pill no rodapé) — Sem emojis */}
       <button
         type="button"
         className={`model-trigger ${compact ? 'compact' : ''}`}
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => {
+          if (open) {
+            handleClose()
+          } else {
+            setOpen(true)
+          }
+        }}
         disabled={isStreaming}
         aria-expanded={open}
         aria-haspopup={isMobile ? 'dialog' : 'listbox'}
       >
         {isStreaming && <span className="pulse-dot" />}
         <span className="model-trigger-name">
-          {isAuto
-            ? `🎯 ${t('chat.autoRouter', { defaultValue: 'Auto (Roteador)' })}`
-            : selectedModel
-            ? selectedModel.display_name
-            : t('chat.selectModel')}
+          {isAuto ? (
+            <span className="model-trigger-auto-badge">
+              <Route size={12} strokeWidth={2} />
+              {t('chat.autoRouter', { defaultValue: 'Roteamento Inteligente' })}
+            </span>
+          ) : selectedModel ? (
+            selectedModel.display_name
+          ) : (
+            t('chat.selectModel')
+          )}
         </span>
         <ChevronDown size={13} className={`chevron ${open ? 'open' : ''}`} />
       </button>
 
+      {/* Desktop Popover com Flyout Cascata */}
       {open && !isMobile && (
-        <div className="model-cockpit-popover" role="dialog" aria-label={t('chat.selectModel')}>
-          {renderCockpitContent()}
+        <div
+          className="model-cockpit-popover"
+          role="dialog"
+          aria-label={t('chat.selectModel')}
+          onMouseLeave={() => {
+            // Mantém submenu ativo se o cursor for para o flyout (controlado no wrapper)
+          }}
+        >
+          {renderMainMenu()}
+
+          {/* Submenu lateral (flyout à esquerda para não estourar a tela) */}
+          {activeSubmenu !== 'none' && (
+            <div
+              className="cockpit-submenu-flyout"
+              role="dialog"
+              onMouseEnter={() => {}}
+            >
+              {activeSubmenu === 'providers' && renderProvidersSubmenu()}
+              {activeSubmenu === 'models' && renderModelsSubmenu()}
+            </div>
+          )}
         </div>
       )}
 
+      {/* Mobile BottomSheet (Drill-down nativo com botão Voltar) */}
       {isMobile && (
         <BottomSheet
           open={open}
-          onClose={() => setOpen(false)}
+          onClose={handleClose}
           title={t('chat.selectModel')}
         >
-          <div style={{ padding: '8px 12px 24px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {renderCockpitContent()}
+          <div style={{ padding: '8px 12px 24px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {activeSubmenu === 'none' && renderMainMenu()}
+            {activeSubmenu === 'providers' && renderProvidersSubmenu()}
+            {activeSubmenu === 'models' && renderModelsSubmenu()}
           </div>
         </BottomSheet>
       )}
