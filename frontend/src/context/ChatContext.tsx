@@ -3,7 +3,13 @@ import { useChat } from '../hooks/useChat'
 import type { Attachment } from '../types'
 
 interface ChatContextValue {
-  sendMessage: (text: string, displayText?: string, attachmentIds?: string[], attachments?: Attachment[]) => void
+  sendMessage: (
+    text: string,
+    displayText?: string,
+    attachmentIds?: string[],
+    attachments?: Attachment[],
+    voiceMode?: boolean,
+  ) => void
   stopStream: () => void
 }
 

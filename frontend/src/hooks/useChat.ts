@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback } from 'react'
 import i18n from '../i18n'
 import { useStore } from '../store/useStore'
+import { getTalk } from '../lib/talkLoop'
 import type { WSMessage, Attachment } from '../types'
 
 const AUTH_CLOSE_CODE = 4001
@@ -424,7 +425,13 @@ export function useChat() {
   }, [])
 
   const sendMessage = useCallback(
-    (text: string, displayText?: string, attachmentIds?: string[], attachments?: Attachment[]) => {
+    (
+      text: string,
+      displayText?: string,
+      attachmentIds?: string[],
+      attachments?: Attachment[],
+      voiceMode?: boolean,
+    ) => {
       if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
         console.warn('WebSocket not ready')
         useStore.getState().showToast(
@@ -451,6 +458,7 @@ export function useChat() {
       )
 
       const activeEffort = useStore.getState().getActiveReasoningEffort()
+      const isVoiceMode = voiceMode !== undefined ? voiceMode : getTalk().mode === 'loop'
 
       wsRef.current.send(
         JSON.stringify({
@@ -460,6 +468,7 @@ export function useChat() {
           provider_id: selectedProviderId,
           reasoning_effort: activeEffort || undefined,
           fusion: fusionMode,
+          voice_mode: isVoiceMode ? true : undefined,
           attachment_ids: safeAttachmentIds.length > 0 ? safeAttachmentIds : undefined,
           web_search: webSearchActive,
           // Always request memory; backend honors global profile.memory_enabled

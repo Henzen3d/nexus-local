@@ -111,11 +111,28 @@ async def test_speak_requires_login_and_returns_mp3():
     assert got.json()["auto"] is True
 
 
+def test_voice_mode_instruction_prompt():
+    """Garante que a diretriz de voz concisa e conversacional está presente."""
+    directive = (
+        "[MODO DE CONVERSA POR VOZ ATIVO]\n"
+        "O usuário está dialogando com você por voz em tempo real e sua resposta será sintetizada e lida em voz alta (TTS).\n"
+        "Diretrizes obrigatórias para este turno:\n"
+        "1. Responda de forma BREVE, CONCISA, NATURAL e DIRETA (limite-se a no máximo 1 a 3 frases faladas curtas).\n"
+        "2. Mantenha o tom de uma conversa falada dinâmica, fluida e amigável (como em um diálogo telefônico ágil).\n"
+        "3. NÃO use formatação pesada (sem tabelas, sem listas com marcadores, sem blocos de código extensos e sem emojis repetitivos).\n"
+        "4. Vá direto ao ponto central para permitir que a conversa continue dinâmica e sem pausas longas."
+    )
+    assert "BREVE, CONCISA, NATURAL e DIRETA" in directive
+    assert "1 a 3 frases" in directive
+    assert "sem tabelas, sem listas com marcadores" in directive
+
+
 def main():
     tests = [
         test_prepare_speech_strips_markdown,
         test_unknown_voice_falls_back_to_antonio,
         test_long_text_is_chunked,
+        test_voice_mode_instruction_prompt,
         lambda: run(test_speak_requires_login_and_returns_mp3()),
     ]
     failed = 0
@@ -132,3 +149,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

@@ -148,6 +148,7 @@ async def websocket_chat(ws: WebSocket):
             if isinstance(use_memory, str):
                 use_memory = use_memory.lower() not in ("0", "false", "no", "off")
             fusion_mode = req.get("fusion", False)
+            voice_mode = bool(req.get("voice_mode", False))
 
             is_auto = (model_id == "auto" or not model_id)
             if (not user_message and not attachment_ids):
@@ -165,7 +166,7 @@ async def websocket_chat(ws: WebSocket):
                 await _process_turn(
                     ws, db, req, user, conversation_id, user_message, model_id,
                     provider_id, bypass_cache, attachment_ids, request_project_id,
-                    project_context_debug, use_memory, fusion_mode,
+                    project_context_debug, use_memory, fusion_mode, voice_mode,
                 )
             except WebSocketDisconnect:
                 raise
@@ -197,7 +198,7 @@ async def websocket_chat(ws: WebSocket):
 async def _process_turn(
     ws, db, req, user, conversation_id, user_message, model_id,
     provider_id, bypass_cache, attachment_ids, request_project_id,
-    project_context_debug, use_memory, fusion_mode,
+    project_context_debug, use_memory, fusion_mode, voice_mode: bool = False,
 ):
     """Processa um turno completo de chat (uma mensagem do usuário)."""
     user_id = user["id"]
@@ -448,6 +449,17 @@ async def _process_turn(
             "SEM afirmar que não possui acesso à internet ou que não pode acessar a web."
         )
 
+    if voice_mode:
+        system_instruction += (
+            "\n\n[MODO DE CONVERSA POR VOZ ATIVO]\n"
+            "O usuário está dialogando com você por voz em tempo real e sua resposta será sintetizada e lida em voz alta (TTS).\n"
+            "Diretrizes obrigatórias para este turno:\n"
+            "1. Responda de forma BREVE, CONCISA, NATURAL e DIRETA (limite-se a no máximo 1 a 3 frases faladas curtas).\n"
+            "2. Mantenha o tom de uma conversa falada dinâmica, fluida e amigável (como em um diálogo telefônico ágil).\n"
+            "3. NÃO use formatação pesada (sem tabelas, sem listas com marcadores, sem blocos de código extensos e sem emojis repetitivos).\n"
+            "4. Vá direto ao ponto central para permitir que a conversa continue dinâmica e sem pausas longas."
+        )
+
     # ── Intelligent UI: oferta de catálogo condicional (Spec Seção 8) ───
     if os.getenv("INTELLIGENT_UI_ENABLED", "false").lower() in ("true", "1", "yes"):
         if should_offer_ui(user_message):
@@ -477,10 +489,14 @@ async def _process_turn(
     reasoning_effort_raw = req.get("reasoning_effort")
     reasoning_effort = str(reasoning_effort_raw).strip() if reasoning_effort_raw else None
 
+    req_max_tokens = req.get("max_tokens")
+    effective_max_tokens = int(req_max_tokens) if req_max_tokens else (220 if voice_mode else None)
+
     result = await resolve_and_stream(
         ws, db, conversation_id, user_id, model_id, provider_id,
         history, context_fingerprint, bypass_cache,
         temperature=auto_route_decision.temperature if auto_route_decision else None,
+        max_tokens=effective_max_tokens,
         auto_route_decision=auto_route_decision,
         reasoning_effort=reasoning_effort,
     )

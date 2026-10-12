@@ -22,7 +22,7 @@ import {
 import { stopSpeech } from '../lib/ttsPlayer'
 
 interface Props {
-  onSend: (text: string, displayText?: string, attachmentIds?: string[], attachments?: Attachment[]) => void
+  onSend: (text: string, displayText?: string, attachmentIds?: string[], attachments?: Attachment[], voiceMode?: boolean) => void
   onStop?: () => void
   isEmpty?: boolean
 }
@@ -102,7 +102,7 @@ export function MessageInput({ onSend, onStop, isEmpty = false }: Props) {
         }
         applyDecision(decision)
         setText('')
-        if (decision.type === 'send') onSendRef.current(decision.text)
+        if (decision.type === 'send') onSendRef.current(decision.text, undefined, undefined, undefined, cur.mode === 'loop')
       },
       onError: (code) => {
         if (code === 'aborted' || code === 'no-speech') return
