@@ -121,6 +121,7 @@
     "pagesCount_one": "{{count}} página",
     "pagesCount_other": "{{count}} páginas",
     "webResults": "Resultados da web",
+    "openPage": "Abrir página",
     "processWorking": "⚡ Trabalhando há {{time}}",
     "processDone": "Trabalhou por {{time}}",
     "processDoneResearch": "Pensou e pesquisou por {{time}}",

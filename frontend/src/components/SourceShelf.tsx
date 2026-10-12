@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { createPortal } from 'react-dom'
-import { ExternalLink, X } from 'lucide-react'
+import { MoreVertical, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { WebSearchSource } from '../types'
 import { useIsMobile } from '../hooks/useIsMobile'
@@ -31,25 +31,34 @@ function Favicon({ url, size = 18 }: { url: string; size?: number }) {
 }
 
 function SourceCards({ sources }: { sources: WebSearchSource[] }) {
+  const { t } = useTranslation()
   return (
     <div className="source-card-list">
-      {sources.map((source) => (
-        <a
-          key={source.url}
-          className="source-card"
-          href={source.url}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <div className="source-card-title">{source.title || sourceHost(source.url)}</div>
-          {source.snippet && <p className="source-card-snippet">{source.snippet}</p>}
-          <div className="source-card-foot">
-            <Favicon url={source.url} size={16} />
-            <span className="source-card-host">{sourceHost(source.url)}</span>
-            <ExternalLink size={14} className="source-card-open" aria-hidden="true" />
-          </div>
-        </a>
-      ))}
+      {sources.map((source) => {
+        const host = sourceHost(source.url)
+        const label = source.title || host
+        return (
+          <article key={source.url} className="source-card">
+            <a className="source-card-main" href={source.url} target="_blank" rel="noopener noreferrer">
+              <div className="source-card-title">{label}</div>
+              {source.snippet && <p className="source-card-snippet">{source.snippet}</p>}
+            </a>
+            <div className="source-card-foot">
+              <Favicon url={source.url} size={18} />
+              <span className="source-card-host">{host}</span>
+              <a
+                className="source-card-kebab"
+                href={source.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={t('chat.openPage', { defaultValue: 'Abrir página' })}
+              >
+                <MoreVertical size={16} />
+              </a>
+            </div>
+          </article>
+        )
+      })}
     </div>
   )
 }
@@ -100,7 +109,7 @@ export function SourceShelf({ sources }: { sources: WebSearchSource[] }) {
         <span>{countLabel}</span>
       </button>
       {isMobile ? (
-        <BottomSheet open={open} onClose={() => setOpen(false)} title={title} maxHeight="88vh">
+        <BottomSheet open={open} onClose={() => setOpen(false)} title={title} maxHeight="92vh" className="source-sheet">
           <SourceCards sources={sources} />
         </BottomSheet>
       ) : (
