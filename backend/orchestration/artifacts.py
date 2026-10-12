@@ -86,8 +86,46 @@ def strip_thinking_tags(content: str) -> str:
     return cleaned.strip()
 
 
-def detect_artifacts(content: str) -> list[dict]:
-    """Analisa o conteúdo de uma resposta e extrai todos os Artifacts presentes."""
+# Padrões que indicam pedido explícito de documento/relatório/arquivo pelo usuário
+_DOC_INTENT_PATTERN = re.compile(
+    r'\b('
+    r'documento|relat[oó]rio|artigo|redaç[aã]o|redacao|ensaio|'
+    r'apostila|manual|especificaç[aã]o|especificacao|documentaç[aã]o|documentacao|'
+    r'minuta|proposta\s+comercial|proposta|termo\s+de|contrato|'
+    r'arquivo\s+markdown|em\s+markdown|salve?\s+em\s+markdown|gerar\s+markdown|'
+    r'crie?\s+(?:um\s+)?(?:documento|arquivo|relat[oó]rio|artigo|manual)|'
+    r'ger(?:e|ar)\s+(?:um\s+)?(?:documento|arquivo|relat[oó]rio|artigo|manual)|'
+    r'artefato|artifact|'
+    r'document|report|article|essay|specification|spec|whitepaper|'
+    r'create\s+(?:a\s+)?(?:document|file|report|spec|article)'
+    r')\b',
+    re.IGNORECASE,
+)
+
+# Aberturas conversacionais que desqualificam um texto de ser um documento puro
+_CONVERSATIONAL_PREFIX_PATTERN = re.compile(
+    r'^\s*('
+    r'claro[,!.]|certamente[,!.]|com certeza[,!.]|ol[aá][,!.]|oi[,!.]|'
+    r'bom dia|boa tarde|boa noite|aqui est[aá][,!.]|aqui est[aã]o[,!.]|veja abaixo[,!.]|'
+    r'[eé] muito atencioso|compreendo[,!.]|entendo[,!.]|'
+    r'espero ter ajudado|espero que ajude|boa sorte[,!.]|'
+    r'com base (?:nas?|nos?)|de acordo com|'
+    r'sure[,!.]|certainly[,!.]|hello[,!.]|hi[,!.]|here is[,!.]|here are[,!.]|'
+    r'i hope|as requested'
+    r')',
+    re.IGNORECASE,
+)
+
+
+def detect_artifacts(content: str, user_message: str = "") -> list[dict]:
+    """Analisa o conteúdo de uma resposta e extrai todos os Artifacts presentes.
+
+    Artifacts legítimos incluem:
+    - Blocos de código com linguagem explícita (HTML, SVG, JSX, Markdown, scripts >= 15 linhas)
+    - Documentos HTML/SVG completos soltos (tags <!DOCTYPE html> ou <svg>)
+    - Markdown solto SOMENTE se o usuário solicitou explicitamente um documento/relatório
+      e a resposta foi estruturada desde a primeira linha como documento formal (sem preâmbulos de chat).
+    """
     content = strip_thinking_tags(content)
     if not content:
         return []
@@ -156,24 +194,31 @@ def detect_artifacts(content: str) -> list[dict]:
                 "content": body,
             })
 
-    if not artifacts:
-        lines = content.split("\n")
-        real_heading_count = sum(
-            1 for line in lines if re.match(r'^#{1,6}\s+\S', line)
-        )
-        if len(lines) >= 20 and real_heading_count >= 2:
-            artifacts.append({
-                "type": "markdown",
-                "title": _extract_markdown_title(content.strip(), fallback="Document"),
-                "content": content.strip(),
-            })
+    # Fallback para markdown solto: apenas se o usuário pediu explicitamente um documento
+    # e a resposta é estruturada formalmente (sem abertura de conversa, começando com #)
+    if not artifacts and user_message:
+        if _DOC_INTENT_PATTERN.search(user_message):
+            raw_lines = content.split("\n")
+            non_empty_lines = [line for line in raw_lines if line.strip()]
+            first_line = non_empty_lines[0] if non_empty_lines else ""
+            is_conversational = bool(_CONVERSATIONAL_PREFIX_PATTERN.match(first_line))
+            starts_with_doc_title = bool(re.match(r'^(#\s+\S|---\s*$)', first_line))
+            real_heading_count = sum(
+                1 for line in raw_lines if re.match(r'^#{1,6}\s+\S', line)
+            )
+            if not is_conversational and starts_with_doc_title and len(raw_lines) >= 15 and real_heading_count >= 2:
+                artifacts.append({
+                    "type": "markdown",
+                    "title": _extract_markdown_title(content.strip(), fallback="Document"),
+                    "content": content.strip(),
+                })
 
     return artifacts
 
 
-def detect_artifact(content: str) -> dict | None:
+def detect_artifact(content: str, user_message: str = "") -> dict | None:
     """Retorna o primeiro Artifact detectado (retrocompatibilidade)."""
-    arts = detect_artifacts(content)
+    arts = detect_artifacts(content, user_message=user_message)
     return arts[0] if arts else None
 
 

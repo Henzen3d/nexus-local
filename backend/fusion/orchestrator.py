@@ -608,7 +608,7 @@ async def executar_fusion(
             from backend.orchestration.artifacts import detect_artifacts, save_artifact
             db = await get_db()
             try:
-                detected_list = detect_artifacts(full_response)
+                detected_list = detect_artifacts(full_response, user_message=prompt)
                 for detected in detected_list:
                     art_id = await save_artifact(
                         db, conversation_id, assistant_msg_id, detected

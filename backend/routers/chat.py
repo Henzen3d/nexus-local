@@ -489,7 +489,13 @@ async def _process_turn(
 
     # ── Detect + save artifacts ─────────────────────────────────────
     artifacts_list = await detect_and_save_artifacts(
-        db, ws, conversation_id, assistant_msg_id, full_response, skip_svg=image_job_created
+        db,
+        ws,
+        conversation_id,
+        assistant_msg_id,
+        full_response,
+        skip_svg=image_job_created,
+        user_message=user_message,
     )
 
     # ── Stream end ──────────────────────────────────────────────────

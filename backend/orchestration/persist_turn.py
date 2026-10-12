@@ -153,6 +153,7 @@ async def detect_and_save_artifacts(
     assistant_msg_id: str,
     full_response: str,
     skip_svg: bool = False,
+    user_message: str = "",
 ) -> list[dict]:
     """
     Detecta artifacts na resposta, persiste-os no banco e emite eventos WS.
@@ -164,7 +165,7 @@ async def detect_and_save_artifacts(
 
     artifacts_list: list[dict] = []
     try:
-        detected_list = detect_artifacts(full_response)
+        detected_list = detect_artifacts(full_response, user_message=user_message)
         for detected in detected_list:
             if skip_svg and detected.get("type") == "svg":
                 continue
