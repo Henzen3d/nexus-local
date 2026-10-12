@@ -30,7 +30,7 @@ Success looks like: a power user can land, add keys, start a conversation with a
 
 **Calm, editorial, precise.**
 
-Voice is quiet confidence: short labels, clear verbs, no hype. The product should feel like a carefully typeset tool (cream/coral light, warm charcoal dark) rather than a neon dashboard or a generic SaaS kit. Emotional goal: focus and trust — the user stays in the conversation, not in the chrome.
+Voice is quiet confidence: short labels, clear verbs, no hype. The product should feel like a carefully typeset tool (clean white light mode, near-black neutral dark mode, restrained coral brand actions, and blue selection states) rather than a neon dashboard or a generic SaaS kit. Emotional goal: focus and trust — the user stays in the conversation, not in the chrome.
 
 ## Anti-references
 

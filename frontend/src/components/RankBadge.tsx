@@ -36,19 +36,19 @@ export function RankBadge({ score, rank, popularityRank, qualityScore, internalU
     badgeColor = '#d97706' // Gold
     badgeBg = 'rgba(217, 119, 6, 0.15)'
     badgeBorder = 'rgba(217, 119, 6, 0.4)'
-    displayLabel = '🥇 #1'
+    displayLabel = '#1'
     isMedal = true
   } else if (rank === 2) {
     badgeColor = '#708090' // Silver
     badgeBg = 'rgba(112, 128, 144, 0.15)'
     badgeBorder = 'rgba(112, 128, 144, 0.4)'
-    displayLabel = '🥈 #2'
+    displayLabel = '#2'
     isMedal = true
   } else if (rank === 3) {
     badgeColor = '#b45309' // Bronze
     badgeBg = 'rgba(180, 83, 9, 0.15)'
     badgeBorder = 'rgba(180, 83, 9, 0.4)'
-    displayLabel = '🥉 #3'
+    displayLabel = '#3'
     isMedal = true
   } else if (rank !== undefined && rank !== null && rank <= 10) {
     badgeColor = 'var(--primary)' // Neutral top 10 style
@@ -124,7 +124,7 @@ export function RankBadge({ score, rank, popularityRank, qualityScore, internalU
           textAlign: 'center'
         }}
       >
-        {!isMedal && <Award size={10} style={{ flexShrink: 0 }} />}
+        <Award size={10} style={{ flexShrink: 0 }} />
         <span>{displayLabel}</span>
       </span>
 

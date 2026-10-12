@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════════════════
    NexusLocal — Design System
-   Tema: Dark Mode unificado (cream sidebar → dark canvas editorial)
+   Tema: superfícies neutras inspiradas nas referências Claude
    Baseado em DESIGN.md / PLAN_REDESIGN.md
    ═══════════════════════════════════════════════════════════════ */
 
@@ -18,35 +18,36 @@
   --shadow-soft: 0 6px 24px rgba(0,0,0,.06);
 
   /* ── Canvas principal (chat + admin) — dark DESIGN.md ────── */
-  --canvas:               #1f1f1e;   /* fundo geral */
-  --surface-soft:         #252320;   /* bg-hover */
-  --surface-card:         #2c2c2a;   /* cards / chat input */
-  --surface-cream-strong: #33312d;
+  --canvas:               #141413;   /* fundo geral */
+  --surface-soft:         #242424;   /* superfícies suaves */
+  --surface-card:         #1f1f1f;   /* cards / chat input */
+  --surface-cream-strong: #2a2a2a;
 
   /* ── Sidebar ─────────────────────────────────────────────── */
-  --surface-dark:         #1d1d1c;   /* sidebar */
-  --surface-dark-elevated:#2a2a28;   /* hover/ativo na sidebar */
-  --surface-dark-soft:    #242422;
+  --surface-dark:         #10100f;   /* sidebar */
+  --surface-dark-elevated:#292929;   /* hover/ativo na sidebar */
+  --surface-dark-soft:    #1b1b1b;
 
   /* ── Texto sobre canvas dark ─────────────────────────────── */
-  --ink:                  #f8f8f6;   /* texto primário */
-  --body-strong:          #e6e5df;
-  --body:                 #c3c2b7;   /* texto corrido */
-  --muted:                #97958c;   /* secundário / placeholders */
-  --muted-soft:           #6c6a64;   /* terciário */
+  --ink:                  #f5f5f5;   /* texto primário */
+  --body-strong:          #e5e5e5;
+  --body:                 #d0d0d0;   /* texto corrido */
+  --muted:                #a0a0a0;   /* secundário / placeholders */
+  --muted-soft:           #777777;   /* terciário */
   --on-primary:           #ffffff;
-  --on-dark:              #f8f8f6;
-  --on-dark-soft:         #c3c2b7;
+  --on-dark:              #f5f5f5;
+  --on-dark-soft:         #d0d0d0;
 
   /* ── Bordas ──────────────────────────────────────────────── */
-  --hairline:             #33312d;
-  --hairline-soft:        #242422;
-  --input-border:         #575653;
+  --hairline:             #303030;
+  --hairline-soft:        #242424;
+  --input-border:         #414141;
 
   /* ── Acento coral (usar com parcimônia) ──────────────────── */
   --primary:              #cc785c;
   --primary-active:       #a9583e;
   --primary-disabled:     rgba(204,120,92,0.25);
+  --selection:            #4b8cff;   /* seleção e estados ativos, como na referência */
 
   /* ── Semânticos ──────────────────────────────────────────── */
   --success:              #5db872;
@@ -56,13 +57,13 @@
   --free-dot:             #3ecf8e;   /* badge free tier expansível */
 
   /* ── Balão de mensagem do usuário (dark default) ──────────── */
-  --surface-user-bubble:  #121212;
+  --surface-user-bubble:  #202020;
   --text-user-bubble:     #ffffff;
-  --border-user-bubble:   #222222;
-  --chip-bg:              #363635;
-  --chip-border:          #1e1e1d;
+  --border-user-bubble:   #303030;
+  --chip-bg:              #292929;
+  --chip-border:          #303030;
   --chip-text:            #ffffff;
-  --chip-icon:            #97958c;
+  --chip-icon:            #a0a0a0;
 
   /* ── Alias para AdminPanel (eram --adm-*) ────────────────── */
   --text:      var(--ink);
@@ -109,30 +110,34 @@
    ═══════════════════════════════════════════════════════════════ */
 
 html[data-theme="light"] {
-  --canvas:               #FCFBF8;   /* bg-canvas premium */
-  --surface-soft:         rgba(0,0,0,0.02);   /* hover extremamente suave */
+  --canvas:               #ffffff;   /* fundo principal */
+  --surface-soft:         #f5f5f5;   /* hover e seleção suave */
   --surface-card:         #FFFFFF;   /* cards fundo branco */
-  --surface-cream-strong: #f7f7f5;
-  --surface-dark:         #f7f7f5;   /* bg-sidebar premium */
-  --surface-dark-elevated:rgba(0,0,0,0.04);   /* sidebar item active/hover suave */
-  --surface-dark-soft:    #FCFBF8;
-  --ink:                  #222222;   /* text-primary */
-  --body-strong:          #222222;   /* text-primary */
-  --body:                 #555555;   /* text-secondary */
-  --muted:                #555555;   /* text-secondary */
-  --muted-soft:           #777777;   /* text-tertiary */
+  --surface-cream-strong: #eeeeee;
+  --surface-dark:         #f8f8f8;   /* fundo da barra lateral */
+  --surface-dark-elevated:#eeeeee;   /* hover/ativo na barra lateral */
+  --surface-dark-soft:    #f5f5f5;
+  --ink:                  #1f1f1f;   /* texto principal */
+  --body-strong:          #262626;
+  --body:                 #444444;   /* texto secundário */
+  --muted:                #666666;   /* texto secundário / placeholders */
+  --muted-soft:           #777777;   /* texto terciário */
   --on-primary:           #ffffff;
   --on-dark:              #121212;
   --on-dark-soft:         #222222;
-  --hairline:             rgba(0,0,0,0.06);   /* border subtle */
-  --hairline-soft:        rgba(0,0,0,0.04);
-  --input-border:         #b9b9b7;   /* contorno 1px do chat input (light) */
-  --chip-border:          #dfdfdd;   /* borda botões de sugestão (light) */
+  --hairline:             #e5e5e5;   /* bordas discretas */
+  --hairline-soft:        #eeeeee;
+  --input-border:         #dedede;   /* contorno do chat input */
+  --chip-border:          #e5e5e5;   /* borda de botões de sugestão */
 
   /* Balão de mensagem do usuário (Light) */
-  --surface-user-bubble:  #efeeeb;
-  --text-user-bubble:     #121212;
-  --border-user-bubble:   rgba(0,0,0,0.04);
+  --surface-user-bubble:  #f0f0f0;
+  --text-user-bubble:     #1f1f1f;
+  --border-user-bubble:   #e5e5e5;
+  --chip-bg:              #f5f5f5;
+  --chip-text:            #1f1f1f;
+  --chip-icon:            #666666;
+  --selection:            #2563eb;
 
   /* Aliases para painel e componentes */
   --text:                 var(--ink);
@@ -141,7 +146,7 @@ html[data-theme="light"] {
   --surface:              var(--surface-card);
   --surface-2:            var(--surface-cream-strong);
   --border:               var(--hairline);
-  --border-2:             rgba(0,0,0,0.06);
+  --border-2:             #e5e5e5;
 
   /* Scrollbar Light */
   --scrollbar-thumb:       rgba(0, 0, 0, 0.08);
@@ -149,33 +154,34 @@ html[data-theme="light"] {
 }
 
 html[data-theme="dark"] {
-  --canvas:               #1f1f1e;   /* fundo geral */
-  --surface-soft:         #252320;   /* bg-hover */
-  --surface-card:         #2c2c2a;   /* cards / chat input */
-  --surface-cream-strong: #33312d;
-  --surface-dark:         #1d1d1c;   /* sidebar */
-  --surface-dark-elevated:#2a2a28;   /* hover sidebar */
-  --surface-dark-soft:    #242422;
-  --ink:                  #f8f8f6;   /* texto primário / título */
-  --body-strong:          #e6e5df;
-  --body:                 #c3c2b7;   /* texto corrido / sidebar secundário */
-  --muted:                #97958c;   /* secundário / ícones de sugestão */
-  --muted-soft:           #6c6a64;   /* terciário */
+  --canvas:               #141413;   /* fundo geral */
+  --surface-soft:         #242424;   /* superfícies suaves */
+  --surface-card:         #1f1f1f;   /* cards / chat input */
+  --surface-cream-strong: #2a2a2a;
+  --surface-dark:         #10100f;   /* barra lateral */
+  --surface-dark-elevated:#292929;   /* hover/ativo na barra lateral */
+  --surface-dark-soft:    #1b1b1b;
+  --ink:                  #f5f5f5;   /* texto primário / título */
+  --body-strong:          #e5e5e5;
+  --body:                 #d0d0d0;   /* texto corrido / sidebar secundário */
+  --muted:                #a0a0a0;   /* secundário / ícones */
+  --muted-soft:           #777777;   /* terciário */
   --on-primary:           #ffffff;
-  --on-dark:              #f8f8f6;   /* logo/título sidebar */
-  --on-dark-soft:         #c3c2b7;   /* textos sidebar */
-  --hairline:             #33312d;   /* border */
-  --hairline-soft:        #242422;
-  --input-border:         #575653;   /* contorno 1px do chat input (dark) */
-  --chip-bg:              #363635;   /* botões de sugestão */
-  --chip-border:          #1e1e1d;   /* borda botões de sugestão (dark) */
+  --on-dark:              #f5f5f5;   /* logo/título sidebar */
+  --on-dark-soft:         #d0d0d0;   /* textos sidebar */
+  --hairline:             #303030;   /* bordas */
+  --hairline-soft:        #242424;
+  --input-border:         #414141;   /* contorno do chat input */
+  --chip-bg:              #292929;   /* botões de sugestão */
+  --chip-border:          #303030;   /* borda botões de sugestão */
   --chip-text:            #ffffff;
-  --chip-icon:            #97958c;
+  --chip-icon:            #a0a0a0;
 
   /* Balão de mensagem do usuário (Dark) */
-  --surface-user-bubble:  #121212; /* fundo preto premium */
+  --surface-user-bubble:  #202020;
   --text-user-bubble:     #ffffff;
-  --border-user-bubble:   #222222;
+  --border-user-bubble:   #303030;
+  --selection:            #4b8cff;
 
   /* Aliases para painel e componentes */
   --text:                 var(--ink);
@@ -221,7 +227,7 @@ button:focus-visible,
 a:focus-visible,
 [role="button"]:focus-visible,
 [tabindex="0"]:focus-visible {
-  outline: 2px solid var(--primary);
+  outline: 2px solid var(--selection);
   outline-offset: 2px;
 }
 button:active:not(:disabled) {
@@ -295,7 +301,7 @@ a { color: var(--primary); text-decoration: none; }
               opacity var(--motion-fast) var(--ease-out-quart);
 }
 .sidebar-brand:focus-visible {
-  outline: 2px solid var(--primary);
+  outline: 2px solid var(--selection);
   outline-offset: 2px;
 }
 .sidebar-brand:hover {
@@ -527,7 +533,7 @@ html[data-theme="light"] .new-chat-btn-icon {
 .conv-item:hover .conv-actions { opacity: 1; }
 .conv-item.active {
   background: var(--surface-dark-elevated);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary) 28%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--selection) 42%, transparent);
 }
 
 .conv-title {
@@ -919,13 +925,13 @@ html[data-theme="light"] .new-chat-btn-icon {
   z-index: 2;
 }
 html[data-theme="dark"] .support-btn--home {
-  background: #121212;
-  color: #97958c;
+  background: var(--surface-card);
+  color: var(--muted);
   border: none;
 }
 html[data-theme="light"] .support-btn--home {
-  background: #efeeeb;
-  color: #7b7974;
+  background: var(--surface-card);
+  color: var(--muted);
   border: none;
 }
 .support-btn--home:hover {
@@ -937,14 +943,14 @@ html[data-theme="light"] .support-btn--home {
   margin-left: auto;
 }
 html[data-theme="dark"] .support-btn--chat {
-  background: #363635;
-  color: #ffffff;
+  background: var(--surface-dark-elevated);
+  color: var(--ink);
   border: none;
 }
 html[data-theme="light"] .support-btn--chat {
-  background: #f9f9f7;
-  color: #0b0b0b;
-  border: 1px solid #e1e1df;
+  background: var(--surface-soft);
+  color: var(--ink);
+  border: 1px solid var(--hairline);
 }
 .support-btn--chat:hover {
   opacity: 0.92;
@@ -1007,14 +1013,14 @@ html[data-theme="light"] .support-btn--chat {
   /* 9 provedores + padding interno */
   max-height: calc(9 * var(--provider-opt-h) + 8px);
   overflow-y: auto;
-  background: #383835;
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: var(--surface-card);
+  border: 1px solid var(--hairline);
   border-radius: var(--radius-lg);
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
   padding: 4px;
   z-index: 100;
   scrollbar-width: thin;
-  scrollbar-color: #62625e transparent;
+  scrollbar-color: var(--muted-soft) transparent;
 }
 .provider-dropdown::-webkit-scrollbar {
   width: 6px;
@@ -1024,11 +1030,11 @@ html[data-theme="light"] .support-btn--chat {
   border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
 }
 .provider-dropdown::-webkit-scrollbar-thumb {
-  background: #62625e;
+  background: var(--muted-soft);
   border-radius: 999px;
 }
 .provider-dropdown::-webkit-scrollbar-thumb:hover {
-  background: #72726e;
+  background: var(--muted);
 }
 
 .provider-option {
@@ -1043,14 +1049,14 @@ html[data-theme="light"] .support-btn--chat {
   background: transparent;
   font-size: 14px;
   font-family: var(--font-body);
-  color: #f8f8f6;
+  color: var(--ink);
   text-align: left;
   cursor: pointer;
   transition: background 0.12s;
 }
 .provider-option:hover,
 .provider-option.selected {
-  background: #42423f;
+  background: var(--surface-dark-elevated);
 }
 .provider-option.selected .provider-option-name {
   color: inherit;
@@ -1065,23 +1071,23 @@ html[data-theme="light"] .support-btn--chat {
 
 /* Light mode — dropdown de provedores */
 html[data-theme="light"] .provider-dropdown {
-  background: #ffffff;
-  border: 1px solid rgba(0, 0, 0, 0.08);
+  background: var(--surface-card);
+  border: 1px solid var(--hairline);
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-  scrollbar-color: #acaca9 transparent;
+  scrollbar-color: var(--muted-soft) transparent;
 }
 html[data-theme="light"] .provider-dropdown::-webkit-scrollbar-thumb {
-  background: #acaca9;
+  background: var(--muted-soft);
 }
 html[data-theme="light"] .provider-dropdown::-webkit-scrollbar-thumb:hover {
-  background: #9a9a97;
+  background: var(--muted);
 }
 html[data-theme="light"] .provider-option {
-  color: #0b0b0b;
+  color: var(--ink);
 }
 html[data-theme="light"] .provider-option:hover,
 html[data-theme="light"] .provider-option.selected {
-  background: #f3f3f3;
+  background: var(--surface-dark-elevated);
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -1820,7 +1826,7 @@ html[data-chat-font="mono"] {
 }
 
 .execution-sequence-toggle:focus-visible {
-  outline: 2px solid var(--primary);
+  outline: 2px solid var(--selection);
   outline-offset: 2px;
 }
 
@@ -2273,7 +2279,7 @@ html[data-theme="dark"] .tok-tag { color: #fdba74; }
 .assistant-response li.task-list-item input[type="checkbox"] {
   margin-top: 4px;
   flex-shrink: 0;
-  accent-color: var(--primary);
+  accent-color: var(--selection);
 }
 
 /* Blockquote — full border + tint (no side-stripe accent) */
@@ -3649,8 +3655,8 @@ html[data-theme="dark"] .model-trigger.compact:hover:not(:disabled) {
   cursor: pointer;
 }
 .model-option:hover { background: var(--surface-dark-soft); }
-.model-option.selected { background: rgba(204,120,92,0.15); }
-.model-option.selected .model-option-name { color: var(--primary); }
+.model-option.selected { background: color-mix(in srgb, var(--selection) 14%, transparent); }
+.model-option.selected .model-option-name { color: var(--selection); }
 .model-option.model-option-exhausted { opacity: 0.55; }
 .model-option-name { font-size: 13.5px; color: var(--on-dark); }
 .model-option-ctx { font-size: 11px; color: var(--on-dark-soft); font-family: var(--font-mono); }

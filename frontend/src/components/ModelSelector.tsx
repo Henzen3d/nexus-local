@@ -13,7 +13,6 @@ import {
 import { useTranslation } from 'react-i18next'
 import { useStore } from '../store/useStore'
 import { pickManualFallback } from '../lib/modelSelection'
-import { RankBadge } from './RankBadge'
 import { useIsMobile } from '../hooks/useIsMobile'
 import { BottomSheet } from './ui/BottomSheet'
 import type { Model } from '../types'
@@ -324,9 +323,6 @@ export function ModelSelector({ compact = false, className = '' }: ModelSelector
                 <span className="cockpit-model-name">{m.display_name}</span>
                 <div className="cockpit-model-meta">
                   <span className="cockpit-model-provider">{m.provider_name || m.provider_id}</span>
-                  {m.nexuslocal_score !== undefined && (
-                    <RankBadge score={m.nexuslocal_score} />
-                  )}
                   {ctxText && <span className="cockpit-model-ctx">{ctxText}</span>}
                   {isExhausted && (
                     <span
@@ -432,9 +428,6 @@ export function ModelSelector({ compact = false, className = '' }: ModelSelector
                 <div className="cockpit-model-meta">
                   {providerFilter === 'all' && (
                     <span className="cockpit-model-provider">{m.provider_name || m.provider_id}</span>
-                  )}
-                  {m.nexuslocal_score !== undefined && (
-                    <RankBadge score={m.nexuslocal_score} />
                   )}
                   {ctxText && <span className="cockpit-model-ctx">{ctxText}</span>}
                   {isExhausted && (

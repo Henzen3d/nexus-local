@@ -192,17 +192,18 @@ export function RankingsView() {
                     let rankDisplay = `#${r.rank}`
                     let rankBg = 'transparent'
                     let rankColor = 'var(--muted)'
+                    const isTop3 = r.rank <= 3
 
                     if (r.rank === 1) {
-                      rankDisplay = '🥇 #1'
+                      rankDisplay = '#1'
                       rankBg = 'rgba(217, 119, 6, 0.12)'
                       rankColor = '#d97706'
                     } else if (r.rank === 2) {
-                      rankDisplay = '🥈 #2'
+                      rankDisplay = '#2'
                       rankBg = 'rgba(112, 128, 144, 0.12)'
                       rankColor = '#708090'
                     } else if (r.rank === 3) {
-                      rankDisplay = '🥉 #3'
+                      rankDisplay = '#3'
                       rankBg = 'rgba(180, 83, 9, 0.12)'
                       rankColor = '#b45309'
                     }
@@ -232,10 +233,13 @@ export function RankingsView() {
                             background: rankBg, 
                             color: rankColor, 
                             fontSize: '11px',
-                            display: 'inline-block',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '3px',
                             textAlign: 'center'
                           }}>
-                            {rankDisplay}
+                            {isTop3 && <Award size={10} style={{ flexShrink: 0 }} />}
+                            <span>{rankDisplay}</span>
                           </span>
                         </td>
                         

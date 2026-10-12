@@ -28,14 +28,17 @@ O plano prioriza os tokens já consolidados em `index.css`:
 ```css
 /* Tokens oficiais do Multi+ reaproveitados */
 var(--surface-card)         /* Fundo do composer no tema claro */
-var(--surface-dark-elevated)/* Fundo do composer e popovers no tema escuro */
+var(--surface-card)         /* Fundo do composer nos dois temas */
 var(--hairline)             /* Borda sutil padrão */
 var(--ink)                  /* Cor principal do texto e ícones */
 var(--muted)                /* Cor secundária de ícones em repouso */
 var(--muted-soft)           /* Cor do disclaimer e rótulos auxiliares */
-var(--primary)              /* Cor terracota do botão de envio e seleções */
-var(--surface-cream-strong) /* Hover suave de botões */
+var(--primary)              /* Coral reservado a ações de marca, como o botão de envio */
+var(--selection)            /* Azul para foco, seleção e estados ativos */
+var(--surface-soft)         /* Hover suave de botões */
 ```
+
+As superfícies seguem a paleta neutra das referências: canvas branco e sidebar cinza-clara no tema claro; canvas quase preto, sidebar mais escura e cartões carvão no tema escuro. Não introduza cores de superfície creme. Use os tokens do tema em vez de hexadecimais locais.
 
 ---
 
@@ -53,7 +56,7 @@ var(--surface-cream-strong) /* Hover suave de botões */
 }
 
 html[data-theme="dark"] .input-card.compact-mode {
-  background: var(--surface-dark-elevated, #1e1e1c);
+  background: var(--surface-card, #1f1f1f);
   border-color: rgba(255, 255, 255, 0.1);
   box-shadow: none;
 }
@@ -97,7 +100,7 @@ html[data-theme="dark"] .input-card.compact-mode {
   width: 32px;
   height: 32px;
   border-radius: 8px;
-  background: var(--surface-cream-strong);
+  background: var(--surface-soft);
   border: 1px solid var(--hairline);
   color: var(--ink);
   cursor: pointer;
