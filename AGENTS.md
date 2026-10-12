@@ -22,16 +22,31 @@ Este arquivo é a base de conhecimento de regras de comportamento e restrições
 1. **Host sem GitNexus:** Este servidor/host de execução **NÃO possui** índice GitNexus e **NÃO realiza** indexação semântica de código para o Hermes Agent.
 2. **Proibido nos Prompts de Deploy:** **JAMAIS** inclua instruções como "reindexar o código no GitNexus" ou "gerar embeddings do repositório" nos prompts ou scripts destinados ao Hermes Agent ou ao deploy em produção.
 
-### C. Fluxo Padrão de Deploy no Host (Hermes)
-O pipeline oficial e enxuto de deploy executado pelo Hermes Agent é composto estritamente por:
-1. **Backup & Integridade:** Validar integridade e criar snapshot de backup do `nexuslocal.db`.
-2. **Git Pull:** `git pull origin main`.
-3. **Dependências:** Atualizar `pip` e `npm` caso haja alterações em `requirements.txt` ou `package.json`.
-4. **Migração Segura:** Executar migração do banco (inclusão de novas colunas/tabelas sem perda dos 1633 modelos existentes).
-5. **Compilação do Frontend:** Executar `npm run build` dentro do diretório `frontend/`.
-6. **Testes do Host (se aplicável):** Somente em banco de dados isolado/cópia.
-7. **Restart do Serviço:** Reiniciar o processo do backend (PM2, systemd, docker ou supervisor).
-8. **Health Check:** Validar endpoint HTTP (ex: `GET /api/dashboard/auto-router/policy` ou `/health`).
+### C. Infraestrutura do Host & Fluxo Padrão de Deploy (Hermes Agent)
+1. **Ambiente Baseado em Docker:** O host roda estritamente sob **Docker / Docker Compose** (`docker-compose.yml`). **NÃO utiliza PM2 nem systemd** para gerenciar o NexusLocal.
+2. **Aviso de Portas (Porta 8000 é do Portainer):** A porta `8000` no host pertence ao painel web do **Portainer**! O backend do FastAPI roda dentro da rede Docker isolada (`nexus_net`), escutando internamente na porta 8000 do container `nexus_backend`, com o frontend Nginx e o túnel Cloudflare (`cloudflared`) servindo o tráfego. Nunca tente acessar `http://localhost:8000` no host esperando a API do NexusLocal.
+3. **Pipeline Oficial de Deploy no Host:**
+   1. **Backup & Integridade Primeiro:** Antes de qualquer `git pull`, validar e criar snapshot:
+      ```bash
+      sqlite3 backend/nexuslocal.db "PRAGMA integrity_check;"
+      cp backend/nexuslocal.db "backend/nexuslocal_backup_$(date +%Y%m%d_%H%M%S).db"
+      ```
+   2. **Git Pull:** `git pull origin main`.
+   3. **Rebuild dos Containers:** Reconstruir os containers sem cache para compilar o novo frontend e backend:
+      ```bash
+      docker compose build --no-cache backend frontend
+      ```
+   4. **Restart dos Serviços:** Subir os containers recriados mantendo o volume do banco:
+      ```bash
+      docker compose up -d --force-recreate backend frontend
+      ```
+   5. **Limpeza de Imagens:** `docker image prune -f`.
+   6. **Health Check & Logs:**
+      ```bash
+      docker compose ps
+      docker exec nexus_backend curl -fsS http://localhost:8000/health
+      docker compose logs --tail=40 backend
+      ```
 
 ---
 
