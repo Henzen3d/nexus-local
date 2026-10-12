@@ -26,6 +26,8 @@ export const PROVIDER_API_KEY_URLS: Record<string, string> = {
   cohere: 'https://dashboard.cohere.com/api-keys',
   zenmux: 'https://zenmux.ai/platform/pay-as-you-go',
   agnes: 'https://www.agnes-ai.com',
+  orcarouter: 'https://www.orcarouter.ai',
+  bynara: 'https://router.bynara.id',
 }
 
 export function getProviderApiKeyUrl(providerId: string): string | undefined {

@@ -768,6 +768,32 @@ DEFAULT_PROVIDERS = [
             ("agnes/agnes-3.0-flash", "agnes-3.0-flash", "Agnes 3.0 Flash", 524288),
         ],
     },
+    {
+        "id": "orcarouter",
+        "name": "OrcaRouter",
+        "base_url": "https://api.orcarouter.ai/v1",
+        "is_free": 1,
+        "models": [
+            ("orcarouter/orcarouter/free", "orcarouter/free", "OrcaRouter Free", 131072),
+            ("orcarouter/tencent/hy4-preview-free", "tencent/hy4-preview-free", "Hunyuan 4 Preview Free", 131072),
+            ("orcarouter/tencent/hy3-free", "tencent/hy3-free", "Hunyuan 3 Free", 131072),
+            ("orcarouter/z-ai/glm-5.3-flash-free", "z-ai/glm-5.3-flash-free", "GLM 5.3 Flash Free", 131072),
+            ("orcarouter/deepseek/deepseek-v4-flash-free", "deepseek/deepseek-v4-flash-free", "DeepSeek V4 Flash Free", 131072),
+        ],
+    },
+    {
+        "id": "bynara",
+        "name": "Bynara",
+        "base_url": "https://router.bynara.id/v1",
+        "is_free": 1,
+        "models": [
+            ("bynara/agnes-2.5-flash", "agnes-2.5-flash", "Agnes 2.5 Flash", 512000),
+            ("bynara/jev", "jev", "Jev", 32000),
+            ("bynara/laguna-s-2.1", "laguna-s-2.1", "Laguna S 2.1", 262000),
+            ("bynara/nemotron-3-ultra-free", "nemotron-3-ultra-free", "Nemotron 3 Ultra Free", 1000000),
+            ("bynara/nemotron-3.5-lightning-free", "nemotron-3.5-lightning-free", "Nemotron 3.5 Lightning Free", 1000000),
+        ],
+    },
 ]
 
 
@@ -1056,7 +1082,11 @@ async def init_db():
                     resolved_base_url = resolved_base_url.replace("{account_id}", cf_account_id)
             await db.execute(
                 """INSERT INTO providers (id, name, base_url, api_key, is_free) VALUES (?, ?, ?, ?, ?)
-                   ON CONFLICT(id) DO UPDATE SET name=excluded.name, is_free=excluded.is_free""",
+                   ON CONFLICT(id) DO UPDATE SET 
+                       name=excluded.name, 
+                       base_url=excluded.base_url,
+                       api_key=CASE WHEN providers.api_key IS NULL OR providers.api_key = '' OR providers.api_key IN ('free', 'env') THEN excluded.api_key ELSE providers.api_key END,
+                       is_free=excluded.is_free""",
                 (prov["id"], prov["name"], resolved_base_url, resolved_api_key, prov["is_free"]),
             )
             for model_id, model_name, display_name, ctx in prov["models"]:
@@ -1064,7 +1094,7 @@ async def init_db():
                 final_ctx = reg_info["context_length"] if reg_info else ctx
                 final_source = 'registry' if reg_info else 'default'
 
-                is_prov_free = 1 if prov.get("id") in ("agnes", "llm7", "freetheai") else 0
+                is_prov_free = 1 if prov.get("id") in ("agnes", "llm7", "freetheai", "orcarouter", "bynara") else 0
                 await db.execute(
                     """INSERT INTO models (id, provider_id, name, display_name, context_length, context_source, confirmed_free)
                        VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -1241,12 +1271,12 @@ async def init_db():
             except Exception:
                 pass
 
-        # Auto-confirma modelos de provedores gratuitos dedicados (Agnes AI, LLM7, FreeTheAI)
+        # Auto-confirma modelos de provedores gratuitos dedicados (Agnes AI, LLM7, FreeTheAI, OrcaRouter, Bynara)
         try:
             await db.execute(
                 """UPDATE models 
                    SET confirmed_free = 1 
-                   WHERE provider_id IN ('agnes', 'llm7', 'freetheai') AND (confirmed_free IS NULL OR confirmed_free = 0)"""
+                   WHERE provider_id IN ('agnes', 'llm7', 'freetheai', 'orcarouter', 'bynara') AND (confirmed_free IS NULL OR confirmed_free = 0)"""
             )
             await db.commit()
         except Exception as e:
@@ -1267,6 +1297,34 @@ async def init_db():
             await db.commit()
         except Exception as e:
             logger.error("[database migration] erro ao atualizar status do zenmux:", exc_info=e)
+
+        # Provedores gratuitos OrcaRouter e Bynara (garante is_free = 1 e chaves nos admins)
+        try:
+            await db.execute("UPDATE providers SET is_free = 1 WHERE id IN ('orcarouter', 'bynara')")
+            async with db.execute("SELECT id FROM users WHERE role = 'admin'") as cur:
+                admins = await cur.fetchall()
+            orca_k = (os.getenv("ORCAROUTER_API_KEY") or "").strip()
+            bynara_k = (os.getenv("BYNARA_API_KEY") or "").strip()
+            for (admin_id,) in admins:
+                if orca_k:
+                    await db.execute(
+                        """INSERT INTO user_api_keys (user_id, provider_id, api_key)
+                           VALUES (?, 'orcarouter', ?)
+                           ON CONFLICT(user_id, provider_id) DO UPDATE SET api_key = excluded.api_key
+                           WHERE user_api_keys.api_key IS NULL OR user_api_keys.api_key = '' OR user_api_keys.api_key IN ('free', 'env')""",
+                        (admin_id, orca_k),
+                    )
+                if bynara_k:
+                    await db.execute(
+                        """INSERT INTO user_api_keys (user_id, provider_id, api_key)
+                           VALUES (?, 'bynara', ?)
+                           ON CONFLICT(user_id, provider_id) DO UPDATE SET api_key = excluded.api_key
+                           WHERE user_api_keys.api_key IS NULL OR user_api_keys.api_key = '' OR user_api_keys.api_key IN ('free', 'env')""",
+                        (admin_id, bynara_k),
+                    )
+            await db.commit()
+        except Exception as e:
+            logger.error("[database migration] erro ao configurar status e chaves admin de orcarouter/bynara:", exc_info=e)
 
 
 

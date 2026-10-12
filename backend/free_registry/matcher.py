@@ -17,6 +17,9 @@ PROVIDER_NAME_MAP = {
     "ZenMux": "zenmux",
     "LongCat": "longcat",
     "Agnes AI": "agnes",
+    "OrcaRouter": "orcarouter",
+    "Bynara": "bynara",
+    "byNara": "bynara",
 }
 
 async def match_registry_to_models(db) -> dict:

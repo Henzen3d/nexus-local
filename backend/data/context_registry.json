@@ -1336,6 +1336,60 @@
       "provider": "longcat",
       "source": "https://longcat.chat",
       "verified_at": "2026-07"
+    },
+    "orcarouter/free": {
+      "context_length": 131072,
+      "provider": "orcarouter",
+      "source": "https://api.orcarouter.ai",
+      "verified_at": "2026-10"
+    },
+    "tencent/hy4-preview-free": {
+      "context_length": 131072,
+      "provider": "orcarouter",
+      "source": "https://api.orcarouter.ai",
+      "verified_at": "2026-10"
+    },
+    "tencent/hy3-free": {
+      "context_length": 131072,
+      "provider": "orcarouter",
+      "source": "https://api.orcarouter.ai",
+      "verified_at": "2026-10"
+    },
+    "z-ai/glm-5.3-flash-free": {
+      "context_length": 131072,
+      "provider": "orcarouter",
+      "source": "https://api.orcarouter.ai",
+      "verified_at": "2026-10"
+    },
+    "deepseek/deepseek-v4-flash-free": {
+      "context_length": 131072,
+      "provider": "orcarouter",
+      "source": "https://api.orcarouter.ai",
+      "verified_at": "2026-10"
+    },
+    "jev": {
+      "context_length": 32000,
+      "provider": "bynara",
+      "source": "https://router.bynara.id",
+      "verified_at": "2026-10"
+    },
+    "laguna-s-2.1": {
+      "context_length": 262000,
+      "provider": "bynara",
+      "source": "https://router.bynara.id",
+      "verified_at": "2026-10"
+    },
+    "nemotron-3-ultra-free": {
+      "context_length": 1000000,
+      "provider": "bynara",
+      "source": "https://router.bynara.id",
+      "verified_at": "2026-10"
+    },
+    "nemotron-3.5-lightning-free": {
+      "context_length": 1000000,
+      "provider": "bynara",
+      "source": "https://router.bynara.id",
+      "verified_at": "2026-10"
     }
   }
 }

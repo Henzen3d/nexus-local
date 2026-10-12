@@ -177,7 +177,7 @@ async def sync_provider_models(provider_id: str, db, custom_api_key: str = None)
 
         is_auto_free = 1 if (
             (provider_id == "openrouter" and model_name.endswith(":free"))
-            or provider_id in ("llm7", "agnes", "freetheai")
+            or provider_id in ("llm7", "agnes", "freetheai", "orcarouter", "bynara")
         ) else 0
 
         fetched_supports_vision = bool(item.get("supports_vision", False))
@@ -310,8 +310,11 @@ async def list_providers(current_user: dict = Depends(get_current_user)):
                 active_key = ""
             is_shared = False
 
-            if not active_key and pid == "zenmux" and current_user.get("role") == "admin":
-                active_key = resolve_env_api_key(pid, None)
+            if not active_key:
+                if pid == "zenmux" and current_user.get("role") == "admin":
+                    active_key = resolve_env_api_key(pid, None)
+                elif pid in ("orcarouter", "bynara", "freetheai", "llm7"):
+                    active_key = resolve_env_api_key(pid, None)
 
             has_usable_key = bool(active_key) or pid == "ollama"
 
@@ -375,11 +378,12 @@ async def list_all_models(current_user: dict = Depends(get_current_user)):
             row = await cur.fetchone()
             hide_unconfirmed = row[0] == "true" if row else True
 
-        # Chave utilizável: pessoal, global do provider, ollama, OU chave de admin
-        # quando providers.share_admin_key = 1 (controle individual; global = bulk).
+        # Chave utilizável: pessoal, provedores gratuitos compartilhados (OrcaRouter, Bynara),
+        # ollama, ou provedor gratuito com chave global configurada.
         key_condition = """(
             (k.api_key IS NOT NULL AND k.api_key != '') OR
-            p.id = 'ollama'
+            p.id IN ('ollama', 'orcarouter', 'bynara') OR
+            (p.is_free = 1 AND p.api_key IS NOT NULL AND TRIM(p.api_key) != '')
         )"""
 
         query = f"""SELECT m.id, m.display_name, m.context_length,

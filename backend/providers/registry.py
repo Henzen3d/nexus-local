@@ -11,10 +11,19 @@ def is_key_sentinel(api_key: str | None) -> bool:
 
 
 def resolve_env_api_key(provider_id: str, api_key: str | None) -> str:
-    """Resolve sentinelas e fallbacks de env (ex.: ZenMux com api_key='free')."""
+    """Resolve sentinelas e fallbacks de env (ex.: ZenMux, OrcaRouter, Bynara, etc.)."""
     key = (api_key or "").strip()
-    if provider_id == "zenmux" and is_key_sentinel(key):
-        key = (os.getenv("ZENMUX_API_KEY") or "").strip()
+    if is_key_sentinel(key):
+        if provider_id == "zenmux":
+            key = (os.getenv("ZENMUX_API_KEY") or "").strip()
+        elif provider_id == "orcarouter":
+            key = (os.getenv("ORCAROUTER_API_KEY") or "").strip()
+        elif provider_id == "bynara":
+            key = (os.getenv("BYNARA_API_KEY") or "").strip()
+        elif provider_id == "freetheai":
+            key = (os.getenv("FREETHEAI_API_KEY") or "").strip()
+        elif provider_id == "llm7":
+            key = (os.getenv("LLM7_API_KEY") or "").strip()
     if is_key_sentinel(key):
         return ""
     return key
@@ -71,14 +80,21 @@ async def get_provider(provider_id: str, db: aiosqlite.Connection, user_id: str 
 
     # Família: cada conta usa só a própria chave. Sem herança da chave global
     # nem da chave de outro usuário. ZenMux no .env fica só para o admin.
-    if is_key_sentinel(api_key) and provider_id == "zenmux" and user_id:
-        async with db.execute(
-            "SELECT role FROM users WHERE id = ?",
-            (user_id,),
-        ) as role_cur:
-            role_row = await role_cur.fetchone()
-        if role_row and role_row[0] == "admin":
+    # Provedores com chaves gratuitas compartilhadas (OrcaRouter, Bynara, FreeTheAI, LLM7)
+    # caem para a chave de env ou chave global caso o usuário não tenha chave pessoal.
+    if is_key_sentinel(api_key):
+        if provider_id == "zenmux" and user_id:
+            async with db.execute(
+                "SELECT role FROM users WHERE id = ?",
+                (user_id,),
+            ) as role_cur:
+                role_row = await role_cur.fetchone()
+            if role_row and role_row[0] == "admin":
+                api_key = resolve_env_api_key(provider_id, api_key)
+        elif provider_id in ("orcarouter", "bynara", "freetheai", "llm7"):
             api_key = resolve_env_api_key(provider_id, api_key)
+            if not api_key and _global_key and not is_key_sentinel(_global_key):
+                api_key = _global_key.strip()
     elif not is_key_sentinel(api_key):
         api_key = (api_key or "").strip()
     else:
