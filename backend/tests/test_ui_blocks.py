@@ -232,3 +232,48 @@ async def test_tabela_message_ui_blocks_isolada():
                 os.remove(temp_db_path)
             except OSError:
                 pass
+
+
+@pytest.mark.asyncio
+async def test_recuperacao_ui_blocks_em_conversa():
+    import json
+    import tempfile
+    import os
+    import aiosqlite
+    import backend.database as dbmod
+    from backend.orchestration.persist_turn import save_ui_blocks
+
+    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+        temp_db_path = f.name
+
+    try:
+        original_db_path = dbmod.DB_PATH
+        dbmod.DB_PATH = temp_db_path
+        await dbmod.init_db()
+
+        async with aiosqlite.connect(temp_db_path) as db:
+            envelope = {
+                "v": 1,
+                "blocks": [{"id": "prog1", "type": "progress", "label": "Deploy", "value": 2, "max": 5}]
+            }
+            await save_ui_blocks(db, "msg_test_123", envelope, source="model")
+
+            async with db.execute(
+                "SELECT message_id, payload FROM message_ui_blocks WHERE message_id = ?",
+                ("msg_test_123",)
+            ) as cur:
+                row = await cur.fetchone()
+                assert row is not None
+                mid, payload_str = row
+                parsed = json.loads(payload_str)
+                assert parsed["v"] == 1
+                assert parsed["blocks"][0]["label"] == "Deploy"
+
+        dbmod.DB_PATH = original_db_path
+    finally:
+        if os.path.exists(temp_db_path):
+            try:
+                os.remove(temp_db_path)
+            except OSError:
+                pass
+

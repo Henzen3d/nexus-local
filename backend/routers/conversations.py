@@ -1,4 +1,6 @@
+import json
 from typing import Optional
+import aiosqlite
 from fastapi import APIRouter, HTTPException, Depends
 from backend.database import get_db
 from backend.models import ConversationUpdate
@@ -156,10 +158,13 @@ async def get_conversation(conversation_id: str, current_user: dict = Depends(ge
                 ui_rows = await cur.fetchall()
             for r_mid, r_payload in ui_rows:
                 try:
-                    msg_ui_blocks[r_mid] = json.loads(r_payload)
+                    if isinstance(r_payload, str):
+                        msg_ui_blocks[r_mid] = json.loads(r_payload)
+                    elif isinstance(r_payload, dict):
+                        msg_ui_blocks[r_mid] = r_payload
                 except Exception:
                     pass
-        except aiosqlite.OperationalError:
+        except Exception:
             pass
 
         return {
