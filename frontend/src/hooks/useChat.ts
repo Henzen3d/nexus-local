@@ -110,7 +110,7 @@ export function useChat() {
           s.setConversationCreated(msg.conversation_id, msg.title)
           break
         case 'stream_start':
-          s.setStreaming(true)
+          s.beginProcess(i18n.t('chat.processThinking'))
           break
         case 'token':
           s.appendToken(msg.content)
@@ -129,7 +129,8 @@ export function useChat() {
             msg.web_search_query,
             msg.web_search_sources,
             msg.was_fallback,
-            msg.ui_blocks
+            msg.ui_blocks,
+            msg.process_duration_ms
           )
           s.loadConversations()
           break
@@ -146,7 +147,28 @@ export function useChat() {
           )
           break
         case 'search_start':
-          s.showToast(i18n.t('chat.searchingWeb', { query: msg.query }), 'info')
+          s.startProcessStep({
+            id: 'web-search',
+            type: 'search',
+            title: i18n.t('chat.processSearching'),
+            detail: msg.query,
+            status: 'running',
+          })
+          break
+        case 'process_step_start':
+          s.startProcessStep({
+            id: msg.id,
+            type: msg.step_type,
+            title: msg.step_type === 'search' ? i18n.t('chat.processSearching') : msg.title,
+            detail: msg.detail,
+            status: 'running',
+          })
+          break
+        case 'process_step_update':
+          s.updateProcessStep(msg.id, { detail: msg.detail, subSteps: msg.sub_steps })
+          break
+        case 'process_step_end':
+          s.updateProcessStep(msg.id, { status: msg.status, subSteps: msg.sub_steps })
           break
         case 'artifact':
           s.handleArtifactEvent(msg)
@@ -161,15 +183,13 @@ export function useChat() {
           )
           break
         case 'fusion_phase':
-          // refining | proposers | grounding | judge — só feedback/log por enquanto
-          if (msg.phase === 'refining') {
-            s.showToast(
-              i18n.t('chat.fusionRefining', {
-                defaultValue: 'Fusion: refinando a pergunta…',
-              }),
-              'info'
-            )
-          }
+          // Refining, proposers, grounding and judge stay in the inline timeline.
+          s.startProcessStep({
+            id: `fusion-${msg.phase}`,
+            type: msg.phase === 'grounding' ? 'search' : 'tool',
+            title: i18n.t(`chat.processFusion.${msg.phase}`, { defaultValue: msg.phase }),
+            status: 'running',
+          })
           break
         case 'fusion_status':
           s.updateFusionStatus(msg.model_id, msg.status, msg.response, msg.confidence, msg.confidence_reason)
@@ -179,6 +199,9 @@ export function useChat() {
           break
         case 'fusion_grounding':
           s.updateFusionGrounding(msg.status, msg.queries, msg.found)
+          if (msg.queries?.length) {
+            s.updateProcessStep('fusion-grounding', { subSteps: msg.queries })
+          }
           break
         case 'fusion_refined_prompt':
           s.setFusionRefinedPrompt(msg.prompt)

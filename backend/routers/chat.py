@@ -1,5 +1,6 @@
 import asyncio
 import json
+import time
 import uuid
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
@@ -185,6 +186,7 @@ async def _process_turn(
 ):
     """Processa um turno completo de chat (uma mensagem do usuário)."""
     user_id = user["id"]
+    process_started_at = time.perf_counter()
     is_auto = (model_id == "auto" or not model_id)
     auto_route_decision = None
 
@@ -499,6 +501,8 @@ async def _process_turn(
         "web_search_used": bool(web_search_used),
         "web_search_query": web_search_query,
         "web_search_sources": web_search_sources,
+        "process_duration_ms": round((time.perf_counter() - process_started_at) * 1000),
+        "source_count": len(web_search_sources),
     }
     if ui_envelope:
         stream_end_payload["ui_blocks"] = ui_envelope
@@ -547,8 +551,18 @@ async def _resolve_web_search(
 
     if should_do_search:
         web_search_query = user_message
+        search_step_id = "web-search"
+        await ws.send_json({
+            "type": "process_step_start",
+            "id": search_step_id,
+            "step_type": "search",
+            "title": "Executando pesquisa web",
+            "detail": web_search_query,
+        })
         await ws.send_json({"type": "search_start", "query": web_search_query})
 
+        search_failed = False
+        search_results = []
         try:
             search_results = await resolve_and_execute_search(
                 web_search_query, db, search_config
@@ -572,12 +586,34 @@ async def _resolve_web_search(
                     ),
                 )
                 await db.commit()
+
+            for index, result in enumerate(search_results):
+                source_url = result.get("url", "")
+                await ws.send_json({
+                    "type": "process_step_start",
+                    "id": f"web-source-{index}",
+                    "step_type": "navigate",
+                    "title": result.get("title") or source_url,
+                    "detail": source_url,
+                })
+                await ws.send_json({
+                    "type": "process_step_end",
+                    "id": f"web-source-{index}",
+                    "status": "completed",
+                })
         except Exception:
+            search_failed = True
             logger.error(
                 "web search resolve/execute failed",
                 exc_info=True,
                 extra={"query": web_search_query, "user_id": user_id},
             )
             search_results = []
+
+        await ws.send_json({
+            "type": "process_step_end",
+            "id": search_step_id,
+            "status": "failed" if search_failed else "completed",
+        })
 
     return web_search_used, web_search_query, web_search_sources, search_results, search_config

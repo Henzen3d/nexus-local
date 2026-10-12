@@ -22,6 +22,17 @@ export interface WebSearchSource {
   url: string
 }
 
+export type ProcessStepType = 'think' | 'search' | 'navigate' | 'tool'
+
+export interface ProcessStep {
+  id: string
+  type: ProcessStepType
+  title: string
+  detail?: string
+  subSteps?: string[]
+  status: 'running' | 'completed' | 'failed'
+}
+
 export interface Message {
   id: string
   role: 'user' | 'assistant' | 'system' | 'fusion_status' | 'error'
@@ -44,6 +55,8 @@ export interface Message {
   web_search_used?: boolean
   web_search_query?: string
   web_search_sources?: WebSearchSource[]
+  process_steps?: ProcessStep[]
+  process_duration_ms?: number
   was_fallback?: boolean
   auto_route?: AutoRouteDecisionInfo | null
   ui_blocks?: UiEnvelope | null
@@ -330,7 +343,7 @@ export type WSMessage =
   | { type: 'conversation_created'; conversation_id: string; title: string; project_id?: string | null }
   | { type: 'stream_start'; conversation_id: string; from_cache?: boolean; cache_type?: string | null; cache_similarity?: number | null }
   | { type: 'token'; content: string }
-  | { type: 'stream_end'; message_id: string; conversation_id: string; artifact_id?: string | null; artifact_type?: string | null; artifact_title?: string | null; artifacts?: { id: string; type: string; title: string }[]; relay_used?: boolean; relay_model?: string | null; web_search_used?: boolean; web_search_query?: string; web_search_sources?: WebSearchSource[]; was_fallback?: boolean; ui_blocks?: UiEnvelope | null }
+  | { type: 'stream_end'; message_id: string; conversation_id: string; artifact_id?: string | null; artifact_type?: string | null; artifact_title?: string | null; artifacts?: { id: string; type: string; title: string }[]; relay_used?: boolean; relay_model?: string | null; web_search_used?: boolean; web_search_query?: string; web_search_sources?: WebSearchSource[]; was_fallback?: boolean; ui_blocks?: UiEnvelope | null; process_duration_ms?: number; source_count?: number }
   | { type: 'ui_progress'; block: ProgressBlock }
   | { type: 'error'; message: string }
   | { type: 'failover_notice'; original_model: string; fallback_model: string; reason: string }
@@ -344,6 +357,9 @@ export type WSMessage =
   | { type: 'fusion_refined_prompt'; prompt: string }
   | { type: 'artifact'; id: string; artifact_type: 'html' | 'markdown' | 'svg' | 'code' | 'jsx'; title: string; conv_id: string; msg_id: string }
   | { type: 'search_start'; query: string }
+  | { type: 'process_step_start'; id: string; step_type: ProcessStepType; title: string; detail?: string }
+  | { type: 'process_step_update'; id: string; detail?: string; sub_steps?: string[] }
+  | { type: 'process_step_end'; id: string; status: 'completed' | 'failed'; sub_steps?: string[] }
   | ({ type: 'auto_route_decision' } & AutoRouteDecisionInfo)
   | { type: 'image_pending'; conversation_id: string; message_id: string; task_id: string; prompt: string }
   | { type: 'image_ready'; conversation_id: string; message_id: string; task_id: string; attachment: Attachment }

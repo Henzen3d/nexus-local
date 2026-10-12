@@ -1789,6 +1789,196 @@ html[data-chat-font="mono"] {
   scrollbar-color: var(--surface-cream-strong) transparent;
 }
 
+/* Sequência inline de raciocínio e ações da resposta */
+.execution-sequence {
+  margin: 0 0 var(--space-2);
+  color: var(--muted);
+  font-family: var(--font-body);
+  font-size: var(--font-thinking);
+}
+
+.execution-sequence-toggle {
+  display: inline-flex;
+  min-height: 32px;
+  max-width: 100%;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--ease-standard), color var(--motion-fast) var(--ease-standard);
+}
+
+.execution-sequence-toggle:hover {
+  background: var(--surface-soft);
+  color: var(--ink);
+}
+
+.execution-sequence-toggle:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.execution-sequence-summary-icon {
+  color: var(--primary);
+  font-size: 13px;
+}
+
+.execution-sequence-live-icon,
+.execution-sequence-step-spinner {
+  color: var(--primary);
+  animation: execution-sequence-spin 1.4s linear infinite;
+}
+
+.execution-sequence-chevron {
+  flex-shrink: 0;
+  opacity: 0.65;
+  transition: transform var(--motion-fast) var(--ease-standard);
+}
+
+.execution-sequence-chevron.is-open {
+  transform: rotate(90deg);
+}
+
+.execution-sequence-content {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--motion-normal) var(--ease-standard);
+}
+
+.execution-sequence-content.is-open {
+  grid-template-rows: 1fr;
+}
+
+.execution-sequence-tree {
+  min-height: 0;
+  overflow: hidden;
+  padding: 3px 0 5px 3px;
+}
+
+.execution-sequence-step {
+  position: relative;
+  display: flex;
+  gap: 9px;
+  padding: 5px 0;
+  animation: execution-sequence-enter 180ms ease-out both;
+}
+
+.execution-sequence-step:not(:last-child)::before {
+  position: absolute;
+  top: 21px;
+  bottom: -6px;
+  left: 6px;
+  width: 1px;
+  background: var(--hairline);
+  content: '';
+}
+
+.execution-sequence-step-icon {
+  z-index: 1;
+  display: grid;
+  width: 14px;
+  height: 18px;
+  flex: 0 0 14px;
+  place-items: center;
+  color: var(--muted);
+  background: var(--surface);
+}
+
+.execution-sequence-step.is-running .execution-sequence-step-title,
+.execution-sequence-step.is-running .execution-sequence-step-icon {
+  color: var(--primary);
+}
+
+.execution-sequence-step.is-failed .execution-sequence-step-title,
+.execution-sequence-step.is-failed .execution-sequence-step-icon {
+  color: var(--error);
+}
+
+.execution-sequence-step-copy {
+  min-width: 0;
+  flex: 1;
+}
+
+.execution-sequence-step-title {
+  color: var(--ink);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.execution-sequence-step-detail,
+.execution-sequence-substeps,
+.execution-sequence-reasoning {
+  margin-top: 4px;
+  color: var(--muted);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.execution-sequence-step-detail {
+  font-size: 0.94em;
+}
+
+.execution-sequence-step-detail a {
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+@media (max-width: 768px) {
+  .execution-sequence-toggle {
+    min-height: 44px;
+  }
+}
+
+.execution-sequence-substeps {
+  margin-bottom: 0;
+  padding-left: 17px;
+  font-size: 0.94em;
+}
+
+.execution-sequence-substeps li + li {
+  margin-top: 3px;
+}
+
+.execution-sequence-reasoning {
+  max-height: 400px;
+  overflow: auto;
+  padding: 7px 9px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-soft);
+  white-space: pre-wrap;
+  scrollbar-width: thin;
+}
+
+@keyframes execution-sequence-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes execution-sequence-enter {
+  from { opacity: 0; transform: translateY(2px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .execution-sequence-live-icon,
+  .execution-sequence-step-spinner,
+  .execution-sequence-step {
+    animation: none;
+  }
+
+  .execution-sequence-toggle,
+  .execution-sequence-chevron,
+  .execution-sequence-content {
+    transition: none;
+  }
+}
+
 /* Dots animados para estado "Pensando" */
 .thinking-dots {
   display: inline-flex;

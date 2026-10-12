@@ -17,6 +17,7 @@ import { playSpeech, useTtsPlay } from '../lib/ttsPlayer'
 import { AutoRouteBadge } from './AutoRouteBadge'
 import { DynamicRenderer } from '../ui/DynamicRenderer'
 import { stripUiFences, extractClientUi } from '../lib/nexusUi'
+import { ExecutionSequence } from './ExecutionSequence'
 
 // ─── ThinkingBlock — componente independente de modelo ─────────────────────────
 // ─── ThinkingBlock — componente independente de modelo ─────────────────────────
@@ -370,16 +371,22 @@ export function MessageBubble({ message }: Props) {
                 </div>
               )}
 
-              {message.web_search_used && message.web_search_sources && message.web_search_sources.length > 0 && (
-                <WebSearchSources sources={message.web_search_sources} query={message.web_search_query} />
-              )}
-
-              {/* ThinkingBlock — universal, fechado por padrão */}
-              {(reasoning !== null || isThinking) && (
-                <ThinkingBlock
-                  content={reasoning || ''}
-                  isThinking={isThinking}
+              {message.process_steps?.length ? (
+                <ExecutionSequence
+                  steps={message.process_steps}
+                  isWorking={false}
+                  durationMs={message.process_duration_ms}
+                  thinkingContent={reasoning || undefined}
                 />
+              ) : (
+                <>
+                  {message.web_search_used && message.web_search_sources && message.web_search_sources.length > 0 && (
+                    <WebSearchSources sources={message.web_search_sources} query={message.web_search_query} />
+                  )}
+                  {(reasoning !== null || isThinking) && (
+                    <ThinkingBlock content={reasoning || ''} isThinking={isThinking} />
+                  )}
+                </>
               )}
 
               {cleanedContent && (
@@ -651,6 +658,8 @@ export function StreamingBubble({ content }: { content: string }) {
   const lastCacheHit = useStore((s) => s.lastCacheHit)
   const selectedModelId = useStore((s) => s.selectedModelId)
   const selectedProviderId = useStore((s) => s.selectedProviderId)
+  const processSteps = useStore((s) => s.processSteps)
+  const processStartedAt = useStore((s) => s.processStartedAt)
 
   // Obtém o adaptador e normaliza a resposta de stream em tempo real (Fase 7.4)
   const adapter = AdapterRegistry.getAdapter(selectedModelId, selectedProviderId)
@@ -685,13 +694,12 @@ export function StreamingBubble({ content }: { content: string }) {
           </div>
         )}
 
-        {/* ThinkingBlock em streaming */}
-        {(reasoning !== null || isThinking) && (
-          <ThinkingBlock
-            content={reasoning || ''}
-            isThinking={isThinking}
-          />
-        )}
+        <ExecutionSequence
+          steps={processSteps}
+          isWorking
+          startedAt={processStartedAt}
+          thinkingContent={reasoning || undefined}
+        />
 
         {/* Resposta com renderização progressiva */}
         {streamText && (

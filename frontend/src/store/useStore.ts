@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Artifact, Conversation, ConversationDetail, Message, Model, CacheStats, CacheSettings, FusionStatusEntry, Attachment, WebSearchSource, AutoRouteDecisionInfo, UiEnvelope, ProgressBlock } from '../types'
+import type { Artifact, Conversation, ConversationDetail, Message, Model, CacheStats, CacheSettings, FusionStatusEntry, Attachment, WebSearchSource, AutoRouteDecisionInfo, UiEnvelope, ProgressBlock, ProcessStep } from '../types'
 import { api } from '../api/client'
 import { detectInitialLocale } from '../i18n'
 
@@ -123,6 +123,8 @@ interface AppState {
   messages: Message[]
   streamingContent: string
   isStreaming: boolean
+  processSteps: ProcessStep[]
+  processStartedAt: number | null
   lastCacheHit: { type: string; similarity: number } | null
 
   // Model selection
@@ -171,7 +173,10 @@ interface AppState {
   favoriteConversation: (id: string) => Promise<void>
   loadAllArtifacts: (search?: string) => Promise<void>
   appendToken: (token: string) => void
-  finalizeStream: (messageId: string, artifactMeta?: { id: string; type: string; title: string }, artifacts?: { id: string; type: string; title: string }[], relayUsed?: boolean, relayModel?: string | null, webSearchUsed?: boolean, webSearchQuery?: string, webSearchSources?: WebSearchSource[], wasFallback?: boolean, uiBlocks?: UiEnvelope | null) => void
+  beginProcess: (thinkingTitle?: string) => void
+  startProcessStep: (step: ProcessStep) => void
+  updateProcessStep: (id: string, update: Partial<Pick<ProcessStep, 'detail' | 'subSteps' | 'status'>>) => void
+  finalizeStream: (messageId: string, artifactMeta?: { id: string; type: string; title: string }, artifacts?: { id: string; type: string; title: string }[], relayUsed?: boolean, relayModel?: string | null, webSearchUsed?: boolean, webSearchQuery?: string, webSearchSources?: WebSearchSource[], wasFallback?: boolean, uiBlocks?: UiEnvelope | null, processDurationMs?: number) => void
   handleUiProgress: (block: ProgressBlock) => void
   lastAutoRouteDecision: AutoRouteDecisionInfo | null
   setAutoRouteDecision: (decision: AutoRouteDecisionInfo | null) => void
@@ -347,6 +352,8 @@ export const useStore = create<AppState>((set, get) => ({
   messages: [],
   streamingContent: '',
   isStreaming: false,
+  processSteps: [],
+  processStartedAt: null,
   lastCacheHit: null,
   toast: null,
   models: [],
@@ -426,6 +433,8 @@ export const useStore = create<AppState>((set, get) => ({
       activeConversation: conv,
       messages: conv.messages,
       streamingContent: '',
+      processSteps: [],
+      processStartedAt: null,
       activeArtifact: null,
       artifactPanelOpen: false,
       artifactHistory: [],
@@ -446,6 +455,8 @@ export const useStore = create<AppState>((set, get) => ({
       messages: [],
       streamingContent: '',
       isStreaming: false,
+      processSteps: [],
+      processStartedAt: null,
       activeArtifact: null,
       artifactPanelOpen: false,
       artifactHistory: [],
@@ -607,6 +618,33 @@ export const useStore = create<AppState>((set, get) => ({
     set((s) => ({ streamingContent: s.streamingContent + token }))
   },
 
+  beginProcess: (thinkingTitle = 'Thinking') => {
+    set((s) => s.processStartedAt ? { isStreaming: true } : {
+      isStreaming: true,
+      processSteps: [{ id: 'thinking', type: 'think', title: thinkingTitle, status: 'running' }],
+      processStartedAt: Date.now(),
+    })
+  },
+
+  startProcessStep: (step: ProcessStep) => {
+    set((s) => {
+      const steps = s.processSteps.some((item) => item.id === step.id)
+        ? s.processSteps.map((item) => item.id === step.id ? { ...item, ...step } : item)
+        : [...s.processSteps, step]
+      return {
+        isStreaming: true,
+        processStartedAt: s.processStartedAt ?? Date.now(),
+        processSteps: steps,
+      }
+    })
+  },
+
+  updateProcessStep: (id, update) => {
+    set((s) => ({
+      processSteps: s.processSteps.map((step) => step.id === id ? { ...step, ...update } : step),
+    }))
+  },
+
   finalizeStream: (
     messageId: string,
     artifactMeta?: { id: string; type: string; title: string },
@@ -617,11 +655,32 @@ export const useStore = create<AppState>((set, get) => ({
     webSearchQuery?: string,
     webSearchSources?: WebSearchSource[],
     wasFallback?: boolean,
-    uiBlocks?: UiEnvelope | null
+    uiBlocks?: UiEnvelope | null,
+    processDurationMs?: number
   ) => {
-    const { streamingContent, selectedModelId, models, lastAutoRouteDecision } = get()
+    const { streamingContent, selectedModelId, models, lastAutoRouteDecision, processSteps, processStartedAt } = get()
     const resolvedModelId = lastAutoRouteDecision?.chosen_model_id || selectedModelId
     const activeModel = models.find((m) => m.id === resolvedModelId)
+    const completedSteps = processSteps.map((step) => ({
+      ...step,
+      status: step.status === 'failed' ? 'failed' as const : 'completed' as const,
+    }))
+    if (webSearchSources?.length) {
+      const existingUrls = new Set(
+        completedSteps.filter((s) => s.type === 'navigate' && s.detail).map((s) => s.detail)
+      )
+      webSearchSources.forEach((source, index) => {
+        if (!existingUrls.has(source.url)) {
+          completedSteps.push({
+            id: `source-${index}-${messageId}`,
+            type: 'navigate' as const,
+            title: source.title || source.url,
+            detail: source.url,
+            status: 'completed' as const,
+          })
+        }
+      })
+    }
     const msg: Message = {
       id: messageId,
       role: 'assistant',
@@ -635,6 +694,8 @@ export const useStore = create<AppState>((set, get) => ({
       web_search_used: webSearchUsed,
       web_search_query: webSearchQuery,
       web_search_sources: webSearchSources,
+      process_steps: completedSteps,
+      process_duration_ms: processDurationMs ?? (processStartedAt ? Date.now() - processStartedAt : undefined),
       was_fallback: wasFallback,
       auto_route: lastAutoRouteDecision,
       ui_blocks: uiBlocks,
@@ -648,6 +709,8 @@ export const useStore = create<AppState>((set, get) => ({
       messages: [...s.messages, msg],
       streamingContent: '',
       isStreaming: false,
+      processSteps: [],
+      processStartedAt: null,
       lastAutoRouteDecision: null,
     }))
   },
@@ -677,7 +740,10 @@ export const useStore = create<AppState>((set, get) => ({
   lastAutoRouteDecision: null,
   setAutoRouteDecision: (decision: AutoRouteDecisionInfo | null) => set({ lastAutoRouteDecision: decision }),
 
-  setStreaming: (v: boolean) => set({ isStreaming: v }),
+  setStreaming: (v: boolean) => set((s) => ({
+    isStreaming: v,
+    ...(v ? {} : { processSteps: s.processSteps.map((step) => step.status === 'running' ? { ...step, status: 'failed' as const } : step), processStartedAt: null }),
+  })),
 
   setLastCacheHit: (hit) => set({ lastCacheHit: hit }),
 
