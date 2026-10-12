@@ -20,6 +20,7 @@ import { stripUiFences, extractClientUi } from '../lib/nexusUi'
 import { ExecutionSequence } from './ExecutionSequence'
 import { mergeProcessTree } from '../lib/processTree'
 import { SourceShelf } from './SourceShelf'
+import { GeneratedImage } from './ImageLightbox'
 
 // ─── ThinkingBlock — componente independente de modelo ─────────────────────────
 // ─── ThinkingBlock — componente independente de modelo ─────────────────────────
@@ -517,24 +518,7 @@ export function MessageBubble({ message }: Props) {
                     const cleanBackendUrl = backendUrl.endsWith('/api') ? backendUrl.slice(0, -4) : backendUrl
                     const fileUrl = att.file_url ? (att.file_url.startsWith('http') ? att.file_url : cleanBackendUrl + att.file_url) : ''
                     return (
-                      <div key={att.id} className="generated-image-card" style={{ maxWidth: '512px', borderRadius: '12px', overflow: 'hidden', border: '1px solid var(--hairline)', background: 'var(--surface-soft)' }}>
-                        <img
-                          src={fileUrl}
-                          alt={att.filename}
-                          style={{ width: '100%', height: 'auto', display: 'block', cursor: 'zoom-in' }}
-                          onClick={() => window.open(fileUrl, '_blank')}
-                        />
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: 'var(--surface)', borderTop: '1px solid var(--hairline)' }}>
-                          <span style={{ fontSize: '12px', color: 'var(--ink-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{att.filename}</span>
-                          <a
-                            href={fileUrl}
-                            download={att.filename}
-                            style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '12px', color: 'var(--primary)', textDecoration: 'none', fontWeight: 500 }}
-                          >
-                            <Download size={13} /> {t('chat.download', { defaultValue: 'Baixar' })}
-                          </a>
-                        </div>
-                      </div>
+                      <GeneratedImage key={att.id} fileUrl={fileUrl} filename={att.filename} />
                     )
                   })}
                   {message.attachments.filter(a => a.file_type !== 'image').length > 0 && (
