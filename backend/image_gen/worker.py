@@ -222,7 +222,7 @@ async def process_image_task(task: dict):
             await db.commit()
             await _safe_notify_sockets(
                 user_id,
-                image_failed_event(task_id, msg_id, conv_id, "Erro interno ao gerar imagem."),
+                image_failed_event(task_id, msg_id, conv_id, f"Erro ao gerar imagem: {e}"),
             )
         except Exception:
             pass

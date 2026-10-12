@@ -261,9 +261,10 @@ async def _process_turn(
                         img_config.provider_id or "cloudflare",
                     )
 
-                    placeholder_msg_id = str(uuid.uuid4())
-                    await save_assistant_message(
-                        db, conversation_id, placeholder_msg_id, "Gerando imagem…",
+                    placeholder_msg_id = await save_assistant_message(
+                        db,
+                        conversation_id,
+                        "Gerando imagem…",
                         img_config.model_id or "cloudflare/flux-1-schnell",
                         img_config.provider_id or "cloudflare",
                     )
@@ -377,9 +378,10 @@ async def _process_turn(
         from backend.image_gen.queue import insert_image_task
         from backend.image_gen.worker import notify_new_task
 
-        placeholder_msg_id = str(uuid.uuid4())
-        await save_assistant_message(
-            db, conversation_id, placeholder_msg_id, "Gerando imagem…",
+        placeholder_msg_id = await save_assistant_message(
+            db,
+            conversation_id,
+            "Gerando imagem…",
             img_config.model_id or "cloudflare/flux-1-schnell",
             img_config.provider_id or "cloudflare",
         )
