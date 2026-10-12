@@ -702,7 +702,21 @@
     "familiesListTitle": "Current Families",
     "selectEnabledModel": "Select an enabled model...",
     "fallbackChain": "Fallback Chain ({{count}})",
-    "familyNamePlaceholder:": "e.g.: Advanced Reasoning"
+    "familyNamePlaceholder:": "e.g.: Advanced Reasoning",
+    "imageGenTitle": "Image Generation",
+    "imageGenDesc": "Native image generation with Flux via Cloudflare Workers AI and intelligent intent detection.",
+    "imageGenNoKeyTitle": "Cloudflare Not Configured",
+    "imageGenNoKeyDesc": "To generate images, configure your Cloudflare API Token and Account ID in the Providers tab.",
+    "imageGenEnable": "Enable Image Generation",
+    "imageGenEnableDesc": "Allows creating images with /imagem or when requested in chat.",
+    "imageGenAutoDetect": "Automatic Intent Detection",
+    "imageGenAutoDetectDesc": "Automatically triggers image generation when user requests drawings or photos (without needing /imagem).",
+    "imageGenModel": "Image Model",
+    "imageGenSteps": "Inference Steps",
+    "imageGenStepsHint": "For Flux-1-Schnell, 4 steps offers the ideal balance of quality and speed (~1-3s). Max 8.",
+    "imageGenDailyCap": "Daily Limit Per User",
+    "imageGenDailyCapHint": "Protects against quota exhaustion on shared accounts.",
+    "imageGenDimensionsInfo": "Default resolution: 1024x1024px · Output format: PNG · Local storage in Nexus."
   },
   "memory": {
     "useMemoryGlobal": "Memory in conversations (default: on)",
@@ -906,22 +920,6 @@
     "webResearch": "Synthesis & Web",
     "generalChat": "General Chat",
     "policyUpdatedSuccess": "Routing policy updated successfully."
-  },
-  "toolsSettings": {
-    "imageGenTitle": "Image Generation",
-    "imageGenDesc": "Native image generation with Flux via Cloudflare Workers AI and intelligent intent detection.",
-    "imageGenNoKeyTitle": "Cloudflare Not Configured",
-    "imageGenNoKeyDesc": "To generate images, configure your Cloudflare API Token and Account ID in the Providers tab.",
-    "imageGenEnable": "Enable Image Generation",
-    "imageGenEnableDesc": "Allows creating images with /imagem or when requested in chat.",
-    "imageGenAutoDetect": "Automatic Intent Detection",
-    "imageGenAutoDetectDesc": "Automatically triggers image generation when user requests drawings or photos (without needing /imagem).",
-    "imageGenModel": "Image Model",
-    "imageGenSteps": "Inference Steps",
-    "imageGenStepsHint": "For Flux-1-Schnell, 4 steps offers the ideal balance of quality and speed (~1-3s). Max 8.",
-    "imageGenDailyCap": "Daily Limit Per User",
-    "imageGenDailyCapHint": "Protects against quota exhaustion on shared accounts.",
-    "imageGenDimensionsInfo": "Default resolution: 1024x1024px · Output format: PNG · Local storage in Nexus."
   },
   "intelligentUi": {
     "progressOf": "{{current}} of {{max}}",

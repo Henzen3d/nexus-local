@@ -702,7 +702,21 @@
     "familyLoading": "Carregando famílias...",
     "familiesListTitle": "Famílias Atuais",
     "selectEnabledModel": "Selecione um modelo habilitado...",
-    "fallbackChain": "Cadeia de Fallback ({{count}})"
+    "fallbackChain": "Cadeia de Fallback ({{count}})",
+    "imageGenTitle": "Geração de Imagens",
+    "imageGenDesc": "Geração nativa de imagens com Flux via Cloudflare Workers AI e detecção inteligente de intenção.",
+    "imageGenNoKeyTitle": "Cloudflare não configurada",
+    "imageGenNoKeyDesc": "Para gerar imagens, configure seu API Token e Account ID da Cloudflare na aba Provedores.",
+    "imageGenEnable": "Ativar Geração de Imagens",
+    "imageGenEnableDesc": "Permite criar imagens com /imagem ou quando solicitadas no chat.",
+    "imageGenAutoDetect": "Detecção Automática de Intenção",
+    "imageGenAutoDetectDesc": "Dispara a geração de imagem automaticamente ao identificar pedidos de desenho ou foto (sem precisar de /imagem).",
+    "imageGenModel": "Modelo de Imagem",
+    "imageGenSteps": "Passos de Inferência (Steps)",
+    "imageGenStepsHint": "Para Flux-1-Schnell, 4 passos é o equilíbrio ideal entre qualidade e velocidade (~1-3s). Máximo 8.",
+    "imageGenDailyCap": "Limite Diário por Usuário",
+    "imageGenDailyCapHint": "Protege contra estouro de quota em contas compartilhadas.",
+    "imageGenDimensionsInfo": "Resolução padrão: 1024x1024px · Formato de saída: PNG · Armazenamento local no Nexus."
   },
   "memory": {
     "useMemoryGlobal": "Memória nas conversas (padrão: ligada)",
@@ -906,22 +920,6 @@
     "webResearch": "Síntese & Web",
     "generalChat": "Conversação Geral",
     "policyUpdatedSuccess": "Política de roteamento atualizada com sucesso."
-  },
-  "toolsSettings": {
-    "imageGenTitle": "Geração de Imagens",
-    "imageGenDesc": "Geração nativa de imagens com Flux via Cloudflare Workers AI e detecção inteligente de intenção.",
-    "imageGenNoKeyTitle": "Cloudflare não configurada",
-    "imageGenNoKeyDesc": "Para gerar imagens, configure seu API Token e Account ID da Cloudflare na aba Provedores.",
-    "imageGenEnable": "Ativar Geração de Imagens",
-    "imageGenEnableDesc": "Permite criar imagens com /imagem ou quando solicitadas no chat.",
-    "imageGenAutoDetect": "Detecção Automática de Intenção",
-    "imageGenAutoDetectDesc": "Dispara a geração de imagem automaticamente ao identificar pedidos de desenho ou foto (sem precisar de /imagem).",
-    "imageGenModel": "Modelo de Imagem",
-    "imageGenSteps": "Passos de Inferência (Steps)",
-    "imageGenStepsHint": "Para Flux-1-Schnell, 4 passos é o equilíbrio ideal entre qualidade e velocidade (~1-3s). Máximo 8.",
-    "imageGenDailyCap": "Limite Diário por Usuário",
-    "imageGenDailyCapHint": "Protege contra estouro de quota em contas compartilhadas.",
-    "imageGenDimensionsInfo": "Resolução padrão: 1024x1024px · Formato de saída: PNG · Armazenamento local no Nexus."
   },
   "intelligentUi": {
     "progressOf": "{{current}} de {{max}}",
