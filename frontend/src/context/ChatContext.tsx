@@ -1,8 +1,10 @@
 import { createContext, useContext, type ReactNode } from 'react'
 import { useChat } from '../hooks/useChat'
+import type { Attachment } from '../types'
 
 interface ChatContextValue {
-  sendMessage: (text: string, displayText?: string) => void
+  sendMessage: (text: string, displayText?: string, attachmentIds?: string[], attachments?: Attachment[]) => void
+  stopStream: () => void
 }
 
 const ChatContext = createContext<ChatContextValue | null>(null)
@@ -12,9 +14,9 @@ const ChatContext = createContext<ChatContextValue | null>(null)
  * Isso evita que componentes como ArtifactPanel criem conexões WebSocket extras.
  */
 export function ChatProvider({ children }: { children: ReactNode }) {
-  const { sendMessage } = useChat()
+  const { sendMessage, stopStream } = useChat()
   return (
-    <ChatContext.Provider value={{ sendMessage }}>
+    <ChatContext.Provider value={{ sendMessage, stopStream }}>
       {children}
     </ChatContext.Provider>
   )
@@ -25,3 +27,4 @@ export function useChatContext(): ChatContextValue {
   if (!ctx) throw new Error('useChatContext deve ser usado dentro de <ChatProvider>')
   return ctx
 }
+

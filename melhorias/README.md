@@ -104,6 +104,15 @@ melhorias/
 
 Spec e planos em [`intelligent-ui/`](intelligent-ui/README.md). Não implementado. A IA manda dados. O React atual desenha. Flag futura nasce desligada.
 
+## New Chat Input (Redesign Benchmark Claude 2026)
+
+Documentação e planos detalhados em [`new-chat-input/`](file:///j:/Arquivos%20Osmar/Multi+/melhorias/new-chat-input/README.md):
+- Input em linha única no chat ativo (~44px)
+- Migração da seleção de modelos para a linha de rodapé com disclaimer
+- Ações dinâmicas à direita: Voz ➔ Enter
+- Menu integrado no botão `+` (anexos, enhance de prompt, busca web)
+- Balão unificado de modelos e provedores com toggle de Auto-Roteamento Inteligente e filtro por provedor
+
 ## Image gen
 
 Docs em [`image-gen/`](image-gen/README.md). Não implementado. Pedido de imagem raster sai do modelo de chat e vai para Cloudflare Workers AI em background. A imagem volta no mesmo chat.

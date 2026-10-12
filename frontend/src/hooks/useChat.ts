@@ -25,6 +25,7 @@ function buildWsUrl(token: string | null | undefined): string {
 
 export function useChat() {
   const wsRef = useRef<WebSocket | null>(null)
+  const isGeneratingRef = useRef(false)
   const {
     activeConversationId,
     selectedModelId,
@@ -102,6 +103,31 @@ export function useChat() {
         return
       }
 
+      // Se a geração foi interrompida localmente pelo usuário, ignora frames parciais
+      if (!isGeneratingRef.current && (
+        msg.type === 'token' ||
+        msg.type === 'stream_start' ||
+        msg.type === 'ui_progress' ||
+        msg.type === 'process_step_start' ||
+        msg.type === 'process_step_update' ||
+        msg.type === 'process_step_end' ||
+        msg.type === 'fusion_start' ||
+        msg.type === 'fusion_phase' ||
+        msg.type === 'fusion_status' ||
+        msg.type === 'fusion_judge_start' ||
+        msg.type === 'fusion_grounding' ||
+        msg.type === 'fusion_refined_prompt' ||
+        msg.type === 'image_pending' ||
+        msg.type === 'image_ready' ||
+        msg.type === 'image_failed'
+      )) {
+        return
+      }
+
+      if (!isGeneratingRef.current && msg.type === 'stream_end') {
+        return
+      }
+
       // Lê actions frescas do store (evita recriar o socket a cada re-render).
       const s = useStore.getState()
 
@@ -116,6 +142,7 @@ export function useChat() {
           s.appendToken(msg.content)
           break
         case 'stream_end':
+          isGeneratingRef.current = false
           s.setFusionActive(false)
           s.finalizeStream(
             msg.message_id,
@@ -216,6 +243,8 @@ export function useChat() {
           s.handleImageFailed(msg)
           break
         case 'error':
+          if (!isGeneratingRef.current) return
+          isGeneratingRef.current = false
           console.error('[WS error]', msg.message)
           s.setStreaming(false)
           s.setFusionActive(false)
@@ -275,6 +304,7 @@ export function useChat() {
 
       ws.onclose = (ev) => {
         clearHeartbeat()
+        isGeneratingRef.current = false
         if (wsRef.current === ws) wsRef.current = null
         if (socket === ws) socket = null
 
@@ -347,6 +377,38 @@ export function useChat() {
     }
   }, [token])
 
+  const stopStream = useCallback(() => {
+    isGeneratingRef.current = false
+    const s = useStore.getState()
+    if (!s.isStreaming && !s.fusionActive) return
+
+    if (s.streamingContent.trim()) {
+      // Preserva a resposta parcial gerada até o momento da parada
+      s.finalizeStream(
+        `msg-stop-${Date.now()}`,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        s.processStartedAt ? Date.now() - s.processStartedAt : undefined
+      )
+    } else {
+      // Nenhum texto gerado ainda — cancela os estados de ocupado e reseta passos
+      useStore.setState({
+        isStreaming: false,
+        streamingContent: '',
+        fusionActive: false,
+        processSteps: [],
+        processStartedAt: null,
+      })
+    }
+  }, [])
+
   const sendMessage = useCallback(
     (text: string, displayText?: string, attachmentIds?: string[], attachments?: Attachment[]) => {
       if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
@@ -363,6 +425,8 @@ export function useChat() {
         console.warn('No model selected')
         return
       }
+
+      isGeneratingRef.current = true
 
       // displayText: versão curta exibida no chat (ex: "✏️ Dashboard: adicionar dark mode")
       // text: prompt completo enviado ao modelo (inclui conteúdo do artifact)
@@ -401,5 +465,5 @@ export function useChat() {
     ]
   )
 
-  return { sendMessage }
+  return { sendMessage, stopStream }
 }

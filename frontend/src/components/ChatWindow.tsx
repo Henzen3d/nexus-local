@@ -1,12 +1,11 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
-import { PanelLeftOpen, Code2, BookOpen, Pencil, Lightbulb, Dna, X, ChevronRight, MoreVertical, Folder } from 'lucide-react'
+import { PanelLeftOpen, Code2, BookOpen, Pencil, Lightbulb, X, ChevronRight, MoreVertical, Folder } from 'lucide-react'
 import { BuyCoffeeIcon } from './BuyCoffeeIcon'
 import { useTranslation } from 'react-i18next'
 import { useStore } from '../store/useStore'
 import { api } from '../api/client'
 import { MessageBubble, StreamingBubble } from './MessageBubble'
 import { MessageInput } from './MessageInput'
-import { ProviderSelector } from './ProviderSelector'
 import { FusionStatusCard } from './FusionStatusCard'
 import { useChatContext } from '../context/ChatContext'
 import { Button } from './ui/Button'
@@ -246,7 +245,7 @@ export function ChatWindow() {
     setView,
     setActiveProjectId,
   } = useStore()
-  const { sendMessage } = useChatContext()
+  const { sendMessage, stopStream } = useChatContext()
   const isMobile = useIsMobile()
   const messagesAreaRef = useRef<HTMLDivElement>(null)
   const bottomSentinelRef = useRef<HTMLDivElement>(null)
@@ -453,23 +452,8 @@ export function ChatWindow() {
               <PanelLeftOpen size={18} />
             </Button>
           )}
-          <ProviderSelector />
 
-          {/* Fusion ao lado do seletor de provedores */}
-          <Button
-            variant={fusionMode ? 'primary' : 'secondary'}
-            size="icon"
-            className={`fusion-header-btn ${fusionMode ? 'is-active' : ''}`}
-            onClick={() => setFusionMode(!fusionMode)}
-            disabled={fusionActive}
-            tooltip={fusionMode ? t('chat.deactivateFusion') : t('chat.activateFusion')}
-            aria-label={fusionMode ? t('chat.deactivateFusion') : t('chat.activateFusion')}
-            aria-pressed={fusionMode}
-          >
-            <Dna size={15} strokeWidth={2} />
-          </Button>
-
-          {/* Breadcrumb de projeto ao lado do seletor (Claude: Projeto / Título) */}
+          {/* Breadcrumb de projeto (Claude benchmark: Projeto / Título) */}
           {chatProjectId && !isEmpty && (
             <nav className="chat-project-breadcrumb" aria-label={t('projects.breadcrumb', { defaultValue: 'Projeto' })}>
               <button
@@ -634,7 +618,7 @@ export function ChatWindow() {
         <div ref={bottomSentinelRef} style={{ height: 0, flexShrink: 0 }} aria-hidden="true" />
       </div>
 
-      <MessageInput onSend={sendMessage} isEmpty={isEmpty} />
+      <MessageInput onSend={sendMessage} onStop={stopStream} isEmpty={isEmpty} />
 
       {/* Chips de sugestão — empty state */}
       {isEmpty && (
