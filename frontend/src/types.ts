@@ -20,6 +20,7 @@ export interface VisionRelayConfig {
 export interface WebSearchSource {
   title: string
   url: string
+  snippet?: string
 }
 
 export type ProcessStepType = 'think' | 'search' | 'navigate' | 'tool'

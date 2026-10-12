@@ -19,6 +19,7 @@ import { DynamicRenderer } from '../ui/DynamicRenderer'
 import { stripUiFences, extractClientUi } from '../lib/nexusUi'
 import { ExecutionSequence } from './ExecutionSequence'
 import { mergeProcessTree } from '../lib/processTree'
+import { SourceShelf } from './SourceShelf'
 
 // ─── ThinkingBlock — componente independente de modelo ─────────────────────────
 // ─── ThinkingBlock — componente independente de modelo ─────────────────────────
@@ -398,6 +399,10 @@ export function MessageBubble({ message }: Props) {
                     {cleanedContent}
                   </ReactMarkdown>
                 </div>
+              )}
+
+              {message.role === 'assistant' && message.web_search_sources && message.web_search_sources.length > 0 && (
+                <SourceShelf sources={message.web_search_sources} />
               )}
 
               {/* Intelligent UI: renderizador de blocos visuais e micro-ferramentas */}

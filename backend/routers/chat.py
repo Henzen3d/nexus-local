@@ -614,11 +614,25 @@ async def _resolve_web_search(
                 for page in scraped_pages:
                     p_url = page.get("url")
                     if p_url:
-                        sources_map[p_url] = {"title": page.get("title") or p_url, "url": p_url}
+                        sample = (page.get("text_sample") or "").strip()
+                        sources_map[p_url] = {
+                            "title": page.get("title") or p_url,
+                            "url": p_url,
+                            "snippet": sample[:280],
+                        }
                 for r in search_results:
                     r_url = r.get("url")
-                    if r_url and r_url not in sources_map:
-                        sources_map[r_url] = {"title": r.get("title") or r_url, "url": r_url}
+                    if not r_url:
+                        continue
+                    snippet = (r.get("snippet") or "").strip()[:280]
+                    if r_url not in sources_map:
+                        sources_map[r_url] = {
+                            "title": r.get("title") or r_url,
+                            "url": r_url,
+                            "snippet": snippet,
+                        }
+                    elif snippet and not sources_map[r_url].get("snippet"):
+                        sources_map[r_url]["snippet"] = snippet
 
                 web_search_sources = list(sources_map.values())
 
