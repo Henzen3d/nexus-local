@@ -95,10 +95,23 @@ def _cache_key(text: str, voice: str) -> str:
 
 async def _synthesize_chunk(piece: str, voice: str) -> bytes:
     import edge_tts
+    import edge_tts.communicate as communicate
+    import edge_tts.constants as constants
 
-    communicate = edge_tts.Communicate(piece, voice, rate="+10%")
+    # Desde outubro/2026 o host antigo recusa o WebSocket com 403.
+    # O Edge 155 sintetiza em api.msedgeservices.com. Remover quando
+    # o edge-tts publicado já apontar para esse host.
+    if "api.msedgeservices.com" not in getattr(communicate, "WSS_URL", ""):
+        current = (
+            "wss://api.msedgeservices.com/tts/cognitiveservices/websocket/v1"
+            f"?Ocp-Apim-Subscription-Key={constants.TRUSTED_CLIENT_TOKEN}"
+        )
+        constants.WSS_URL = current
+        setattr(communicate, "WSS_URL", current)
+
+    communicate_client = edge_tts.Communicate(piece, voice, rate="+10%")
     out = bytearray()
-    async for event in communicate.stream():
+    async for event in communicate_client.stream():
         if event["type"] == "audio":
             data = event.get("data") or b""
             out.extend(data)

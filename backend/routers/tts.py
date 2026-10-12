@@ -3,10 +3,13 @@
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel
+import logging
 
 from backend.auth import get_current_user
 from backend.database import get_db
 from backend import tts as ttsmod
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/tts", tags=["tts"])
 
@@ -94,6 +97,7 @@ async def speak(body: SpeakIn, user: dict = Depends(get_current_user)):
     try:
         audio = await ttsmod.synthesize(body.text, voice)
     except Exception as exc:
+        logger.exception("Falha ao sintetizar TTS")
         raise HTTPException(status_code=502, detail="Não foi possível gerar o áudio.") from exc
     if not audio:
         raise HTTPException(status_code=400, detail="Nada para ler.")
