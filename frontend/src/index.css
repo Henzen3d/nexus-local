@@ -9286,6 +9286,18 @@ html[data-theme="light"] .custom-tooltip-trigger.tooltip-up::before {
   max-height: calc(100vh - 72px);
   object-fit: contain;
   transform-origin: center center;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.image-viewer-stage.is-zoomed,
+.image-viewer-stage.is-zoomed .image-viewer-img {
+  cursor: grab;
+}
+
+.image-viewer-stage.is-zoomed:active,
+.image-viewer-stage.is-zoomed:active .image-viewer-img {
+  cursor: grabbing;
 }
 
 /* Document Text Viewer Modal */
