@@ -54,14 +54,14 @@ def test_bloco_ruim_nao_derruba_o_bom():
 
 - [ ] **Step 2: Rodar e ver falhar**
 
-Run: `cd /home/osmar/nexuslocal/backend && python -m pytest tests/test_ui_blocks.py -q`
+Run: `cd backend && python -m pytest tests/test_ui_blocks.py -q` (ou no host: `cd /home/osmar/nexuslocal/backend && ...`)
 Expected: FAIL, módulo ausente.
 
 - [ ] **Step 3: Implementar `validate_envelope` com as regras da spec, seções 4 e 6.** Incluir progress, card, chart e controls nesta função, mesmo que a UI ainda não pinte. URL de imagem segue a seção 6: relativa do app, host da lista, ou IP privado só com flag. `https` solto não passa. Ação fora de `send_message` e `set_model` descarta o bloco.
 
 - [ ] **Step 4: Rodar e ver passar**
 
-Run: `cd /home/osmar/nexuslocal/backend && python -m pytest tests/test_ui_blocks.py -q`
+Run: `cd backend && python -m pytest tests/test_ui_blocks.py -q`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
@@ -108,7 +108,7 @@ Fence aberto: remover o pedaço aberto da prosa visível e não devolver envelop
 ### Task 3: Tabela
 
 **Files:**
-- Modify: `backend/database.py` dentro de `init_db`, no padrão try/select já usado para colunas de `messages` (por volta da linha 733).
+- Modify: `backend/database.py` dentro de `init_db()` (linha ~826+), no padrão try/select já usado para migrações incrementais de colunas.
 
 **Interfaces:**
 - Produces: tabela `message_ui_blocks` como na spec, seção 5.
@@ -154,7 +154,7 @@ Fence aberto: remover o pedaço aberto da prosa visível e não devolver envelop
 
 - [ ] **Step 2: Rodar**
 
-Run: `cd /home/osmar/nexuslocal/frontend && node --experimental-strip-types --test src/lib/nexusUi.test.ts`
+Run: `cd frontend && node --experimental-strip-types --test src/lib/nexusUi.test.ts` (ou no host: `cd /home/osmar/nexuslocal/frontend && ...`)
 Expected: PASS
 
 - [ ] **Step 3: Commit** `feat: espelhar validador nexus-ui no frontend`

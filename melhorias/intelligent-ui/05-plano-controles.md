@@ -21,20 +21,22 @@
 
 ---
 
-### Task 1: Fields sem ação
+### Task 1: Fields sem ação (text, select, number e range/slider)
 
 **Files:**
 - Create: `frontend/src/ui/components/ControlsCard.tsx`
 - Modify: `frontend/src/ui/DynamicRenderer.tsx`
 
 **Interfaces:**
-- Produces: fields `text`, `select` e `number` controlados em state local do componente. `number` corta para `[min, max]`.
+- Produces: fields `text`, `select`, `number` e `range` (slider com min, max e step) controlados em state local do componente. `number` e `range` cortam para `[min, max]`.
 
-- [ ] **Step 1: Teste.** Select mostra as options do bloco. Number com min 0 e max 10 não aceita 11 no state (fica 10).
+- [ ] **Step 1: Teste.** Select mostra as options do bloco. Number e range cortam para o intervalo `[min, max]`. Range exibe o valor atual ao lado do slider.
 
-- [ ] **Step 2: Implementar os três kinds. Botão ainda não envia. Label do botão é `submit_label`.**
+- [ ] **Step 2: Implementar os quatro kinds. Botão ainda não envia. Label do botão é `submit_label`.**
 
-- [ ] **Step 3: Commit** `feat: fields de controle na bolha, sem disparo`
+- [ ] **Step 3: Strings e i18n.** Incluir chaves de internacionalização em `pt-BR.json`, `en-US.json` e `es-ES.json` (`intelligentUi.controlsSubmitDefault`, `intelligentUi.controlsSelectPlaceholder`, `intelligentUi.controlsError`).
+
+- [ ] **Step 4: Commit** `feat: fields de controle e slider na bolha com i18n, sem disparo`
 
 ### Task 2: send_message
 
@@ -67,4 +69,19 @@
 
 - [ ] **Step 3: Commit** `feat: controle troca modelo só entre os já habilitados`
 
-Não acrescentar ação nova neste plano. Ação nova exige emenda da spec antes do código.
+### Task 4: Reatividade local (Calculadora reativa e live computation)
+
+Modelado a partir do *Bill Splitter* do OpenIntelligentUI ("Split a bill with controls for total, tip and group size. Calculations update as you change the inputs").
+
+**Files:**
+- Create: `frontend/src/ui/lib/safeMath.ts`
+- Modify: `ControlsCard.tsx`
+
+**Interfaces:**
+- Consumes: opcional `computed: { template: string, formula: string }` no bloco de controls.
+- Produces: parser aritmético recursivo seguro (operações `+`, `-`, `*`, `/`, `()`, estritamente números, sem `eval`), atualizando o badge de resultado em tempo real conforme o usuário altera os campos ou arrasta sliders. O resultado também fica disponível como `{resultado}` no template do `send_message`.
+
+- [ ] **Step 1: Teste de `safeMath`.** Valida precedência de operadores e substituição de variáveis numéricas. Rejeita qualquer caractere não aritmético.
+- [ ] **Step 2: Ligar ao `ControlsCard`.** Exibe card reativo com visualização imediata do cálculo antes do clique.
+- [ ] **Step 3: Commit** `feat: calculadora reativa e live computation no ControlsCard`
+

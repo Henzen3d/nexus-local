@@ -46,6 +46,104 @@ export interface Message {
   web_search_sources?: WebSearchSource[]
   was_fallback?: boolean
   auto_route?: AutoRouteDecisionInfo | null
+  ui_blocks?: UiEnvelope | null
+}
+
+export type UiBlockType = 'progress' | 'card' | 'chart' | 'controls' | 'sandbox'
+
+export interface ProgressStep {
+  id: string
+  label: string
+  state: 'pending' | 'active' | 'done' | 'error'
+}
+
+export interface ProgressBlock {
+  id: string
+  type: 'progress'
+  label: string
+  value?: number
+  max?: number
+  steps?: ProgressStep[]
+}
+
+export interface CardFact {
+  label: string
+  value: string
+}
+
+export interface CardBlock {
+  id: string
+  type: 'card'
+  title: string
+  body?: string
+  image?: { url: string; alt: string }
+  facts?: CardFact[]
+}
+
+export interface ChartSeries {
+  key: string
+  label: string
+}
+
+export interface ChartBlock {
+  id: string
+  type: 'chart'
+  title: string
+  kind: 'bar' | 'line' | 'compare'
+  x_key: string
+  series: ChartSeries[]
+  rows: Record<string, string | number>[]
+}
+
+export interface ControlField {
+  id: string
+  kind: 'text' | 'select' | 'number' | 'range'
+  label: string
+  placeholder?: string
+  min?: number
+  max?: number
+  step?: number
+  default?: number
+  options?: { value: string; label: string }[]
+}
+
+export interface ControlAction {
+  name: 'send_message' | 'set_model'
+  template?: string
+  field?: string
+}
+
+export interface ControlsBlock {
+  id: string
+  type: 'controls'
+  title: string
+  submit_label: string
+  fields: ControlField[]
+  computed?: { template: string; formula: string }
+  action: ControlAction
+}
+
+export interface SandboxBlock {
+  id: string
+  type: 'sandbox'
+  title: string
+  initial_height?: number
+  html: string
+  css?: string
+  js?: string
+  standalone_download?: boolean
+}
+
+export type UiBlock =
+  | ProgressBlock
+  | CardBlock
+  | ChartBlock
+  | ControlsBlock
+  | SandboxBlock
+
+export interface UiEnvelope {
+  v: 1
+  blocks: UiBlock[]
 }
 
 export interface AutoRouteDecisionInfo {
@@ -232,7 +330,8 @@ export type WSMessage =
   | { type: 'conversation_created'; conversation_id: string; title: string; project_id?: string | null }
   | { type: 'stream_start'; conversation_id: string; from_cache?: boolean; cache_type?: string | null; cache_similarity?: number | null }
   | { type: 'token'; content: string }
-  | { type: 'stream_end'; message_id: string; conversation_id: string; artifact_id?: string | null; artifact_type?: string | null; artifact_title?: string | null; artifacts?: { id: string; type: string; title: string }[]; relay_used?: boolean; relay_model?: string | null; web_search_used?: boolean; web_search_query?: string; web_search_sources?: WebSearchSource[]; was_fallback?: boolean }
+  | { type: 'stream_end'; message_id: string; conversation_id: string; artifact_id?: string | null; artifact_type?: string | null; artifact_title?: string | null; artifacts?: { id: string; type: string; title: string }[]; relay_used?: boolean; relay_model?: string | null; web_search_used?: boolean; web_search_query?: string; web_search_sources?: WebSearchSource[]; was_fallback?: boolean; ui_blocks?: UiEnvelope | null }
+  | { type: 'ui_progress'; block: ProgressBlock }
   | { type: 'error'; message: string }
   | { type: 'failover_notice'; original_model: string; fallback_model: string; reason: string }
   | { type: 'project_context_notice'; message: string; tokens_est: number; safe_input_tokens: number }

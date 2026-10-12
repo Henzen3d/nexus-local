@@ -20,14 +20,20 @@ from backend.orchestration.handle_attachments import (
     load_attachments,
     load_history,
 )
+from pathlib import Path
+import os
+
 from backend.orchestration.persist_turn import (
     detect_and_save_artifacts,
     ensure_conversation,
     run_post_turn_indexing,
     save_assistant_message,
+    save_ui_blocks,
     save_user_message,
     save_web_search_metadata,
 )
+from backend.ui_blocks.extract import extract_ui
+from backend.ui_blocks.should_offer import should_offer_ui
 from backend.orchestration.resolve_request import resolve_and_stream
 from backend.web_search import (
     format_search_results,
@@ -412,6 +418,18 @@ async def _process_turn(
     if image_job_created:
         system_instruction += "\n\nO usuário pediu uma imagem raster que está sendo gerada separadamente. Não escreva código SVG nem gere tags de imagem neste turno."
 
+    # ── Intelligent UI: oferta de catálogo condicional (Spec Seção 8) ───
+    if os.getenv("INTELLIGENT_UI_ENABLED", "false").lower() in ("true", "1", "yes"):
+        if should_offer_ui(user_message):
+            try:
+                cat_file = Path(__file__).resolve().parent.parent / "ui_blocks" / "catalog.txt"
+                if cat_file.exists():
+                    cat_content = cat_file.read_text(encoding="utf-8")
+                    if (len(cat_content) / 4) <= 400:
+                        system_instruction += "\n\n" + cat_content
+            except Exception as e:
+                logger.error("Erro ao carregar catálogo Intelligent UI:", exc_info=e)
+
     history = [{"role": "system", "content": system_instruction}] + history
 
     # ── Fusion mode: delegate ───────────────────────────────────────
@@ -437,11 +455,19 @@ async def _process_turn(
 
     full_response, cache_hit, model_id, provider_id = result
 
+    # ── Intelligent UI: extração de fence antes de persistir ──────────
+    ui_envelope = None
+    if os.getenv("INTELLIGENT_UI_ENABLED", "false").lower() in ("true", "1", "yes"):
+        full_response, ui_envelope = extract_ui(full_response)
+
     # ── Persist assistant message ───────────────────────────────────
     assistant_msg_id = await save_assistant_message(
         db, conversation_id, full_response, model_id, provider_id,
         relay_used, relay_model_id,
     )
+
+    if ui_envelope:
+        await save_ui_blocks(db, assistant_msg_id, ui_envelope, source="model")
 
     # ── Index Q+A for RAG ───────────────────────────────────────────
     await run_post_turn_indexing(
@@ -459,7 +485,7 @@ async def _process_turn(
     )
 
     # ── Stream end ──────────────────────────────────────────────────
-    await ws.send_json({
+    stream_end_payload = {
         "type": "stream_end",
         "message_id": assistant_msg_id,
         "conversation_id": conversation_id,
@@ -475,7 +501,11 @@ async def _process_turn(
         "web_search_used": bool(web_search_used),
         "web_search_query": web_search_query,
         "web_search_sources": web_search_sources,
-    })
+    }
+    if os.getenv("INTELLIGENT_UI_ENABLED", "false").lower() in ("true", "1", "yes"):
+        stream_end_payload["ui_blocks"] = ui_envelope
+
+    await ws.send_json(stream_end_payload)
 
     # ── Background memory extraction ────────────────────────────────
     if user and "id" in user and use_memory:

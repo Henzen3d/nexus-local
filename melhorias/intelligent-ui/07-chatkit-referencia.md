@@ -19,8 +19,8 @@ O kit deles é uma árvore aberta. Container (`Card`, `ListView`) e nós (`Box`,
 ## O que não aproveitamos
 
 - Pacote, SDK ou script do ChatKit.
-- Árvore livre de nós. `Box` e `Row` deixariam o modelo desenhar tela. O `DynamicRenderer` só conhece cinco cartões.
+- Árvore livre de nós. `Box` e `Row` deixariam o modelo desenhar tela. O `DynamicRenderer` só conhece cinco cartões nativos (mais o `SandboxCard` em sandbox isolado na Fase 7).
 - Colar JSON do Widget Builder no chat.
 - SSE novo. O canal continua o WebSocket que `backend/routers/chat.py` já abre.
 
-Cinco cartões, em `frontend/src/ui/components/`: `ProgressCard`, `ChecklistCard`, `ImageCard`, `ChartCard`, `ControlsCard`.
+Componentes em `frontend/src/ui/components/`: cinco cartões nativos Nível 1 (`ProgressCard`, `ChecklistCard`, `ImageCard`, `ChartCard`, `ControlsCard`) e um container isolado Nível 2 (`SandboxCard`, plano 09 / Fase 7).

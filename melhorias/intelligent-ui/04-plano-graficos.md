@@ -6,7 +6,7 @@
 
 **Architecture:** `ChartBlock` não interpreta eixo livre. `kind` escolhe o componente Recharts. Cor vem do índice da série, não do modelo.
 
-**Tech Stack:** `recharts` 3.9.2, já dependência. Não adicionar pacote.
+**Tech Stack:** `recharts` ^2.15.0, já dependência. Não adicionar pacote.
 
 **Spec:** `melhorias/intelligent-ui/00-visao-e-spec.md` seção 4.3.
 

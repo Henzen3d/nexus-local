@@ -144,6 +144,24 @@ async def get_conversation(conversation_id: str, current_user: dict = Depends(ge
                     "extracted_text": ext_text
                 })
 
+        # Puxa ui_blocks desta conversa se houver
+        msg_ui_blocks = {}
+        try:
+            async with db.execute(
+                """SELECT message_id, payload 
+                   FROM message_ui_blocks 
+                   WHERE message_id IN (SELECT id FROM messages WHERE conversation_id = ?)""",
+                (conversation_id,),
+            ) as cur:
+                ui_rows = await cur.fetchall()
+            for r_mid, r_payload in ui_rows:
+                try:
+                    msg_ui_blocks[r_mid] = json.loads(r_payload)
+                except Exception:
+                    pass
+        except aiosqlite.OperationalError:
+            pass
+
         return {
             "id": conv[0], "title": conv[1], "model_id": conv[2],
             "provider_id": conv[3], "created_at": conv[4],
@@ -162,7 +180,8 @@ async def get_conversation(conversation_id: str, current_user: dict = Depends(ge
                     "relay_used": bool(m[8]),
                     "relay_model": m[9],
                     "artifacts": msg_artifacts.get(m[0], []),
-                    "attachments": msg_attachments.get(m[0], [])
+                    "attachments": msg_attachments.get(m[0], []),
+                    "ui_blocks": msg_ui_blocks.get(m[0]),
                 }
                 for m in messages
             ],

@@ -32,13 +32,19 @@ Lista para quem for ligar `INTELLIGENT_UI_ENABLED` no servidor da família. Item
 - [ ] Não existe endpoint SSE novo para widget.
 - [ ] Tabela acessível do gráfico contém os números dos rows.
 - [ ] Controle não envia nada ao terminar o stream.
-- [ ] Clique em `send_message` cria bolha do usuário com o template preenchido.
+- [ ] Slider (`range`) no controle atualiza o valor numérico em tempo real ao arrastar.
+- [ ] Calculadora reativa (`computed`) recalcula a fórmula imediatamente no cliente sem fazer requisição ao servidor.
+- [ ] Clique em `send_message` cria bolha do usuário com o template preenchido (incluindo `{resultado}` calculado, se houver).
 - [ ] `set_model` não aceita id fora de `models`. Não usa as options que o modelo escreveu.
+- [ ] Bloco com `initial_height` reserva o espaço vertical antes do desenho final, prevenindo salto de scroll (Zero CLS).
+- [ ] Na Fase 7 (quando sandbox estiver ativo): sandbox roda estritamente sem `allow-same-origin` e sincroniza o tema dark/light através do Theme Bridge.
+- [ ] Exportação 1-click standalone (Fase 7) gera arquivo HTML autônomo funcional sem impactar o chat.
 
 ## Prompt
 
 - [ ] "bom dia" não injeta `catalog.txt`.
 - [ ] "compare os custos dos modelos" injeta, com a flag ligada.
+- [ ] "calcule a divisão da conta de 150 com 10% de gorjeta" ativa `controls` com `computed` ou catálogo.
 - [ ] Catálogo acima de 400 tokens estimados (`len/4`) não é injetado.
 
 ## Acessibilidade e visual
@@ -47,6 +53,12 @@ Lista para quem for ligar `INTELLIGENT_UI_ENABLED` no servidor da família. Item
 - [ ] Botão do controle mede pelo menos 44×44 px no breakpoint móvel.
 - [ ] Com `prefers-reduced-motion: reduce`, a barra não anima em loop.
 - [ ] Cores só dos tokens já existentes: `--surface-card`, `--hairline`, `--ink`, `--body`, `--primary`, `--cyan`, `--warning`, `--success`, `--error`.
+- [ ] Transições de tema escuro/claro refletem instantaneamente nos cartões nativos e no sandbox bridge.
+
+## Internacionalização (i18n)
+
+- [ ] Todas as strings literais fixas dos componentes (`ProgressCard`, `ChecklistCard`, `ImageCard`, `ControlsCard`, `SandboxCard`) possuem chaves correspondentes em `pt-BR.json`, `en-US.json` e `es-ES.json` (conforme `AGENTS.md`).
+- [ ] Troca de idioma da interface reflete imediatamente nos textos de botões, tooltips e fallbacks de erro sem recarregar a conversa.
 
 ## Não regressão
 
@@ -57,4 +69,5 @@ Lista para quem for ligar `INTELLIGENT_UI_ENABLED` no servidor da família. Item
 
 ## Fora, de propósito
 
-Pizza, mapa, vídeo, proxy de imagem, widget dentro do cache, Thesys, iframe e HTML do modelo não são falha de aceite. São escopo não feito. Não implementar para "completar" esta lista.
+Pizza, vídeo, proxy de imagem, widget dentro do cache semântico e Thesys não são falha de aceite. Nas Fases 1 a 6, o foco é estritamente Nível 1 (Controlled Generative UI). A execução em sandbox Nível 2 é reservada para a Fase 7 pós-estabilização.
+

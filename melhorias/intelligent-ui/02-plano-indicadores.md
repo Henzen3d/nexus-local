@@ -38,8 +38,8 @@
 - [ ] **Step 2: Implementar.** Largura da barra: `(value / max) * 100` por cento, teto 100. Cor da trilha: `--hairline`. Cor do preenchimento: `--primary`. Step `error`: `--error`. Step `done`: `--success`. Step `active`: `--primary`. Fundo: `--surface-card`.
 
 - [ ] **Step 3: Encaixar `DynamicRenderer` em `MessageBubble` abaixo do markdown, não no lugar dele.** Sem canal SSE. Atualização de barra chega no WebSocket já aberto.
-
-- [ ] **Step 4: Commit** `feat: pintar bloco progress na bolha`
+- [ ] **Step 4: Strings e i18n.** Incluir termos fixos (como conectivo "de" em "7 de 10") nos arquivos de tradução `pt-BR.json`, `en-US.json` e `es-ES.json` (`intelligentUi.progressOf`).
+- [ ] **Step 5: Commit** `feat: pintar bloco progress na bolha com i18n`
 
 ### Task 2: Evento do host
 
@@ -62,7 +62,7 @@
 **Files:**
 - Create: `backend/ui_blocks/catalog.txt` com o texto literal da spec, seção 8.
 - Create: `backend/ui_blocks/should_offer.py`
-- Modify: `backend/routers/chat.py`, depois de `resolve_project_context` (por volta da linha 191) e antes de `history = [{"role": "system", "content": system_instruction}] + history` (linha 197). Acrescentar o catálogo em `system_instruction`. Não criar outro system prompt.
+- Modify: `backend/routers/chat.py`, depois de `resolve_project_context` (linha ~406+) e antes de `history = [{"role": "system", "content": system_instruction}] + history` (linha ~415). Acrescentar o catálogo em `system_instruction`. Não criar outro system prompt.
 
 **Interfaces:**
 - Produces: `should_offer_ui(user_text: str) -> bool` com as duas regras da spec, seção 8.

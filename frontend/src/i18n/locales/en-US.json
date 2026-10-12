@@ -868,5 +868,15 @@
     "imageGenDailyCap": "Daily Limit Per User",
     "imageGenDailyCapHint": "Protects against quota exhaustion on shared accounts.",
     "imageGenDimensionsInfo": "Default resolution: 1024x1024px · Output format: PNG · Local storage in Nexus."
+  },
+  "intelligentUi": {
+    "progressOf": "{{current}} of {{max}}",
+    "imageLoadError": "Unable to load image.",
+    "controlsSubmitDefault": "Execute",
+    "controlsSelectPlaceholder": "Select an option",
+    "controlsError": "Error executing action.",
+    "exportStandalone": "Download HTML",
+    "exportTooltip": "Download standalone interactive tool",
+    "computedResult": "Result"
   }
 }

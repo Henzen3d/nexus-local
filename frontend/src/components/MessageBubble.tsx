@@ -15,6 +15,7 @@ import { AdapterRegistry } from '../adapters/AdapterRegistry'
 import { AIMetadataDisplay } from './AIMetadataDisplay'
 import { playSpeech, useTtsPlay } from '../lib/ttsPlayer'
 import { AutoRouteBadge } from './AutoRouteBadge'
+import { DynamicRenderer } from '../ui/DynamicRenderer'
 
 // ─── ThinkingBlock — componente independente de modelo ─────────────────────────
 // ─── ThinkingBlock — componente independente de modelo ─────────────────────────
@@ -375,6 +376,9 @@ export function MessageBubble({ message }: Props) {
                   </ReactMarkdown>
                 </div>
               )}
+
+              {/* Intelligent UI: renderizador de blocos visuais e micro-ferramentas */}
+              {message.ui_blocks && <DynamicRenderer envelope={message.ui_blocks} />}
 
               {artifacts.length > 0 && (
                 <div className="artifact-chat-card-list">

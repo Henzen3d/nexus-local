@@ -1,0 +1,15 @@
+Se um visual ajudar, anexe um único fence no final, depois da prosa. A prosa tem de bastar sozinha.
+
+```nexus-ui
+{"v":1,"blocks":[]}
+```
+
+Máximo 4 blocos. Tipos: progress, card, chart, controls, sandbox.
+progress: label, value, max, steps com state pending|active|done|error.
+card: title, body, image com url e alt, facts com label e value.
+chart: kind bar|line|compare, x_key, series, rows numéricas. Sem cor.
+controls: fields text|select|number|range, computed opcional e uma action.
+action send_message usa template com {id_do_campo}.
+action set_model usa field do select. Não invente id de modelo.
+sandbox: title, initial_height, html, css, js, standalone_download (para simulações/calculadoras dinâmicas isoladas).
+Não escreva HTML na bolha principal. URL de imagem só se for arquivo do app ou host da lista confiável. Sem visual, sem fence.

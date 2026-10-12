@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Artifact, Conversation, ConversationDetail, Message, Model, CacheStats, CacheSettings, FusionStatusEntry, Attachment, WebSearchSource, AutoRouteDecisionInfo } from '../types'
+import type { Artifact, Conversation, ConversationDetail, Message, Model, CacheStats, CacheSettings, FusionStatusEntry, Attachment, WebSearchSource, AutoRouteDecisionInfo, UiEnvelope, ProgressBlock } from '../types'
 import { api } from '../api/client'
 import { detectInitialLocale } from '../i18n'
 
@@ -171,7 +171,8 @@ interface AppState {
   favoriteConversation: (id: string) => Promise<void>
   loadAllArtifacts: (search?: string) => Promise<void>
   appendToken: (token: string) => void
-  finalizeStream: (messageId: string, artifactMeta?: { id: string; type: string; title: string }, artifacts?: { id: string; type: string; title: string }[], relayUsed?: boolean, relayModel?: string | null, webSearchUsed?: boolean, webSearchQuery?: string, webSearchSources?: WebSearchSource[], wasFallback?: boolean) => void
+  finalizeStream: (messageId: string, artifactMeta?: { id: string; type: string; title: string }, artifacts?: { id: string; type: string; title: string }[], relayUsed?: boolean, relayModel?: string | null, webSearchUsed?: boolean, webSearchQuery?: string, webSearchSources?: WebSearchSource[], wasFallback?: boolean, uiBlocks?: UiEnvelope | null) => void
+  handleUiProgress: (block: ProgressBlock) => void
   lastAutoRouteDecision: AutoRouteDecisionInfo | null
   setAutoRouteDecision: (decision: AutoRouteDecisionInfo | null) => void
   setStreaming: (v: boolean) => void
@@ -615,7 +616,8 @@ export const useStore = create<AppState>((set, get) => ({
     webSearchUsed?: boolean,
     webSearchQuery?: string,
     webSearchSources?: WebSearchSource[],
-    wasFallback?: boolean
+    wasFallback?: boolean,
+    uiBlocks?: UiEnvelope | null
   ) => {
     const { streamingContent, selectedModelId, models, lastAutoRouteDecision } = get()
     const resolvedModelId = lastAutoRouteDecision?.chosen_model_id || selectedModelId
@@ -635,6 +637,7 @@ export const useStore = create<AppState>((set, get) => ({
       web_search_sources: webSearchSources,
       was_fallback: wasFallback,
       auto_route: lastAutoRouteDecision,
+      ui_blocks: uiBlocks,
       // Popula os metadados do artifact no objeto de mensagem para que o badge seja exibido
       ...(artifactMeta
         ? { artifact_id: artifactMeta.id, artifact_type: artifactMeta.type, artifact_title: artifactMeta.title }
@@ -647,6 +650,28 @@ export const useStore = create<AppState>((set, get) => ({
       isStreaming: false,
       lastAutoRouteDecision: null,
     }))
+  },
+
+  handleUiProgress: (block: ProgressBlock) => {
+    set((s) => {
+      const msgs = [...s.messages]
+      const lastIdx = msgs.length - 1
+      if (lastIdx >= 0) {
+        const lastMsg = { ...msgs[lastIdx] }
+        const currentEnv = lastMsg.ui_blocks || { v: 1 as const, blocks: [] }
+        const blocks = [...currentEnv.blocks]
+        const existingIdx = blocks.findIndex((b) => b.id === block.id)
+        if (existingIdx >= 0) {
+          blocks[existingIdx] = block
+        } else if (blocks.length < 4) {
+          blocks.push(block)
+        }
+        lastMsg.ui_blocks = { v: 1, blocks }
+        msgs[lastIdx] = lastMsg
+        return { messages: msgs }
+      }
+      return {}
+    })
   },
 
   lastAutoRouteDecision: null,

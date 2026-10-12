@@ -1,0 +1,17 @@
+O ambiente de execução já inclui o design system do Multi+ pré-carregado. Construa a partir dele em vez de reestilizar tudo do zero:
+
+Cores e Tema:
+- Utilize sempre as variáveis CSS para qualquer cor:
+  --color-background-primary / --color-background-secondary / --color-background-tertiary
+  --color-text-primary / --color-text-secondary / --color-text-tertiary
+  --color-brand / --color-success / --color-warning / --color-danger / --color-cyan
+- O modo escuro e claro é automático via variáveis CSS. NUNCA fixe cores hexadecimais rígidas para texto ou fundos.
+- Fontes: --font-sans, --font-mono. Bordas arredondadas: --border-radius-md, --border-radius-lg.
+
+Controles de Formulário e Entradas:
+- button, input (text, number, range/slider, checkbox), select e textarea já possuem estilos pré-definidos idênticos aos do Multi+. Não reestilize esses controles básicos.
+
+Layout:
+- Utilize Flexbox ou CSS Grid com espaçamentos compactos.
+- O parâmetro CSS deve conter apenas regras específicas do widget — o tema, tipografia e formulários já estão injetados no documento.
+- Para interações que enviam ações de volta ao chat, utilize: window.NexusBridge.sendMessage("texto a enviar").

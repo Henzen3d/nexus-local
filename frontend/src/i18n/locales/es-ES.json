@@ -738,5 +738,15 @@
     "imageGenDailyCap": "Límite Diario por Usuario",
     "imageGenDailyCapHint": "Protege contra el agotamiento de cuota en cuentas compartidas.",
     "imageGenDimensionsInfo": "Resolución estándar: 1024x1024px · Formato de salida: PNG · Almacenamiento local en Nexus."
+  },
+  "intelligentUi": {
+    "progressOf": "{{current}} de {{max}}",
+    "imageLoadError": "No se pudo cargar la imagen.",
+    "controlsSubmitDefault": "Ejecutar",
+    "controlsSelectPlaceholder": "Seleccione una opción",
+    "controlsError": "Error al ejecutar la acción.",
+    "exportStandalone": "Descargar HTML",
+    "exportTooltip": "Descargar herramienta interactiva independiente",
+    "computedResult": "Resultado"
   }
 }

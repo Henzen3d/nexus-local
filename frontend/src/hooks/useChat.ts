@@ -128,9 +128,13 @@ export function useChat() {
             msg.web_search_used,
             msg.web_search_query,
             msg.web_search_sources,
-            msg.was_fallback
+            msg.was_fallback,
+            msg.ui_blocks
           )
           s.loadConversations()
+          break
+        case 'ui_progress':
+          s.handleUiProgress(msg.block)
           break
         case 'auto_route_decision':
           s.setAutoRouteDecision(msg)

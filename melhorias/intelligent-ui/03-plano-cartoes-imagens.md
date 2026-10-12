@@ -4,7 +4,7 @@
 
 **Goal:** Pintar cartão com título, texto curto, fatos e foto opcional, sem deixar URL ruim quebrar a bolha.
 
-**Architecture:** `CardBlock` consome bloco já validado. A foto é `<img>` direto no browser. Sem proxy.
+**Architecture:** `ImageCard` consome bloco já validado. A foto é `<img>` direto no browser. Sem proxy.
 
 **Tech Stack:** React 18. Sem lib nova.
 
@@ -52,7 +52,9 @@
 
 - [ ] **Step 2: No erro de carga (`onError`), esconder a imagem e manter título e fatos.**
 
-- [ ] **Step 3: Commit** `feat: foto no cartão só com URL permitida`
+- [ ] **Step 3: Strings e i18n.** Incluir chaves de internacionalização para fallbacks de imagem em `pt-BR.json`, `en-US.json` e `es-ES.json` (`intelligentUi.imageLoadError`).
+
+- [ ] **Step 4: Commit** `feat: foto no cartão só com URL permitida e suporte a i18n`
 
 ### Task 3: Exemplo de produto, não de dado inventado no código
 

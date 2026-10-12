@@ -106,6 +106,27 @@ async def save_assistant_message(
     return assistant_msg_id
 
 
+async def save_ui_blocks(
+    db,
+    message_id: str,
+    envelope: dict[str, Any] | None,
+    source: str = "model",
+) -> None:
+    """Persiste os blocos do envelope nexus-ui/1 na tabela message_ui_blocks."""
+    if not envelope or not envelope.get("blocks"):
+        return
+    try:
+        await db.execute(
+            """INSERT INTO message_ui_blocks (message_id, payload, source)
+               VALUES (?, ?, ?)
+               ON CONFLICT(message_id) DO UPDATE SET payload = excluded.payload, source = excluded.source""",
+            (message_id, json.dumps(envelope), source),
+        )
+        await db.commit()
+    except Exception as e:
+        logger.error("Erro ao salvar message_ui_blocks:", exc_info=e)
+
+
 async def save_web_search_metadata(
     db,
     user_msg_id: str,

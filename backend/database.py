@@ -866,6 +866,20 @@ async def init_db():
                 await db.execute(f"ALTER TABLE users ADD COLUMN {col} {col_type}")
                 await db.commit()
 
+        # Incremental migration: Intelligent UI (nexus-ui/1 visual blocks)
+        try:
+            await db.execute("SELECT payload FROM message_ui_blocks LIMIT 1")
+        except aiosqlite.OperationalError:
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS message_ui_blocks (
+                    message_id TEXT PRIMARY KEY REFERENCES messages(id) ON DELETE CASCADE,
+                    payload    TEXT NOT NULL,
+                    source     TEXT NOT NULL CHECK(source IN ('host', 'model')),
+                    created_at TEXT DEFAULT (datetime('now'))
+                )
+            """)
+            await db.commit()
+
         # Garante que pelo menos um admin exista se houver usuários cadastrados
         async with db.execute("SELECT COUNT(id) FROM users WHERE role = 'admin'") as cur:
             row = await cur.fetchone()

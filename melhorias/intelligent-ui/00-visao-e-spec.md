@@ -8,24 +8,29 @@
 
 ## 1. Decisão
 
-A resposta do chat deixa de ser só markdown quando um visual ajuda. O modelo não entrega interface. Entrega dados. O frontend, já montado, escolhe o componente.
+A resposta do chat deixa de ser só markdown quando um visual ajuda. O sistema implementa o **Generative UI Spectrum** (conceito formalizado em outubro de 2026 pelo [CopilotKit Open Intelligent UI](https://github.com/CopilotKit/OpenIntelligentUI) como resposta aberta ao Intelligent UI do ChatGPT):
+- **Nível 1 — Controlled Generative UI (Fases 1 a 6):** O modelo não entrega interface livre nem código cru; entrega dados estruturados em JSON validado (`nexus-ui/1`). O frontend do Multi+, já carregado, escolhe o componente nativo correspondente. Zero risco de segurança e 100% de aderência visual ao design system.
+- **Nível 2 — Open Generative UI & Sandboxed Tools (Fase 7):** Para tarefas dinâmicas que excedem os componentes nativos (calculadoras reativas de divisão/parcelamento, simulações, algoritmos passo a passo, gráficos 3D/Canvas), o sistema oferece um container isolado em `iframe` com sandbox estrito, injeção dos design tokens do Multi+ (`var(--primary)`, `var(--surface-card)`, etc.) e bridge validada de `postMessage`.
 
-Isso não reescreve o Multi+. Não carrega um segundo app dentro de cada resposta. O modelo nunca recebe o código dos componentes. Recebe, no máximo, um catálogo curto (seção 8), e só no turno em que o visual é plausível.
+Isso não reescreve o Multi+. Não carrega um segundo app pesado dentro de cada resposta. O modelo nunca recebe o código dos componentes. Recebe, no máximo, um catálogo curto (seção 8), e só no turno em que o visual é plausível.
 
-A nota pede JSON com esquema fixo, atualização por SSE ou WebSocket, gráfico carregado sob demanda, imagem local ou URL confiável, e lista fechada de componentes e ações. A adaptação abaixo usa o que o Nexus já tem. Não abre canal novo e não instala o ChatKit.
+A nota e os aprendizados do OpenIntelligentUI pedem JSON com esquema fixo, atualização por WebSocket, gráfico sob demanda, imagens seguras, prevenção de layout shifts durante o streaming, e lista fechada de componentes e ações. A adaptação abaixo usa o que o Nexus já tem. Não abre canal novo e não instala SDKs pesados de terceiros.
 
-| Necessidade | Pedido da nota | Decisão no Nexus |
+| Necessidade | Pedido da nota / Referência OpenIntelligentUI | Decisão no Nexus |
 |---|---|---|
-| Tela | Não substituir o Multi+ | Frontend atual. React 18.3, Vite, Zustand. `MessageBubble.tsx` continua dono da bolha. |
+| Tela | Não substituir o Multi+ | Frontend atual. React 18.3, Vite, Zustand, Vanilla CSS. `MessageBubble.tsx` continua dono da bolha. |
 | Módulo | `src/ui/DynamicRenderer` e cartões | `frontend/src/ui/`. O app mora em `frontend/`, não numa pasta `src/` na raiz. |
 | Formato | JSON validado com esquema fixo | Envelope `nexus-ui/1`. Backend valida antes de gravar. Frontend valida de novo antes de pintar. |
-| Progresso | SSE unidirecional ou WebSocket bidirecional | Sem SSE. O chat já é WebSocket em `backend/routers/chat.py`. Barra e clique usam esse socket. |
-| Gráficos | Biblioteca sob demanda | `recharts` 3.9.2, já dependência. `ChartCard` entra por `React.lazy`. Sem import estático de `recharts` na bolha. |
+| Progresso e Ações | SSE unidirecional ou WebSocket bidirecional | Sem SSE. O chat já é WebSocket em `backend/routers/chat.py`. Barra, cálculo reativo e cliques usam esse socket. |
+| Gráficos | Biblioteca sob demanda | `recharts` ^2.15.0, já dependência. `ChartCard` entra por `React.lazy`. Sem import estático de `recharts` na bolha. |
 | Imagens | Arquivo local ou URL confiável | Anexo servido pelo próprio app, ou host listado em `INTELLIGENT_UI_IMAGE_HOSTS`. `https` solto não passa. |
-| Segurança | Lista de componentes e de ações | `DynamicRenderer` só monta os cartões desta spec. Ação fora da lista morre no backend. |
+| Harmonia Visual | Resolver o dilema do Andrew Chen ("parecer que pertence ao app") | Design tokens de `frontend/src/index.css` (`--primary`, `--surface-card`, `--hairline`, `--ink`, dark/light theme) compartilhados com os cartões nativos e injetados via bridge no sandbox. |
+| Anti-Layout Shift | Ordem estrita de streaming do OpenIntelligentUI | `initial_height` e mensagens de placeholder progressivo para reservar espaço vertical antes da pintura. |
+| Segurança | Lista de componentes e de ações | `DynamicRenderer` só monta os cartões desta spec. Ação fora da lista morre no backend. Sandbox sem `allow-same-origin`. |
 | Liga/desliga | — | `INTELLIGENT_UI_ENABLED`, padrão `false`. |
 
-Rejeitado para a v1: Thesys, SDK do ChatKit, Apps SDK, iframe, SSE paralelo, `dangerouslySetInnerHTML`, JSX emitido pelo modelo, eval, árvore livre de layout (Box, Row, Spacer) e mandar o fonte do Multi+ no prompt.
+Rejeitado para a v1: Thesys, SDK do ChatKit, LangChain pesado, SSE paralelo, `dangerouslySetInnerHTML` na bolha principal, JSX emitido pelo modelo, eval, árvore livre de layout (Box, Row, Spacer) e mandar o fonte do Multi+ no prompt.
+
 
 ## 2. O que já existe e não deve ser duplicado
 
@@ -176,18 +181,42 @@ Exemplo de produto: comparar custo, tempo ou desempenho de modelos. O modelo man
 - Um bloco, uma ação.
 - `submit_label`: 1 a 32 caracteres.
 - `fields`: 1 a 4.
-- `kind`: `text`, `select` ou `number`.
+- `kind`: `text`, `select`, `number` ou `range` (slider).
 - `text`: valor máximo 200 caracteres no cliente, mesmo que o modelo não declare limite.
-- `number`: `min` e `max` obrigatórios, números finitos, `min` < `max`, intervalo de no máximo 1_000_000. O host corta o valor para dentro do intervalo.
+- `number` e `range`: `min` e `max` obrigatórios, números finitos, `min` < `max`, intervalo de no máximo 1_000_000. `step` opcional (padrão 1). O host corta o valor para dentro do intervalo.
 - `select`: 2 a 8 opções. `value` de 1 a 64, `[a-zA-Z0-9._-]+`. `label` de 1 a 40.
 - `id` de field: 1 a 32, `[a-z0-9_]+`.
+- **Reatividade local (cálculo em tempo real):** Opcional `computed`: `{"template": "Total por pessoa: R$ {resultado}", "formula": "({total} * (1 + {gorjeta}/100)) / {pessoas}"}`. Avaliado estritamente no cliente com parser aritmético seguro (sem `eval`). Os inputs e sliders atualizam o display na hora, sem round-trip de rede para o servidor (inspirado na calculadora e divisor de contas do OpenIntelligentUI).
 
 Ações v1, e só estas:
 
 1. `send_message`. `template` de 1 a 500 caracteres. Todo `{id}` do template tem de ser um field do bloco. Placeholder desconhecido descarta o bloco. No clique, o host interpola e envia pelo mesmo caminho de mensagem do composer. O texto aparece como bolha do usuário. Não há envio automático.
 2. `set_model`. `field` aponta para o único `select` do bloco. Opções vindas do modelo são ignoradas. O host preenche o select com `models` do `useStore` (id visível para o usuário, valor interno `model_id`). No clique, se o id existir na lista do usuário, chama `selectModel(modelId, providerId)` em `frontend/src/store/useStore.ts`. Id inventado não muda nada e o controle mostra erro curto. Não envia mensagem.
 
-Sem ação de apagar conversa, trocar chave, abrir URL arbitrária, rodar código ou chamar API fora do fluxo de chat já existente.
+Sem ação de apagar conversa, trocar chave, abrir URL arbitrária, rodar código arbitrário no host ou chamar API fora do fluxo de chat já existente.
+
+### 4.5 `sandbox` (Extensão Nível 2 / Fase 7 — Open Generative UI)
+
+Para ferramentas dinâmicas sob demanda (calculadoras complexas, simulações interativas, Three.js, visualizadores de algoritmos):
+
+```json
+{
+  "id": "simulador",
+  "type": "sandbox",
+  "title": "Simulador de Alocação de Tokens",
+  "initial_height": 340,
+  "html": "<div id='app'>...</div>",
+  "css": "#app { display: flex; flex-direction: column; }",
+  "js": "function update() { ... }",
+  "standalone_download": true
+}
+```
+
+- **Pré-dimensionamento Anti-Layout Shift:** `initial_height` (120 a 800 px) reserva imediatamente o espaço vertical na bolha, impedindo saltos visuais durante o streaming.
+- **Isolamento de Segurança:** Renderizado em `<iframe sandbox="allow-scripts allow-forms">`. Sem `allow-same-origin` (zero acesso a cookies, `localStorage` ou tokens do Multi+).
+- **Injeção de Design Tokens (Theme Bridge):** O host injeta automaticamente um bloco `<style>` com as variáveis CSS de `frontend/src/index.css` (`--primary`, `--surface-card`, `--ink`, `--body`, etc.) e a classe de tema `.dark` / `.light` correspondente.
+- **Host Bridge Seguro via `postMessage`:** Comunicação bidirecional estrita: o sandbox só pode disparar `{ type: 'nexus_action', action: 'send_message', text: '...' }` para o host. O host valida a mensagem antes de encaminhar ao chat.
+- **1-Click Export Standalone:** Quando `standalone_download` for true, o cartão exibe botão para baixar o código como arquivo HTML autônomo funcional com as dependências embutidas.
 
 ## 5. Persistência e stream
 
@@ -247,12 +276,15 @@ Por isso:
 
 Sem endpoint SSE novo.
 
-## 7. Segurança e acessibilidade
+## 7. Segurança, acessibilidade e prevenção de layout shift
 
-- Pintar texto com nó de texto React. Nunca `dangerouslySetInnerHTML` nestes componentes.
-- Não executar string do modelo.
+- Pintar texto com nó de texto React. Nunca `dangerouslySetInnerHTML` na bolha principal.
+- Não executar string do modelo no DOM do host.
+- **Isolamento de Sandbox (Nível 2 / Fase 7):** Qualquer código dinâmico gerado pelo modelo roda exclusivamente em `<iframe sandbox="allow-scripts allow-forms">`. Sem `allow-same-origin` (zero acesso ao storage ou tokens do host). Sem `allow-top-navigation`.
+- **Prevenção de Layout Shift (Zero CLS):** O container do bloco reserva o espaço vertical usando `initial_height` antes de iniciar a pintura do componente, eliminando saltos bruscos na conversa durante a leitura do usuário (regra de ouro do OpenIntelligentUI).
+- **Theme Bridge (Design Tokens):** Os blocos nativos usam diretamente os tokens de `frontend/src/index.css`. O container sandbox recebe injeção automática de `<style>` com `--primary`, `--surface-card`, `--ink`, etc., garantindo que ferramentas sob demanda tenham a mesma aparência nativa do Multi+ (resolvendo o problema de harmonia do design system).
 - Clique em controle é gesto do usuário. Nada dispara no `stream_end`.
-- Ação autorizada é nome fechado, conferido no backend (`validate_envelope`), não no clique solto do browser. v1 só tem `send_message` e `set_model`.
+- Ação autorizada é nome fechado, conferido no backend (`validate_envelope`), não no clique solto do browser. v1 tem `send_message` e `set_model`.
 - `send_message` entra no WebSocket de chat já autenticado. Não há endpoint novo que execute string.
 - `set_model` só aceita id que o servidor já listou para aquele usuário. Não é comando de shell.
 - Script, arquivo do disco e controle de outro serviço não são ação de widget. Se um dia existirem, o backend autoriza o nome da ação. O modelo não manda o comando.
@@ -263,14 +295,19 @@ Sem endpoint SSE novo.
 - Barra de progresso: `role="progressbar"`, `aria-valuenow`, `aria-valuemin`, `aria-valuemax`, `aria-label` = `label`. Step list: `role="list"`.
 - Gráfico: a prosa e, se couber, uma tabela simples `sr-only` com os mesmos `rows`. Quem não vê o desenho lê o número.
 
-## 8. Catálogo no prompt
+## 8. Catálogo no prompt e Visualization Router
 
-Texto fixo, arquivo futuro `backend/ui_blocks/catalog.txt`. Injeção só quando a flag está ligada e o turno passa no heurístico. Teto: 400 tokens estimados por `len(texto) / 4`. Se passar, não injetar e seguir sem visual.
+Texto fixo, arquivo futuro `backend/ui_blocks/catalog.txt`. Injeção só quando a flag está ligada e o turno passa no classificador/heurístico de visualização. Teto: 400 tokens estimados por `len(texto) / 4`. Se passar, não injetar e seguir sem visual.
+
+**Princípios do Visualization Router (inspirados no OpenIntelligentUI):**
+1. *Fato direto / prosa explicativa:* Resposta em Markdown puro sem envelope (sem poluição visual).
+2. *Métricas, processos e comparações pontuais:* Catálogo nativo Nível 1 (`progress`, `card`, `chart`).
+3. *Cálculos com variáveis, simulações e ferramentas ativas:* `controls` reativo ou `sandbox` isolado.
 
 Heurístico, case insensitive, na última mensagem do usuário. Ligar o catálogo se qualquer item bater:
 
-- regex: `gráfico|grafico|compar|versus|\bvs\b|etapa|progresso|escolh|selecion|cartão|cartao|imagem|foto|indicador|barra`
-- ou três ou mais números e uma destas palavras: `custo`, `tempo`, `modelo`, `%`
+- regex: `gráfico|grafico|compar|versus|\bvs\b|etapa|progresso|escolh|selecion|cartão|cartao|imagem|foto|indicador|barra|calcul|simul`
+- ou três ou mais números e uma destas palavras: `custo`, `tempo`, `modelo`, `%`, `taxa`, `valor`
 
 Turno que não bater: sem catálogo, sem cobrança de token extra, sem widget de modelo. Bloco de host (Fusion, busca, upload) não depende deste heurístico.
 
@@ -283,14 +320,15 @@ Se um visual ajudar, anexe um único fence no final, depois da prosa. A prosa te
 {"v":1,"blocks":[]}
 ```
 
-Máximo 4 blocos. Tipos: progress, card, chart, controls.
+Máximo 4 blocos. Tipos: progress, card, chart, controls, sandbox.
 progress: label, value, max, steps com state pending|active|done|error.
 card: title, body, image com url e alt, facts com label e value.
 chart: kind bar|line|compare, x_key, series, rows numéricas. Sem cor.
-controls: fields text|select|number e uma action.
+controls: fields text|select|number|range, computed opcional e uma action.
 action send_message usa template com {id_do_campo}.
 action set_model usa field do select. Não invente id de modelo.
-Não escreva HTML, JavaScript nem CSS. URL de imagem só se for arquivo do app ou host da lista confiável. Sem visual, sem fence.
+sandbox: title, initial_height, html, css, js, standalone_download (para simulações/calculadoras dinâmicas isoladas).
+Não escreva HTML na bolha principal. URL de imagem só se for arquivo do app ou host da lista confiável. Sem visual, sem fence.
 ~~~~
 
 O fence de exemplo dentro do catálogo é texto de instrução, não um bloco a renderizar. O extrator só olha a resposta do assistente, não o system prompt.
@@ -309,7 +347,7 @@ Não criar um app paralelo.
 | Schema | `backend/database.py` | `CREATE TABLE message_ui_blocks` dentro de `init_db`. |
 | Flag | `.env.example` | `INTELLIGENT_UI_ENABLED=false`. Ausente significa falso. |
 
-Módulo novo, separado do resto da UI. O esboço da nota era `src/ui/`. No repo o caminho real é `frontend/src/ui/`. Nomes dos cartões seguem a nota. `ControlsCard` não estava no esboço de quatro pastas; entra porque a nota também pede botões e formulários.
+Módulo novo, separado do resto da UI. O esboço da nota era `src/ui/`. No repo o caminho real é `frontend/src/ui/`. Nomes dos cartões seguem a nota. `ControlsCard` entra com formulários e calculadoras reativas. `SandboxCard` para ferramentas dinâmicas da Fase 7.
 
 ```
 frontend/src/ui/DynamicRenderer.tsx
@@ -318,6 +356,8 @@ frontend/src/ui/components/ChecklistCard.tsx
 frontend/src/ui/components/ImageCard.tsx
 frontend/src/ui/components/ChartCard.tsx
 frontend/src/ui/components/ControlsCard.tsx
+frontend/src/ui/components/SandboxCard.tsx
+frontend/src/ui/themeBridge.ts
 frontend/src/lib/nexusUi.ts
 frontend/src/lib/nexusUi.test.ts
 backend/ui_blocks/validate.py
@@ -333,15 +373,16 @@ Um bloco `progress` com `value` e `max` monta `ProgressCard`. Com `steps`, monta
 `ChartCard` é o único arquivo que importa `recharts`. `App.tsx` importa `AdminPanel` de forma estática (linha 8), e `UsageDashboard.tsx` / `RankingsView.tsx` já importam `recharts`. Enquanto essa cadeia for estática, a lib pode continuar no chunk principal. O plano 04 inclui deixar o admin atrás de `React.lazy` se um build mostrar `recharts` no chunk do chat. Sem segunda biblioteca de gráfico.
 
 ChatKit não entra nesse módulo. Ver [07-chatkit-referencia.md](07-chatkit-referencia.md).
+Open Intelligent UI detalhado em [08-open-intelligent-ui-referencia.md](08-open-intelligent-ui-referencia.md).
 
 ## 10. Fora de escopo
 
 - Implementar agora. Esta pasta é plano.
-- Substituir `ArtifactPanel` ou aceitar HTML/JSX na bolha.
-- Instalar ChatKit, Thesys ou desenhar árvore livre de widgets.
+- Substituir `ArtifactPanel` ou aceitar HTML/JSX desprotegido na bolha principal.
+- Instalar SDKs pesados de terceiros ou desenhar árvore livre de widgets no host.
 - Abrir SSE ao lado do WebSocket.
 - Aceitar qualquer URL `https` como imagem.
-- Mais de 4 blocos, dashboard, mapa, vídeo, áudio player, upload novo (anexo já existe).
+- Mais de 4 blocos, dashboard, vídeo, áudio player, upload novo (anexo já existe).
 - Proxy de imagem.
 - Widget no cache semântico ou exato.
 - Ação de widget que rode script, leia arquivo arbitrário ou controle outro serviço.
@@ -356,8 +397,9 @@ ChatKit não entra nesse módulo. Ver [07-chatkit-referencia.md](07-chatkit-refe
 | 2 | 02-plano-indicadores | Barra e steps na bolha, com flag on em dev. |
 | 3 | 03-plano-cartoes-imagens | Cartão com e sem foto. URL ruim não quebra a bolha. |
 | 4 | 04-plano-graficos | bar, line, compare com dados do contrato. |
-| 5 | 05-plano-controles | send_message e set_model, só no clique. |
+| 5 | 05-plano-controles | Formulários e calculadoras reativas com send_message e set_model, só no clique. |
 | 6 | 06-criterios-aceite | Lista do que impede ligar a flag no servidor da família. |
+| 7 | 09-plano-sandbox-e-exportacao | Micro-ferramentas sob demanda em sandbox isolado, theme bridge e exportação 1-click HTML. |
 
 Cada fase deixa o chat atual intacto com a flag desligada.
 
