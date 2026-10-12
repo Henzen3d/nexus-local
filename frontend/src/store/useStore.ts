@@ -582,14 +582,17 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   handleImagePending: (event) => {
+    const anyEvt = event as any
+    const convId = event.conversation_id || anyEvt.conv_id
+    const msgId = event.message_id || anyEvt.msg_id
     const { activeConversationId, messages } = get()
-    if (event.conversation_id !== activeConversationId) return
+    if (convId && activeConversationId && convId !== activeConversationId) return
 
-    const existing = messages.find((m) => m.id === event.message_id)
+    const existing = messages.find((m) => m.id === msgId)
     if (existing) return
 
     const msg: Message = {
-      id: event.message_id,
+      id: msgId,
       role: 'assistant',
       content: `🎨 Gerando imagem: "${event.prompt}"...`,
       created_at: new Date().toISOString(),
@@ -603,17 +606,42 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   handleImageReady: (event) => {
+    const anyEvt = event as any
+    const convId = event.conversation_id || anyEvt.conv_id
+    const msgId = event.message_id || anyEvt.msg_id
+
+    // Redireciona caso chegue evento com status de falha
+    if (anyEvt.status === 'failed') {
+      get().handleImageFailed({
+        conversation_id: convId,
+        message_id: msgId,
+        task_id: event.task_id,
+        error: anyEvt.error || 'Falha na geração da imagem',
+      })
+      return
+    }
+
     const { activeConversationId, messages } = get()
-    if (event.conversation_id !== activeConversationId) {
+    if (convId && activeConversationId && convId !== activeConversationId) {
       get().showToast('Imagem gerada com sucesso!', 'success')
       return
     }
 
+    const rawAtt = event.attachment || anyEvt.attachment
+    const att: Attachment = rawAtt || {
+      id: anyEvt.attachment_id || `att_${Date.now()}`,
+      filename: 'image.jpg',
+      mime_type: 'image/jpeg',
+      file_type: 'image',
+      size_bytes: 0,
+      file_url: anyEvt.file_url || anyEvt.url || '',
+    }
+
     const updated = messages.map((m) => {
-      if (m.id === event.message_id) {
+      if (m.id === msgId) {
         const atts = m.attachments || []
-        const hasAtt = atts.some((a) => a.id === event.attachment.id)
-        const newAtts = hasAtt ? atts : [...atts, event.attachment]
+        const hasAtt = atts.some((a) => a.id === att.id)
+        const newAtts = hasAtt ? atts : [...atts, att]
         const cleanContent = m.content.startsWith('🎨 Gerando imagem:') ? '' : m.content
         return {
           ...m,
@@ -624,16 +652,16 @@ export const useStore = create<AppState>((set, get) => ({
       return m
     })
 
-    const exists = messages.some((m) => m.id === event.message_id)
+    const exists = messages.some((m) => m.id === msgId)
     if (!exists) {
       const newMsg: Message = {
-        id: event.message_id,
+        id: msgId,
         role: 'assistant',
         content: '',
         created_at: new Date().toISOString(),
         provider: 'cloudflare',
         model_display_name: 'Flux 1 Schnell',
-        attachments: [event.attachment],
+        attachments: [att],
       }
       set((s) => ({ messages: [...s.messages, newMsg], isStreaming: false }))
     } else {
@@ -644,20 +672,25 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   handleImageFailed: (event) => {
+    const anyEvt = event as any
+    const convId = event.conversation_id || anyEvt.conv_id
+    const msgId = event.message_id || anyEvt.msg_id
+    const errorText = event.error || anyEvt.error || 'Erro na geração de imagem'
     const { activeConversationId, messages } = get()
-    if (event.conversation_id === activeConversationId) {
+
+    if (!convId || !activeConversationId || convId === activeConversationId) {
       const updated = messages.map((m) => {
-        if (m.id === event.message_id) {
+        if (m.id === msgId) {
           return {
             ...m,
-            content: `⚠️ Falha ao gerar imagem: ${event.error}`,
+            content: `⚠️ Falha ao gerar imagem: ${errorText}`,
           }
         }
         return m
       })
       set({ messages: updated, isStreaming: false })
     }
-    get().showToast(`Falha na geração da imagem: ${event.error}`, 'error')
+    get().showToast(`Falha na geração da imagem: ${errorText}`, 'error')
   },
 
   setConversationCreated: (id: string, title: string) => {

@@ -116,10 +116,7 @@ export function useChat() {
         msg.type === 'fusion_status' ||
         msg.type === 'fusion_judge_start' ||
         msg.type === 'fusion_grounding' ||
-        msg.type === 'fusion_refined_prompt' ||
-        msg.type === 'image_pending' ||
-        msg.type === 'image_ready' ||
-        msg.type === 'image_failed'
+        msg.type === 'fusion_refined_prompt'
       )) {
         return
       }
