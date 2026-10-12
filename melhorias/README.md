@@ -41,6 +41,14 @@ melhorias/
 │   ├── 04-metricas-telemetria-e-auditoria.md # KPIs, logs e cards de dashboard
 │   └── 05-roadmap-e-subtarefas-checklist.md # Checklist de execução em 5 fases
 │
+├── esforco-reasoning/          # 🎚️ Seletor de esforço gated por modelo (plano, sem código)
+│   ├── README.md
+│   ├── 00-visao-e-diagnostico.md
+│   ├── 01-taxonomia-de-controles.md
+│   ├── 02-backend-catalogo-e-payload.md
+│   ├── 03-interface-cockpit.md
+│   └── 04-roadmap-subtarefas.md
+│
 ├── novas-5-melhorias-ux/       # 🚀 As 5 Próximas Frentes de Melhoria UX/UI (Benchmarks 2026)
 │   ├── README.md               # Visão geral comparada (Claude, ChatGPT, DeepSeek, MiMo, Manus, MiniMax)
 │   ├── ROADMAP-CHECKLIST.md    # Checklist operacional consolidado de execução
@@ -112,6 +120,10 @@ Documentação e planos detalhados em [`new-chat-input/`](file:///j:/Arquivos%20
 - Ações dinâmicas à direita: Voz ➔ Enter
 - Menu integrado no botão `+` (anexos, enhance de prompt, busca web)
 - Balão unificado de modelos e provedores com toggle de Auto-Roteamento Inteligente e filtro por provedor
+
+## Esforço de raciocínio
+
+Plano em [`esforco-reasoning/`](esforco-reasoning/README.md). Não implementado. Seletor só aparece quando o modelo aceita dial de esforço. Reasoning exibido no chat e temperatura do Smart Router ficam de fora. Checklist em 6 fases, ainda aberto.
 
 ## Image gen
 
