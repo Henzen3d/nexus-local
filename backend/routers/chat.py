@@ -37,6 +37,7 @@ from backend.ui_blocks.extract import extract_ui
 from backend.ui_blocks.should_offer import should_offer_ui
 from backend.orchestration.resolve_request import resolve_and_stream
 from backend.web_search import (
+    execute_agentic_search,
     format_search_results,
     get_web_search_config,
     resolve_and_execute_search,
@@ -558,27 +559,45 @@ async def _resolve_web_search(
 
     if should_do_search:
         web_search_query = user_message
-        search_step_id = "web-search"
-        await ws.send_json({
-            "type": "process_step_start",
-            "id": search_step_id,
-            "step_type": "search",
-            "title": "Executando pesquisa web",
-            "detail": web_search_query,
-        })
         await ws.send_json({"type": "search_start", "query": web_search_query})
+
+        async def send_ws_event(evt: dict):
+            try:
+                await ws.send_json(evt)
+            except Exception:
+                pass
 
         search_failed = False
         search_results = []
+        scraped_pages = []
+
         try:
-            search_results = await resolve_and_execute_search(
-                web_search_query, db, search_config
+            agent_result = await execute_agentic_search(
+                user_message, db, search_config, on_event=send_ws_event
             )
-            if search_results:
+            search_results = agent_result.get("search_results", [])
+            scraped_pages = agent_result.get("scraped_pages", [])
+            executed_queries = agent_result.get("executed_queries", [user_message])
+            primary_query = executed_queries[0] if executed_queries else user_message
+
+            if search_results or scraped_pages:
                 web_search_used = True
-                web_search_sources = [
-                    {"title": r["title"], "url": r["url"]} for r in search_results
-                ]
+
+                # Combina páginas lidas no Deep Reader com resultados gerais da busca
+                sources_map = {}
+                for page in scraped_pages:
+                    p_url = page.get("url")
+                    if p_url:
+                        sources_map[p_url] = {"title": page.get("title") or p_url, "url": p_url}
+                for r in search_results:
+                    r_url = r.get("url")
+                    if r_url and r_url not in sources_map:
+                        sources_map[r_url] = {"title": r.get("title") or r_url, "url": r_url}
+
+                web_search_sources = list(sources_map.values())
+
+                if search_config:
+                    search_config["scraped_pages"] = scraped_pages
 
                 log_id = str(uuid.uuid4())
                 await db.execute(
@@ -588,39 +607,19 @@ async def _resolve_web_search(
                        VALUES (?, ?, ?, ?, ?, ?, ?)""",
                     (
                         log_id, conversation_id, user_msg_id,
-                        web_search_query, trigger_type,
-                        len(search_results), user_id,
+                        primary_query, trigger_type,
+                        len(web_search_sources), user_id,
                     ),
                 )
                 await db.commit()
-
-            for index, result in enumerate(search_results):
-                source_url = result.get("url", "")
-                await ws.send_json({
-                    "type": "process_step_start",
-                    "id": f"web-source-{index}",
-                    "step_type": "navigate",
-                    "title": result.get("title") or source_url,
-                    "detail": source_url,
-                })
-                await ws.send_json({
-                    "type": "process_step_end",
-                    "id": f"web-source-{index}",
-                    "status": "completed",
-                })
         except Exception:
             search_failed = True
             logger.error(
-                "web search resolve/execute failed",
+                "agentic web search failed",
                 exc_info=True,
                 extra={"query": web_search_query, "user_id": user_id},
             )
             search_results = []
-
-        await ws.send_json({
-            "type": "process_step_end",
-            "id": search_step_id,
-            "status": "failed" if search_failed else "completed",
-        })
+            scraped_pages = []
 
     return web_search_used, web_search_query, web_search_sources, search_results, search_config
