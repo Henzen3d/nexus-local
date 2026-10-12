@@ -242,6 +242,22 @@ export function useChat() {
         case 'image_failed':
           s.handleImageFailed(msg)
           break
+        case 'effort_dropped': {
+          let dropText = i18n.t('chat.effortDroppedUnsupported', {
+            defaultValue: 'O modelo selecionado não suporta controle de esforço.',
+          })
+          if (msg.reason === 'failover') {
+            dropText = i18n.t('chat.effortDroppedFailover', {
+              defaultValue: 'O modelo reserva não suporta controle de esforço; resposta gerada no padrão.',
+            })
+          } else if (msg.reason === 'provider_rejected') {
+            dropText = i18n.t('chat.effortDroppedProvider', {
+              defaultValue: 'O provedor rejeitou o parâmetro de esforço; retentando sem ele.',
+            })
+          }
+          s.showToast(dropText, 'info')
+          break
+        }
         case 'error':
           if (!isGeneratingRef.current) return
           isGeneratingRef.current = false
@@ -436,12 +452,15 @@ export function useChat() {
         (id): id is string => typeof id === 'string' && id.length > 0
       )
 
+      const activeEffort = useStore.getState().getActiveReasoningEffort()
+
       wsRef.current.send(
         JSON.stringify({
           conversation_id: activeConversationId,
           message: text,
           model_id: selectedModelId,
           provider_id: selectedProviderId,
+          reasoning_effort: activeEffort || undefined,
           fusion: fusionMode,
           attachment_ids: safeAttachmentIds.length > 0 ? safeAttachmentIds : undefined,
           web_search: webSearchActive,

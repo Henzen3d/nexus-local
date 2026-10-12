@@ -1,6 +1,7 @@
 import aiosqlite
 import json
 import os
+import sqlite3
 from datetime import datetime
 from pathlib import Path
 
@@ -942,6 +943,27 @@ async def init_db():
             await db.execute("ALTER TABLE models ADD COLUMN supports_vision INTEGER DEFAULT 0")
             await db.commit()
 
+        # Incremental migration check for models reasoning controls (Fase 2)
+        for col, col_def in [
+            ("reasoning_control", "TEXT DEFAULT 'none'"),
+            ("reasoning_levels", "TEXT"),
+            ("reasoning_default", "TEXT"),
+            ("reasoning_control_source", "TEXT DEFAULT 'unset'"),
+        ]:
+            try:
+                await db.execute(f"SELECT {col} FROM models LIMIT 1")
+            except (aiosqlite.OperationalError, sqlite3.OperationalError):
+                await db.execute(f"ALTER TABLE models ADD COLUMN {col} {col_def}")
+                await db.commit()
+
+        try:
+            await db.execute(
+                "CREATE INDEX IF NOT EXISTS idx_models_reasoning_control ON models(reasoning_control)"
+            )
+            await db.commit()
+        except (aiosqlite.OperationalError, sqlite3.OperationalError):
+            pass
+
         # Per-provider admin key sharing (individualize share_admin_keys)
         try:
             await db.execute("SELECT share_admin_key FROM providers LIMIT 1")
@@ -1687,7 +1709,40 @@ async def init_db():
             logger.error("[database migration] erro no seed de image_gen:", exc_info=e)
 
         await claim_global_provider_keys(db)
-        logger.error("[OK] Ranking & Failover tables: initialized")
+        await seed_reasoning_controls(db)
+        logger.error("[OK] Ranking & Failover & Reasoning tables: initialized")
+
+
+async def seed_reasoning_controls(db: aiosqlite.Connection) -> int:
+    """Classifica modelos com status 'unset' usando families.py sem sobrescrever 'admin' (idempotente)."""
+    from backend.reasoning.families import resolve_family
+    updated = 0
+    try:
+        async with db.execute(
+            "SELECT id, provider_id, name FROM models WHERE reasoning_control_source IS NULL OR reasoning_control_source = 'unset'"
+        ) as cur:
+            rows = await cur.fetchall()
+
+        for mid, pid, mname in rows:
+            spec = resolve_family(pid, mname)
+            levels_json = json.dumps(spec.levels) if spec.levels else None
+            await db.execute(
+                """UPDATE models
+                   SET reasoning_control = ?,
+                       reasoning_levels = ?,
+                       reasoning_default = ?,
+                       reasoning_control_source = 'family'
+                   WHERE id = ? AND (reasoning_control_source IS NULL OR reasoning_control_source = 'unset')""",
+                (spec.control, levels_json, spec.default, mid),
+            )
+            updated += 1
+
+        if updated > 0:
+            await db.commit()
+            logger.info("Seed de reasoning controls aplicado a %d modelos.", updated)
+    except Exception as e:
+        logger.error("Erro ao aplicar seed_reasoning_controls:", exc_info=e)
+    return updated
 
 
 MEMORY_CATEGORIES = ('professional', 'personal', 'project', 'preference', 'identity', 'tech')

@@ -27,7 +27,7 @@ Conferido em `main` após `6e80ebe`.
 - O frontend já parseia `reasoning_content` e tags `<think>` / `<thinking>` e mostra no balão. Isso é leitura. Não escolhe intensidade.
 - O Smart Router escolhe `temperature` por intenção (`backend/ranking/smart_router.py`). Não escolhe esforço.
 - O WebSocket de chat (`backend/routers/chat.py`) lê `fusion` e `web_search`. Não lê esforço.
-- O cockpit novo (`frontend/src/components/ModelSelector.tsx`) tem três camadas: toggle Auto, pílulas de provedor, lista. Não tem linha de esforço.
+- O cockpit novo (`frontend/src/components/ModelSelector.tsx`) é um menu hierárquico com: toggle Auto, linha de navegação de provedor (`Provedor >`), lista compacta dos top 3 modelos e linha de mais modelos (`Mais modelos >`). Não tem linha de esforço.
 - Busca no frontend por `effort`, `reasoningEffort` e `esforço`: zero ocorrências.
 
 ## Por que um campo único quebra

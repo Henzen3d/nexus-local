@@ -267,6 +267,10 @@ export interface Model {
   provider_id: string
   provider_name: string
   supports_vision?: boolean
+  reasoning_control?: string
+  reasoning_levels?: string[] | null
+  reasoning_default?: string | null
+  reasoning_control_source?: string
   // Ranking fields (from model_rankings + model_quota_status)
   nexuslocal_score?: number | null
   popularity_rank?: number | null
@@ -286,6 +290,11 @@ export interface ProviderModel {
   context_length: number
   context_source?: string
   confirmed_free?: boolean
+  supports_vision?: boolean
+  reasoning_control?: string
+  reasoning_levels?: string[] | null
+  reasoning_default?: string | null
+  reasoning_control_source?: string
 }
 
 
@@ -364,6 +373,7 @@ export type WSMessage =
   | { type: 'image_pending'; conversation_id: string; message_id: string; task_id: string; prompt: string }
   | { type: 'image_ready'; conversation_id: string; message_id: string; task_id: string; attachment: Attachment }
   | { type: 'image_failed'; conversation_id: string; message_id: string; task_id: string; error: string }
+  | { type: 'effort_dropped'; reason: 'failover' | 'unsupported_model' | 'provider_rejected' | 'invalid_level' }
 
 export interface ProjectContextFileChunk {
   filename: string | null

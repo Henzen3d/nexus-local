@@ -454,11 +454,15 @@ async def _process_turn(
         return
 
     # ── Resolve: cache or LLM com failover & parâmetros adaptativos ──
+    reasoning_effort_raw = req.get("reasoning_effort")
+    reasoning_effort = str(reasoning_effort_raw).strip() if reasoning_effort_raw else None
+
     result = await resolve_and_stream(
         ws, db, conversation_id, user_id, model_id, provider_id,
         history, context_fingerprint, bypass_cache,
         temperature=auto_route_decision.temperature if auto_route_decision else None,
         auto_route_decision=auto_route_decision,
+        reasoning_effort=reasoning_effort,
     )
     if result is None:
         return

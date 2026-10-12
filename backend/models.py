@@ -45,6 +45,10 @@ class ModelToggle(BaseModel):
 class ModelUpdate(BaseModel):
     enabled: Optional[bool] = None
     context_length: Optional[int] = None
+    reasoning_control: Optional[str] = None
+    reasoning_levels: Optional[List[str]] = None
+    reasoning_default: Optional[str] = None
+    reasoning_control_source: Optional[str] = None
 
 
 class ArtifactCreate(BaseModel):

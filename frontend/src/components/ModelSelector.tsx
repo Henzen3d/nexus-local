@@ -9,6 +9,7 @@ import {
   Server,
   Cpu,
   Search,
+  Brain,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useStore } from '../store/useStore'
@@ -22,7 +23,29 @@ interface ModelSelectorProps {
   className?: string
 }
 
-type SubmenuType = 'none' | 'providers' | 'models'
+type SubmenuType = 'none' | 'providers' | 'models' | 'effort'
+
+function getEffortLabel(t: any, level?: string | null): string {
+  if (!level) return ''
+  switch (level.toLowerCase()) {
+    case 'off':
+      return t('chat.effortOff', { defaultValue: 'Desligado' })
+    case 'minimal':
+      return t('chat.effortMinimal', { defaultValue: 'Mínimo' })
+    case 'low':
+      return t('chat.effortLow', { defaultValue: 'Baixo' })
+    case 'medium':
+      return t('chat.effortMedium', { defaultValue: 'Médio' })
+    case 'high':
+      return t('chat.effortHigh', { defaultValue: 'Alto' })
+    case 'xhigh':
+      return t('chat.effortExtra', { defaultValue: 'Extra' })
+    case 'max':
+      return t('chat.effortMax', { defaultValue: 'Máx' })
+    default:
+      return level
+  }
+}
 
 function formatContext(tokens?: number): string | null {
   if (!tokens || tokens <= 0) return null
@@ -41,6 +64,10 @@ export function ModelSelector({ compact = false, className = '' }: ModelSelector
     loadModels,
     isStreaming,
     modelSortMode,
+    reasoningEffortByModel,
+    reasoningEffortAuto,
+    setReasoningEffortForModel,
+    setReasoningEffortAuto,
   } = useStore()
 
   const [open, setOpen] = useState(false)
@@ -174,6 +201,71 @@ export function ModelSelector({ compact = false, className = '' }: ModelSelector
     if (isAuto) return null
     return models.find((m) => m.id === selectedModelId) || null
   }, [models, isAuto, selectedModelId])
+
+  // Identifica controle de esforço ativo no contexto
+  const activeEffortControl = useMemo(() => {
+    if (isAuto) return 'auto'
+    if (!selectedModel) return 'none'
+    return selectedModel.reasoning_control || 'none'
+  }, [isAuto, selectedModel])
+
+  // Níveis disponíveis para seleção
+  const availableEffortLevels = useMemo(() => {
+    if (isAuto) {
+      return ['low', 'medium', 'high']
+    }
+    if (!selectedModel || !selectedModel.reasoning_levels) {
+      return []
+    }
+    return selectedModel.reasoning_levels
+  }, [isAuto, selectedModel])
+
+  // Nível atualmente selecionado
+  const currentEffortLevel = useMemo(() => {
+    if (isAuto) {
+      return reasoningEffortAuto || 'medium'
+    }
+    if (!selectedModel) return null
+    const ctrl = selectedModel.reasoning_control
+    if (!ctrl || ctrl === 'none' || ctrl === 'always_on') {
+      return null
+    }
+    const saved = reasoningEffortByModel[selectedModel.id]
+    if (saved && selectedModel.reasoning_levels?.includes(saved)) {
+      return saved
+    }
+    if (selectedModel.reasoning_default) {
+      return selectedModel.reasoning_default
+    }
+    if (selectedModel.reasoning_levels && selectedModel.reasoning_levels.length > 0) {
+      return selectedModel.reasoning_levels[0]
+    }
+    return null
+  }, [isAuto, selectedModel, reasoningEffortByModel, reasoningEffortAuto])
+
+  // Label amigável do nível atual para exibição na UI
+  const currentEffortLabel = useMemo(() => {
+    if (activeEffortControl === 'none') return null
+    if (activeEffortControl === 'always_on') {
+      return t('chat.effortAlwaysOn', { defaultValue: 'Sempre ativo' })
+    }
+    if (!currentEffortLevel) return null
+    return getEffortLabel(t, currentEffortLevel)
+  }, [activeEffortControl, currentEffortLevel, t])
+
+  const handleSelectEffort = (level: string) => {
+    if (isAuto) {
+      setReasoningEffortAuto(level)
+    } else if (selectedModel) {
+      setReasoningEffortForModel(selectedModel.id, level)
+    }
+    if (isMobile) {
+      setActiveSubmenu('none')
+    } else {
+      setActiveSubmenu('none')
+      handleClose()
+    }
+  }
 
   const handleSelectModel = (m: Model) => {
     selectModel(m.id, m.provider_id)
@@ -349,6 +441,79 @@ export function ModelSelector({ compact = false, className = '' }: ModelSelector
     </div>
   )
 
+  // Submenu: Seleção de Esforço de Raciocínio (selecao-esforco.jpg)
+  const renderEffortSubmenu = () => {
+    const recommendedLevel = isAuto ? 'medium' : selectedModel?.reasoning_default || 'medium'
+    return (
+      <div className="cockpit-submenu-content cockpit-effort-submenu">
+        {isMobile && (
+          <div className="cockpit-submenu-header">
+            <button
+              type="button"
+              className="cockpit-back-btn"
+              onClick={() => setActiveSubmenu('none')}
+            >
+              <ChevronLeft size={16} />
+              <span>{t('chat.back', { defaultValue: 'Voltar' })}</span>
+            </button>
+            <span className="cockpit-submenu-title">
+              {t('chat.effort', { defaultValue: 'Esforço' })}
+            </span>
+          </div>
+        )}
+
+        {/* Cabeçalho explicativo sutil no topo do flyout */}
+        <div className="cockpit-effort-header">
+          <p className="cockpit-effort-explainer">
+            {t('chat.effortExplainerHint', {
+              defaultValue:
+                'Mais esforço significa respostas mais completas, mas leva mais tempo e consome seus limites mais rápido.',
+            })}
+          </p>
+        </div>
+
+        <div className="cockpit-submenu-list cockpit-effort-list" role="listbox">
+          {availableEffortLevels.map((lvl) => {
+            const isSelected = currentEffortLevel === lvl
+            const isRecommended = lvl === recommendedLevel
+            const isHeavy = lvl === 'max' || lvl === 'xhigh'
+            const label = getEffortLabel(t, lvl)
+
+            return (
+              <button
+                key={lvl}
+                type="button"
+                role="option"
+                aria-selected={isSelected}
+                className={`cockpit-effort-item ${isSelected ? 'selected' : ''}`}
+                onClick={() => handleSelectEffort(lvl)}
+              >
+                <div className="cockpit-effort-item-left">
+                  <span className="cockpit-effort-item-name">{label}</span>
+                  {isRecommended && (
+                    <span className="cockpit-effort-badge-recommended">
+                      {t('chat.effortRecommended', { defaultValue: 'Recomendado' })}
+                    </span>
+                  )}
+                  {isHeavy && (
+                    <span className="cockpit-effort-badge-warning">
+                      {t('chat.effortMaxWarning', { defaultValue: '⚠️ 5x ou mais de uso' })}
+                    </span>
+                  )}
+                </div>
+                <div className="cockpit-effort-item-right">
+                  {isSelected && (
+                    <Check size={15} color="var(--primary)" strokeWidth={2.5} />
+                  )}
+                </div>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+    )
+  }
+
   // Menu Principal
   const renderMainMenu = () => (
     <>
@@ -448,6 +613,48 @@ export function ModelSelector({ compact = false, className = '' }: ModelSelector
         })}
       </div>
 
+      {/* Opção 3.5: Linha de Esforço (se aplicável ao modelo ativo ou Auto) */}
+      {activeEffortControl !== 'none' && (
+        <>
+          <div className="cockpit-divider" />
+          {activeEffortControl === 'always_on' ? (
+            <div
+              className="cockpit-nav-row static-info"
+              title={t('chat.effortAlwaysOnDesc', {
+                defaultValue: 'Este modelo raciocina sempre e não possui nível ajustável',
+              })}
+            >
+              <div className="cockpit-nav-left">
+                <Brain size={14} strokeWidth={1.8} className="cockpit-row-icon" />
+                <span>{t('chat.effort', { defaultValue: 'Esforço' })}</span>
+              </div>
+              <div className="cockpit-nav-right">
+                <span className="cockpit-nav-value">{t('chat.effortAlwaysOn', { defaultValue: 'Sempre ativo' })}</span>
+              </div>
+            </div>
+          ) : (
+            <button
+              type="button"
+              className={`cockpit-nav-row ${activeSubmenu === 'effort' ? 'active' : ''}`}
+              onClick={() => setActiveSubmenu(activeSubmenu === 'effort' ? 'none' : 'effort')}
+              onMouseEnter={() => !isMobile && setActiveSubmenu('effort')}
+              aria-expanded={activeSubmenu === 'effort'}
+            >
+              <div className="cockpit-nav-left">
+                <Brain size={14} strokeWidth={1.8} className="cockpit-row-icon" />
+                <span>{t('chat.effort', { defaultValue: 'Esforço' })}</span>
+              </div>
+              <div className="cockpit-nav-right">
+                <span className="cockpit-nav-value">{currentEffortLabel}</span>
+                <ChevronRight size={14} className="cockpit-nav-chevron" />
+              </div>
+            </button>
+          )}
+        </>
+      )}
+
+      <div className="cockpit-divider" />
+
       {/* Opção 4: Mais Modelos > */}
       <button
         type="button"
@@ -507,7 +714,12 @@ export function ModelSelector({ compact = false, className = '' }: ModelSelector
               {t('chat.autoRouter', { defaultValue: 'Roteamento Inteligente' })}
             </span>
           ) : selectedModel ? (
-            selectedModel.display_name
+            <span className="model-trigger-label">
+              <span className="model-trigger-model-title">{selectedModel.display_name}</span>
+              {currentEffortLabel && activeEffortControl !== 'always_on' && currentEffortLevel !== 'off' && (
+                <span className="model-trigger-effort-tag">{currentEffortLabel}</span>
+              )}
+            </span>
           ) : (
             t('chat.selectModel')
           )}
@@ -536,6 +748,7 @@ export function ModelSelector({ compact = false, className = '' }: ModelSelector
             >
               {activeSubmenu === 'providers' && renderProvidersSubmenu()}
               {activeSubmenu === 'models' && renderModelsSubmenu()}
+              {activeSubmenu === 'effort' && renderEffortSubmenu()}
             </div>
           )}
         </div>
@@ -552,6 +765,7 @@ export function ModelSelector({ compact = false, className = '' }: ModelSelector
             {activeSubmenu === 'none' && renderMainMenu()}
             {activeSubmenu === 'providers' && renderProvidersSubmenu()}
             {activeSubmenu === 'models' && renderModelsSubmenu()}
+            {activeSubmenu === 'effort' && renderEffortSubmenu()}
           </div>
         </BottomSheet>
       )}

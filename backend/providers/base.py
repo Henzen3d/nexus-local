@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import AsyncIterator, List, Dict, Any
+from typing import AsyncIterator, List, Dict, Any, Optional
 import httpx
 import hashlib
 import time
@@ -36,6 +36,8 @@ class BaseProvider(ABC):
         messages: List[Dict[str, str]],
         temperature: float = 0.7,
         max_tokens: int = 4096,
+        reasoning_effort: Optional[str] = None,
+        reasoning_control: Optional[str] = None,
     ) -> AsyncIterator[str]:
         ...
 
@@ -52,6 +54,8 @@ class OpenAICompatProvider(BaseProvider):
         messages: List[Dict[str, str]],
         temperature: float = 0.7,
         max_tokens: int = 4096,
+        reasoning_effort: Optional[str] = None,
+        reasoning_control: Optional[str] = None,
     ) -> AsyncIterator[str]:
         headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -71,10 +75,13 @@ class OpenAICompatProvider(BaseProvider):
             "stream": True,
         }
 
-        # Some providers/models support reasoning_effort
-        # If it's a model that supports thinking (like Mistral's reasoning models or DeepSeek),
-        # we can ensure reasoning effort is high if not otherwise configured.
-        # But we do not force it unless needed.
+        if reasoning_effort and reasoning_control:
+            from backend.reasoning.payload import build_effort_payload
+            payload = build_effort_payload(
+                control=reasoning_control,
+                level=reasoning_effort,
+                base_payload=payload,
+            )
 
         async with httpx.AsyncClient(timeout=120.0) as client:
             async with client.stream(
@@ -306,6 +313,8 @@ class CloudflareProvider(BaseProvider):
         messages: List[Dict[str, str]],
         temperature: float = 0.7,
         max_tokens: int = 4096,
+        reasoning_effort: Optional[str] = None,
+        reasoning_control: Optional[str] = None,
     ) -> AsyncIterator[str]:
         headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -394,7 +403,11 @@ class GeminiProvider(BaseProvider):
         messages: List[Dict[str, str]],
         temperature: float = 0.7,
         max_tokens: int = 4096,
+        reasoning_effort: Optional[str] = None,
+        reasoning_control: Optional[str] = None,
     ) -> AsyncIterator[str]:
+        from backend.reasoning.payload import build_gemini_thinking_config
+        thinking_cfg = build_gemini_thinking_config(reasoning_effort)
         # Estimate total character length to check if we should attempt caching
         # Context caching has a minimum token limit of 32,768 tokens (approx 130,000 characters)
         has_multimodal = any(isinstance(m.get("content"), list) for m in messages)
@@ -491,13 +504,17 @@ class GeminiProvider(BaseProvider):
                         "parts": [{"text": last_msg["content"]}]
                     }]
 
+                    gen_config = {
+                        "temperature": temperature,
+                        "maxOutputTokens": max_tokens
+                    }
+                    if thinking_cfg:
+                        gen_config["thinkingConfig"] = thinking_cfg
+
                     payload = {
                         "contents": last_gemini_content,
                         "cachedContent": cache_id,
-                        "generationConfig": {
-                            "temperature": temperature,
-                            "maxOutputTokens": max_tokens
-                        }
+                        "generationConfig": gen_config
                     }
 
                     # Call streamGenerateContent
@@ -576,12 +593,16 @@ class GeminiProvider(BaseProvider):
                             "parts": parts
                         })
 
+                native_gen_config = {
+                    "temperature": temperature,
+                    "maxOutputTokens": max_tokens
+                }
+                if thinking_cfg:
+                    native_gen_config["thinkingConfig"] = thinking_cfg
+
                 payload = {
                     "contents": gemini_contents,
-                    "generationConfig": {
-                        "temperature": temperature,
-                        "maxOutputTokens": max_tokens
-                    }
+                    "generationConfig": native_gen_config
                 }
                 if system_instruction:
                     payload["systemInstruction"] = system_instruction
@@ -635,5 +656,8 @@ class GeminiProvider(BaseProvider):
 
         # FALLBACK: Use standard OpenAICompatProvider logic
         openai_provider = OpenAICompatProvider(api_key=self.api_key, base_url=self.base_url)
-        async for chunk in openai_provider.stream_chat(model, messages, temperature, max_tokens):
+        async for chunk in openai_provider.stream_chat(
+            model, messages, temperature, max_tokens,
+            reasoning_effort=reasoning_effort, reasoning_control=reasoning_control
+        ):
             yield chunk

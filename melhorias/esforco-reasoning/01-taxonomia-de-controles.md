@@ -33,7 +33,7 @@ Nem todo controle usa a escala inteira. A lista visível vem de `reasoning_level
 | `medium` | Médio | Marcar como recomendado quando for o default da família |
 | `high` | Alto | |
 | `xhigh` | Extra | |
-| `max` | Máx | |
+| `max` | Máx | Destacar aviso de alto consumo de tokens/cota (benchmark: 5x ou mais) |
 
 A copy de consumo fica no flyout: esforço maior aumenta latência e tokens de raciocínio. Não prometer economia em número.
 
@@ -45,11 +45,12 @@ Confirmar cada linha na documentação do provedor **no dia da implementação**
 
 | Família (nome contém) | Provedor típico | Controle sugerido | Níveis sugeridos | Default |
 | :--- | :--- | :--- | :--- | :--- |
-| `o1`, `o3`, `o4`, `gpt-5` com variante reasoning | openai / openrouter | `openai_effort` ou `openrouter_reasoning` | os que a doc listar; não inventar `max` se a API não tiver | `medium` |
-| `gemini-2.5`, `gemini-3` thinking / flash-thinking | gemini | `gemini_thinking` | `minimal` `low` `medium` `high`; Flash pode ganhar `off` se budget 0 for válido | `medium` |
-| `claude` recente com effort | anthropic / openrouter | `anthropic_effort` | `low` `medium` `high` `xhigh` `max`, só os documentados | `medium` |
+| `o1`, `o3`, `o4`, `gpt-5` com variante reasoning | openai / openrouter | `openai_effort` (OpenAI direta) ou `openrouter_reasoning` | os que a doc listar (ex: `low` `medium` `high`; OpenAI não aceita `max`); não inventar níveis | `medium` |
+| `gemini-2.0-flash-thinking`, `gemini-2.5`, `gemini-3` thinking / flash-thinking | gemini | `gemini_thinking` | `off` (budget 0), `low`, `medium`, `high`; traduz para `thinkingBudget` ou `thinkingLevel` | `medium` |
+| `claude` recente com effort (ex: 3.7 Sonnet) | openrouter (catálogo atual) / anthropic (futuro) | `openrouter_reasoning` (via OpenRouter) ou `anthropic_effort` (se cliente nativo Anthropic) | `low` `medium` `high` `xhigh` `max`, só os documentados pelo endpoint | `medium` |
 | `grok` com reasoning | xai / openrouter | `xai_effort` ou `openrouter_reasoning` | os documentados | `medium` |
 | `deepseek-r1`, `deepseek-reasoner` sem dial | deepseek / openrouter | `always_on` | vazio | — |
+| `qwen` thinking sem dial (ex: Qwen3-VL-*-Thinking) | openrouter / vllm | `always_on` ou `binary_think` | vazio ou `off`/`high` conforme endpoint | — |
 | Llama, Mixtral, Qwen chat sem tag thinking, Groq, Cerebras, Cloudflare | vários | `none` | vazio | — |
 
 Heurística de nome **não dispara no request**. Ela só preenche coluna vazia no seed. Override do admin não é recalculado.

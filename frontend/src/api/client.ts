@@ -93,7 +93,14 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify({ enabled }),
     }),
-  updateModel: (id: string, data: { enabled?: boolean; context_length?: number }) =>
+  updateModel: (id: string, data: {
+    enabled?: boolean
+    context_length?: number
+    reasoning_control?: string
+    reasoning_levels?: string[] | null
+    reasoning_default?: string | null
+    reasoning_control_source?: string
+  }) =>
     fetchJSON(`/admin/models/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(data),

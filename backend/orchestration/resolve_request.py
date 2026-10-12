@@ -5,6 +5,7 @@ Extraído de websocket_chat (chat.py) — responsabilidade 11-13 do God function
 from __future__ import annotations
 
 import asyncio
+import json
 import uuid
 from typing import TYPE_CHECKING, Any
 
@@ -86,6 +87,7 @@ async def stream_from_llm(
     temperature: float | None = None,
     max_tokens: int | None = None,
     auto_route_decision: Any | None = None,
+    reasoning_effort: str | None = None,
 ) -> tuple[str, str, str] | None:
     """Executa o streaming LLM com failover cascade.
 
@@ -136,12 +138,63 @@ async def stream_from_llm(
                 "from_cache": False,
             })
 
+        # Consulta capacidades de reasoning do modelo selecionado/resolvido
+        async with db.execute(
+            "SELECT reasoning_control, reasoning_levels, reasoning_default FROM models WHERE id = ?",
+            (current_model_id,),
+        ) as cur:
+            m_row = await cur.fetchone()
+
+        ctrl = (m_row[0] if m_row and m_row[0] else "none").strip()
+        levels_raw = m_row[1] if m_row else None
+        default_level = m_row[2] if m_row else None
+        if levels_raw and isinstance(levels_raw, str):
+            try:
+                allowed_levels = json.loads(levels_raw)
+            except Exception:
+                allowed_levels = []
+        elif isinstance(levels_raw, list):
+            allowed_levels = levels_raw
+        else:
+            allowed_levels = []
+
+        active_effort: str | None = None
+        active_ctrl: str | None = None
+
+        if reasoning_effort:
+            if ctrl in ("none", "always_on", ""):
+                drop_reason = "failover" if resolved.was_failover else "unsupported_model"
+                await ws.send_json({
+                    "type": "effort_dropped",
+                    "reason": drop_reason,
+                    "model_id": current_model_id,
+                    "requested": reasoning_effort,
+                })
+            elif allowed_levels and reasoning_effort not in allowed_levels:
+                if default_level and default_level in allowed_levels:
+                    active_effort = default_level
+                    active_ctrl = ctrl
+                else:
+                    await ws.send_json({
+                        "type": "effort_dropped",
+                        "reason": "invalid_level",
+                        "model_id": current_model_id,
+                        "requested": reasoning_effort,
+                    })
+            else:
+                active_effort = reasoning_effort
+                active_ctrl = ctrl
+
         try:
             stream_kwargs: dict[str, Any] = {}
             if temperature is not None:
                 stream_kwargs["temperature"] = float(temperature)
             if max_tokens is not None:
                 stream_kwargs["max_tokens"] = int(max_tokens)
+            if active_effort is not None:
+                stream_kwargs["reasoning_effort"] = active_effort
+            if active_ctrl is not None:
+                stream_kwargs["reasoning_control"] = active_ctrl
 
             async for token in provider.stream_chat(model=model_name, messages=history, **stream_kwargs):
                 token_str = str(token)
@@ -199,6 +252,51 @@ async def stream_from_llm(
                 continue
         except Exception as e:
             error_msg = str(e)
+            # Rede de segurança HTTP 400 com termos de reasoning:
+            # Se a chamada falhou com erro citando parâmetros de reasoning, emite effort_dropped
+            # com reason 'provider_rejected' e retenta UMA ÚNICA vez sem esforço, sem desativar o modelo.
+            is_reasoning_reject = (
+                active_effort is not None
+                and (
+                    "reasoning_effort" in error_msg.lower()
+                    or "thinkingconfig" in error_msg.lower()
+                    or "thinking_config" in error_msg.lower()
+                    or "unsupported parameter" in error_msg.lower()
+                    or ("effort" in error_msg.lower() and "400" in error_msg)
+                )
+            )
+            if is_reasoning_reject:
+                logger.warning(
+                    "Provedor rejeitou parâmetro de reasoning (%s). Retentando sem esforço.",
+                    error_msg
+                )
+                await ws.send_json({
+                    "type": "effort_dropped",
+                    "reason": "provider_rejected",
+                    "model_id": current_model_id,
+                    "requested": active_effort,
+                })
+                stream_kwargs.pop("reasoning_effort", None)
+                stream_kwargs.pop("reasoning_control", None)
+                active_effort = None
+                active_ctrl = None
+                try:
+                    full_response = ""
+                    async for token in provider.stream_chat(model=model_name, messages=history, **stream_kwargs):
+                        token_str = str(token)
+                        full_response += token_str
+                        await ws.send_json({"type": "token", "content": token_str})
+
+                    await mark_model_success(current_model_id, db)
+                    await record_request(current_model_id, db)
+                    success = True
+
+                    model_id = current_model_id
+                    provider_id = current_provider_id
+                    break
+                except Exception as retry_err:
+                    error_msg = str(retry_err)
+
             from backend.orchestration.handle_attachments import (
                 history_contains_images,
                 is_vision_refusal_error,
@@ -249,6 +347,7 @@ async def resolve_and_stream(
     temperature: float | None = None,
     max_tokens: int | None = None,
     auto_route_decision: Any | None = None,
+    reasoning_effort: str | None = None,
 ) -> tuple[str, "CacheHit | None", str, str] | None:
     """Fluxo completo: tenta cache, depois LLM com failover.
 
@@ -266,6 +365,7 @@ async def resolve_and_stream(
     result = await stream_from_llm(
         ws, db, conversation_id, user_id, model_id, provider_id, history,
         temperature=temperature, max_tokens=max_tokens, auto_route_decision=auto_route_decision,
+        reasoning_effort=reasoning_effort,
     )
     if result is None:
         return None

@@ -192,8 +192,8 @@ async def sync_provider_models(provider_id: str, db, custom_api_key: str = None)
             # Insert new model!
             display_name = derive_display_name(model_name)
             await db.execute(
-                """INSERT INTO models (id, provider_id, name, display_name, context_length, context_source, enabled, confirmed_free, supports_vision)
-                   VALUES (?, ?, ?, ?, ?, 'api', ?, ?, ?)""",
+                """INSERT INTO models (id, provider_id, name, display_name, context_length, context_source, enabled, confirmed_free, supports_vision, reasoning_control, reasoning_levels, reasoning_default, reasoning_control_source)
+                   VALUES (?, ?, ?, ?, ?, 'api', ?, ?, ?, 'none', NULL, NULL, 'unset')""",
                 (db_model_id, provider_id, model_name, display_name, context_length, is_auto_free, is_auto_free, 1 if fetched_supports_vision else 0)
             )
             updated_count += 1
@@ -245,6 +245,10 @@ async def sync_provider_models(provider_id: str, db, custom_api_key: str = None)
         # Recalculate scores
         scored_models = await compute_all_scores(db)
         await persist_scores(db, scored_models)
+
+    # Classifica novos modelos sincronizados caso estejam unset
+    from backend.database import seed_reasoning_controls
+    await seed_reasoning_controls(db)
 
     await db.commit()
     return {"updated": updated_count, "skipped": skipped_count, "errors": []}
@@ -307,7 +311,7 @@ async def list_providers(current_user: dict = Depends(get_current_user)):
                     masked_key = f"{active_key[:6]}...{active_key[-4:]}"
 
             async with db.execute(
-                "SELECT id, display_name, enabled, context_length, context_source, confirmed_free FROM models WHERE provider_id = ? ORDER BY display_name",
+                "SELECT id, display_name, enabled, context_length, context_source, confirmed_free, supports_vision, reasoning_control, reasoning_levels, reasoning_default, reasoning_control_source FROM models WHERE provider_id = ? ORDER BY display_name",
                 (pid,),
             ) as cur:
                 models = await cur.fetchall()
@@ -331,7 +335,12 @@ async def list_providers(current_user: dict = Depends(get_current_user)):
                         "enabled": bool(m[2]),
                         "context_length": m[3],
                         "context_source": m[4],
-                        "confirmed_free": bool(m[5])
+                        "confirmed_free": bool(m[5]),
+                        "supports_vision": bool(m[6]) if len(m) > 6 else False,
+                        "reasoning_control": m[7] if len(m) > 7 and m[7] else "none",
+                        "reasoning_levels": (json.loads(m[8]) if m[8] and isinstance(m[8], str) else m[8]) if len(m) > 8 else None,
+                        "reasoning_default": m[9] if len(m) > 9 else None,
+                        "reasoning_control_source": m[10] if len(m) > 10 and m[10] else "unset",
                     }
                     for m in models
                 ],
@@ -366,7 +375,12 @@ async def list_all_models(current_user: dict = Depends(get_current_user)):
                       COALESCE(q.status, 'available') as quota_status,
                       COALESCE((SELECT COUNT(*) FROM model_usage_log WHERE model_id = m.id), 0) as internal_usage_count,
                       q.known_rpm, q.known_rpd, q.current_minute_count, q.current_day_count,
-                      m.confirmed_free, p.is_free
+                      m.confirmed_free, p.is_free,
+                      COALESCE(m.supports_vision, 0) as supports_vision,
+                      COALESCE(m.reasoning_control, 'none') as reasoning_control,
+                      m.reasoning_levels,
+                      m.reasoning_default,
+                      COALESCE(m.reasoning_control_source, 'unset') as reasoning_control_source
                FROM models m
                JOIN providers p ON p.id = m.provider_id
                LEFT JOIN user_api_keys k ON k.provider_id = p.id AND k.user_id = ?
@@ -386,6 +400,13 @@ async def list_all_models(current_user: dict = Depends(get_current_user)):
             # Se for um provedor free e hide_unconfirmed estiver ativo, filtra os não confirmados
             if hide_unconfirmed and is_free_provider and not confirmed_free:
                 continue
+
+            reasoning_levels_val = None
+            if r[18]:
+                try:
+                    reasoning_levels_val = json.loads(r[18]) if isinstance(r[18], str) else r[18]
+                except Exception:
+                    reasoning_levels_val = None
                 
             result.append({
                 "id": r[0], "display_name": r[1], "context_length": r[2],
@@ -399,6 +420,11 @@ async def list_all_models(current_user: dict = Depends(get_current_user)):
                 "known_rpd": r[11],
                 "current_minute_count": r[12],
                 "current_day_count": r[13],
+                "supports_vision": bool(r[16]),
+                "reasoning_control": r[17] or "none",
+                "reasoning_levels": reasoning_levels_val,
+                "reasoning_default": r[19],
+                "reasoning_control_source": r[20] or "unset",
             })
         return result
     finally:
@@ -467,6 +493,23 @@ async def toggle_model(model_id: str, body: ModelUpdate, current_user: dict = De
             await db.execute(
                 "UPDATE models SET context_length = ?, context_source = 'user' WHERE id = ?",
                 (body.context_length, model_id),
+            )
+        if (
+            body.reasoning_control is not None
+            or body.reasoning_levels is not None
+            or body.reasoning_default is not None
+            or body.reasoning_control_source is not None
+        ):
+            levels_json = json.dumps(body.reasoning_levels) if body.reasoning_levels is not None else None
+            source = body.reasoning_control_source or "admin"
+            await db.execute(
+                """UPDATE models
+                   SET reasoning_control = COALESCE(?, reasoning_control),
+                       reasoning_levels = COALESCE(?, reasoning_levels),
+                       reasoning_default = COALESCE(?, reasoning_default),
+                       reasoning_control_source = ?
+                   WHERE id = ?""",
+                (body.reasoning_control, levels_json, body.reasoning_default, source, model_id),
             )
         await db.commit()
         return {"ok": True}

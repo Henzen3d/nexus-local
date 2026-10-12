@@ -73,6 +73,47 @@ function readLastModelByProvider(): Record<string, string> {
   }
 }
 
+function readReasoningEffortByModel(): Record<string, string> {
+  if (typeof window === 'undefined') return {}
+  try {
+    const raw = localStorage.getItem(_scopedKey('reasoning_effort_by_model'))
+    if (!raw) return {}
+    const parsed = JSON.parse(raw)
+    return parsed && typeof parsed === 'object' ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+
+function persistReasoningEffortForModel(modelId: string, level: string) {
+  if (typeof window === 'undefined') return
+  try {
+    const map = readReasoningEffortByModel()
+    map[modelId] = level
+    localStorage.setItem(_scopedKey('reasoning_effort_by_model'), JSON.stringify(map))
+  } catch {
+    /* ignore */
+  }
+}
+
+function readReasoningEffortAuto(): string {
+  if (typeof window === 'undefined') return 'medium'
+  try {
+    return localStorage.getItem(_scopedKey('reasoning_effort_auto')) || 'medium'
+  } catch {
+    return 'medium'
+  }
+}
+
+function persistReasoningEffortAuto(level: string) {
+  if (typeof window === 'undefined') return
+  try {
+    localStorage.setItem(_scopedKey('reasoning_effort_auto'), level)
+  } catch {
+    /* ignore */
+  }
+}
+
 function persistModelSelection(modelId: string, providerId: string) {
   if (typeof window === 'undefined') return
   try {
@@ -156,6 +197,11 @@ interface AppState {
   models: Model[]
   selectedModelId: string | null
   selectedProviderId: string | null
+  reasoningEffortByModel: Record<string, string>
+  reasoningEffortAuto: string
+  setReasoningEffortForModel: (modelId: string, level: string) => void
+  setReasoningEffortAuto: (level: string) => void
+  getActiveReasoningEffort: () => string | null
 
   // View
   view: 'chat' | 'admin' | 'conversations' | 'artifacts' | 'projects'
@@ -367,6 +413,8 @@ export const useStore = create<AppState>((set, get) => ({
       fullName: '',
       occupation: '',
       customInstructions: '',
+      reasoningEffortByModel: {},
+      reasoningEffortAuto: 'medium',
     })
   },
 
@@ -384,6 +432,8 @@ export const useStore = create<AppState>((set, get) => ({
   models: [],
   selectedModelId: typeof window !== 'undefined' ? readPersistedModelSelection().modelId : null,
   selectedProviderId: typeof window !== 'undefined' ? readPersistedModelSelection().providerId : null,
+  reasoningEffortByModel: typeof window !== 'undefined' ? readReasoningEffortByModel() : {},
+  reasoningEffortAuto: typeof window !== 'undefined' ? readReasoningEffortAuto() : 'medium',
   view: 'chat',
   theme: (typeof window !== 'undefined' ? localStorage.getItem('nexuslocal_theme') as 'light' | 'dark' | 'system' : null) || 'system',
   chatFont: (typeof window !== 'undefined' ? localStorage.getItem('nexuslocal_chat_font') as 'sans' | 'serif' | 'mono' : null) || 'sans',
@@ -794,6 +844,46 @@ export const useStore = create<AppState>((set, get) => ({
   selectModel: (modelId: string, providerId: string) => {
     set({ selectedModelId: modelId, selectedProviderId: providerId })
     persistModelSelection(modelId, providerId)
+  },
+
+  setReasoningEffortForModel: (modelId: string, level: string) => {
+    persistReasoningEffortForModel(modelId, level)
+    set((s) => ({
+      reasoningEffortByModel: {
+        ...s.reasoningEffortByModel,
+        [modelId]: level,
+      },
+    }))
+  },
+
+  setReasoningEffortAuto: (level: string) => {
+    persistReasoningEffortAuto(level)
+    set({ reasoningEffortAuto: level })
+  },
+
+  getActiveReasoningEffort: () => {
+    const { selectedModelId, models, reasoningEffortByModel, reasoningEffortAuto } = get()
+    if (selectedModelId === 'auto') {
+      return reasoningEffortAuto || 'medium'
+    }
+    if (!selectedModelId) return null
+    const model = models.find((m) => m.id === selectedModelId)
+    if (!model) return null
+    const ctrl = model.reasoning_control
+    if (!ctrl || ctrl === 'none' || ctrl === 'always_on') {
+      return null
+    }
+    const saved = reasoningEffortByModel[model.id]
+    if (saved && model.reasoning_levels && model.reasoning_levels.includes(saved)) {
+      return saved
+    }
+    if (model.reasoning_default) {
+      return model.reasoning_default
+    }
+    if (model.reasoning_levels && model.reasoning_levels.length > 0) {
+      return model.reasoning_levels[0]
+    }
+    return null
   },
 
   selectProvider: (providerId: string) => {
