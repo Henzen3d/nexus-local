@@ -4719,7 +4719,7 @@ html[data-theme="light"] .nl-sheet-overlay {
   display: flex;
   flex-direction: column;
   gap: 20px;
-  max-width: 560px;
+  width: 100%;
 }
 .enhancer-header {
   display: flex;
@@ -4975,7 +4975,7 @@ html[data-theme="light"] .nl-sheet-overlay {
   display: flex;
   flex-direction: column;
   gap: 20px;
-  max-width: 560px;
+  width: 100%;
 }
 .fusion-header {
   display: flex;

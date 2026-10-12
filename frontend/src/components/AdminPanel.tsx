@@ -2580,7 +2580,7 @@ function AdminPanelDesktop() {
                 <p style={{ fontSize: '13px', color: 'var(--muted)', marginBottom: '24px' }}>
                   {t('settings.toolsDesc')}
                 </p>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', width: '100%' }}>
                   <EnhancerSettings />
                   <div className="admin-divider" style={{ margin: 0 }} />
                   <FusionSettings />
