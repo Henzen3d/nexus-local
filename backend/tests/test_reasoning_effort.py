@@ -72,6 +72,16 @@ def test_taxonomy_pure():
     assert resolve_family(None, "").control == ReasoningControl.NONE.value
     assert resolve_family("groq", None).control == ReasoningControl.NONE.value
 
+    # Agnes texto no provedor oficial tem dial; imagem/vídeo e gateway não.
+    agnes = resolve_family("agnes", "agnes-3.0-flash")
+    assert agnes.control == ReasoningControl.AGNES_EFFORT.value
+    assert agnes.levels == ["off", "minimal", "low", "medium", "high", "xhigh", "max"]
+    assert agnes.default == "off"
+    assert resolve_family("agnes", "agnes-2.5-flash").control == ReasoningControl.AGNES_EFFORT.value
+    assert resolve_family("agnes", "agnes-image-2.5-flash").control == ReasoningControl.NONE.value
+    assert resolve_family("agnes", "agnes-video-2.5").control == ReasoningControl.NONE.value
+    assert resolve_family("zenmux", "sapiens-ai/agnes-2.5-flash").control == ReasoningControl.NONE.value
+
 
 def test_payload_builder_pure():
     """3.7: Builder sem rede: none igual ao dict; OpenRouter ganha reasoning; inválido é omitido."""
@@ -125,6 +135,12 @@ def test_payload_builder_pure():
     # Gemini off
     p_gem_off = build_effort_payload(ReasoningControl.GEMINI_THINKING.value, "off", gem_base)
     assert p_gem_off["generationConfig"]["thinkingConfig"]["thinkingBudget"] == 0
+
+    # Agnes: off da UI vira none; high passa direto
+    p_agnes_off = build_effort_payload(ReasoningControl.AGNES_EFFORT.value, "off", base)
+    assert p_agnes_off["reasoning_effort"] == "none"
+    p_agnes_high = build_effort_payload(ReasoningControl.AGNES_EFFORT.value, "high", base)
+    assert p_agnes_high["reasoning_effort"] == "high"
 
 
 @pytest.mark.asyncio
@@ -199,6 +215,10 @@ async def test_migration_and_seed_in_temp_db():
                        reasoning_control_source = 'admin'
                    WHERE id = 'm-admin'"""
             )
+            await db.execute(
+                """INSERT INTO models (id, provider_id, name, display_name, reasoning_control, reasoning_levels, reasoning_default, reasoning_control_source)
+                   VALUES ('m-agnes', 'agnes', 'agnes-3.0-flash', 'Agnes 3.0 Flash', 'none', NULL, NULL, 'family')"""
+            )
             await db.commit()
 
             # Roda o seed
@@ -225,6 +245,16 @@ async def test_migration_and_seed_in_temp_db():
                 row_llama = await cur.fetchone()
                 assert row_llama[0] == "none"
                 assert row_llama[1] == "family"
+
+            # Família antiga gravada como none é recalculada; admin continua intocado
+            async with db.execute(
+                "SELECT reasoning_control, reasoning_default, reasoning_control_source FROM models WHERE id = 'm-agnes'"
+            ) as cur:
+                row_agnes = await cur.fetchone()
+                assert row_agnes is not None
+                assert row_agnes[0] == ReasoningControl.AGNES_EFFORT.value
+                assert row_agnes[1] == "off"
+                assert row_agnes[2] == "family"
 
     finally:
         if tmp_path.exists():

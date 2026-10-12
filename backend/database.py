@@ -1714,25 +1714,36 @@ async def init_db():
 
 
 async def seed_reasoning_controls(db: aiosqlite.Connection) -> int:
-    """Classifica modelos com status 'unset' usando families.py sem sobrescrever 'admin' (idempotente)."""
+    """Classifica modelos unset e recalcula linhas family quando a taxonomia mudou.
+
+    Não toca reasoning_control_source = 'admin'.
+    """
     from backend.reasoning.families import resolve_family
     updated = 0
     try:
         async with db.execute(
-            "SELECT id, provider_id, name FROM models WHERE reasoning_control_source IS NULL OR reasoning_control_source = 'unset'"
+            """SELECT id, provider_id, name, reasoning_control, reasoning_levels,
+                      reasoning_default, reasoning_control_source
+               FROM models
+               WHERE reasoning_control_source IS NULL
+                  OR reasoning_control_source IN ('unset', 'family')"""
         ) as cur:
             rows = await cur.fetchall()
 
-        for mid, pid, mname in rows:
+        for mid, pid, mname, ctrl, levels, default, source in rows:
             spec = resolve_family(pid, mname)
             levels_json = json.dumps(spec.levels) if spec.levels else None
+            if source == "family" and _reasoning_row_matches(ctrl, levels, default, spec.control, levels_json, spec.default):
+                continue
             await db.execute(
                 """UPDATE models
                    SET reasoning_control = ?,
                        reasoning_levels = ?,
                        reasoning_default = ?,
                        reasoning_control_source = 'family'
-                   WHERE id = ? AND (reasoning_control_source IS NULL OR reasoning_control_source = 'unset')""",
+                   WHERE id = ?
+                     AND (reasoning_control_source IS NULL
+                          OR reasoning_control_source IN ('unset', 'family'))""",
                 (spec.control, levels_json, spec.default, mid),
             )
             updated += 1
@@ -1743,6 +1754,30 @@ async def seed_reasoning_controls(db: aiosqlite.Connection) -> int:
     except Exception as e:
         logger.error("Erro ao aplicar seed_reasoning_controls:", exc_info=e)
     return updated
+
+
+def _reasoning_row_matches(ctrl, levels, default, want_ctrl, want_levels, want_default) -> bool:
+    def norm_levels(raw):
+        if raw is None or raw == "" or raw == "[]" or raw == "null":
+            return None
+        if isinstance(raw, str):
+            try:
+                parsed = json.loads(raw)
+            except (TypeError, ValueError):
+                return raw
+            if not parsed:
+                return None
+            return json.dumps(parsed)
+        return raw
+
+    def norm_default(raw):
+        return None if raw is None or raw == "" else raw
+
+    return (
+        (ctrl or "none") == want_ctrl
+        and norm_levels(levels) == norm_levels(want_levels)
+        and norm_default(default) == norm_default(want_default)
+    )
 
 
 MEMORY_CATEGORIES = ('professional', 'personal', 'project', 'preference', 'identity', 'tech')

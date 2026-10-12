@@ -20,6 +20,7 @@ class ReasoningControl(str, Enum):
     XAI_EFFORT = "xai_effort"
     ALWAYS_ON = "always_on"
     BINARY_THINK = "binary_think"
+    AGNES_EFFORT = "agnes_effort"
 
 
 # Escala interna ordenada de intensidade (do mais leve ao mais pesado)
@@ -127,5 +128,17 @@ def resolve_family(provider_id: str | None, model_name: str | None) -> ControlSp
     if "qwen" in name and any(k in name for k in ("thinking", "reasoning")):
         return ControlSpec(control=ReasoningControl.ALWAYS_ON.value, levels=[], default=None)
 
-    # 7. Modelos convencionais (Llama, Mistral, Groq, Cerebras, Cloudflare, etc.) -> none
+    # 7. Agnes texto no provedor oficial.
+    # Probe em apihub.agnes-ai.com (agnes-3.0-flash e agnes-2.5-flash):
+    # reasoning_effort aceita none, minimal, low, medium, high, xhigh, max.
+    # "off" da UI não é literal da API (400). Imagem e vídeo não são chat.
+    # Não aplicar a gateways (zenmux): o contrato de lá não foi confirmado.
+    if pid == "agnes" and not any(k in name for k in ("image", "video")):
+        return ControlSpec(
+            control=ReasoningControl.AGNES_EFFORT.value,
+            levels=["off", "minimal", "low", "medium", "high", "xhigh", "max"],
+            default="off",
+        )
+
+    # 8. Modelos convencionais (Llama, Mistral, Groq, Cerebras, Cloudflare, etc.) -> none
     return ControlSpec(control=ReasoningControl.NONE.value, levels=[], default=None)

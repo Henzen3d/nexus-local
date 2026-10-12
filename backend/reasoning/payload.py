@@ -101,4 +101,9 @@ def build_effort_payload(
         payload["think"] = (norm_level != "off")
         return payload
 
+    # 6. Agnes oficial. A API rejeita "off"; o desligado é o literal "none".
+    if control == ReasoningControl.AGNES_EFFORT.value:
+        payload["reasoning_effort"] = "none" if norm_level == "off" else norm_level
+        return payload
+
     return payload
