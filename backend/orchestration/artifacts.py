@@ -68,6 +68,30 @@ def _extract_jsx_title(content: str, fallback: str = "React Component") -> str:
     return fallback
 
 
+_RE_FILENAME_COMMENT = re.compile(
+    r'^(?:#|//|<!--|/\*|\*)\s*([a-zA-Z0-9_\-\./\\]+\.[a-zA-Z0-9]{1,8})(?:\s*-->|\s*\*\/)?\s*$',
+    re.MULTILINE,
+)
+
+
+def _extract_code_filename(body: str, lang: str, fallback_title: str) -> str:
+    """Extrai o nome do arquivo da primeira ou segunda linha comentada de um bloco de código."""
+    if not body:
+        return fallback_title
+    first_lines = body.strip().split("\n")[:2]
+    for line in first_lines:
+        m = _RE_FILENAME_COMMENT.match(line.strip())
+        if m:
+            candidate = m.group(1).strip()
+            if "/" in candidate:
+                candidate = candidate.split("/")[-1]
+            if "\\" in candidate:
+                candidate = candidate.split("\\")[-1]
+            if len(candidate) <= 64:
+                return candidate
+    return fallback_title
+
+
 def strip_thinking_tags(content: str) -> str:
     """Remove blocos e tags de raciocínio (<think>...</think>, etc.)."""
     if not content:
@@ -138,36 +162,41 @@ def detect_artifacts(content: str, user_message: str = "") -> list[dict]:
         line_count = len(body.split("\n"))
 
         if lang == "html":
+            fallback_title = _extract_html_svg_title(body, fallback="HTML Document")
             artifacts.append({
                 "type": "html",
-                "title": _extract_html_svg_title(body, fallback="HTML Document"),
+                "title": _extract_code_filename(body, lang, fallback_title),
                 "content": body,
             })
         elif lang == "svg":
+            fallback_title = _extract_html_svg_title(body, fallback="SVG Image")
             artifacts.append({
                 "type": "svg",
-                "title": _extract_html_svg_title(body, fallback="SVG Image"),
+                "title": _extract_code_filename(body, lang, fallback_title),
                 "content": body,
             })
         elif lang in ("jsx", "tsx"):
             if line_count >= 8:
+                fallback_title = _extract_jsx_title(body, fallback="React Component")
                 artifacts.append({
                     "type": "jsx",
-                    "title": _extract_jsx_title(body, fallback="React Component"),
+                    "title": _extract_code_filename(body, lang, fallback_title),
                     "content": body,
                 })
         elif lang in ("markdown", "md"):
             if line_count >= 8:
+                fallback_title = _extract_markdown_title(body, fallback="Markdown Document")
                 artifacts.append({
                     "type": "markdown",
-                    "title": _extract_markdown_title(body, fallback="Markdown Document"),
+                    "title": _extract_code_filename(body, lang, fallback_title),
                     "content": body,
                 })
         elif lang not in _EXCLUDED_LANGS_FROM_CODE:
             if line_count >= 15:
+                fallback_title = f"{lang.upper() if lang else 'CODE'} Code"
                 artifacts.append({
                     "type": "code",
-                    "title": f"{lang.upper() if lang else 'CODE'} Code",
+                    "title": _extract_code_filename(body, lang, fallback_title),
                     "content": body,
                 })
 

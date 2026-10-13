@@ -261,7 +261,7 @@ async def load_history(
         docs = [a for a in msg_atts if a["file_type"] == "document"]
         if docs:
             doc_context = ""
-            for d in docs:
+            for idx, d in enumerate(docs, 1):
                 ext_text = extracted_text_by_id.get(d["id"], "")
                 if ext_text:
                     ext_text = select_document_excerpt(
@@ -269,7 +269,8 @@ async def load_history(
                         query=question or text_content or "",
                         max_chars=max_doc_chars,
                     )
-                doc_context += f"\n\n--- Conteúdo de {d['filename']} ---\n{ext_text}\n"
+                safe_fn = (d.get("filename") or "documento").replace('"', '&quot;').replace('<', '&lt;').replace('>', '&gt;')
+                doc_context += f'\n<fonte id="{idx}" origem="{safe_fn}">\n{ext_text}\n</fonte>\n'
             text_content = f"{doc_context}\n\n---\n\n{text_content}"
 
         # 2. Image handling

@@ -7,6 +7,7 @@ from __future__ import annotations
 import time
 import asyncio
 import json
+import re
 import uuid
 from typing import TYPE_CHECKING, Any
 
@@ -132,6 +133,15 @@ async def stream_from_llm(
                 "fallback_model": resolved.display_name,
                 "reason": resolved.failover_reason or "rate_limit",
             })
+            if history and isinstance(history, list) and history[0].get("role") == "system":
+                sys_content = history[0].get("content") or ""
+                new_ident = f"O modelo de inteligência artificial em execução neste turno é: {resolved.display_name} (via {resolved.provider_id})."
+                sys_content = re.sub(
+                    r"O modelo de inteligência artificial em execução neste turno é:[^\n]+",
+                    new_ident,
+                    sys_content,
+                )
+                history[0]["content"] = sys_content
 
         current_model_id = resolved.model_id
         current_provider_id = resolved.provider_id
@@ -233,16 +243,54 @@ async def stream_from_llm(
                     return None
                 continue
 
+            STREAM_TTFT_TIMEOUT_SECONDS = 8.0
             stream_start_time = time.perf_counter()
             first_token_received = False
-            async for token in provider.stream_chat(model=model_name, messages=history, **stream_kwargs):
-                if not first_token_received:
+            token_buffer: list[str] = []
+            last_flush = time.perf_counter()
+
+            async def flush_tokens():
+                nonlocal token_buffer, last_flush
+                if token_buffer:
+                    batch_text = "".join(token_buffer)
+                    await ws.send_json({"type": "token", "content": batch_text})
+                    token_buffer.clear()
+                    last_flush = time.perf_counter()
+
+            try:
+                stream_iter = provider.stream_chat(model=model_name, messages=history, **stream_kwargs).__aiter__()
+
+                # Aguarda o primeiro token com prazo limite de TTFT (8s)
+                try:
+                    first_token = await asyncio.wait_for(
+                        stream_iter.__anext__(),
+                        timeout=STREAM_TTFT_TIMEOUT_SECONDS,
+                    )
                     first_token_received = True
                     if request_context and hasattr(request_context, "record_phase"):
                         request_context.record_phase("llm_ttfb", stream_start_time)
-                token_str = str(token)
-                full_response += token_str
-                await ws.send_json({"type": "token", "content": token_str})
+                    token_str = str(first_token)
+                    full_response += token_str
+                    token_buffer.append(token_str)
+                except (asyncio.TimeoutError, TimeoutError):
+                    logger.warning(
+                        "TTFT Timeout (%ss excedido) no provedor '%s' (modelo '%s'). Acionando failover cascade precoce.",
+                        STREAM_TTFT_TIMEOUT_SECONDS, current_provider_id, current_model_id,
+                    )
+                    attempted_model_ids.add(current_model_id)
+                    continue
+
+                # Consome o restante do stream com micro-lotes de coalescência (~35ms ou 8 tokens)
+                async for token in stream_iter:
+                    token_str = str(token)
+                    full_response += token_str
+                    token_buffer.append(token_str)
+                    if len(token_buffer) >= 8 or (time.perf_counter() - last_flush) >= 0.035:
+                        await flush_tokens()
+
+                await flush_tokens()
+            except StopAsyncIteration:
+                await flush_tokens()
 
             await mark_model_success(current_model_id, db)
             await record_request(current_model_id, db)

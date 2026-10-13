@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS providers (
     api_key     TEXT DEFAULT '',
     enabled     INTEGER DEFAULT 1,
     is_free     INTEGER DEFAULT 0,
+    is_local    INTEGER DEFAULT 0,
     share_admin_key INTEGER DEFAULT 0,  -- 1 = admin compartilha esta chave com outros usuários
     created_at  TEXT DEFAULT (datetime('now'))
 );
@@ -872,6 +873,19 @@ async def init_db():
         except aiosqlite.OperationalError:
             await db.execute("ALTER TABLE messages ADD COLUMN provider TEXT")
             await db.commit()
+
+        # Incremental migration check for providers.is_local
+        try:
+            await db.execute("SELECT is_local FROM providers LIMIT 1")
+        except aiosqlite.OperationalError:
+            await db.execute("ALTER TABLE providers ADD COLUMN is_local INTEGER DEFAULT 0")
+            await db.commit()
+            try:
+                await db.execute("UPDATE providers SET is_local = 1 WHERE id IN ('ollama', 'lmstudio', 'local')")
+                await db.commit()
+            except Exception:
+                pass
+
 
         # Incremental migration check for context_source
         try:

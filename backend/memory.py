@@ -1381,7 +1381,36 @@ def build_summary_block(
             + project_summary["summary_md"].strip()
             + "\n"
         )
-    return "".join(chunks)
+
+def sanitize_memory_for_external(
+    facts: list[dict],
+    profile: dict | None,
+    user_message: str,
+) -> tuple[list[dict], dict | None]:
+    """Remove PII sensível para provedores externos a menos que a pergunta exija explicitamente."""
+    asks_family = bool(_RE_FAMILY_WORD.search(user_message or ""))
+    asks_age = bool(_RE_USER_SELF_AGE.search(user_message or ""))
+
+    sanitized_profile = dict(profile) if profile else None
+    if sanitized_profile and not asks_age:
+        # Omite nome completo civil e data de nascimento se a pergunta não for sobre idade/identidade formal
+        sanitized_profile.pop("full_name", None)
+        sanitized_profile.pop("birth_date", None)
+
+    filtered_facts: list[dict] = []
+    for f in facts or []:
+        cat = f.get("category", "")
+        # Se não perguntou sobre família, omite fatos de família
+        if cat == "family" and not asks_family:
+            continue
+        # Se for identidade, omite menções a pseudônimos, casamento e nascimento se a pergunta não for sobre isso
+        if cat == "identity" and not (asks_family or asks_age):
+            text = (f.get("fact") or "").lower()
+            if any(w in text for w in ("nascid", "pseudônimo", "pseudonimo", "casad", "casou")):
+                continue
+        filtered_facts.append(f)
+
+    return filtered_facts, sanitized_profile
 
 
 def build_memory_block(

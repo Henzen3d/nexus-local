@@ -58,6 +58,15 @@ melhorias/
 │   ├── 04-bento-starter-cards.md
 │   └── 05-sidebar-pins-temporal.md
 │
+├── system-prompt/              # 🧠 System Prompt & Harness: Composição, anti-injeção, perfis e resiliência
+│   ├── README.md               # Hub e visão geral do harness
+│   ├── 01-novo-system-prompt-base.md
+│   ├── 02-composicao-projetos-e-fontes-rag.md
+│   ├── 03-privacidade-e-filtragem-de-memoria.md
+│   ├── 04-perfis-por-familia-de-modelos.md
+│   ├── 05-harness-resiliencia-latencia-e-cache.md
+│   └── 06-suite-de-testes-e-regressao.md
+│
 ├── historico-planos/           # 📜 Planos de fases anteriores, auditorias e especificações consolidadas
 │   ├── AUDIT-REPORT.md
 │   ├── Audit-changes-history.mb
@@ -128,6 +137,17 @@ Plano em [`esforco-reasoning/`](esforco-reasoning/README.md). Não implementado.
 ## Image gen
 
 Docs em [`image-gen/`](image-gen/README.md). Não implementado. Pedido de imagem raster sai do modelo de chat e vai para Cloudflare Workers AI em background. A imagem volta no mesmo chat.
+
+## System Prompt & Harness Architecture
+
+Documentação completa e planos em [`system-prompt/`](file:///j:/Arquivos%20Osmar/Multi+/melhorias/system-prompt/README.md):
+- **Prompt Base Afirmativo (~290 tokens):** Identidade neutra, honestidade estrita, ausência de emojis e regras claras de código.
+- **Composição em Camadas:** Substituição eliminada em projetos; injeção modular que preserva regras base e prefix caching.
+- **Defesa Anti-Prompt Injection (`<fonte>`):** Encapsulamento de dados externos (RAG, anexos, busca web) em tags semânticas não executáveis.
+- **Governança de Privacidade:** Minimização de PII; dados sensíveis (família, nascimento) retidos sob demanda para provedores externos.
+- **Perfis por Família de Modelos:** Ajustes cirúrgicos para modelos de raciocínio, compactos e coders.
+- **Resiliência e Desempenho:** TTFT timeout (8s), parser de nome de arquivo em artefatos, coalescência de WebSocket e isolamento de cache.
+
 
 ## 🚀 Frentes Ativas de Desenvolvimento
 
