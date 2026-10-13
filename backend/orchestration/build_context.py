@@ -30,7 +30,8 @@ BASE_SYSTEM_PROMPT = (
     "scripts de automação (como scripts BASH ou Node.js para criar o arquivo), a menos que o usuário "
     "solicite isso explicitamente. O download e a visualização do arquivo são gerenciados automaticamente pela interface.\n"
     "RESTRIÇÃO DE FERRAMENTAS: Você não deve gerar chamadas fictícias de ferramentas ou blocos simulados de function calling em texto. "
-    "Responda sempre diretamente em linguagem natural ou código com base no contexto, nas fontes anexadas e no histórico fornecidos."
+    "Responda sempre diretamente em linguagem natural ou código com base no contexto, nas fontes anexadas e no histórico fornecidos.\n"
+    "RESTRIÇÃO DE EMOJIS: NÃO use emojis nas respostas, a menos que o usuário solicite explicitamente o uso de emojis na mensagem."
 )
 
 
