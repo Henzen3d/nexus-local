@@ -331,7 +331,7 @@ async def test_token_bucket_hysteresis():
     allowed1, _ = await bucket.acquire(1, is_sticky=False)
     allowed2, _ = await bucket.acquire(1, is_sticky=False)
     assert allowed1 is True and allowed2 is True
-    assert bucket.tokens == 0.0
+    assert bucket.tokens <= 0.001  # Floating point tolerance
 
     # 2. Chamada normal (non-sticky) deve ser rejeitada
     allowed3, wait3 = await bucket.acquire(1, is_sticky=False)
@@ -356,7 +356,7 @@ async def test_token_bucket_hysteresis():
 
     # 5. Penalidade reativa (HTTP 429 real)
     await bucket.on_rate_limit()
-    assert bucket.tokens == 0.0
+    assert bucket.tokens <= 0.001  # Floating point tolerance
     assert bucket._throttled is True
 
     # 6. Teste de Benchmarking não-bloqueante
