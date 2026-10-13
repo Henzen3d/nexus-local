@@ -167,67 +167,66 @@ export function LibraryPanel() {
             </div>
           </div>
 
-          {/* Search bar & filter pills */}
-          <div className="library-toolbar">
-            <div className="search-bar-container">
-              <Search className="search-icon-field" size={15} />
-              <input
-                type="text"
-                placeholder={t('library.searchPlaceholder', { defaultValue: 'Buscar por nome, prompt ou conversa…' })}
-                value={librarySearch}
-                onChange={(e) => setLibrarySearch(e.target.value)}
-                className="search-input"
-              />
-              {librarySearch && (
-                <button
-                  type="button"
-                  className="search-clear-btn"
-                  onClick={() => setLibrarySearch('')}
-                  aria-label={t('common.clear', { defaultValue: 'Limpar' })}
-                >
-                  <X size={14} />
-                </button>
-              )}
-            </div>
+          {/* Barra de busca padronizada idêntica a Projetos, Conversas e Artefatos */}
+          <div className="search-bar-container">
+            <Search className="search-icon-field" size={15} />
+            <input
+              type="search"
+              placeholder={t('library.searchPlaceholder', { defaultValue: 'Buscar por nome, prompt ou conversa…' })}
+              value={librarySearch}
+              onChange={(e) => setLibrarySearch(e.target.value)}
+              className="search-input-field"
+            />
+            {librarySearch && (
+              <button
+                type="button"
+                className="clear-search-btn"
+                onClick={() => setLibrarySearch('')}
+                aria-label={t('common.clear', { defaultValue: 'Limpar' })}
+              >
+                <X size={14} />
+              </button>
+            )}
+          </div>
 
-            <div className="library-filter-pills">
-              <button
-                type="button"
-                className={`library-filter-pill ${libraryFilter === 'all' ? 'active' : ''}`}
-                onClick={() => setLibraryFilter('all')}
-              >
-                {t('library.all', { defaultValue: 'Tudo' })}
-              </button>
-              <button
-                type="button"
-                className={`library-filter-pill ${libraryFilter === 'generated' ? 'active' : ''}`}
-                onClick={() => setLibraryFilter('generated')}
-              >
-                <Sparkles size={13} className="text-amber-400" />
-                {t('library.generated', { defaultValue: 'Geradas por IA' })}
-              </button>
-              <button
-                type="button"
-                className={`library-filter-pill ${libraryFilter === 'image' ? 'active' : ''}`}
-                onClick={() => setLibraryFilter('image')}
-              >
-                <ImageIcon size={13} />
-                {t('library.images', { defaultValue: 'Imagens' })}
-              </button>
-              <button
-                type="button"
-                className={`library-filter-pill ${libraryFilter === 'document' ? 'active' : ''}`}
-                onClick={() => setLibraryFilter('document')}
-              >
-                <FileText size={13} />
-                {t('library.documents', { defaultValue: 'Documentos' })}
-              </button>
-            </div>
+          {/* Filtros de categoria em pills */}
+          <div className="library-filter-pills">
+            <button
+              type="button"
+              className={`library-filter-pill ${libraryFilter === 'all' ? 'active' : ''}`}
+              onClick={() => setLibraryFilter('all')}
+            >
+              {t('library.all', { defaultValue: 'Tudo' })}
+            </button>
+            <button
+              type="button"
+              className={`library-filter-pill ${libraryFilter === 'generated' ? 'active' : ''}`}
+              onClick={() => setLibraryFilter('generated')}
+            >
+              <Sparkles size={13} className="text-amber-400" />
+              {t('library.generated', { defaultValue: 'Geradas por IA' })}
+            </button>
+            <button
+              type="button"
+              className={`library-filter-pill ${libraryFilter === 'image' ? 'active' : ''}`}
+              onClick={() => setLibraryFilter('image')}
+            >
+              <ImageIcon size={13} />
+              {t('library.images', { defaultValue: 'Imagens' })}
+            </button>
+            <button
+              type="button"
+              className={`library-filter-pill ${libraryFilter === 'document' ? 'active' : ''}`}
+              onClick={() => setLibraryFilter('document')}
+            >
+              <FileText size={13} />
+              {t('library.documents', { defaultValue: 'Documentos' })}
+            </button>
           </div>
         </header>
 
         {/* Body / Content */}
-        <div className="library-body">
+        <div className="library-body custom-scrollbar">
           {libraryLoading ? (
             <div className="library-loading-state">
               <Loader2 size={28} className="spinner" />
