@@ -788,7 +788,6 @@ DEFAULT_PROVIDERS = [
         "is_free": 1,
         "models": [
             ("bynara/agnes-2.5-flash", "agnes-2.5-flash", "Agnes 2.5 Flash", 512000),
-            ("bynara/jev", "jev", "Jev", 32000),
             ("bynara/laguna-s-2.1", "laguna-s-2.1", "Laguna S 2.1", 262000),
             ("bynara/nemotron-3-ultra-free", "nemotron-3-ultra-free", "Nemotron 3 Ultra Free", 1000000),
             ("bynara/nemotron-3.5-lightning-free", "nemotron-3.5-lightning-free", "Nemotron 3.5 Lightning Free", 1000000),
@@ -1325,6 +1324,24 @@ async def init_db():
             await db.commit()
         except Exception as e:
             logger.error("[database migration] erro ao configurar status e chaves admin de orcarouter/bynara:", exc_info=e)
+
+        # Garante que apenas os modelos de Bynara que funcionam no free tier fiquem habilitados/confirmados
+        try:
+            await db.execute("""
+                UPDATE models
+                SET enabled = 0, confirmed_free = 0
+                WHERE provider_id = 'bynara'
+                  AND name NOT IN ('agnes-2.5-flash', 'laguna-s-2.1', 'nemotron-3-ultra-free', 'nemotron-3.5-lightning-free')
+            """)
+            await db.execute("""
+                UPDATE models
+                SET enabled = 1, confirmed_free = 1
+                WHERE provider_id = 'bynara'
+                  AND name IN ('agnes-2.5-flash', 'laguna-s-2.1', 'nemotron-3-ultra-free', 'nemotron-3.5-lightning-free')
+            """)
+            await db.commit()
+        except Exception as e:
+            logger.error("[database migration] erro ao sanitizar modelos ativos de bynara:", exc_info=e)
 
 
 
@@ -2980,6 +2997,11 @@ async def check_and_deactivate_model(model_id: str, error_msg: str, db=None) -> 
         # Cloudflare Workers AI: Function UUID not found
         "function '",
         "404 page not found",
+        # Roteadores e provedores com planos/créditos restritos (Bynara, OpenRouter, etc.):
+        "does not include the requested model",
+        "plan does not include",
+        "insufficient credits",
+        "insufficient balance",
     ]
     
     if any(trigger in error_lower for trigger in deactivate_triggers):
@@ -2989,9 +3011,9 @@ async def check_and_deactivate_model(model_id: str, error_msg: str, db=None) -> 
                 db = await get_db()
                 should_close = True
             
-            await db.execute("UPDATE models SET enabled = 0 WHERE id = ?", (model_id,))
+            await db.execute("UPDATE models SET enabled = 0, confirmed_free = 0 WHERE id = ?", (model_id,))
             await db.commit()
-            logger.error("🚫 Model '%s' automatically disabled due to billing/subscription error:", model_id, exc_info=error_msg)
+            logger.error("🚫 Model '%s' automatically disabled due to billing/subscription error: %s", model_id, error_msg)
             
             if should_close:
                 await db.close()

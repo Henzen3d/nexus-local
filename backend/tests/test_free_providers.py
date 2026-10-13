@@ -81,7 +81,6 @@ async def test_orcarouter_and_bynara_registration(fresh_db):
 
         expected_bynara = [
             "agnes-2.5-flash",
-            "jev",
             "laguna-s-2.1",
             "nemotron-3-ultra-free",
             "nemotron-3.5-lightning-free",

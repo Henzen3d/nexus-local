@@ -177,7 +177,8 @@ async def sync_provider_models(provider_id: str, db, custom_api_key: str = None)
 
         is_auto_free = 1 if (
             (provider_id == "openrouter" and model_name.endswith(":free"))
-            or provider_id in ("llm7", "agnes", "freetheai", "orcarouter", "bynara")
+            or provider_id in ("llm7", "agnes", "freetheai", "orcarouter")
+            or (provider_id == "bynara" and model_name in ("agnes-2.5-flash", "laguna-s-2.1", "nemotron-3-ultra-free", "nemotron-3.5-lightning-free"))
         ) else 0
 
         fetched_supports_vision = bool(item.get("supports_vision", False))
