@@ -4,6 +4,7 @@ import os
 import sqlite3
 from datetime import datetime
 from pathlib import Path
+from typing import Any, Optional
 
 from backend.logging_config import get_logger
 
@@ -845,6 +846,8 @@ async def claim_global_provider_keys(db) -> None:
 async def get_db():
     db = await aiosqlite.connect(DB_PATH)
     await db.execute("PRAGMA foreign_keys = ON")
+    await db.execute("PRAGMA busy_timeout = 10000")
+    await db.execute("PRAGMA synchronous = NORMAL")
     await db.commit()
     return db
 
@@ -1787,7 +1790,32 @@ async def init_db():
             )
             await db.commit()
         except Exception as e:
-            logger.error("[database migration] erro no seed de image_gen:", exc_info=e)
+            logger.error("[database migration] erro no seed de image_gen: %s", e)
+
+        # JEV Fast: colunas fingerprint e user_id em cache_semantic para bypass ultrarrápido
+        for col_name, col_def in [
+            ("fingerprint", "TEXT"),
+            ("user_id", "TEXT"),
+        ]:
+            try:
+                await db.execute(f"SELECT {col_name} FROM cache_semantic LIMIT 1")
+            except (sqlite3.OperationalError, aiosqlite.OperationalError):
+                try:
+                    await db.execute(f"ALTER TABLE cache_semantic ADD COLUMN {col_name} {col_def}")
+                    await db.commit()
+                except Exception as e:
+                    logger.error("[database migration] erro ao adicionar coluna %s em cache_semantic: %s", col_name, e)
+
+        try:
+            await db.execute("CREATE INDEX IF NOT EXISTS idx_cache_semantic_fp ON cache_semantic(fingerprint, model_id)")
+            await db.execute("CREATE INDEX IF NOT EXISTS idx_cache_semantic_user ON cache_semantic(user_id)")
+            await db.execute(
+                "CREATE INDEX IF NOT EXISTS idx_cache_semantic_scope_fp "
+                "ON cache_semantic(user_id, model_id, fingerprint)"
+            )
+            await db.commit()
+        except Exception as e:
+            logger.error("[database migration] erro ao criar índices de cache_semantic: %s", e)
 
         await claim_global_provider_keys(db)
         await seed_reasoning_controls(db)
@@ -2027,11 +2055,13 @@ async def get_relevant_memory(
     user_id: str,
     query_text: str,
     limit: int = MEMORY_INJECT_LIMIT,
+    request_context: Optional[Any] = None,
 ) -> list[dict]:
     """
     Busca Híbrida Avançada (FTS5 BM25 + Vetorial FastEmbed + Recency Decay).
     Fórmula: Score = 0.50 * Vetor + 0.30 * BM25 + 0.20 * Recency.
     Fatos fixados (is_pinned = 1) são priorizados no topo.
+    Reutiliza embedding em RAM quando request_context é fornecido (JEV Fast).
     """
     import asyncio
     import re
@@ -2080,8 +2110,6 @@ async def get_relevant_memory(
                     ) as fts_cur:
                         for rowid_val, bm_val in await fts_cur.fetchall():
                             if bm_val is not None:
-                                # bm25 é negativo no SQLite (menor = melhor, ex: -5.0)
-                                # normaliza monotonicamente para escala [0.0, 1.0]
                                 pos_bm = max(0.0, -float(bm_val))
                                 bm25_scores[rowid_val] = min(1.0, pos_bm / (1.0 + pos_bm))
                 except Exception as fe:
@@ -2090,7 +2118,7 @@ async def get_relevant_memory(
     pinned = [r for r in rows if r.get("is_pinned")]
     unpinned = [r for r in rows if not r.get("is_pinned")]
 
-    # 2. Embed query (opcional via FastEmbed)
+    # 2. Embed query (opcional via FastEmbed ou reutilizado via RequestContext)
     query_blob = None
     _embed_text = _blob_to_embedding = _cosine_similarity = None
     _HAS_NUMPY = False
@@ -2105,12 +2133,16 @@ async def get_relevant_memory(
     except Exception:
         pass
 
-    if query_text and _HAS_NUMPY and _embed_text:
-        loop = asyncio.get_event_loop()
-        try:
-            query_blob = await loop.run_in_executor(None, _embed_text, query_text[:2000])
-        except Exception:
-            query_blob = None
+    if query_text and _HAS_NUMPY:
+        clean_q = query_text.strip()
+        if request_context and hasattr(request_context, "get_embedding"):
+            query_blob = await request_context.get_embedding(clean_q)
+        elif _embed_text:
+            loop = asyncio.get_event_loop()
+            try:
+                query_blob = await loop.run_in_executor(None, _embed_text, clean_q[:2000])
+            except Exception:
+                query_blob = None
 
     now = datetime.utcnow()
 
@@ -3013,6 +3045,11 @@ async def check_and_deactivate_model(model_id: str, error_msg: str, db=None) -> 
             
             await db.execute("UPDATE models SET enabled = 0, confirmed_free = 0 WHERE id = ?", (model_id,))
             await db.commit()
+            try:
+                from backend.ranking.smart_router import invalidate_model_cache
+                invalidate_model_cache()
+            except Exception:
+                pass
             logger.error("🚫 Model '%s' automatically disabled due to billing/subscription error: %s", model_id, error_msg)
             
             if should_close:

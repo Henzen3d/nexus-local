@@ -206,6 +206,9 @@ async def _process_turn(
     is_auto = (model_id == "auto" or not model_id)
     auto_route_decision = None
 
+    from backend.context import RequestContext
+    req_ctx = RequestContext(user_id=user_id, conversation_id=conversation_id)
+
     # ── Image Generation Intent Check ───────────────────────────────
     image_job_created = False
     img_prompt = None
@@ -303,10 +306,15 @@ async def _process_turn(
 
     # ── Auto-Router Inteligente (Smart Intent Router) ────────────────
     if is_auto:
+        from backend.ranking.smart_router import classify_intent, select_best_model, is_trivial_greeting
+        from backend.database import get_router_policy
+
         prev_model_id = None
         prev_intent = None
         raw_history = []
-        if conversation_id:
+        is_greeting = not attachment_ids and not req.get("web_search", False) and is_trivial_greeting(user_message)
+
+        if conversation_id and not is_greeting:
             async with db.execute(
                 "SELECT model_id FROM messages WHERE conversation_id = ? AND role = 'assistant' ORDER BY created_at DESC LIMIT 1",
                 (conversation_id,)
@@ -327,9 +335,7 @@ async def _process_turn(
             ) as cur:
                 raw_history = [{"role": r[0], "content": r[1]} for r in await cur.fetchall()]
 
-        from backend.ranking.smart_router import classify_intent, select_best_model
-        from backend.database import get_router_policy
-
+        t_intent_start = time.perf_counter()
         intent_res = classify_intent(
             prompt=user_message,
             attachments=attachment_ids,
@@ -341,6 +347,7 @@ async def _process_turn(
         auto_route_decision = await select_best_model(
             intent_res, policy, db, previous_model_id=prev_model_id
         )
+        req_ctx.record_phase("intent_classification", t_intent_start)
         model_id = auto_route_decision.chosen_model_id
         provider_id = auto_route_decision.provider_id
 
@@ -429,15 +436,19 @@ async def _process_turn(
     )
 
     # ── Build context (memory + project RAG) ────────────────────────
+    t_rag_start = time.perf_counter()
     user_mem_text, context_fingerprint = await build_memory_context(
-        user, conversation_id, user_message, use_memory, provider_id, model_id
+        user, conversation_id, user_message, use_memory, provider_id, model_id,
+        request_context=req_ctx,
     )
 
     active_project_id, system_instruction = await resolve_project_context(
         db, ws, conversation_id, request_project_id, user, model_id,
         provider_id, user_message, history, project_context_debug,
         BASE_SYSTEM_PROMPT, user_mem_text,
+        request_context=req_ctx,
     )
+    req_ctx.record_phase("rag_memory", t_rag_start)
 
     if image_job_created:
         system_instruction += "\n\nO usuário pediu uma imagem raster que está sendo gerada separadamente. Não escreva código SVG nem gere tags de imagem neste turno."
@@ -499,6 +510,7 @@ async def _process_turn(
         max_tokens=effective_max_tokens,
         auto_route_decision=auto_route_decision,
         reasoning_effort=reasoning_effort,
+        request_context=req_ctx,
     )
     if result is None:
         return
@@ -559,11 +571,29 @@ async def _process_turn(
         "process_steps": process_steps,
         "process_duration_ms": round((time.perf_counter() - process_started_at) * 1000),
         "source_count": len(web_search_sources),
+        "phase_latencies": dict(req_ctx.phase_latencies),
     }
     if ui_envelope:
         stream_end_payload["ui_blocks"] = ui_envelope
 
     await ws.send_json(stream_end_payload)
+
+    # ── Non-blocking Task Benchmark (Plano 09) ──────────────────────
+    from backend.metrics import task_benchmark_manager
+    total_turn_lat = (time.perf_counter() - process_started_at) * 1000
+    asyncio.create_task(
+        task_benchmark_manager.record_task_async(
+            task_type="chat",
+            latency_ms=total_turn_lat,
+            model_id=model_id,
+            provider_id=provider_id,
+            success=True,
+            tokens_input=max(1, len(user_message) // 4),
+            tokens_output=max(1, len(full_response) // 4),
+            phase_latencies=dict(req_ctx.phase_latencies),
+            persist_to_disk=False,
+        )
+    )
 
     # ── Background memory extraction ────────────────────────────────
     if user and "id" in user and use_memory:

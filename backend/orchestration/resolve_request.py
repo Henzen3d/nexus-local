@@ -4,6 +4,7 @@ Extraído de websocket_chat (chat.py) — responsabilidade 11-13 do God function
 """
 from __future__ import annotations
 
+import time
 import asyncio
 import json
 import uuid
@@ -34,17 +35,25 @@ async def check_cache(
     history: list[dict],
     context_fingerprint: str,
     bypass_cache: bool,
+    user_id: str,
+    request_context: Any | None = None,
 ) -> "CacheHit | None":
     """Consulta o cache (exact + semantic) ou retorna None se bypass."""
     if bypass_cache:
         return None
+    t0 = time.perf_counter()
     try:
         from backend.cache.manager import cache_manager
-        return await cache_manager.get(
+        hit = await cache_manager.get(
             model_id,
             history,
             context_fingerprint=context_fingerprint or None,
+            request_context=request_context,
+            user_id=user_id,
         )
+        if request_context and hasattr(request_context, "record_phase"):
+            request_context.record_phase("fast_path", t0)
+        return hit
     except Exception:
         logger.error("Erro ao consultar cache", exc_info=True, extra={
             "model_id": model_id,
@@ -88,6 +97,7 @@ async def stream_from_llm(
     max_tokens: int | None = None,
     auto_route_decision: Any | None = None,
     reasoning_effort: str | None = None,
+    request_context: Any | None = None,
 ) -> tuple[str, str, str] | None:
     """Executa o streaming LLM com failover cascade.
 
@@ -99,6 +109,7 @@ async def stream_from_llm(
     original_model_id = model_id
     full_response = ""
     vision_relay_retry_done = False
+    attempted_model_ids: set[str] = set()
 
     while attempt < _MAX_FAILOVER_ATTEMPTS and not success:
         attempt += 1
@@ -108,6 +119,7 @@ async def stream_from_llm(
                 model_id if attempt == 1 else original_model_id,
                 db,
                 failover_enabled=True,
+                exclude_model_ids=list(attempted_model_ids),
             )
         except NoAvailableModelError as e:
             await ws.send_json({"type": "error", "message": str(e)})
@@ -196,7 +208,38 @@ async def stream_from_llm(
             if active_ctrl is not None:
                 stream_kwargs["reasoning_control"] = active_ctrl
 
+            # ── Token Bucket Preventivo com Histerese (JEV Fast Plano 16) ────
+            from backend.ranking.token_bucket import token_bucket_manager
+            is_sticky = bool(
+                auto_route_decision
+                and "sticky_routing_cache" in getattr(auto_route_decision, "matched_signals", [])
+                and current_model_id == getattr(auto_route_decision, "chosen_model_id", None)
+            )
+            token_allowed = await token_bucket_manager.consume_token(
+                current_provider_id, is_sticky=is_sticky
+            )
+            if not token_allowed:
+                logger.warning(
+                    "JEV Anti-429: Provedor '%s' (modelo '%s') sem quota preventiva de RPM. Acionando failover cascade.",
+                    current_provider_id,
+                    current_model_id,
+                )
+                attempted_model_ids.add(current_model_id)
+                if attempt == _MAX_FAILOVER_ATTEMPTS:
+                    await ws.send_json({
+                        "type": "error",
+                        "message": "Todos os provedores elegíveis atingiram o limite temporário de requisições por minuto (RPM). Aguarde alguns instantes.",
+                    })
+                    return None
+                continue
+
+            stream_start_time = time.perf_counter()
+            first_token_received = False
             async for token in provider.stream_chat(model=model_name, messages=history, **stream_kwargs):
+                if not first_token_received:
+                    first_token_received = True
+                    if request_context and hasattr(request_context, "record_phase"):
+                        request_context.record_phase("llm_ttfb", stream_start_time)
                 token_str = str(token)
                 full_response += token_str
                 await ws.send_json({"type": "token", "content": token_str})
@@ -242,6 +285,9 @@ async def stream_from_llm(
             provider_id = current_provider_id
 
         except RateLimitError as e:
+            from backend.ranking.token_bucket import token_bucket_manager
+            await token_bucket_manager.on_rate_limit(current_provider_id)
+            attempted_model_ids.add(current_model_id)
             await mark_model_exhausted(current_model_id, db, e.retry_after, str(e))
             if attempt == _MAX_FAILOVER_ATTEMPTS:
                 await ws.send_json({
@@ -348,6 +394,7 @@ async def resolve_and_stream(
     max_tokens: int | None = None,
     auto_route_decision: Any | None = None,
     reasoning_effort: str | None = None,
+    request_context: Any | None = None,
 ) -> tuple[str, "CacheHit | None", str, str] | None:
     """Fluxo completo: tenta cache, depois LLM com failover.
 
@@ -355,7 +402,8 @@ async def resolve_and_stream(
     resolved_provider_id) ou None em caso de falha irrecuperável.
     """
     cache_hit = await check_cache(
-        model_id, history, context_fingerprint, bypass_cache
+        model_id, history, context_fingerprint, bypass_cache, user_id,
+        request_context=request_context
     )
 
     if cache_hit:
@@ -366,6 +414,7 @@ async def resolve_and_stream(
         ws, db, conversation_id, user_id, model_id, provider_id, history,
         temperature=temperature, max_tokens=max_tokens, auto_route_decision=auto_route_decision,
         reasoning_effort=reasoning_effort,
+        request_context=request_context,
     )
     if result is None:
         return None
@@ -382,6 +431,8 @@ async def resolve_and_stream(
                     history,
                     full_response,
                     context_fingerprint=context_fingerprint or None,
+                    user_id=user_id,
+                    request_context=request_context,
                 )
             )
         except Exception:

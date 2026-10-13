@@ -23,7 +23,7 @@ from __future__ import annotations
 import os
 import re
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Optional, Any
 
 import aiosqlite
 
@@ -463,6 +463,7 @@ async def build_project_context(
     known_tpm: Optional[int] = None,
     provider_id: Optional[str] = None,
     safe_input_tokens: Optional[int] = None,
+    request_context: Optional[Any] = None,
 ) -> ProjectContextResult:
     """
     Build the project-scoped system message (steps 1–6).
@@ -514,7 +515,7 @@ async def build_project_context(
     if query and query.strip():
         try:
             file_hits = await search_file_chunks(
-                project_id, query, top_k=top_k, threshold=threshold
+                project_id, query, top_k=top_k, threshold=threshold, request_context=request_context
             )
             if file_hits:
                 retrieval_mode = "hybrid"
@@ -525,6 +526,7 @@ async def build_project_context(
                     query,
                     top_k=top_k,
                     threshold=max(0.28, threshold * 0.55),
+                    request_context=request_context,
                 )
                 if file_hits:
                     retrieval_mode = "hybrid_soft"
@@ -537,6 +539,7 @@ async def build_project_context(
                 exclude_conversation_id=exclude_conversation_id,
                 top_k=min(top_k, 4),
                 threshold=threshold,
+                request_context=request_context,
             )
         except Exception as e:
             logger.error("[context_builder] chat retrieval error:", exc_info=e)

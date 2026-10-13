@@ -21,7 +21,7 @@ import json
 import uuid
 import struct
 from datetime import datetime, timedelta
-from typing import Optional, NamedTuple
+from typing import Optional, NamedTuple, Any
 import aiosqlite
 
 from backend.database import DB_PATH
@@ -99,10 +99,14 @@ class CacheHit(NamedTuple):
 
 class CacheManager:
 
+    @staticmethod
+    def _db():
+        return aiosqlite.connect(DB_PATH, timeout=10.0)
+
     # ── Settings ──────────────────────────────────────────────────────────────
 
     async def get_settings(self) -> dict:
-        async with aiosqlite.connect(DB_PATH) as db:
+        async with self._db() as db:
             async with db.execute("SELECT key, value FROM cache_settings") as cur:
                 rows = await cur.fetchall()
         settings = {k: v for k, v in rows}
@@ -127,7 +131,7 @@ class CacheManager:
             logger.error("⚠️  Erro no warm-up do embedder:", exc_info=e)
 
     async def update_settings(self, updates: dict) -> None:
-        async with aiosqlite.connect(DB_PATH) as db:
+        async with self._db() as db:
             for k, v in updates.items():
                 await db.execute(
                     "INSERT OR REPLACE INTO cache_settings (key, value) VALUES (?, ?)",
@@ -159,6 +163,8 @@ class CacheManager:
         model_id: str,
         messages: list[dict],
         context_fingerprint: str | None = None,
+        request_context: Any | None = None,
+        user_id: str | None = None,
     ) -> Optional[CacheHit]:
         settings = await self.get_settings()
 
@@ -168,17 +174,22 @@ class CacheManager:
         # 1. Exact cache (full messages already include injected system/memory)
         if settings["exact_enabled"]:
             hit = await self._get_exact(
-                model_id, messages, settings["exact_ttl_hours"]
+                model_id, messages, settings["exact_ttl_hours"], user_id=user_id
             )
             if hit:
                 return hit
 
-        # 2. Semantic cache — keyed by last user msg + memory fingerprint
-        if settings["semantic_enabled"] and _HAS_NUMPY:
-            last_user = next(
-                (m["content"] for m in reversed(messages) if m["role"] == "user"),
-                None,
-            )
+        # 2. Semantic cache — Gate JEV Fast:
+        # Apenas roda busca semântica se for a primeira pergunta do usuário (não follow-up).
+        # Follow-ups (ex: "continue", "e o ponto 2?") dependem de mensagens anteriores
+        # do assistente e não devem receber respostas descontextualizadas de cache semântico.
+        user_messages = [m for m in messages if m.get("role") == "user"]
+        is_follow_up = len(user_messages) > 1
+
+        # Semantic cache rows are user-scoped. Do not query legacy/global rows
+        # when the caller has no authenticated user identity.
+        if settings["semantic_enabled"] and _HAS_NUMPY and not is_follow_up and user_id:
+            last_user = user_messages[-1].get("content") if user_messages else None
             if last_user:
                 if not isinstance(last_user, str):
                     # Multimodal parts: join text segments only
@@ -189,12 +200,17 @@ class CacheManager:
                         )
                     else:
                         last_user = str(last_user)
-                semantic_key = self._semantic_prompt_key(last_user, context_fingerprint)
+                clean_query = last_user.strip()
+                semantic_key = self._semantic_prompt_key(clean_query, context_fingerprint)
                 hit = await self._get_semantic(
                     model_id,
                     semantic_key,
                     settings["similarity_threshold"],
                     settings["semantic_ttl_hours"],
+                    request_context=request_context,
+                    user_id=user_id,
+                    context_fingerprint=context_fingerprint,
+                    query_text=clean_query,
                 )
                 if hit:
                     return hit
@@ -209,6 +225,8 @@ class CacheManager:
         messages: list[dict],
         response: str,
         context_fingerprint: str | None = None,
+        user_id: str | None = None,
+        request_context: Any | None = None,
     ) -> None:
         settings = await self.get_settings()
         if not settings["enabled"]:
@@ -218,14 +236,12 @@ class CacheManager:
 
         # Exact cache entry
         if settings["exact_enabled"]:
-            await self._set_exact(model_id, messages, response, token_est)
+            await self._set_exact(model_id, messages, response, token_est, user_id=user_id)
 
-        # Semantic cache entry
-        if settings["semantic_enabled"] and _HAS_NUMPY:
-            last_user = next(
-                (m["content"] for m in reversed(messages) if m["role"] == "user"),
-                None,
-            )
+        # Semantic cache entry (apenas primeiro turno)
+        user_messages = [m for m in messages if m.get("role") == "user"]
+        if settings["semantic_enabled"] and _HAS_NUMPY and len(user_messages) <= 1 and user_id:
+            last_user = user_messages[-1].get("content") if user_messages else None
             if last_user:
                 if not isinstance(last_user, str):
                     if isinstance(last_user, list):
@@ -235,16 +251,24 @@ class CacheManager:
                         )
                     else:
                         last_user = str(last_user)
-                semantic_key = self._semantic_prompt_key(last_user, context_fingerprint)
-                loop = asyncio.get_event_loop()
-                blob = await loop.run_in_executor(None, _embed_text, semantic_key)
+                clean_query = last_user.strip()
+                semantic_key = self._semantic_prompt_key(clean_query, context_fingerprint)
+                blob = None
+                # Reutiliza o embedding em RAM já computado por RequestContext para a query
+                if request_context and hasattr(request_context, "get_embedding"):
+                    blob = await request_context.get_embedding(clean_query)
+                if blob is None:
+                    loop = asyncio.get_event_loop()
+                    blob = await loop.run_in_executor(None, _embed_text, clean_query)
                 if blob:
-                    await self._set_semantic(model_id, semantic_key, blob, response, token_est)
+                    await self._set_semantic(
+                        model_id, semantic_key, blob, response, token_est, user_id=user_id
+                    )
 
     # ── Public: stats ─────────────────────────────────────────────────────────
 
     async def stats(self) -> dict:
-        async with aiosqlite.connect(DB_PATH) as db:
+        async with self._db() as db:
             async with db.execute(
                 """SELECT COUNT(*), COALESCE(SUM(hits),0), COALESCE(SUM(token_est * hits),0)
                    FROM cache_exact"""
@@ -303,7 +327,7 @@ class CacheManager:
 
     async def list_entries(self, cache_type: str = "exact", limit: int = 50) -> list:
         table = "cache_exact" if cache_type == "exact" else "cache_semantic"
-        async with aiosqlite.connect(DB_PATH) as db:
+        async with self._db() as db:
             col = "hash" if cache_type == "exact" else "prompt_text"
             async with db.execute(
                 f"""SELECT id, {col}, model_id, hits, token_est, created_at, last_hit
@@ -326,12 +350,12 @@ class CacheManager:
 
     async def delete_entry(self, entry_id: str, cache_type: str) -> None:
         table = "cache_exact" if cache_type == "exact" else "cache_semantic"
-        async with aiosqlite.connect(DB_PATH) as db:
+        async with self._db() as db:
             await db.execute(f"DELETE FROM {table} WHERE id = ?", (entry_id,))
             await db.commit()
 
     async def clear_all(self) -> None:
-        async with aiosqlite.connect(DB_PATH) as db:
+        async with self._db() as db:
             await db.execute("DELETE FROM cache_exact")
             await db.execute("DELETE FROM cache_semantic")
             await db.commit()
@@ -344,7 +368,7 @@ class CacheManager:
         cutoff_sem = (
             datetime.now() - timedelta(hours=settings["semantic_ttl_hours"])
         ).isoformat()
-        async with aiosqlite.connect(DB_PATH) as db:
+        async with self._db() as db:
             async with db.execute(
                 "DELETE FROM cache_exact WHERE created_at < ?", (cutoff_exact,)
             ) as cur:
@@ -358,17 +382,18 @@ class CacheManager:
 
     # ── Private: exact ────────────────────────────────────────────────────────
 
-    def _hash_messages(self, model_id: str, messages: list) -> str:
-        key = model_id + json.dumps(messages, ensure_ascii=False, sort_keys=True)
+    def _hash_messages(self, model_id: str, messages: list, user_id: str | None = None) -> str:
+        prefix = f"{user_id}:" if user_id else ""
+        key = prefix + model_id + json.dumps(messages, ensure_ascii=False, sort_keys=True)
         return hashlib.sha256(key.encode()).hexdigest()
 
     async def _get_exact(
-        self, model_id: str, messages: list, ttl_hours: int
+        self, model_id: str, messages: list, ttl_hours: int, user_id: str | None = None
     ) -> Optional[CacheHit]:
-        h = self._hash_messages(model_id, messages)
+        h = self._hash_messages(model_id, messages, user_id=user_id)
         cutoff = (datetime.now() - timedelta(hours=ttl_hours)).isoformat()
 
-        async with aiosqlite.connect(DB_PATH) as db:
+        async with self._db() as db:
             async with db.execute(
                 """SELECT id, response, token_est FROM cache_exact
                    WHERE hash = ? AND model_id = ? AND created_at > ?
@@ -395,10 +420,10 @@ class CacheManager:
         )
 
     async def _set_exact(
-        self, model_id: str, messages: list, response: str, token_est: int
+        self, model_id: str, messages: list, response: str, token_est: int, user_id: str | None = None
     ) -> None:
-        h = self._hash_messages(model_id, messages)
-        async with aiosqlite.connect(DB_PATH) as db:
+        h = self._hash_messages(model_id, messages, user_id=user_id)
+        async with self._db() as db:
             # Skip if already exists (upsert via hits+1)
             async with db.execute(
                 "SELECT id FROM cache_exact WHERE hash=? AND model_id=?", (h, model_id)
@@ -421,22 +446,70 @@ class CacheManager:
         prompt_text: str,
         threshold: float,
         ttl_hours: int,
+        request_context: Any | None = None,
+        user_id: str | None = None,
+        context_fingerprint: str | None = None,
+        query_text: str | None = None,
     ) -> Optional[CacheHit]:
-        # Generate query embedding (in thread pool to not block event loop)
-        loop = asyncio.get_event_loop()
-        blob = await loop.run_in_executor(None, _embed_text, prompt_text)
+        cutoff = (datetime.now() - timedelta(hours=ttl_hours)).isoformat()
+        fp = hashlib.sha256(prompt_text.strip().encode("utf-8")).hexdigest()
+        scope_prefix = f"[mem:{context_fingerprint}]\n" if context_fingerprint else None
+        scope_clause = (
+            "substr(prompt_text, 1, ?) = ?"
+            if scope_prefix
+            else "prompt_text NOT LIKE '[mem:%'"
+        )
+        scope_params = (len(scope_prefix), scope_prefix) if scope_prefix else ()
+
+        # JEV Fast Passo 1: Busca exata pelo hash SHA256 antes do embedding (0.001ms)
+        try:
+            async with self._db() as db:
+                async with db.execute(
+                    f"""SELECT id, response, token_est FROM cache_semantic
+                       WHERE model_id = ? AND user_id = ? AND fingerprint = ? AND created_at > ?
+                         AND {scope_clause}
+                       LIMIT 1""",
+                    (model_id, user_id, fp, cutoff, *scope_params),
+                ) as cur:
+                    exact_hit = await cur.fetchone()
+                    if exact_hit:
+                        await db.execute(
+                            "UPDATE cache_semantic SET hits=hits+1, last_hit=datetime('now') WHERE id=?",
+                            (exact_hit[0],),
+                        )
+                        await db.commit()
+                        return CacheHit(
+                            response=exact_hit[1],
+                            cache_type="semantic",
+                            similarity=1.0,
+                            entry_id=exact_hit[0],
+                            token_est=exact_hit[2] or 0,
+                        )
+        except Exception as e:
+            logger.debug("[cache_semantic] exact hash check bypass: %s", e)
+
+        # JEV Fast Passo 2: Obter embedding da query limpa (reutiliza em 0ms do request_context)
+        embed_target = (query_text or prompt_text).strip()
+        blob = None
+        if request_context and hasattr(request_context, "get_embedding"):
+            blob = await request_context.get_embedding(embed_target)
+
+        if blob is None:
+            loop = asyncio.get_event_loop()
+            blob = await loop.run_in_executor(None, _embed_text, embed_target)
+
         if blob is None:
             return None
 
         query_vec = _blob_to_embedding(blob)
-        cutoff = (datetime.now() - timedelta(hours=ttl_hours)).isoformat()
 
         # Load all candidates for this model
-        async with aiosqlite.connect(DB_PATH) as db:
+        async with self._db() as db:
             async with db.execute(
-                """SELECT id, embedding, response, token_est FROM cache_semantic
-                   WHERE model_id = ? AND created_at > ?""",
-                (model_id, cutoff),
+                f"""SELECT id, embedding, response, token_est FROM cache_semantic
+                   WHERE model_id = ? AND user_id = ? AND created_at > ?
+                     AND {scope_clause}""",
+                (model_id, user_id, cutoff, *scope_params),
             ) as cur:
                 rows = await cur.fetchall()
 
@@ -457,7 +530,7 @@ class CacheManager:
             return None
 
         # Update hit counter
-        async with aiosqlite.connect(DB_PATH) as db:
+        async with self._db() as db:
             await db.execute(
                 """UPDATE cache_semantic
                    SET hits=hits+1, last_hit=datetime('now'), similarity=?
@@ -481,22 +554,24 @@ class CacheManager:
         embedding_blob: bytes,
         response: str,
         token_est: int,
+        user_id: Optional[str] = None,
     ) -> None:
-        async with aiosqlite.connect(DB_PATH) as db:
+        fp = hashlib.sha256(prompt_text.strip().encode("utf-8")).hexdigest()
+        async with self._db() as db:
             # Avoid near-duplicate entries: if very similar already exists, skip
             async with db.execute(
                 """SELECT id FROM cache_semantic
-                   WHERE model_id = ? AND prompt_text = ?
+                   WHERE model_id = ? AND user_id = ? AND (prompt_text = ? OR fingerprint = ?)
                    LIMIT 1""",
-                (model_id, prompt_text),
+                (model_id, user_id, prompt_text, fp),
             ) as cur:
                 if await cur.fetchone():
                     return
             await db.execute(
                 """INSERT INTO cache_semantic
-                   (id, prompt_text, embedding, response, model_id, token_est)
-                   VALUES (?, ?, ?, ?, ?, ?)""",
-                (str(uuid.uuid4()), prompt_text, embedding_blob, response, model_id, token_est),
+                   (id, prompt_text, fingerprint, user_id, embedding, response, model_id, token_est)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (str(uuid.uuid4()), prompt_text, fp, user_id, embedding_blob, response, model_id, token_est),
             )
             await db.commit()
 

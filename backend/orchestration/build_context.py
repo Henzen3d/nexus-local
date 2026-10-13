@@ -41,10 +41,12 @@ async def build_memory_context(
     use_memory: bool,
     provider_id: str,
     model_id: str,
+    request_context: Any | None = None,
 ) -> tuple[str, str]:
     """Carrega perfil + memórias e retorna (memory_text, fingerprint).
 
     Substitui os itens 9 do AUDIT-REPORT (linhas 611-665 do chat.py original).
+    Reutiliza embeddings em RAM se request_context for fornecido (JEV Fast).
     """
     if not user or "id" not in user or not use_memory:
         return "", "nomem"
@@ -80,7 +82,9 @@ async def build_memory_context(
                     extra={"conversation_id": conversation_id, "user_id": user_id},
                 )
 
-            mem_rows = await get_relevant_memory(user_id, user_message or "", limit=30)
+            mem_rows = await get_relevant_memory(
+                user_id, user_message or "", limit=30, request_context=request_context
+            )
             global_sum = await get_memory_summary(user_id, "global", "")
             project_tag = await get_conversation_project_tag(conversation_id)
             if project_tag:
@@ -120,6 +124,7 @@ async def resolve_project_context(
     project_context_debug: bool,
     base_system: str,
     user_mem_text: str,
+    request_context: Any | None = None,
 ) -> tuple[str | None, str]:
     """Resolve o project_id ativo e, se houver, constrói o context RAG.
 
@@ -221,6 +226,7 @@ async def resolve_project_context(
             known_tpm=known_tpm,
             provider_id=provider_id,
             safe_input_tokens=safe_input,
+            request_context=request_context,
         )
         system_instruction = pctx.system_content
 

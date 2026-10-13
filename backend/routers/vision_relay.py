@@ -59,6 +59,11 @@ async def update_config(body: VisionRelayConfigUpdate, current_user: dict = Depe
                 )
             )
         await db.commit()
+        try:
+            from backend.vision_relay.relay import invalidate_vision_l1_cache
+            invalidate_vision_l1_cache()
+        except Exception:
+            pass
         return {"ok": True}
     finally:
         await db.close()

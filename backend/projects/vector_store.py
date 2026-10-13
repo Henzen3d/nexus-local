@@ -16,7 +16,7 @@ from __future__ import annotations
 import math
 import re
 from collections import Counter
-from typing import Optional
+from typing import Optional, Any
 
 import aiosqlite
 
@@ -130,11 +130,20 @@ async def search_file_chunks(
     query: str,
     top_k: int = DEFAULT_TOP_K,
     threshold: float = DEFAULT_RETRIEVAL_THRESHOLD,
+    request_context: Optional[Any] = None,
+    query_blob: Optional[bytes] = None,
 ) -> list[dict]:
     """Retrieve top-K file chunks for a project (hybrid dense + lexical)."""
     if not is_embedder_ready() and not (await embed_text_async("x")):
         return []
-    q_blob = await embed_text_async(query)
+
+    q_blob = query_blob
+    if not q_blob:
+        if request_context and hasattr(request_context, "get_embedding"):
+            q_blob = await request_context.get_embedding(query)
+        else:
+            q_blob = await embed_text_async(query)
+
     if not q_blob:
         return []
     q_vec = blob_to_embedding(q_blob)
@@ -186,12 +195,20 @@ async def search_chat_chunks(
     exclude_conversation_id: Optional[str] = None,
     top_k: int = DEFAULT_TOP_K,
     threshold: float = DEFAULT_RETRIEVAL_THRESHOLD,
+    request_context: Optional[Any] = None,
+    query_blob: Optional[bytes] = None,
 ) -> list[dict]:
     """
     Retrieve top-K sibling chat chunks for a project (hybrid dense + lexical).
     Always excludes the current conversation (sibling-chat differentiation).
     """
-    q_blob = await embed_text_async(query)
+    q_blob = query_blob
+    if not q_blob:
+        if request_context and hasattr(request_context, "get_embedding"):
+            q_blob = await request_context.get_embedding(query)
+        else:
+            q_blob = await embed_text_async(query)
+
     if not q_blob:
         return []
     q_vec = blob_to_embedding(q_blob)

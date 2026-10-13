@@ -8,7 +8,7 @@ import asyncio
 import os
 import uuid
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Any
 
 import aiosqlite
 
@@ -189,6 +189,7 @@ async def retrieve_related_chats(
     exclude_conversation_id: Optional[str] = None,
     top_k: int = DEFAULT_TOP_K,
     threshold: float = DEFAULT_RETRIEVAL_THRESHOLD,
+    request_context: Optional[Any] = None,
 ) -> list[dict]:
     """Public API used by Context Builder — sibling chats only."""
     return await search_chat_chunks(
@@ -197,6 +198,7 @@ async def retrieve_related_chats(
         exclude_conversation_id=exclude_conversation_id,
         top_k=top_k,
         threshold=threshold,
+        request_context=request_context,
     )
 
 

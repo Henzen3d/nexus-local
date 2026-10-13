@@ -441,6 +441,27 @@ def classify_intent(
     )
 
 
+# ── Cache de Modelos em Memória (JEV Fast Model Cache) ─────────────────────
+_MODEL_CACHE: Optional[List[Dict[str, Any]]] = None
+_MODEL_CACHE_TIME: float = 0.0
+_MODEL_CACHE_TTL: float = 30.0  # 30 segundos de vida útil em RAM
+
+
+def invalidate_model_cache() -> None:
+    """Invalida o cache de modelos em memória (chamado em failover ou admin)."""
+    global _MODEL_CACHE, _MODEL_CACHE_TIME
+    _MODEL_CACHE = None
+    _MODEL_CACHE_TIME = 0.0
+
+
+def is_trivial_greeting(prompt: str) -> bool:
+    """Verifica instantaneamente (<0.01ms) se o prompt é uma saudação trivial pura."""
+    if not prompt:
+        return False
+    p = prompt.strip()
+    return len(p) <= 35 and bool(_RE_TRIVIAL_SHORT.match(p))
+
+
 # ── Seleção de Modelo com Blindagem de 2ª Escala ─────────────────────────────
 
 async def select_best_model(
@@ -451,6 +472,7 @@ async def select_best_model(
 ) -> AutoRouteDecision:
     """
     Executa a seleção do modelo candidato combinando:
+    - JEV Fast Model Cache em RAM (TTL 30s) para evitar queries repetidas
     - Verificação de sanidade (enabled == 1, quota != exhausted/cooldown)
     - Context Window Guard (context_length >= min_context_required)
     - Multimodalidade (supports_vision == 1 ou provedor de visão)
@@ -458,7 +480,7 @@ async def select_best_model(
     - Rotação ponderada contra Thundering Herd em provedores free
     - Ordenação final por NexusLocal Score / Quality Score
     """
-    global _SLOT_ROTATION_COUNTER
+    global _SLOT_ROTATION_COUNTER, _MODEL_CACHE, _MODEL_CACHE_TIME
     t_start = time.perf_counter()
 
     if isinstance(policy, RoutingPolicy):
@@ -466,43 +488,56 @@ async def select_best_model(
     else:
         policy_str = str(policy or "balanced_smart").lower().strip()
 
-    # 1. Carrega todos os modelos habilitados e suas métricas
-    query = """
-        SELECT m.id, m.provider_id, m.name, m.display_name, m.context_length,
-               COALESCE(m.confirmed_free, 0) as confirmed_free,
-               COALESCE(p.is_free, 0) as prov_is_free,
-               COALESCE(mr.nexuslocal_score, 50.0) as nexuslocal_score,
-               COALESCE(mr.quality_score, 50.0) as quality_score,
-               COALESCE(mqs.status, 'available') as quota_status,
-               COALESCE(m.supports_vision, 0) as supports_vision
-        FROM models m
-        JOIN providers p ON p.id = m.provider_id
-        LEFT JOIN model_rankings mr ON mr.model_id = m.id
-        LEFT JOIN model_quota_status mqs ON mqs.model_id = m.id
-        WHERE m.enabled = 1 AND p.enabled = 1
-    """
-    async with db.execute(query) as cur:
-        rows = await cur.fetchall()
+    # 1. Carrega todos os modelos habilitados (com JEV Model Cache em RAM)
+    now = time.monotonic()
+    if _MODEL_CACHE is not None and (now - _MODEL_CACHE_TIME) < _MODEL_CACHE_TTL:
+        models_data = [dict(m) for m in _MODEL_CACHE]
+    else:
+        query = """
+            SELECT m.id, m.provider_id, m.name, m.display_name, m.context_length,
+                   COALESCE(m.confirmed_free, 0) as confirmed_free,
+                   COALESCE(p.is_free, 0) as prov_is_free,
+                   COALESCE(mr.nexuslocal_score, 50.0) as nexuslocal_score,
+                   COALESCE(mr.quality_score, 50.0) as quality_score,
+                   COALESCE(mqs.status, 'available') as quota_status,
+                   COALESCE(m.supports_vision, 0) as supports_vision
+            FROM models m
+            JOIN providers p ON p.id = m.provider_id
+            LEFT JOIN model_rankings mr ON mr.model_id = m.id
+            LEFT JOIN model_quota_status mqs ON mqs.model_id = m.id
+            WHERE m.enabled = 1 AND p.enabled = 1
+        """
+        async with db.execute(query) as cur:
+            rows = await cur.fetchall()
 
-    if not rows:
-        raise ValueError("Nenhum modelo habilitado encontrado no sistema.")
+        if not rows:
+            raise ValueError("Nenhum modelo habilitado encontrado no sistema.")
 
-    models_data: List[Dict[str, Any]] = []
-    for r in rows:
-        models_data.append({
-            "id": r[0],
-            "provider_id": r[1],
-            "name": r[2],
-            "display_name": r[3],
-            "context_length": r[4] or 8192,
-            "confirmed_free": r[5],
-            "prov_is_free": r[6],
-            "is_free": 1 if (r[5] == 1 or r[6] == 1) else 0,
-            "nexuslocal_score": float(r[7]),
-            "quality_score": float(r[8]),
-            "quota_status": r[9],
-            "supports_vision": r[10],
-        })
+        models_data = []
+        for r in rows:
+            models_data.append({
+                "id": r[0],
+                "provider_id": r[1],
+                "name": r[2],
+                "display_name": r[3],
+                "context_length": r[4] or 8192,
+                "confirmed_free": r[5],
+                "prov_is_free": r[6],
+                "is_free": 1 if (r[5] == 1 or r[6] == 1) else 0,
+                "nexuslocal_score": float(r[7]),
+                "quality_score": float(r[8]),
+                "quota_status": r[9],
+                "supports_vision": r[10],
+            })
+        _MODEL_CACHE = models_data
+        _MODEL_CACHE_TIME = now
+
+    # Quota is volatile state; keep it live even while the slower catalog/ranking
+    # join is cached. This avoids routing for up to 30s using stale availability.
+    async with db.execute("SELECT model_id, status FROM model_quota_status") as cur:
+        quota_status_by_model = {row[0]: row[1] for row in await cur.fetchall()}
+    for model in models_data:
+        model["quota_status"] = quota_status_by_model.get(model["id"], "available")
 
     # 2. Filtro de Sanidade e Cooldown (Descarta esgotados)
     available_models = [

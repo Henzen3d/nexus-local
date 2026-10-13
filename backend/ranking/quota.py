@@ -66,6 +66,11 @@ async def mark_model_exhausted(
         (model_id, now_str, reset_str, error_msg)
     )
     await db.commit()
+    try:
+        from backend.ranking.smart_router import invalidate_model_cache
+        invalidate_model_cache()
+    except Exception:
+        pass
     logger.warning("⚠️ Quota exhausted for model %s. Reset estimated at %s", model_id, reset_str)
 
 
@@ -128,6 +133,11 @@ async def release_expired_quotas(db: aiosqlite.Connection) -> int:
         model_ids
     )
     await db.commit()
-    
+    try:
+        from backend.ranking.smart_router import invalidate_model_cache
+        invalidate_model_cache()
+    except Exception:
+        pass
+
     logger.info("🔄 Released expired quotas for %s models: %s", len(model_ids), model_ids)
     return len(model_ids)

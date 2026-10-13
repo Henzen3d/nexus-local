@@ -265,6 +265,11 @@ async def sync_provider_models(provider_id: str, db, custom_api_key: str = None)
     await seed_reasoning_controls(db)
 
     await db.commit()
+    try:
+        from backend.ranking.smart_router import invalidate_model_cache
+        invalidate_model_cache()
+    except Exception:
+        pass
     return {"updated": updated_count, "skipped": skipped_count, "errors": []}
 
 
@@ -478,6 +483,11 @@ async def update_provider(provider_id: str, body: ProviderUpdate, current_user: 
                 "UPDATE providers SET enabled = ? WHERE id = ?",
                 (1 if body.enabled else 0, provider_id),
             )
+            try:
+                from backend.ranking.smart_router import invalidate_model_cache
+                invalidate_model_cache()
+            except Exception:
+                pass
         await db.commit()
 
         if should_sync and body.api_key is not None:
@@ -525,6 +535,11 @@ async def toggle_model(model_id: str, body: ModelUpdate, current_user: dict = De
                 (body.reasoning_control, levels_json, body.reasoning_default, source, model_id),
             )
         await db.commit()
+        try:
+            from backend.ranking.smart_router import invalidate_model_cache
+            invalidate_model_cache()
+        except Exception:
+            pass
         return {"ok": True}
     finally:
         await db.close()
@@ -546,6 +561,11 @@ async def confirm_model_free(model_id: str, current_user: dict = Depends(require
             (model_id,)
         )
         await db.commit()
+        try:
+            from backend.ranking.smart_router import invalidate_model_cache
+            invalidate_model_cache()
+        except Exception:
+            pass
         return {"ok": True}
     finally:
         await db.close()
@@ -560,6 +580,11 @@ async def toggle_all_provider_models(provider_id: str, body: ModelToggle, curren
             (1 if body.enabled else 0, provider_id),
         )
         await db.commit()
+        try:
+            from backend.ranking.smart_router import invalidate_model_cache
+            invalidate_model_cache()
+        except Exception:
+            pass
         return {"ok": True}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -862,3 +887,19 @@ async def update_share_config(body: ShareConfigUpdate, current_user: dict = Depe
         status_code=403,
         detail="Compartilhamento de chaves está desligado. Cada usuário usa a própria chave.",
     )
+
+
+@router.get("/benchmark/stats")
+async def get_benchmark_stats(task_type: Optional[str] = None, current_user: dict = Depends(require_admin)):
+    """Retorna estatísticas agregadas de benchmarking por tipo de tarefa (Plano 09)."""
+    from backend.metrics import task_benchmark_manager
+    stats = task_benchmark_manager.get_aggregated_stats(task_type)
+    return {"benchmark_stats": stats}
+
+
+@router.get("/rate-limits")
+async def get_rate_limits_status(current_user: dict = Depends(require_admin)):
+    """Retorna o status em tempo real dos buckets de rate limit em RAM (Plano 16)."""
+    from backend.ranking.token_bucket import token_bucket_manager
+    return {"rate_limits": token_bucket_manager.get_status()}
+

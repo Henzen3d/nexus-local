@@ -2,11 +2,14 @@
 
 > **Jev** = *Just Execute Virtual* — Sistema de cache e otimizações que elimina work desnecessário mantendo 100% da inteligência original.
 
+> ⚠️ **STATUS: IMPLEMENTAÇÃO PARCIAL; alegações de performance e estabilidade precisam de validação.**
+> A revisão corretiva atual está em [REVISAO-RED-TEAM-CORRECOES.md](REVISAO-RED-TEAM-CORRECOES.md); o histórico das propostas está em [CONSOLIDACAO-JEV-FAST.md](CONSOLIDACAO-JEV-FAST.md).
+
 ---
 
 ## 🎯 Objetivo
 
-Reduzir o **preprocessing de ~133ms para ~24ms** (87% mais rápido) sem perder nenhuma funcionalidade ou precisão na escolha de modelos.
+Meta original: reduzir o preprocessing de ~133ms para ~24ms. Esses valores são estimativas dos planos e não foram confirmados por benchmark reproduzível nesta revisão.
 
 ### Baseline Atual (Medido em Produção)
 
@@ -473,23 +476,20 @@ Após análise profunda da filosofia JEV, **5 novas oportunidades** foram identi
 - [ ] `13-gate-memory-dream.md` — 2h (shadow mode 1 semana)
 - [ ] `14-fusion-quorum-judge.md` — 1.5h
 - [ ] `15-fusion-k-of-n-timeout.md` — 1.5h
-- [ ] `16-anti-429-token-bucket.md` — 1.5h
-- [ ] Deploy produção
+### Fase E — Conceitos Avançados (Inspirados no Laya / System 1 Decision Engine)
+- [ ] [19-laya-head-budgeting.md](19-laya-head-budgeting.md) — Head Budgeting para Embeddings
+- [ ] [20-laya-abstention-gating.md](20-laya-abstention-gating.md) — Abstention Gating
+- [ ] [21-laya-unicode-prefilter.md](21-laya-unicode-prefilter.md) — Pré-Filtro de Scripts Unicode e Densidade Estrutural
 
 ---
 
 ## ✅ Próximos Passos
 
-1. **Revisão:** Ler documentos 01-18 em detalhes
-2. **Decisão:** Aprovar implementação Fase A (P0)
-3. **Implementação:** Seguir checklist de Fase A
-4. **Testes:** Rodar suite de testes completa
-5. **Deploy:** Push para staging e produção
-6. **Monitoramento:** Acompanhar métricas por 48h
+1. **Revisão:** Consultar [REVISAO-RED-TEAM-CORRECOES.md](REVISAO-RED-TEAM-CORRECOES.md) antes de implementar os planos.
+2. **Planos 19–21:** Permanecem bloqueados até atender às correções de segurança e precisão descritas na revisão.
+3. **Deploy:** Manter integridade do banco e build do frontend validados.
 
 ---
 
-*Documento criado: 2026-10-13*  
-*Atualizado: 2026-10-13 (análise Claude rodada 2 adicionada)*  
-*Status: Planejamento completo*  
-*Próximo passo: Implementar Fase A (P0)*
+*Documento atualizado: 2026-10-13*
+*Status: Implementação parcial; veja a revisão corretiva antes de novos deploys.*

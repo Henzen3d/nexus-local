@@ -1,4 +1,7 @@
 import base64
+import asyncio
+import time
+from collections import OrderedDict
 from pathlib import Path
 from backend.database import get_db, check_and_deactivate_model
 from backend.providers.registry import get_provider, get_model_name
@@ -26,19 +29,51 @@ async def read_as_base64(relative_path: str) -> str:
     abs_path = get_absolute_path(relative_path)
     if not abs_path.exists():
         raise RelayError(f"Arquivo de imagem não encontrado no disco: {relative_path}")
-    with open(abs_path, "rb") as f:
-        data = f.read()
+    data = await asyncio.to_thread(abs_path.read_bytes)
     return base64.b64encode(data).decode("utf-8")
 
+# JEV Fast: Cache L1 em RAM para descrições de imagens (0ms)
+_VISION_L1_CACHE: OrderedDict[str, tuple[str, float]] = OrderedDict()
+_VISION_L1_TTL = 3600.0  # 1 hora
+_VISION_L1_MAX_ENTRIES = 512
+
+
 async def get_cached_description(file_hash: str, db) -> str | None:
+    key = file_hash
+    now = time.monotonic()
+    if key in _VISION_L1_CACHE:
+        desc, ts = _VISION_L1_CACHE[key]
+        if now - ts < _VISION_L1_TTL:
+            _VISION_L1_CACHE.move_to_end(key)
+            return desc
+        del _VISION_L1_CACHE[key]
+
     async with db.execute(
         "SELECT description FROM vision_descriptions_cache WHERE file_hash = ?",
         (file_hash,)
     ) as cur:
         row = await cur.fetchone()
-    return row[0] if row else None
+    if row and row[0]:
+        _VISION_L1_CACHE[key] = (row[0], now)
+        _VISION_L1_CACHE.move_to_end(key)
+        while len(_VISION_L1_CACHE) > _VISION_L1_MAX_ENTRIES:
+            _VISION_L1_CACHE.popitem(last=False)
+        return row[0]
+    return None
+
+
+def invalidate_vision_l1_cache() -> None:
+    """Invalida o cache em RAM de descrições de visão."""
+    global _VISION_L1_CACHE
+    _VISION_L1_CACHE.clear()
+
 
 async def save_description_cache(file_hash: str, description: str, relay_model: str, db) -> None:
+    key = file_hash
+    _VISION_L1_CACHE[key] = (description, time.monotonic())
+    _VISION_L1_CACHE.move_to_end(key)
+    while len(_VISION_L1_CACHE) > _VISION_L1_MAX_ENTRIES:
+        _VISION_L1_CACHE.popitem(last=False)
     await db.execute(
         """INSERT OR REPLACE INTO vision_descriptions_cache (file_hash, description, relay_model)
            VALUES (?, ?, ?)""",
@@ -103,16 +138,16 @@ async def describe_image_via_relay(
         ]
 
         # 4. Stream chat to accumulate description
-        description = ""
+        chunks: list[str] = []
         try:
             async for chunk in provider.stream_chat(model=model_name, messages=messages, temperature=0.2):
-                description += chunk
+                chunks.append(chunk)
         except Exception as e:
             error_msg = str(e)
             await check_and_deactivate_model(final_model_id, error_msg, db)
             raise RelayError(f"Erro ao chamar modelo intérprete '{final_model_id}': {error_msg}")
 
-        description = description.strip()
+        description = "".join(chunks).strip()
         if not description:
             raise RelayError("O modelo intérprete retornou uma descrição vazia.")
 

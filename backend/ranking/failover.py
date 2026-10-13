@@ -131,12 +131,17 @@ async def _get_next_best_ranked_model(
     ) as cur:
         rows = await cur.fetchall()
 
+    from backend.ranking.token_bucket import token_bucket_manager
+    candidate_fallback = None
     for row in rows:
         mid, pid, dname, _ = row
         if mid not in all_excluded:
-            return mid, pid, dname
+            if token_bucket_manager.is_provider_available(pid):
+                return mid, pid, dname
+            elif candidate_fallback is None:
+                candidate_fallback = (mid, pid, dname)
 
-    return None
+    return candidate_fallback
 
 
 async def resolve_model_with_failover(
@@ -145,6 +150,7 @@ async def resolve_model_with_failover(
     failover_reason: str = "rate_limit",
     failover_enabled: bool = True,
     force_skip: bool = False,
+    exclude_model_ids: Optional[list[str]] = None,
 ) -> ResolvedModel:
     """
     Resolve o modelo final a ser usado, com cascata de failover de 2 tiers.
@@ -156,6 +162,7 @@ async def resolve_model_with_failover(
         failover_enabled: Se False, não faz failover e levanta NoAvailableModelError
                           imediatamente se o modelo estiver esgotado.
         force_skip: Se True, ignora o status "available" do modelo e força o failover.
+        exclude_model_ids: Lista de modelos já tentados ou throttled no mesmo turno.
 
     Returns:
         ResolvedModel com o modelo final (com ou sem failover).
@@ -163,6 +170,9 @@ async def resolve_model_with_failover(
     Raises:
         NoAvailableModelError: Se nenhum modelo disponível for encontrado.
     """
+    if exclude_model_ids and requested_model_id in exclude_model_ids:
+        force_skip = True
+
     # ── Verificação do modelo solicitado ─────────────────────────────────────
     quota = await get_quota_status(requested_model_id, db)
 
@@ -181,7 +191,8 @@ async def resolve_model_with_failover(
                 db, 
                 failover_reason="preemptive_quota", 
                 failover_enabled=failover_enabled, 
-                force_skip=True
+                force_skip=True,
+                exclude_model_ids=exclude_model_ids,
             )
 
         # Caminho feliz — sem failover
@@ -224,8 +235,12 @@ async def resolve_model_with_failover(
         )
 
         for member_model_id, member_provider_id, fallback_order in members:
-            # Pula o modelo original (já sabemos que está esgotado)
-            if member_model_id == requested_model_id:
+            # Pula o modelo original ou modelos já excluídos
+            if member_model_id == requested_model_id or (exclude_model_ids and member_model_id in exclude_model_ids):
+                continue
+
+            from backend.ranking.token_bucket import token_bucket_manager
+            if not token_bucket_manager.is_provider_available(member_provider_id):
                 continue
 
             member_quota = await get_quota_status(member_model_id, db)
@@ -256,9 +271,10 @@ async def resolve_model_with_failover(
         )
 
     # ── Tier 2 — Melhor modelo disponível no ranking geral ───────────────────
+    all_excluded = list(set([requested_model_id] + (exclude_model_ids or [])))
     next_best = await _get_next_best_ranked_model(
         db=db,
-        exclude_model_ids=[requested_model_id],
+        exclude_model_ids=all_excluded,
         exclude_family_ids=[family_id] if family_id else [],
     )
 
