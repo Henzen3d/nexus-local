@@ -91,7 +91,7 @@ async def move_attachments_to_conversation(attachment_ids: list[str], conversati
             """UPDATE attachments 
                SET message_id = ?, storage_path = ?, thumbnail_path = ? 
                WHERE id = ?""",
-            (message_id, new_storage_rel, new_thumb_rel, att_id)
+            (message_id, new_storage_rel.replace("\\", "/"), new_thumb_rel.replace("\\", "/") if new_thumb_rel else None, att_id)
         )
     await db.commit()
 
@@ -124,5 +124,5 @@ def save_attachment_for_conversation(
         logger.error("Failed to generate thumbnail for generated image:", exc_info=e)
         thumb_rel_path = None
 
-    return file_rel_path, thumb_rel_path
+    return file_rel_path.replace("\\", "/"), thumb_rel_path.replace("\\", "/") if thumb_rel_path else None
 

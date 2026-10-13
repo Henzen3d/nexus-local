@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Artifact, Conversation, ConversationDetail, Message, Model, CacheStats, CacheSettings, FusionStatusEntry, Attachment, WebSearchSource, AutoRouteDecisionInfo, UiEnvelope, ProgressBlock, ProcessStep } from '../types'
+import type { Artifact, Conversation, ConversationDetail, Message, Model, CacheStats, CacheSettings, FusionStatusEntry, Attachment, LibraryItem, WebSearchSource, AutoRouteDecisionInfo, UiEnvelope, ProgressBlock, ProcessStep } from '../types'
 import { api } from '../api/client'
 import { detectInitialLocale } from '../i18n'
 import { effectivePreferredModel } from '../lib/modelSelection'
@@ -204,7 +204,7 @@ interface AppState {
   getActiveReasoningEffort: () => string | null
 
   // View
-  view: 'chat' | 'admin' | 'conversations' | 'artifacts' | 'projects'
+  view: 'chat' | 'admin' | 'conversations' | 'artifacts' | 'projects' | 'library'
   theme: 'light' | 'dark' | 'system'
   chatFont: 'sans' | 'serif' | 'mono'
   locale: string
@@ -214,6 +214,16 @@ interface AppState {
   fullName: string
   occupation: string
   customInstructions: string
+
+  // Library state
+  libraryItems: LibraryItem[]
+  libraryLoading: boolean
+  libraryFilter: 'all' | 'generated' | 'image' | 'document'
+  librarySearch: string
+  setLibraryFilter: (filter: 'all' | 'generated' | 'image' | 'document') => void
+  setLibrarySearch: (search: string) => void
+  loadLibrary: (filter?: 'all' | 'generated' | 'image' | 'document', search?: string) => Promise<void>
+  deleteLibraryItem: (id: string) => Promise<void>
 
   // Cache state
   cacheStats: CacheStats | null
@@ -260,7 +270,7 @@ interface AppState {
   /** Troca de provedor: restaura o último modelo usado nele (ou o 1º por ranking). */
   selectProvider: (providerId: string) => void
   setSidebarOpen: (v: boolean) => void
-  setView: (v: 'chat' | 'admin' | 'conversations' | 'artifacts' | 'projects') => void
+  setView: (v: 'chat' | 'admin' | 'conversations' | 'artifacts' | 'projects' | 'library') => void
   setConversationProjectTag: (id: string, projectTag: string | null) => Promise<void>
   /** Assign conversation to a first-class Project workspace (project_id FK) */
   setConversationProjectId: (id: string, projectId: string | null) => Promise<void>
@@ -492,6 +502,10 @@ export const useStore = create<AppState>((set, get) => ({
   activeConversationArtifacts: [],
   allArtifacts: [],
   _pendingArtifactId: null,
+  libraryItems: [],
+  libraryLoading: false,
+  libraryFilter: 'all',
+  librarySearch: '',
   projectAssignConversationId: null,
   activeProjectId: null,
   projectNameById: {},
@@ -669,6 +683,9 @@ export const useStore = create<AppState>((set, get) => ({
     }
 
     get().showToast('Imagem gerada com sucesso!', 'success')
+    if (get().view === 'library') {
+      get().loadLibrary()
+    }
   },
 
   handleImageFailed: (event) => {
@@ -945,7 +962,39 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   setSidebarOpen: (v: boolean) => set({ sidebarOpen: v }),
-  setView: (v: 'chat' | 'admin' | 'conversations' | 'artifacts' | 'projects') => set({ view: v }),
+  setView: (v: 'chat' | 'admin' | 'conversations' | 'artifacts' | 'projects' | 'library') => set({ view: v }),
+  setLibraryFilter: (filter) => {
+    set({ libraryFilter: filter })
+    get().loadLibrary(filter, get().librarySearch)
+  },
+  setLibrarySearch: (search) => {
+    set({ librarySearch: search })
+    get().loadLibrary(get().libraryFilter, search)
+  },
+  loadLibrary: async (filter, search) => {
+    const f = filter !== undefined ? filter : get().libraryFilter
+    const s = search !== undefined ? search : get().librarySearch
+    set({ libraryLoading: true })
+    try {
+      const res = await api.getLibraryItems(f, s)
+      set({ libraryItems: res.items || [], libraryLoading: false })
+    } catch (err) {
+      console.error('Failed to load library:', err)
+      set({ libraryLoading: false })
+    }
+  },
+  deleteLibraryItem: async (id: string) => {
+    try {
+      await api.deleteLibraryItem(id)
+      set((s) => ({
+        libraryItems: s.libraryItems.filter((item) => item.id !== id),
+      }))
+      get().showToast('Item excluído da biblioteca', 'info')
+    } catch (err) {
+      console.error('Failed to delete library item:', err)
+      get().showToast('Erro ao excluir item', 'error')
+    }
+  },
   setProjectAssignConversationId: (id) => set({ projectAssignConversationId: id }),
   setActiveProjectId: (id) => {
     // Avoid notify/re-render loops when the same project is set again

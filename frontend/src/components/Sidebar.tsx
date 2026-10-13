@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback, useLayoutEffect } from 'react
 import { createPortal } from 'react-dom'
 import {
   MessageSquare, Trash2, Pencil, Check, X, ChevronRight,
-  Sparkles, Globe, Image, FileText, Atom, FileCode, Download, LogOut,
+  Sparkles, Globe, Image, Images, FileText, Atom, FileCode, Download, LogOut,
   MoreVertical, Star, Sun, Moon, Folder, Search, PanelLeftClose, PanelLeftOpen, Plus,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -800,6 +800,19 @@ export function Sidebar() {
           >
             <Folder size={20} />
             <span>{t('sidebar.projects', { defaultValue: 'Projetos' })}</span>
+          </button>
+          <button
+            type="button"
+            className={`sidebar-fixed-nav-item custom-tooltip-trigger ${view === 'library' ? 'selected' : ''}`}
+            data-tooltip={t('sidebar.library', { defaultValue: 'Biblioteca' })}
+            aria-label={t('sidebar.library', { defaultValue: 'Biblioteca' })}
+            onClick={() => {
+              setView('library')
+              if (window.innerWidth <= MOBILE_BREAKPOINT) setSidebarOpen(false)
+            }}
+          >
+            <Images size={20} />
+            <span>{t('sidebar.library', { defaultValue: 'Biblioteca' })}</span>
           </button>
           <button
             type="button"

@@ -191,8 +191,8 @@ async def process_image_task(task: dict):
         # Limpa o texto residual provisório do placeholder ("Gerando imagem…")
         await db.execute("UPDATE messages SET content = '' WHERE id = ?", (msg_id,))
 
-        # Conclui a tarefa no banco
-        await complete_image_task(db, task_id)
+        # Conclui a tarefa no banco vinculando o attachment_id
+        await complete_image_task(db, task_id, att_id)
         await db.commit()
 
         logger.info("[image_gen worker] Imagem gerada e salva com sucesso para task %s (anexo=%s)", task_id, att_id)

@@ -9,6 +9,25 @@ export interface Attachment {
   extracted_text?: string | null
 }
 
+export interface LibraryItem {
+  id: string
+  message_id?: string | null
+  conversation_id?: string | null
+  conversation_title?: string | null
+  filename: string
+  mime_type: string
+  file_type: 'document' | 'image'
+  size_bytes: number
+  storage_path: string
+  thumbnail_path?: string | null
+  thumbnail_url?: string | null
+  file_url: string
+  created_at: string
+  is_generated: boolean
+  prompt?: string | null
+  model_id?: string | null
+}
+
 export interface VisionRelayConfig {
   relay_provider_id: string | null
   relay_model_id: string | null

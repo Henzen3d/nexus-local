@@ -1772,6 +1772,7 @@ async def init_db():
         try:
             await db.execute("CREATE INDEX IF NOT EXISTS idx_image_tasks_status ON image_gen_tasks(status, created_at)")
             await db.execute("CREATE INDEX IF NOT EXISTS idx_image_tasks_user_day ON image_gen_tasks(user_id, created_at)")
+            await db.execute("CREATE INDEX IF NOT EXISTS idx_image_tasks_att ON image_gen_tasks(attachment_id)")
             await db.commit()
         except Exception as e:
             logger.error("[database migration] erro ao criar índices de image_gen_tasks:", exc_info=e)

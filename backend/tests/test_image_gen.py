@@ -64,6 +64,7 @@ async def test_image_gen_db_and_queue(monkeypatch):
     os.close(fd)
 
     try:
+        monkeypatch.setenv("JWT_SECRET", "test-secret-for-tests-only-1234567890")
         import backend.database as db_mod
         monkeypatch.setattr(db_mod, "DB_PATH", tmp_db_path)
 
@@ -164,6 +165,31 @@ async def test_image_gen_db_and_queue(monkeypatch):
         assert claimed_mixed["id"] == mixed_id
         assert claimed_mixed["prompt"] == "chamada mista db + kwargs"
         await fail_image_task(mixed_id, error_message="cleanup mixed")
+
+        # 10. Testa list_library_items e delete_library_item
+        from backend.routers.attachments import list_library_items, delete_library_item
+        async with aiosqlite.connect(tmp_db_path) as db:
+            await db.execute(
+                "INSERT INTO messages (id, conversation_id, role, content) VALUES ('m-att', 'c1', 'assistant', '')"
+            )
+            await db.execute(
+                """INSERT INTO attachments (id, message_id, filename, mime_type, file_type, size_bytes, file_hash, storage_path, thumbnail_path)
+                   VALUES ('att-test-1', 'm-att', 'image.jpg', 'image/jpeg', 'image', 2048, 'hash1', 'c1/att-test-1_image.jpg', 'c1/att-test-1_thumb.jpg')"""
+            )
+            await db.commit()
+
+        current_user = {"id": "u1", "username": "test_user", "role": "user"}
+        lib = await list_library_items(current_user=current_user)
+        assert lib["total"] >= 1
+        found = [x for x in lib["items"] if x["id"] == "att-test-1"][0]
+        assert found["filename"] == "image.jpg"
+        assert found["is_generated"] is True
+        assert found["file_url"] == "/attachments/c1/att-test-1_image.jpg"
+
+        del_res = await delete_library_item("att-test-1", current_user=current_user)
+        assert del_res["status"] == "ok"
+        lib_after = await list_library_items(current_user=current_user)
+        assert not any(x["id"] == "att-test-1" for x in lib_after["items"])
 
     finally:
         # Remove arquivo temporário

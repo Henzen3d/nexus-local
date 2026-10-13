@@ -1,4 +1,4 @@
-import type { Conversation, ConversationDetail, Model, Provider, CacheStats, CacheSettings, CacheEntry, EnhancerConfig, FusionConfig, Artifact, Attachment, VisionRelayConfig, WebSearchConfig, WebSearchLog } from '../types'
+import type { Conversation, ConversationDetail, Model, Provider, CacheStats, CacheSettings, CacheEntry, EnhancerConfig, FusionConfig, Artifact, Attachment, LibraryItem, VisionRelayConfig, WebSearchConfig, WebSearchLog } from '../types'
 
 export interface UserProfileApi {
   user_id?: string
@@ -226,6 +226,21 @@ export const api = {
       } as Attachment
     })
   },
+
+  // Library & Attachments
+  getLibraryItems: (filterType = 'all', search = '', limit = 100, offset = 0) => {
+    const params = new URLSearchParams()
+    if (filterType && filterType !== 'all') params.append('filter_type', filterType)
+    if (search && search.trim()) params.append('search', search.trim())
+    if (limit) params.append('limit', limit.toString())
+    if (offset) params.append('offset', offset.toString())
+    const qs = params.toString() ? `?${params.toString()}` : ''
+    return fetchJSON<{ items: LibraryItem[]; total: number }>(`/attachments/library${qs}`)
+  },
+  deleteLibraryItem: (id: string) =>
+    fetchJSON<{ status: string; deleted_id: string }>(`/attachments/${id}`, {
+      method: 'DELETE',
+    }),
 
   // Vision Relay
   getVisionRelayConfig: () => fetchJSON<VisionRelayConfig>('/vision-relay/config'),

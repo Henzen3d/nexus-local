@@ -10,6 +10,7 @@ import { ArtifactPanel } from './components/ArtifactPanel'
 import { ConversationsPanel } from './components/ConversationsPanel'
 import { ArtifactsPanel } from './components/ArtifactsPanel'
 import { ProjectsPanel } from './components/ProjectsPanel'
+import { LibraryPanel } from './components/LibraryPanel'
 import { ChatProvider } from './context/ChatContext'
 import { Login } from './components/Login'
 import { MemoryOnboarding } from './components/MemoryOnboarding'
@@ -191,6 +192,7 @@ export default function App() {
         {view === 'conversations' && <ConversationsPanel />}
         {view === 'artifacts' && <ArtifactsPanel />}
         {view === 'projects' && <ProjectsPanel />}
+        {view === 'library' && <LibraryPanel />}
         {hasArtifact && <ArtifactPanel />}
       </div>
       {view === 'admin' && <AdminPanel />}
