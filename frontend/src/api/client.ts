@@ -570,10 +570,35 @@ export const api = {
       body: JSON.stringify(data),
     }),
   ackProactiveInsight: (insightId: string, action: import('../types').ProactiveAckAction) =>
-    fetchJSON<{ ok: boolean; id: string; status: import('../types').ProactiveStatus }>(
+    fetchJSON<{ ok: boolean; id: string; status: import('../types').ProactiveStatus; topic_hash?: string | null }>(
       `/proactive/insights/${encodeURIComponent(insightId)}/ack`,
       { method: 'POST', body: JSON.stringify({ action }) },
     ),
+  // F4 — controles do usuário
+  markProactiveOnboardingSeen: () =>
+    fetchJSON<{ ok: boolean; onboarding_seen_at: string | null; enabled: boolean }>(
+      '/proactive/settings/onboarding-seen', { method: 'POST' },
+    ),
+  unblockProactiveTopic: (topicHash: string) =>
+    fetchJSON<{ ok: boolean; topic_hash: string; removed: boolean; restored_insight_ids: string[] }>(
+      `/proactive/blocklist/${encodeURIComponent(topicHash)}`, { method: 'DELETE' },
+    ),
+  // F4 — admin
+  getProactiveAdminConfig: () => fetchJSON<import('../types').ProactiveAdminConfig>('/proactive/admin-config'),
+  updateProactiveAdminConfig: (data: import('../types').ProactiveAdminConfigUpdate) =>
+    fetchJSON<{ ok: boolean } & import('../types').ProactiveAdminConfig>('/proactive/admin-config', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+  getProactiveLogs: (params: { limit?: number; offset?: number; status?: string } = {}) => {
+    const q = new URLSearchParams()
+    if (params.limit) q.set('limit', String(params.limit))
+    if (params.offset) q.set('offset', String(params.offset))
+    if (params.status) q.set('status', params.status)
+    const qs = q.toString()
+    return fetchJSON<import('../types').ProactiveLogsResponse>(`/proactive/logs${qs ? `?${qs}` : ''}`)
+  },
+  getProactiveAdminStats: () => fetchJSON<import('../types').ProactiveAdminStats>('/proactive/admin-stats'),
   // F3 — fila de pendentes (boot) e "Me conta aqui"
   getProactivePending: () =>
     fetchJSON<{ insights: import('../types').ProactiveInsight[] }>('/proactive/pending'),

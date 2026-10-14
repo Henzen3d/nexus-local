@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import time
 from dataclasses import dataclass, field, replace
 from typing import Any, Optional
@@ -51,6 +52,9 @@ class ProactiveConfig:
     research_timeout_s: float = 30.0
     synth_timeout_s: float = 20.0
     allow_chat_model_fallback: bool = False
+    # F4.4.1 — validade dos insights (news +48 h; demais categorias +7 d; event usa a data do evento)
+    expiry_news_hours: int = 48
+    expiry_default_days: int = 7
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -68,6 +72,8 @@ class ProactiveConfig:
             "research_timeout_s": self.research_timeout_s,
             "synth_timeout_s": self.synth_timeout_s,
             "allow_chat_model_fallback": self.allow_chat_model_fallback,
+            "expiry_news_hours": self.expiry_news_hours,
+            "expiry_default_days": self.expiry_default_days,
         }
 
 
@@ -87,7 +93,26 @@ _FIELD_SPECS: tuple[tuple[str, str, str, str], ...] = (
     ("research_timeout_s", "proactive_research_timeout_s", "PROACTIVE_RESEARCH_TIMEOUT_S", "float"),
     ("synth_timeout_s", "proactive_synth_timeout_s", "PROACTIVE_SYNTH_TIMEOUT_S", "float"),
     ("allow_chat_model_fallback", "proactive_allow_chat_model_fallback", "PROACTIVE_ALLOW_CHAT_MODEL_FALLBACK", "bool"),
+    ("expiry_news_hours", "proactive_expiry_news_hours", "PROACTIVE_EXPIRY_NEWS_HOURS", "int"),
+    ("expiry_default_days", "proactive_expiry_default_days", "PROACTIVE_EXPIRY_DEFAULT_DAYS", "int"),
 )
+
+META_KEY_BY_FIELD: dict[str, str] = {spec[0]: spec[1] for spec in _FIELD_SPECS}
+FIELD_KIND: dict[str, str] = {spec[0]: spec[3] for spec in _FIELD_SPECS}
+
+#: F4.4.1 — limites aceitos pelo ``PUT /admin-config`` (mín., máx.). Fora disso ⇒ 422.
+ADMIN_FIELD_LIMITS: dict[str, tuple[float, float]] = {
+    "max_per_hour_conv": (0, 20),
+    "max_per_day_user": (0, 100),
+    "topic_cooldown_hours": (0, 720),
+    "max_pending": (1, 10),
+    "concurrency": (1, 8),
+    "total_timeout_s": (10, 300),
+    "research_timeout_s": (5, 300),
+    "synth_timeout_s": (5, 120),
+    "expiry_news_hours": (1, 720),
+    "expiry_default_days": (1, 90),
+}
 
 _TRUE_WORDS = {"1", "true", "yes", "on", "sim"}
 _FALSE_WORDS = {"0", "false", "no", "off", "nao", "não"}
@@ -151,11 +176,15 @@ def build_config(meta: dict[str, str], env: Optional[dict[str, str]] = None) -> 
             resolved = _coerce(meta[meta_key], kind, resolved)
         values[field_name] = resolved
     cfg = replace(defaults, **values)
-    # Sanidade: concorrência ≥ 1, timeouts coerentes
+    # Sanidade: concorrência ≥ 1, timeouts coerentes, validades ≥ 1
     if cfg.concurrency < 1:
         cfg = replace(cfg, concurrency=1)
     if cfg.research_timeout_s > cfg.total_timeout_s:
         cfg = replace(cfg, research_timeout_s=cfg.total_timeout_s)
+    if cfg.expiry_news_hours < 1:
+        cfg = replace(cfg, expiry_news_hours=defaults.expiry_news_hours)
+    if cfg.expiry_default_days < 1:
+        cfg = replace(cfg, expiry_default_days=defaults.expiry_default_days)
     return cfg
 
 
@@ -171,6 +200,60 @@ async def load_config(db: Any, *, force: bool = False) -> ProactiveConfig:
         cfg = build_config(await _read_meta_map(db))
         _cache = (now + CONFIG_TTL_SECONDS, cfg)
         return cfg
+
+
+def validate_admin_updates(updates: dict[str, Any]) -> dict[str, Any]:
+    """Valida/normaliza o corpo do ``PUT /admin-config``. Levanta ``ValueError``
+    com mensagem legível quando um campo está fora dos limites ou do tipo."""
+    clean: dict[str, Any] = {}
+    for field_name, value in updates.items():
+        if field_name not in META_KEY_BY_FIELD:
+            raise ValueError(f"campo desconhecido: {field_name}")
+        if value is None:
+            continue
+        kind = FIELD_KIND[field_name]
+        if kind == "bool":
+            if isinstance(value, bool):
+                clean[field_name] = value
+            else:
+                coerced = _coerce(value, "bool", None)
+                if coerced is None:
+                    raise ValueError(f"{field_name} deve ser booleano")
+                clean[field_name] = coerced
+            continue
+        if kind == "str":
+            text = str(value).strip()
+            clean[field_name] = text  # "" ⇒ limpa a chave (volta ao env/default)
+            continue
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            raise ValueError(f"{field_name} deve ser numérico")
+        low, high = ADMIN_FIELD_LIMITS.get(field_name, (0, float("inf")))
+        if not (low <= number <= high):
+            raise ValueError(f"{field_name} fora do intervalo [{low:g}, {high:g}]")
+        clean[field_name] = int(number) if kind == "int" else number
+    return clean
+
+
+async def save_admin_config(db: Any, updates: dict[str, Any]) -> ProactiveConfig:
+    """Persiste os campos informados em ``meta`` (padrão ``INSERT OR REPLACE``),
+    invalida o cache e devolve a configuração efetiva (F4.4.1)."""
+    for field_name, value in updates.items():
+        key = META_KEY_BY_FIELD[field_name]
+        if isinstance(value, bool):
+            text = "true" if value else "false"
+        elif isinstance(value, float):
+            text = f"{value:g}"
+        else:
+            text = "" if value is None else str(value)
+        if text == "":
+            await db.execute("DELETE FROM meta WHERE key = ?", (key,))
+        else:
+            await db.execute("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)", (key, text))
+    await db.commit()
+    invalidate_config_cache()
+    return await load_config(db, force=True)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -221,6 +304,23 @@ def normalize_categories(value: Any) -> list[str]:
 def normalize_sensitivity(value: Any) -> str:
     text = str(value or "").strip().lower()
     return text if text in ALLOWED_SENSITIVITIES else DEFAULT_SENSITIVITY
+
+
+_HHMM = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
+
+
+def validate_quiet_hours(value: Any) -> Optional[dict[str, str]]:
+    """``{start:"22:00", end:"08:00"}`` ou ``None``; qualquer outra forma ⇒ ``ValueError`` (F4.1.2)."""
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise ValueError("quiet_hours deve ser um objeto {start, end} ou null")
+    start, end = value.get("start"), value.get("end")
+    if not isinstance(start, str) or not isinstance(end, str) or not _HHMM.match(start) or not _HHMM.match(end):
+        raise ValueError("quiet_hours.start/end devem estar no formato HH:MM")
+    if start == end:
+        raise ValueError("quiet_hours.start e end não podem ser iguais")
+    return {"start": start, "end": end}
 
 
 async def get_user_settings(db: Any, user_id: str) -> UserSettings:

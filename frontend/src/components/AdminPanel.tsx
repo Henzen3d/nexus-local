@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import {
   Eye, EyeOff, Save, ToggleLeft, ToggleRight, Database, Sparkles, Users, Trash2, X, Monitor, Sun, Moon, Search, ChevronDown, ChevronRight,
   ChevronLeft, Info, Settings, CreditCard, Shield, Sliders, Volume2, Lock, Link2, LogOut, Check, User, Palette, Type, Smartphone, Trash, Activity,
-  Award, Languages, Brain, Share2, ExternalLink, Key, Compass, Image as ImageIcon
+  Award, Languages, Brain, Share2, ExternalLink, Key, Compass, Image as ImageIcon, Radar
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { api } from '../api/client'
@@ -22,13 +22,15 @@ import { UsageDashboard } from './UsageDashboard'
 import { RankingWeightsSettings } from './RankingWeightsSettings'
 import { RankingsView } from './RankingsView'
 import { UserMemoryPanel } from './UserMemoryPanel'
+import { ProactiveSettings } from './ProactiveSettings'
+import { ProactiveAdminSettings } from './ProactiveAdminSettings'
 import { AutoRouterSettings } from './AutoRouterSettings'
 import { CreateFamilyUser, FamilyUserKeys } from './FamilyAccountTools'
 import { canShowRegisterUserButton } from '../lib/registerUser'
 import { playSpeech, saveTtsPrefs, useTtsPrefs } from '../lib/ttsPlayer'
 import { useIsMobile } from '../hooks/useIsMobile'
 
-type Tab = 'general' | 'providers' | 'router' | 'rankings' | 'cache' | 'tools' | 'users' | 'dashboard' | 'memory'
+type Tab = 'general' | 'providers' | 'router' | 'rankings' | 'cache' | 'tools' | 'users' | 'dashboard' | 'memory' | 'proactive'
 
 export function AdminPanel() {
   const isMobile = useIsMobile()
@@ -537,6 +539,17 @@ function AdminPanelMobile() {
                   <div>
                     <span className="settings-list-item-label">{t("settings.memory")}</span>
                     <span className="settings-list-item-subtitle">Contexto pessoal e fatos aprendidos</span>
+                  </div>
+                </div>
+                <ChevronRight size={16} />
+              </div>
+
+              <div className="settings-list-item" onClick={() => { pushScreen('proactive'); triggerHaptic() }}>
+                <div className="settings-list-item-left">
+                  <Radar size={16} className="settings-list-item-icon" />
+                  <div>
+                    <span className="settings-list-item-label">{t("proactive.settingsTitle")}</span>
+                    <span className="settings-list-item-subtitle">{t("proactive.settingsMenuSub")}</span>
                   </div>
                 </div>
                 <ChevronRight size={16} />
@@ -1518,6 +1531,17 @@ function AdminPanelMobile() {
         </div>
       )}
 
+      {/* SCREEN 16b: Assistente Proativo (F4) */}
+      {currentScreen === 'proactive' && (
+        <div className="settings-mobile-container-view">
+          <Header title={t('proactive.settingsTitle')} />
+          <div className="settings-mobile-content proactive-settings-screen" style={{ padding: '16px' }}>
+            <ProactiveSettings />
+            {user?.role === 'admin' && <ProactiveAdminSettings />}
+          </div>
+        </div>
+      )}
+
       {/* SCREEN 17: Roteador Inteligente Screen */}
       {currentScreen === 'router' && (
         <div className="settings-mobile-container-view">
@@ -2204,6 +2228,7 @@ function AdminPanelDesktop() {
     { id: 'cache' as Tab, label: t('settings.smartCache'), icon: <Database size={14} /> },
     { id: 'tools' as Tab, label: t('settings.tools'), icon: <Sparkles size={14} /> },
     { id: 'memory' as Tab, label: t('settings.memory'), icon: <Brain size={14} /> },
+    { id: 'proactive' as Tab, label: t('proactive.settingsTitle'), icon: <Radar size={14} /> },
     ...(user?.role === 'admin' ? [{ id: 'users' as Tab, label: t('settings.users'), icon: <Users size={14} /> }] : [])
   ]
 
@@ -2681,6 +2706,14 @@ function AdminPanelDesktop() {
             {/* 8. Memory Tab */}
             {tab === 'memory' && (
               <UserMemoryPanel />
+            )}
+
+            {/* 8b. Proactive Tab (F4): preferências do usuário + bloco admin */}
+            {tab === 'proactive' && (
+              <div className="proactive-settings-screen">
+                <ProactiveSettings />
+                {user?.role === 'admin' && <ProactiveAdminSettings />}
+              </div>
             )}
 
             {/* 9. Router Tab */}

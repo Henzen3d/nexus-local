@@ -165,8 +165,14 @@ def compute_expires_at(
     *,
     event_date: Optional[str] = None,
     now: Optional[datetime] = None,
+    news_hours: Optional[int] = None,
+    default_days: Optional[int] = None,
 ) -> str:
-    """F2.4.5: ``event`` → data do evento (fim do dia) ou +7 d; ``news`` +48 h; demais +7 d."""
+    """F2.4.5: ``event`` → data do evento (fim do dia) ou +7 d; ``news`` +48 h; demais +7 d.
+
+    F4.4.1: ``news_hours``/``default_days`` vêm da configuração do admin
+    (``expiry_news_hours`` / ``expiry_default_days``); ``None`` ⇒ defaults do plano.
+    """
     now = now or datetime.now(timezone.utc)
     if category == "event" and event_date:
         try:
@@ -177,7 +183,11 @@ def compute_expires_at(
             end_of_day = day.replace(hour=23, minute=59, second=59)
             if end_of_day.replace(tzinfo=now.tzinfo) > now:
                 return end_of_day.strftime("%Y-%m-%d %H:%M:%S")
-    return (now + EXPIRY_BY_CATEGORY.get(category, DEFAULT_EXPIRY)).strftime("%Y-%m-%d %H:%M:%S")
+    if category == "news":
+        delta = timedelta(hours=news_hours) if news_hours else EXPIRY_BY_CATEGORY["news"]
+    else:
+        delta = timedelta(days=default_days) if default_days else EXPIRY_BY_CATEGORY.get(category, DEFAULT_EXPIRY)
+    return (now + delta).strftime("%Y-%m-%d %H:%M:%S")
 
 
 # ─────────────────────────────────────────────────────────────────────────────

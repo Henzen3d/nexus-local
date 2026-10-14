@@ -198,6 +198,8 @@ def insight_public_dict(insight: dict, *, message_id: Optional[str] = None) -> d
         "ready_at": insight.get("ready_at"),
         "spawned_conversation_id": insight.get("spawned_conversation_id"),
         "origin": origin,
+        # F4.3.2: "Desfazer" do bloqueio precisa do hash (é só um hash do tópico, não dado sensível)
+        "topic_hash": insight.get("topic_hash"),
     }
 
 

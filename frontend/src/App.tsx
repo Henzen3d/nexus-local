@@ -15,6 +15,7 @@ import { LibraryPanel } from './components/LibraryPanel'
 import { ChatProvider } from './context/ChatContext'
 import { Login } from './components/Login'
 import { MemoryOnboarding } from './components/MemoryOnboarding'
+import { ProactiveOnboarding } from './components/ProactiveOnboarding'
 import { loadTtsPrefs } from './lib/ttsPlayer'
 import { PwaInstallBanner } from './components/PwaInstallBanner'
 import { applyDocumentLang } from './i18n'
@@ -227,6 +228,7 @@ export default function App() {
       <PwaInstallBanner />
       <Toast />
       <MemoryOnboarding />
+      <ProactiveOnboarding />
     </ChatProvider>
   )
 }

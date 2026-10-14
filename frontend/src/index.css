@@ -11487,3 +11487,416 @@ html[data-theme="light"] .model-option-provider-tag {
   .proactive-welcome-card { animation: none; }
   .proactive-welcome-actions .proactive-action .spin { animation: none; }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Assistente Proativo — F4: onboarding (opt-in), preferências e painel admin
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Onboarding (modal, uma vez; fonte da verdade no servidor) ─────────── */
+.proactive-onboarding-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+.proactive-onboarding-card {
+  width: 100%;
+  max-width: 460px;
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  background: var(--surface-card);
+  border: 1px solid var(--hairline);
+  border-radius: 20px;
+  padding: 24px 24px 20px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.35);
+  animation: proactive-onboarding-in 0.25s ease-out;
+}
+@keyframes proactive-onboarding-in {
+  from { opacity: 0; transform: translateY(12px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+.proactive-onboarding-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+.proactive-onboarding-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--proactive-accent, var(--accent));
+  background: color-mix(in srgb, var(--proactive-accent, var(--accent)) 14%, transparent);
+}
+.proactive-onboarding-title {
+  font-size: 19px;
+  font-weight: 700;
+  color: var(--ink);
+  margin: 0 0 8px;
+  letter-spacing: -0.01em;
+}
+.proactive-onboarding-body {
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--muted);
+  margin: 0 0 16px;
+}
+.proactive-onboarding-list {
+  list-style: none;
+  margin: 0 0 14px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.proactive-onboarding-list li {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: var(--ink);
+}
+.proactive-onboarding-bullet-icon {
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--proactive-accent, var(--accent));
+  background: var(--surface-cream-strong);
+}
+.proactive-onboarding-footnote {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 0 0 18px;
+}
+.proactive-onboarding-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+.proactive-onboarding-actions .btn { min-height: 40px; }
+@media (max-width: 640px) {
+  .proactive-onboarding-card { padding: 20px 18px 16px; border-radius: 16px; }
+  .proactive-onboarding-actions { flex-direction: column-reverse; }
+  .proactive-onboarding-actions .btn { width: 100%; min-height: 44px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .proactive-onboarding-card { animation: none; }
+}
+
+/* ── Preferências do usuário ───────────────────────────────────────────── */
+.proactive-settings-screen {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  width: 100%;
+}
+.proactive-field-help {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+.proactive-radio-group {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.proactive-radio {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: flex-start;
+  text-align: left;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--hairline);
+  background: var(--surface-cream-strong);
+  color: var(--ink);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.proactive-radio strong { font-size: 13px; font-weight: 600; }
+.proactive-radio small { font-size: 11.5px; color: var(--muted); }
+.proactive-radio:hover:not(:disabled) { border-color: var(--border-2); }
+.proactive-radio.active {
+  border-color: var(--proactive-accent, var(--accent));
+  background: color-mix(in srgb, var(--proactive-accent, var(--accent)) 10%, transparent);
+}
+.proactive-radio:disabled { opacity: 0.45; cursor: not-allowed; }
+.proactive-chip-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.proactive-chip {
+  padding: 7px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--hairline);
+  background: var(--surface-cream-strong);
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.proactive-chip:hover:not(:disabled) { border-color: var(--border-2); color: var(--ink); }
+.proactive-chip.on {
+  color: var(--proactive-accent, var(--accent));
+  border-color: color-mix(in srgb, var(--proactive-accent, var(--accent)) 40%, transparent);
+  background: color-mix(in srgb, var(--proactive-accent, var(--accent)) 12%, transparent);
+}
+.proactive-chip:disabled { opacity: 0.45; cursor: not-allowed; }
+.proactive-quiet-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px dashed var(--hairline);
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.4;
+  opacity: 0.85;
+}
+.proactive-quiet-row svg { flex-shrink: 0; }
+.proactive-blocked-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.proactive-blocked-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--hairline);
+  background: var(--surface-cream-strong);
+  font-size: 13px;
+  color: var(--ink);
+}
+.proactive-blocked-item > svg { color: var(--muted); flex-shrink: 0; }
+.proactive-blocked-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.proactive-stats-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.proactive-stat {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--hairline);
+  background: var(--surface-cream-strong);
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.proactive-stat svg { align-self: center; color: var(--proactive-accent, var(--accent)); }
+.proactive-stat strong { font-size: 16px; color: var(--ink); font-variant-numeric: tabular-nums; }
+
+/* ── Painel admin ──────────────────────────────────────────────────────── */
+.proactive-admin-kill.off {
+  border-color: color-mix(in srgb, var(--error) 45%, transparent);
+  background: color-mix(in srgb, var(--error) 8%, transparent);
+}
+.proactive-admin-kill .enhancer-toggle-info span { display: inline-flex; align-items: center; gap: 6px; }
+.proactive-admin-kill-summary { color: var(--muted); font-size: 11.5px; }
+.proactive-admin-confirm {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 14px 16px;
+  border-radius: var(--radius-lg);
+  border: 1px solid color-mix(in srgb, var(--error) 45%, transparent);
+  background: color-mix(in srgb, var(--error) 8%, transparent);
+  color: var(--ink);
+}
+.proactive-admin-confirm > svg { color: var(--error); flex-shrink: 0; margin-top: 2px; }
+.proactive-admin-confirm strong { display: block; font-size: 14px; margin-bottom: 4px; }
+.proactive-admin-confirm p { font-size: 13px; color: var(--muted); margin: 0 0 10px; line-height: 1.45; }
+.proactive-admin-confirm-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.proactive-admin-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 16px;
+}
+.proactive-admin-range { text-transform: none; letter-spacing: 0; font-weight: 500; opacity: 0.8; }
+.proactive-admin-input {
+  width: 100%;
+  background: var(--surface-cream-strong);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  font-size: 13.5px;
+  color: var(--ink);
+  outline: none;
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
+  transition: border-color 0.15s;
+}
+.proactive-admin-input:focus { border-color: var(--accent); }
+.proactive-admin-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--error);
+}
+.proactive-admin .enhancer-actions { align-items: center; gap: 12px; }
+.proactive-admin-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+  padding-top: 18px;
+  border-top: 1px solid var(--hairline);
+}
+.proactive-admin-section-head h4 {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+  margin: 0;
+}
+.proactive-admin-logs-controls { display: flex; align-items: center; gap: 8px; }
+.proactive-admin-logs-controls select {
+  background: var(--surface-cream-strong);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  font-size: 12.5px;
+  color: var(--ink);
+  font-family: inherit;
+}
+.proactive-admin-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+}
+.proactive-admin-card {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 14px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--hairline);
+  background: var(--surface-card);
+  min-width: 0;
+}
+.proactive-admin-card-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--muted);
+}
+.proactive-admin-card-value {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+.proactive-admin-card-sub {
+  font-size: 11.5px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.proactive-admin-status-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.proactive-admin-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--hairline);
+  background: var(--surface-cream-strong);
+  font-size: 11.5px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.proactive-admin-status-pill strong { color: var(--ink); font-variant-numeric: tabular-nums; }
+.proactive-admin-status-pill.status-delivered,
+.proactive-admin-status-pill.status-seen { color: var(--success); border-color: color-mix(in srgb, var(--success) 35%, transparent); }
+.proactive-admin-status-pill.status-ready,
+.proactive-admin-status-pill.status-researching,
+.proactive-admin-status-pill.status-detected { color: var(--proactive-accent, var(--accent)); }
+.proactive-admin-status-pill.status-failed,
+.proactive-admin-status-pill.status-blocked { color: var(--error); border-color: color-mix(in srgb, var(--error) 35%, transparent); }
+.proactive-admin-status-pill.status-expired,
+.proactive-admin-status-pill.status-dismissed { color: var(--warning); }
+.proactive-admin-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-lg);
+  -webkit-overflow-scrolling: touch;
+}
+.proactive-admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+  min-width: 760px;
+}
+.proactive-admin-table th,
+.proactive-admin-table td {
+  padding: 8px 10px;
+  text-align: left;
+  border-bottom: 1px solid var(--hairline);
+  white-space: nowrap;
+  color: var(--ink);
+}
+.proactive-admin-table th {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--muted);
+  background: var(--surface-cream-strong);
+  position: sticky;
+  top: 0;
+}
+.proactive-admin-table tbody tr:last-child td { border-bottom: none; }
+.proactive-admin-table tbody tr:hover td { background: color-mix(in srgb, var(--surface-cream-strong) 60%, transparent); }
+.proactive-admin-topic {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.proactive-admin-pager {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+@media (max-width: 640px) {
+  .proactive-radio-group { grid-template-columns: 1fr; }
+  .proactive-admin-grid { grid-template-columns: 1fr; }
+  .proactive-admin-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .proactive-settings-screen .proactive-action { min-height: 44px; }
+}

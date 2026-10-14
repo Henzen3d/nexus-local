@@ -47,6 +47,8 @@ STATUS_STAGE = "proactive_status"
 # ─────────────────────────────────────────────────────────────────────────────
 
 _tasks: set[asyncio.Task] = set()
+#: Pipelines em voo por usuário (F4.1.5 — "desligar cancela o que está rodando").
+_user_tasks: dict[str, set[asyncio.Task]] = {}
 _active_turns: dict[str, int] = {}
 _turn_events: dict[str, asyncio.Event] = {}
 _semaphores: dict[int, asyncio.Semaphore] = {}
@@ -56,12 +58,52 @@ def pending_tasks() -> int:
     return len(_tasks)
 
 
-def track_task(coro: Any, *, name: str = "proactive") -> asyncio.Task:
-    """``create_task`` com referência guardada (nunca uma task solta — F2.2.5)."""
+def user_task_count(user_id: str) -> int:
+    return len([t for t in _user_tasks.get(user_id, ()) if not t.done()])
+
+
+def track_task(coro: Any, *, name: str = "proactive", user_id: Optional[str] = None) -> asyncio.Task:
+    """``create_task`` com referência guardada (nunca uma task solta — F2.2.5).
+
+    ``user_id`` registra a task também por usuário, para :func:`cancel_user`.
+    """
     task = asyncio.create_task(coro, name=name)
     _tasks.add(task)
     task.add_done_callback(_tasks.discard)
+    if user_id:
+        bucket = _user_tasks.setdefault(user_id, set())
+        bucket.add(task)
+
+        def _forget(t: asyncio.Task, *, _uid: str = user_id) -> None:
+            remaining = _user_tasks.get(_uid)
+            if remaining is not None:
+                remaining.discard(t)
+                if not remaining:
+                    _user_tasks.pop(_uid, None)
+
+        task.add_done_callback(_forget)
     return task
+
+
+def cancel_user(user_id: str) -> int:
+    """Cancela os pipelines em voo do usuário (F4.1.5). Devolve quantos foram cancelados."""
+    count = 0
+    for task in list(_user_tasks.get(user_id, ())):
+        if not task.done():
+            task.cancel()
+            count += 1
+    return count
+
+
+def cancel_all() -> int:
+    """Kill-switch (F4.4.4): cancela todos os pipelines em voo (não os flushes de retorno)."""
+    count = 0
+    for tasks in list(_user_tasks.values()):
+        for task in list(tasks):
+            if not task.done():
+                task.cancel()
+                count += 1
+    return count
 
 
 async def wait_tasks(timeout: float = 5.0) -> None:
@@ -184,6 +226,7 @@ def reset_runtime_state() -> None:
     _turn_events.clear()
     _semaphores.clear()
     _tasks.clear()
+    _user_tasks.clear()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -310,6 +353,41 @@ async def expire_overdue(db: Any, user_id: Optional[str] = None) -> int:
     changed = cur.rowcount or 0
     await db.commit()
     return changed
+
+
+async def expire_pending(db: Any, user_id: Optional[str], error_code: str) -> int:
+    """Expira tudo o que ainda não foi entregue (``detected|researching|ready``) com
+    ``error_code`` explicativo — histórico já entregue é preservado."""
+    sql = """UPDATE proactive_insights SET status = 'expired', error_code = ?
+             WHERE status IN ('detected', 'researching', 'ready')"""
+    params: list = [error_code[:80]]
+    if user_id:
+        sql += " AND user_id = ?"
+        params.append(user_id)
+    cur = await db.execute(sql, tuple(params))
+    changed = cur.rowcount or 0
+    await db.commit()
+    return changed
+
+
+async def disable_user(db: Any, user_id: str) -> dict[str, int]:
+    """F4.1.5 — ``enabled=false``: cancela pipelines em voo e expira pendentes
+    (``error_code='user_disabled'``). Mensagens já entregues continuam no histórico."""
+    cancelled = cancel_user(user_id)
+    if cancelled:
+        await asyncio.sleep(0)  # deixa os cancelamentos gravarem ``failed:cancelled``
+    expired = await expire_pending(db, user_id, "user_disabled")
+    return {"cancelled": cancelled, "expired": expired}
+
+
+async def apply_kill_switch(db: Any) -> dict[str, int]:
+    """F4.4.4 — ``enabled_global=false``: cancela tudo e expira pendentes de todos
+    (``error_code='global_disabled'``)."""
+    cancelled = cancel_all()
+    if cancelled:
+        await asyncio.sleep(0)
+    expired = await expire_pending(db, None, "global_disabled")
+    return {"cancelled": cancelled, "expired": expired}
 
 
 STUCK_AFTER_MINUTES = 5
@@ -506,6 +584,10 @@ async def run_pipeline(
                 await _fail_insight(db, holder.insight_id, "timeout")
                 logger.warning("[Proactive] pipeline excedeu %.0fs (conv=%s)", config.total_timeout_s, conversation_id)
                 return PipelineResult("failed", "timeout", insight_id=holder.insight_id, status="failed")
+    except asyncio.CancelledError:
+        # Desligado pelo usuário/admin no meio do caminho (F4.1.5 / F4.4.4)
+        await _fail_insight(db, holder.insight_id, "cancelled")
+        raise
     except Exception as exc:
         await _fail_insight(db, holder.insight_id, f"error:{type(exc).__name__}")
         logger.warning("[Proactive] pipeline falhou (conv=%s): %s", conversation_id, exc)
@@ -625,7 +707,10 @@ async def _run_stages(
         return PipelineResult("synth", synthesis.error or "synth_parse", insight_id=insight_id,
                               status="failed", signal=signal)
 
-    expires_at = synthesizer.compute_expires_at(signal.category, event_date=synthesis.event_date)
+    expires_at = synthesizer.compute_expires_at(
+        signal.category, event_date=synthesis.event_date,
+        news_hours=config.expiry_news_hours, default_days=config.expiry_default_days,
+    )
     sources_payload = research.sources
     if synthesis.used_source_urls:
         # Mantém a ordem original, mas prioriza as fontes realmente usadas
@@ -705,4 +790,5 @@ async def schedule_proactive_check(
             config=config, settings=settings,
         ),
         name=f"proactive:{conversation_id[:8]}",
+        user_id=user_id,
     )
