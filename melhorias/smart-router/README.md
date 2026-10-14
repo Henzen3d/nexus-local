@@ -19,6 +19,8 @@ Este diretório contém todo o planejamento, arquitetura, contratos de dados, fl
    * Registro analítico no banco (`model_usage_log`), cálculo de taxa de acerto, tokens economizados e gráficos de distribuição por intenção no `UsageDashboard.tsx`.
 6. **[05. Roadmap Operacional e Checklist de Subtarefas](file:///j:/Arquivos%20Osmar/Multi+/melhorias/smart-router/05-roadmap-e-subtarefas-checklist.md)**
    * Checklist passo a passo dividido em 5 fases sequenciais para guiar a implementação prática sem retrabalho.
+7. **[06. Diagnóstico e Calibração 2026](06-diagnostico-e-calibracao-2026.md)**
+   * Por que o Auto escolhia sempre o mesmo modelo, perfil heurístico de capacidades (`model_profile.py`), seleção por *fit*, sticky condicionado, esforço adaptativo e o modo "Testar o roteador".
 
 ---
 

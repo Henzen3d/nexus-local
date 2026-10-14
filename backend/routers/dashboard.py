@@ -5,18 +5,30 @@ Fornece métricas de uso de modelos, logs de failover e status atual de cota.
 """
 
 from fastapi import APIRouter, HTTPException, Depends
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from datetime import datetime, timezone, timedelta
 
 from backend.database import get_db, get_router_policy, set_router_policy
 from backend.auth import require_admin, get_current_user
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
 
 class RouterPolicyIn(BaseModel):
     policy: str
+
+
+class RouterPreviewIn(BaseModel):
+    """Entrada do modo "Testar roteador" (simulação sem gastar tokens)."""
+    prompt: str = Field(..., min_length=1, max_length=20000)
+    web_search: bool = False
+    has_attachment: bool = False
+    previous_model_id: Optional[str] = None
+    previous_intent: Optional[str] = None
+    policy: Optional[str] = None
+    reasoning_effort: Optional[str] = None
+    limit: int = Field(8, ge=1, le=30)
 
 
 @router.get("/stats", response_model=Dict[str, Any])
@@ -248,6 +260,89 @@ async def get_current_router_policy(current_user: dict = Depends(get_current_use
     try:
         policy = await get_router_policy(db)
         return {"policy": policy}
+    finally:
+        await db.close()
+
+
+@router.post("/auto-router/preview")
+async def preview_auto_router(
+    body: RouterPreviewIn,
+    current_user: dict = Depends(get_current_user),
+) -> dict:
+    """
+    Simula a decisão do Smart Router para um prompt (dry-run, sem chamar nenhum LLM).
+    Retorna a intenção detectada, a decisão final e o ranking de adequação (fit) dos
+    candidatos — permite calibrar/verificar o roteamento com o catálogo real.
+    """
+    from backend.ranking.smart_router import (
+        RoutingPolicy,
+        classify_intent,
+        decision_to_dict,
+        load_routing_catalog,
+        rank_candidates,
+        select_best_model,
+    )
+
+    db = await get_db()
+    try:
+        policy = (body.policy or "").strip().lower() or await get_router_policy(db)
+        if policy not in {p.value for p in RoutingPolicy}:
+            raise HTTPException(status_code=400, detail="Política de roteamento inválida.")
+
+        intent_res = classify_intent(
+            prompt=body.prompt,
+            attachments=["preview-attachment"] if body.has_attachment else None,
+            web_search=body.web_search,
+            previous_intent=body.previous_intent,
+        )
+        try:
+            decision = await select_best_model(
+                intent_res,
+                policy,
+                db,
+                previous_model_id=body.previous_model_id,
+                user_reasoning_effort=body.reasoning_effort,
+            )
+            catalog = await load_routing_catalog(db)
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc))
+
+        ranked = rank_candidates(catalog, intent_res, policy)
+        ranking = []
+        for c in ranked[: body.limit]:
+            m = c["model"]
+            ranking.append({
+                "model_id": m["id"],
+                "model_name": m["display_name"],
+                "provider_id": m["provider_id"],
+                "fit_score": c["fit"],
+                "quality_score": round(float(m.get("quality_score") or 0.0), 1),
+                "has_ranking": bool(m.get("has_ranking")),
+                "is_free": bool(m.get("is_free")),
+                "quota_status": m.get("quota_status"),
+                "tags": list(c["profile"].tags()),
+                "breakdown": c["breakdown"],
+            })
+
+        return {
+            "intent": {
+                "intent": intent_res.intent.value,
+                "complexity": int(intent_res.complexity),
+                "complexity_score": intent_res.complexity_score,
+                "confidence": intent_res.confidence,
+                "reason_label_pt": intent_res.reason_label_pt,
+                "matched_signals": intent_res.matched_signals,
+                "recommended_temperature": intent_res.recommended_temperature,
+                "inherited_from_history": intent_res.inherited_from_history,
+                "min_context_length_required": intent_res.min_context_length_required,
+                "processing_time_ms": intent_res.processing_time_ms,
+            },
+            "policy": policy,
+            "decision": decision_to_dict(decision),
+            "ranking": ranking,
+            "candidates_considered": len(ranked),
+            "catalog_size": len(catalog),
+        }
     finally:
         await db.close()
 

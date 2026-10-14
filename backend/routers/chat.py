@@ -390,7 +390,9 @@ async def _run_turn(
 
     # ── Auto-Router Inteligente (Smart Intent Router) ────────────────
     if is_auto:
-        from backend.ranking.smart_router import classify_intent, select_best_model, is_trivial_greeting
+        from backend.ranking.smart_router import (
+            classify_intent, select_best_model, is_trivial_greeting, decision_to_dict,
+        )
         from backend.database import get_router_policy
 
         prev_model_id = None
@@ -428,27 +430,20 @@ async def _run_turn(
             previous_intent=prev_intent,
         )
         policy = await get_router_policy(db)
+        # Nível de esforço configurado para o modo Auto na UI (padrão 'medium'):
+        # vira a base do esforço adaptativo (LIGHT → low, HEAVY → high).
+        _auto_effort_raw = req.get("reasoning_effort")
         auto_route_decision = await select_best_model(
-            intent_res, policy, db, previous_model_id=prev_model_id
+            intent_res, policy, db,
+            previous_model_id=prev_model_id,
+            user_reasoning_effort=str(_auto_effort_raw).strip() if _auto_effort_raw else None,
         )
         req_ctx.record_phase("intent_classification", t_intent_start)
         model_id = auto_route_decision.chosen_model_id
         provider_id = auto_route_decision.provider_id
 
         # Emite evento auto_route_decision com transparência antes dos primeiros tokens
-        await ws.send_json({
-            "type": "auto_route_decision",
-            "chosen_model_id": auto_route_decision.chosen_model_id,
-            "chosen_model_name": auto_route_decision.chosen_model_name,
-            "provider_id": auto_route_decision.provider_id,
-            "intent": auto_route_decision.intent.value,
-            "reason_pt": auto_route_decision.reason_pt,
-            "confidence": auto_route_decision.confidence,
-            "policy": auto_route_decision.policy,
-            "temperature": auto_route_decision.temperature,
-            "decision_latency_ms": auto_route_decision.decision_latency_ms,
-            "matched_signals": auto_route_decision.matched_signals,
-        })
+        await ws.send_json({"type": "auto_route_decision", **decision_to_dict(auto_route_decision)})
 
 
     # ── Ensure conversation ─────────────────────────────────────────
@@ -600,6 +595,11 @@ async def _run_turn(
     # ── Resolve: cache or LLM com failover & parâmetros adaptativos ──
     reasoning_effort_raw = req.get("reasoning_effort")
     reasoning_effort = str(reasoning_effort_raw).strip() if reasoning_effort_raw else None
+    if auto_route_decision is not None:
+        # Modo Auto: esforço adaptativo decidido pelo roteador. None significa que o
+        # modelo escolhido não tem dial — não enviamos o parâmetro (evita aviso
+        # "effort_dropped" a cada turno em modelos sem controle de esforço).
+        reasoning_effort = auto_route_decision.reasoning_effort
 
     req_max_tokens = req.get("max_tokens")
     effective_max_tokens = int(req_max_tokens) if req_max_tokens else (220 if voice_mode else None)
