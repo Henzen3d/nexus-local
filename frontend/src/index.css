@@ -11951,3 +11951,30 @@ html[data-theme="light"] .model-option-provider-tag {
   .proactive-admin-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .proactive-settings-screen .proactive-action { min-height: 44px; }
 }
+
+/* ── Rankings de Modelos (Configurações → Rankings) ─────────────────────── */
+.rankings-view .ranking-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--hairline);
+  background: var(--surface-soft);
+  color: var(--muted);
+  font-size: 9.5px;
+  font-weight: 500;
+  line-height: 1.5;
+  white-space: nowrap;
+  text-transform: none;
+}
+.rankings-view .ranking-chip--warn {
+  border-color: rgba(217, 119, 6, 0.35);
+  background: rgba(217, 119, 6, 0.1);
+  color: #b45309;
+}
+.rankings-view .ranking-row:hover { background: var(--surface-soft); }
+.rankings-view .spin { animation: spin 1s linear infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .rankings-view .spin { animation: none; }
+}

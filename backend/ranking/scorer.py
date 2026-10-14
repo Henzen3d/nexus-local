@@ -2,15 +2,19 @@
 backend/ranking/scorer.py
 Motor de cálculo do NexusLocal Score.
 
-Fórmula:
-    score = (quality * 0.5) + (popularity_norm * 0.3) + (usage_norm * 0.2)
+Fórmula (pesos ajustáveis em Configurações → Rankings; padrão 0.5 / 0.3 / 0.2):
+    score = (quality * w_q) + (popularity_norm * w_p) + (usage_norm * w_u)
 
 onde:
-    popularity_norm = 100 - min(popularity_rank, 100)   # rank 1 → 99 pts
+    quality         = qualidade 0–100 determinística (curadoria local ou heurística de
+                      família/geração — a mesma base do Roteador Inteligente)
+    popularity_norm = curva logarítmica sobre a posição no OpenRouter:
+                      #1 → 100, #10 → ~60, #100 → ~19, ≥ #300 → 0; sem dados → 35 (neutro)
     usage_norm      = min(usage_count / MAX_USAGE * 100, 100)
 """
 
 import logging
+import math
 import aiosqlite
 from dataclasses import dataclass, field
 from typing import List, Optional
@@ -24,6 +28,31 @@ MAX_EXPECTED_USAGE: int = 500
 WEIGHT_QUALITY: float = 0.5
 WEIGHT_POPULARITY: float = 0.3
 WEIGHT_USAGE: float = 0.2
+
+# Popularidade: a partir desta posição no OpenRouter a nota é 0.
+POPULARITY_MAX_RANK: int = 300
+# Nota neutra para modelos sem posição conhecida (≈ posição #40).
+POPULARITY_NEUTRAL: float = 35.0
+
+
+def normalize_popularity(popularity_rank: Optional[int]) -> float:
+    """Converte a posição no OpenRouter (1 = mais usado) em nota 0–100.
+
+    A distribuição de uso é de cauda longa, então usamos uma curva logarítmica:
+    #1 → 100, #2 → ~88, #10 → ~60, #50 → ~31, #100 → ~19, ≥ #300 → 0.
+    ``None`` (modelo não listado) recebe nota neutra ``POPULARITY_NEUTRAL``.
+    """
+    if popularity_rank is None:
+        return POPULARITY_NEUTRAL
+    try:
+        rank = float(popularity_rank)
+    except (TypeError, ValueError):
+        return POPULARITY_NEUTRAL
+    if rank < 1:
+        rank = 1.0
+    if rank >= POPULARITY_MAX_RANK:
+        return 0.0
+    return 100.0 * (1.0 - math.log(rank) / math.log(POPULARITY_MAX_RANK))
 
 
 @dataclass
@@ -41,6 +70,16 @@ class ScoredModel:
     popularity_normalized: float
     usage_normalized: float
     source: str = "hybrid"
+    # Enriquecimento (GET /api/ranking) — opcional para manter compatibilidade
+    display_name: Optional[str] = None
+    provider_id: Optional[str] = None
+    provider_name: Optional[str] = None
+    is_free: Optional[bool] = None
+    is_local: Optional[bool] = None
+    available: Optional[bool] = None
+    unavailable_reason: Optional[str] = None
+    size_label: Optional[str] = None
+    tags: List[str] = field(default_factory=list)
 
 
 def calculate_nexuslocal_score(
@@ -58,7 +97,7 @@ def calculate_nexuslocal_score(
     Args:
         quality_score: Pontuação de qualidade 0-100 (benchmark, curadoria ou llm-stats).
         popularity_rank: Posição no OpenRouter por volume de uso (1 = mais popular).
-                         None significa sem dados — recebe nota neutra (50).
+                         None significa sem dados — recebe nota neutra (POPULARITY_NEUTRAL).
         internal_usage_count: Quantidade de usos registrados internamente para esse modelo.
         max_usage: Valor máximo esperado de uso para normalização (default: 500).
 
@@ -68,12 +107,8 @@ def calculate_nexuslocal_score(
     # Normalização de qualidade — já deve estar 0-100 mas clampamos para garantia
     q = max(0.0, min(float(quality_score), 100.0))
 
-    # Normalização de popularidade:
-    # rank 1 → 99, rank 100 → 0, sem rank → neutro 50
-    if popularity_rank is not None:
-        p_norm = 100.0 - min(float(popularity_rank), 100.0)
-    else:
-        p_norm = 50.0
+    # Normalização de popularidade (curva log; sem rank → neutro)
+    p_norm = normalize_popularity(popularity_rank)
 
     # Normalização de uso interno — escala linear com teto em max_usage
     safe_max = max(max_usage, 1)
@@ -233,3 +268,130 @@ async def persist_scores(db: aiosqlite.Connection, scored: List[ScoredModel]) ->
     await db.commit()
     logger.info(f"{updated} scores persistidos na tabela model_rankings.")
     return updated
+
+
+# ── Visão enriquecida (GET /api/ranking) ─────────────────────────────────────
+
+RANKING_SCOPE_AVAILABLE = "available"
+RANKING_SCOPE_ALL = "all"
+
+
+async def build_ranking_overview(
+    db: aiosqlite.Connection,
+    user_id: Optional[str],
+    scope: str = RANKING_SCOPE_AVAILABLE,
+) -> List[ScoredModel]:
+    """
+    Ranking com contexto de provedor e disponibilidade, calculado a partir da tabela
+    ``models`` (não só de ``model_rankings``), de modo que:
+
+    - cada linha traz provedor real, tags do perfil (porte, raciocínio, coder, visão) e
+      se o modelo está utilizável por este usuário (mesma regra do seletor de modelos);
+    - modelos sem registro de ranking (ou com registro aleatório legado ``auto-seed``)
+      usam a qualidade heurística determinística do perfil;
+    - modelos que não são de chat (embeddings, imagem, TTS, OCR…) nunca entram.
+
+    ``scope="available"`` devolve apenas modelos utilizáveis; ``scope="all"`` devolve
+    todos os modelos de chat com ``available``/``unavailable_reason`` preenchidos.
+    """
+    from backend.ranking.availability import (
+        USABLE_KEY_CONDITION_SQL,
+        load_hide_unconfirmed_flag,
+        unavailability_reason,
+    )
+    from backend.ranking.model_profile import profile_model
+    from backend.ranking.sources import SOURCE_HEURISTIC, SOURCE_LEGACY_RANDOM
+
+    usage_map = await aggregate_internal_usage(db)
+    weights = await load_ranking_weights(db)
+    hide_unconfirmed = await load_hide_unconfirmed_flag(db)
+
+    query = f"""
+        SELECT m.id, m.name, m.display_name, m.provider_id, p.name AS provider_name,
+               COALESCE(m.enabled, 0), COALESCE(p.enabled, 0),
+               COALESCE(p.is_free, 0), COALESCE(p.is_local, 0), COALESCE(m.confirmed_free, 0),
+               COALESCE(m.supports_vision, 0), m.reasoning_control,
+               r.quality_score, r.popularity_rank, r.source,
+               CASE WHEN {USABLE_KEY_CONDITION_SQL} THEN 1 ELSE 0 END AS has_usable_key
+        FROM models m
+        JOIN providers p ON p.id = m.provider_id
+        LEFT JOIN model_rankings r ON r.model_id = m.id
+        LEFT JOIN user_api_keys k ON k.provider_id = p.id AND k.user_id = ?
+    """
+    try:
+        async with db.execute(query, (user_id or "",)) as cursor:
+            rows = await cursor.fetchall()
+    except Exception as e:
+        logger.error(f"Erro ao montar visão do ranking: {e}")
+        return []
+
+    ranked: List[ScoredModel] = []
+    for row in rows:
+        (
+            model_id, name, display_name, provider_id, provider_name,
+            model_enabled, provider_enabled, prov_is_free, prov_is_local, confirmed_free,
+            supports_vision, reasoning_control, rank_quality, popularity_rank, rank_source,
+            has_usable_key,
+        ) = row
+
+        prof = profile_model(model_id, name or "", provider_id or "", reasoning_control, int(supports_vision or 0))
+        if not prof.is_chat_capable:
+            continue
+
+        source = rank_source or SOURCE_HEURISTIC
+        if rank_quality is None or source == SOURCE_LEGACY_RANDOM:
+            quality = float(prof.baseline_quality)
+            source = SOURCE_HEURISTIC
+            if rank_source == SOURCE_LEGACY_RANDOM:
+                popularity_rank = None
+        else:
+            quality = float(rank_quality)
+
+        reason = unavailability_reason(
+            model_enabled=model_enabled,
+            provider_enabled=provider_enabled,
+            has_usable_key=has_usable_key,
+            provider_is_free=prov_is_free,
+            confirmed_free=confirmed_free,
+            hide_unconfirmed=hide_unconfirmed,
+        )
+        if scope != RANKING_SCOPE_ALL and reason is not None:
+            continue
+
+        usage_count = usage_map.get(model_id, 0)
+        breakdown = calculate_nexuslocal_score(
+            quality_score=quality,
+            popularity_rank=popularity_rank,
+            internal_usage_count=usage_count,
+            max_usage=weights["max_expected_usage"],
+            weight_quality=weights["weight_quality"],
+            weight_popularity=weights["weight_popularity"],
+            weight_usage=weights["weight_usage"],
+        )
+        ranked.append(
+            ScoredModel(
+                model_id=model_id,
+                quality_score=quality,
+                popularity_rank=popularity_rank,
+                internal_usage_count=usage_count,
+                nexuslocal_score=breakdown["nexuslocal_score"],
+                quality_contribution=breakdown["quality_contribution"],
+                popularity_contribution=breakdown["popularity_contribution"],
+                usage_contribution=breakdown["usage_contribution"],
+                popularity_normalized=breakdown["popularity_normalized"],
+                usage_normalized=breakdown["usage_normalized"],
+                source=source,
+                display_name=display_name or name or model_id,
+                provider_id=provider_id,
+                provider_name=provider_name or provider_id,
+                is_free=bool(int(confirmed_free or 0) or int(prov_is_free or 0) or int(prov_is_local or 0)),
+                is_local=bool(int(prov_is_local or 0)),
+                available=reason is None,
+                unavailable_reason=reason,
+                size_label=prof.size_label,
+                tags=list(prof.tags()),
+            )
+        )
+
+    ranked.sort(key=lambda m: (-m.nexuslocal_score, -m.quality_score, m.model_id))
+    return ranked

@@ -168,6 +168,7 @@ _QUALITY_TABLE: Tuple[Tuple[re.Pattern[str], float], ...] = tuple(
         (r"glm-4\.7-flash", 80), (r"glm-4\.7", 87), (r"glm-4\.6", 86), (r"glm-4\.5-air", 82), (r"glm-4\.5", 85),
         (r"z-coder", 86), (r"z-chat", 84),
         # Qwen
+        (r"qwen3(?:\.\d)?-max", 91), (r"qwen3(?:\.\d)?-plus", 88), (r"qwen3(?:\.\d)?-flash", 80),
         (r"qwen3\.6-27b", 82), (r"qwen3\.6", 81),
         (r"qwen3\.5-397b", 91), (r"qwen3\.5-122b", 87), (r"qwen3\.5-27b", 81), (r"qwen3\.5-35b", 80), (r"qwen3\.5-9b", 70),
         (r"qwen3-coder-480b|qwen3-coder(?!-30b|-flash)", 90), (r"qwen3-coder", 80), (r"qwen3-235b", 88), (r"qwen3-vl-32b", 80),
