@@ -73,11 +73,14 @@ class IntelligentUiTelemetry:
             self.blocks_out = 0
             self.discarded: Counter[str] = Counter()
             self.block_types: Counter[str] = Counter()
+            self.modules_offered: Counter[str] = Counter()
+            self.modules_produced: Counter[str] = Counter()
 
     def record_turn(
         self,
         *,
         offered: bool,
+        modules: tuple[str, ...] = (),
         text: str,
         envelope: dict[str, Any] | None,
         voice_mode: bool = False,
@@ -104,6 +107,7 @@ class IntelligentUiTelemetry:
             self.turns += 1
             if offered:
                 self.offered += 1
+                self.modules_offered.update(set(modules))
             if produced:
                 self.produced += 1
                 if offered:
@@ -112,6 +116,7 @@ class IntelligentUiTelemetry:
                     self.produced_without_offer += 1
             if valid:
                 self.valid += 1
+                self.modules_produced.update({str(b.get("type")) for b in envelope.get("blocks", [])})
                 for b in envelope.get("blocks", []):  # type: ignore[union-attr]
                     self.block_types[str(b.get("type", "?"))] += 1
             if produced and info["json_ok"]:
@@ -124,6 +129,7 @@ class IntelligentUiTelemetry:
 
         summary = {
             "offered": offered,
+            "modules": list(modules) if offered else [],
             "produced": produced,
             "valid": valid,
             "alt_fence": info["alt_fence"],
@@ -135,7 +141,7 @@ class IntelligentUiTelemetry:
         }
         logger.bind(request_id=request_id).info(
             "intelligent_ui turn offered={offered} produced={produced} valid={valid} "
-            "blocks={blocks_in}/{blocks_out} dropped={blocks_dropped} reason={reason}",
+            "blocks={blocks_in}/{blocks_out} dropped={blocks_dropped} reason={reason} modules={modules}",
             **summary,
         )
         return summary
@@ -155,6 +161,8 @@ class IntelligentUiTelemetry:
                 "blocks_dropped": max(0, self.blocks_in - self.blocks_out),
                 "discarded": {k: self.discarded.get(k, 0) for k in DISCARD_REASONS},
                 "block_types": dict(self.block_types),
+                "modules_offered": dict(self.modules_offered),
+                "modules_produced": dict(self.modules_produced),
                 "rates": {
                     "produced_given_offered": _ratio(self.produced_when_offered, self.offered),
                     "valid_given_produced": _ratio(self.valid, self.produced),

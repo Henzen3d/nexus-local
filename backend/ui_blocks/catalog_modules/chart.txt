@@ -1,0 +1,1 @@
+chart: kind bar|line|compare, x_key, series (key e label), rows numéricas. Sem cor.

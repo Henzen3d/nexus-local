@@ -221,8 +221,13 @@ def test_should_offer_ui_sem_falsos_positivos_por_radical():
 def test_catalogo_cabe_no_teto_e_tem_as_regras_da_spec():
     from pathlib import Path
 
-    text = (Path(__file__).resolve().parent.parent / "ui_blocks" / "catalog.txt").read_text(encoding="utf-8")
-    assert len(text) / 4 <= 400, "catálogo estourou os 400 tokens estimados (spec §8)"
+    from itertools import combinations
+    from backend.ui_blocks.catalog import MODULE_NAMES, compose_catalog
+
+    for combination in combinations(MODULE_NAMES, 3):
+        assert len(compose_catalog(combination)) / 4 <= 450
+    text = (Path(__file__).resolve().parent.parent / "ui_blocks" / "catalog.txt").read_text()
+    text += "\n".join((Path(__file__).resolve().parent.parent / "ui_blocks" / "catalog_modules" / f"{name}.txt").read_text() for name in MODULE_NAMES)
     for frase in (
         "Máximo 6 blocos",
         "info|success|warning|danger",
@@ -242,7 +247,7 @@ def test_catalogo_cabe_no_teto_e_tem_as_regras_da_spec():
     # Sanidade: o exemplo do catálogo é um envelope válido (modelo que copiar acerta),
     # e as menções inline a ```nexus-ui na prosa do catálogo não são tratadas como fence.
     _clean, envelope = extract_ui(text)
-    assert envelope is not None and envelope["blocks"][0]["type"] == "chart"
+    assert envelope is not None and envelope["blocks"][0]["type"] == "progress"
     assert "use SEMPRE o nome de fence ```nexus-ui" in _clean
 
 

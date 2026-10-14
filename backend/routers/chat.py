@@ -46,7 +46,7 @@ from backend.orchestration.persist_turn import (
 from backend.ui_blocks.config import get_intelligent_ui_config
 from backend.ui_blocks.telemetry import intelligent_ui_telemetry
 from backend.ui_blocks.extract import extract_ui
-from backend.ui_blocks.should_offer import should_offer_ui
+from backend.ui_blocks.catalog import build_catalog
 from backend.orchestration.resolve_request import resolve_and_stream
 from backend.web_search import (
     execute_agentic_search,
@@ -601,15 +601,15 @@ async def _run_turn(
     # Em modo voz a resposta vai para TTS: um fence JSON contradiz as
     # diretrizes de fala curta e nunca seria lido, então não oferecemos.
     intelligent_ui_offered = False
-    if intelligent_ui_enabled and not voice_mode and should_offer_ui(user_message):
+    intelligent_ui_modules = ()
+    if intelligent_ui_enabled and not voice_mode:
         try:
-            cat_file = Path(__file__).resolve().parent.parent / "ui_blocks" / "catalog.txt"
-            if cat_file.exists():
-                cat_content = cat_file.read_text(encoding="utf-8")
-                if (len(cat_content) / 4) <= 400:
-                    system_instruction += "\n\n" + cat_content
-                    intelligent_ui_offered = True
+            cat_content, intelligent_ui_modules = build_catalog(user_message)
+            if cat_content:
+                system_instruction += "\n\n" + cat_content
+                intelligent_ui_offered = True
         except Exception as e:
+            intelligent_ui_modules = ()
             logger.error("Erro ao carregar catálogo Intelligent UI:", exc_info=e)
 
     # ── Poda do histórico ao orçamento de entrada do modelo ─────────
@@ -678,6 +678,7 @@ async def _run_turn(
         try:
             intelligent_ui_telemetry.record_turn(
                 offered=intelligent_ui_offered,
+                modules=intelligent_ui_modules,
                 text=raw_model_text,
                 envelope=ui_envelope,
                 voice_mode=voice_mode,

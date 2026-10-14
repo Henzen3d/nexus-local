@@ -1,0 +1,1 @@
+sandbox: title, initial_height, html, css, js, standalone_download (simulação interativa isolada).

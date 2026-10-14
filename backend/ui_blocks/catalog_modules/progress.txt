@@ -1,0 +1,1 @@
+progress: label, value, max, steps com label e state pending|active|done|error.

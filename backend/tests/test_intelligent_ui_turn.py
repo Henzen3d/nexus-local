@@ -162,6 +162,9 @@ def test_flag_ligada_extrai_grava_e_devolve_no_stream_end(turn_env, monkeypatch)
 
     # Catálogo oferecido (flag + heurístico)
     assert "nexus-ui" in turn_env["captured"]["system_prompt"]
+    assert "chart: kind" in turn_env["captured"]["system_prompt"]
+    assert "follow_up: items" in turn_env["captured"]["system_prompt"]
+    assert "controls: title" not in turn_env["captured"]["system_prompt"]
 
     # Releitura da conversa devolve o envelope junto da mensagem
     from fastapi import FastAPI
