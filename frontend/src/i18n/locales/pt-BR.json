@@ -580,7 +580,8 @@
     "lastDays": "Últimos {{count}} dias"
   },
   "toast": {
-    "closeAlert": "Fechar alerta"
+    "closeAlert": "Fechar alerta",
+    "regionLabel": "Notificações"
   },
   "dashboard": {
     "loading": "Carregando métricas...",
@@ -958,5 +959,30 @@
     "exportStandalone": "Baixar HTML",
     "exportTooltip": "Baixar ferramenta interativa em arquivo autônomo",
     "computedResult": "Resultado"
+  },
+  "proactive": {
+    "bubbleBadge": "Assistente proativo",
+    "unreadBadge": "Novo insight do assistente proativo",
+    "reasonLine": "Pesquisei porque você pareceu {{emotion}} com {{topic}}.",
+    "knowMore": "Quero saber mais",
+    "knowMorePrompt": "Me conta mais sobre {{topic}}.",
+    "notThisTopic": "Não quero sobre isso",
+    "pause": "Pausar",
+    "toastTitle": "✦ Pesquisei sobre {{topic}}",
+    "toastView": "Ver",
+    "researching": "Pesquisando algo que você mencionou…",
+    "synthesizing": "Organizando o que encontrei…",
+    "blockedNote": "Combinado — não vou mais pesquisar sobre este tema.",
+    "dismissedNote": "Insight dispensado.",
+    "blockedToast": "Combinado — não vou mais trazer este tema.",
+    "pausedToast": "Assistente proativo pausado. Você pode reativá-lo nas configurações.",
+    "ackError": "Não consegui registrar sua escolha. Tente novamente.",
+    "category": {
+      "event": "Evento",
+      "news": "Notícia",
+      "product": "Produto",
+      "place": "Lugar",
+      "other": "Outro"
+    }
   }
 }

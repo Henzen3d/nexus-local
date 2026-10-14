@@ -89,7 +89,8 @@ async def get_conversation(conversation_id: str, current_user: dict = Depends(ge
 
         async with db.execute(
             """SELECT m.id, m.role, m.content, m.model_id, m.created_at, mod.display_name, p.name, m.provider, m.relay_used, m.relay_model,
-                      m.web_search_used, m.web_search_query, m.web_search_sources, m.process_steps
+                      m.web_search_used, m.web_search_query, m.web_search_sources, m.process_steps,
+                      COALESCE(m.kind, 'normal'), m.proactive_insight_id
                FROM messages m
                LEFT JOIN models mod ON m.model_id = mod.id
                LEFT JOIN providers p ON mod.provider_id = p.id
@@ -98,6 +99,22 @@ async def get_conversation(conversation_id: str, current_user: dict = Depends(ge
             (conversation_id,),
         ) as cur:
             messages = await cur.fetchall()
+
+        # Insights proativos desta conversa (F2.6.3) — só do dono, por construção
+        msg_insights: dict[str, dict] = {}
+        try:
+            from backend.proactive.delivery import INSIGHT_COLUMNS, insight_public_dict
+
+            async with db.execute(
+                f"""SELECT {', '.join(INSIGHT_COLUMNS)} FROM proactive_insights
+                    WHERE conversation_id = ? AND user_id = ? AND delivered_message_id IS NOT NULL""",
+                (conversation_id, current_user["id"]),
+            ) as cur:
+                for row in await cur.fetchall():
+                    data = dict(zip(INSIGHT_COLUMNS, row))
+                    msg_insights[data["delivered_message_id"]] = insight_public_dict(data)
+        except Exception:
+            msg_insights = {}
 
         # Puxa todos os artifacts desta conversa para associar com cada mensagem
         async with db.execute(
@@ -199,7 +216,11 @@ async def get_conversation(conversation_id: str, current_user: dict = Depends(ge
                 "web_search_query": m[11] if len(m) > 11 else None,
                 "web_search_sources": _loads(m[12]) if len(m) > 12 else None,
                 "process_steps": _loads(m[13]) if len(m) > 13 else None,
+                "kind": (m[14] if len(m) > 14 else None) or "normal",
+                "proactive_insight_id": m[15] if len(m) > 15 else None,
             }
+            if item["kind"] == "proactive":
+                item["insight"] = msg_insights.get(item["id"])
             if item["role"] == "user" and item["web_search_used"]:
                 pending_search = {
                     "web_search_used": True,

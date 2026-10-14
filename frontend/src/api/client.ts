@@ -556,6 +556,24 @@ export const api = {
     const params = conversationId ? `?conversation_id=${encodeURIComponent(conversationId)}` : ''
     return fetchJSON<import('../types').ImageTask[]>(`/image-gen/tasks${params}`)
   },
+
+  // Assistente proativo (F2)
+  getProactiveSettings: () => fetchJSON<import('../types').ProactiveSettings>('/proactive/settings'),
+  updateProactiveSettings: (
+    data: Partial<Pick<import('../types').ProactiveSettings, 'enabled' | 'sensitivity' | 'categories' | 'quiet_hours'>> & {
+      onboarding_seen?: boolean
+      clear_quiet_hours?: boolean
+    },
+  ) =>
+    fetchJSON<{ ok: boolean } & import('../types').ProactiveSettings>('/proactive/settings', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+  ackProactiveInsight: (insightId: string, action: import('../types').ProactiveAckAction) =>
+    fetchJSON<{ ok: boolean; id: string; status: import('../types').ProactiveStatus }>(
+      `/proactive/insights/${encodeURIComponent(insightId)}/ack`,
+      { method: 'POST', body: JSON.stringify({ action }) },
+    ),
 }
 
 export interface MemoryStatsApi {

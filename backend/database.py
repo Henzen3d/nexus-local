@@ -1864,9 +1864,194 @@ async def init_db():
         except Exception as e:
             logger.error("[database migration] erro ao criar índices de cache_semantic: %s", e)
 
+        # ── Assistente Proativo (F2.1) — tabelas, colunas e índices ─────────
+        await _migrate_proactive_schema(db)
+
         await claim_global_provider_keys(db)
         await seed_reasoning_controls(db)
         logger.error("[OK] Ranking & Failover & Reasoning tables: initialized")
+
+
+PROACTIVE_META_DEFAULTS: dict[str, str] = {
+    "proactive_enabled_global": "true",
+    "proactive_max_per_hour_conv": "3",
+    "proactive_max_per_day_user": "10",
+    "proactive_topic_cooldown_hours": "24",
+    "proactive_max_pending": "3",
+    "proactive_concurrency": "2",
+    "proactive_total_timeout_s": "45",
+    "proactive_allow_chat_model_fallback": "false",
+}
+
+
+async def _migrate_proactive_schema(db: aiosqlite.Connection) -> None:
+    """Migrações incrementais do Assistente Proativo (F2.1).
+
+    Segue o padrão do projeto: ``try/except`` por bloco, índices criados
+    **depois** das colunas/tabelas e ``INSERT OR IGNORE`` para as chaves de
+    ``meta`` (``proactive_enabled_global`` default ``'true'``; o opt-in por
+    usuário fica em ``proactive_user_settings.enabled`` default ``0``).
+    """
+    # F2.1.1 — insights
+    try:
+        await db.execute("SELECT id FROM proactive_insights LIMIT 1")
+    except aiosqlite.OperationalError:
+        try:
+            await db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS proactive_insights (
+                    id                      TEXT PRIMARY KEY,
+                    user_id                 TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    conversation_id         TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+                    source_message_id       TEXT REFERENCES messages(id) ON DELETE SET NULL,
+                    delivered_message_id    TEXT REFERENCES messages(id) ON DELETE SET NULL,
+                    spawned_conversation_id TEXT REFERENCES conversations(id) ON DELETE SET NULL,
+                    topic                   TEXT NOT NULL,
+                    topic_hash              TEXT NOT NULL,
+                    entities_json           TEXT NOT NULL DEFAULT '[]',
+                    category                TEXT NOT NULL,
+                    confidence              REAL NOT NULL,
+                    query                   TEXT,
+                    status                  TEXT NOT NULL DEFAULT 'detected'
+                        CHECK(status IN ('detected','researching','ready','delivered','seen',
+                                         'dismissed','blocked','expired','failed')),
+                    channel                 TEXT,
+                    synthesized_text        TEXT,
+                    reason_line             TEXT,
+                    sources_json            TEXT,
+                    follow_ups_json         TEXT,
+                    language                TEXT,
+                    emotion                 TEXT,
+                    error_code              TEXT,
+                    detector_model          TEXT,
+                    synth_model             TEXT,
+                    latency_detect_ms       INTEGER,
+                    latency_research_ms     INTEGER,
+                    latency_synth_ms        INTEGER,
+                    created_at              TEXT DEFAULT (datetime('now')),
+                    ready_at                TEXT,
+                    delivered_at            TEXT,
+                    seen_at                 TEXT,
+                    expires_at              TEXT
+                );
+                """
+            )
+            await db.commit()
+        except Exception as e:
+            logger.error("[database migration] erro ao criar proactive_insights:", exc_info=e)
+
+    # Colunas adicionadas após a primeira versão da tabela (idempotente)
+    for col_name, col_def in [
+        ("reason_line", "TEXT"),
+        ("language", "TEXT"),
+        ("emotion", "TEXT"),
+    ]:
+        try:
+            await db.execute(f"SELECT {col_name} FROM proactive_insights LIMIT 1")
+        except (sqlite3.OperationalError, aiosqlite.OperationalError):
+            try:
+                await db.execute(f"ALTER TABLE proactive_insights ADD COLUMN {col_name} {col_def}")
+                await db.commit()
+            except Exception as e:
+                logger.error("[database migration] erro ao adicionar %s em proactive_insights: %s", col_name, e)
+
+    # F2.1.2 — preferências por usuário (opt-in: enabled default 0)
+    try:
+        await db.execute("SELECT user_id FROM proactive_user_settings LIMIT 1")
+    except aiosqlite.OperationalError:
+        try:
+            await db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS proactive_user_settings (
+                    user_id            TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+                    enabled            INTEGER DEFAULT 0,
+                    sensitivity        TEXT DEFAULT 'medium',
+                    categories_json    TEXT DEFAULT '["event","news","product","place"]',
+                    quiet_hours_json   TEXT,
+                    onboarding_seen_at TEXT,
+                    updated_at         TEXT DEFAULT (datetime('now'))
+                );
+                """
+            )
+            await db.commit()
+        except Exception as e:
+            logger.error("[database migration] erro ao criar proactive_user_settings:", exc_info=e)
+
+    # F2.1.3 — blocklist de tópicos
+    try:
+        await db.execute("SELECT user_id FROM proactive_topic_blocklist LIMIT 1")
+    except aiosqlite.OperationalError:
+        try:
+            await db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS proactive_topic_blocklist (
+                    user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    topic_hash  TEXT NOT NULL,
+                    topic_label TEXT,
+                    created_at  TEXT DEFAULT (datetime('now')),
+                    PRIMARY KEY (user_id, topic_hash)
+                );
+                """
+            )
+            await db.commit()
+        except Exception as e:
+            logger.error("[database migration] erro ao criar proactive_topic_blocklist:", exc_info=e)
+
+    # F2.1.4 — messages.kind / messages.proactive_insight_id
+    for col_name, col_def in [
+        ("kind", "TEXT DEFAULT 'normal'"),
+        ("proactive_insight_id", "TEXT"),
+    ]:
+        try:
+            await db.execute(f"SELECT {col_name} FROM messages LIMIT 1")
+        except (sqlite3.OperationalError, aiosqlite.OperationalError):
+            try:
+                await db.execute(f"ALTER TABLE messages ADD COLUMN {col_name} {col_def}")
+                await db.commit()
+            except Exception as e:
+                logger.error("[database migration] erro ao adicionar %s em messages: %s", col_name, e)
+
+    # F2.1.5 — conversations.origin_insight_id (usado pela F3, "Me conta aqui")
+    try:
+        await db.execute("SELECT origin_insight_id FROM conversations LIMIT 1")
+    except (sqlite3.OperationalError, aiosqlite.OperationalError):
+        try:
+            await db.execute("ALTER TABLE conversations ADD COLUMN origin_insight_id TEXT")
+            await db.commit()
+        except Exception as e:
+            logger.error("[database migration] erro ao adicionar origin_insight_id em conversations: %s", e)
+
+    # Índices — sempre depois do bloco de migração (AGENTS.md)
+    try:
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_proactive_user_status "
+            "ON proactive_insights(user_id, status, created_at DESC)"
+        )
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_proactive_topic_recent "
+            "ON proactive_insights(user_id, topic_hash, created_at DESC)"
+        )
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_proactive_conv "
+            "ON proactive_insights(conversation_id, created_at DESC)"
+        )
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_messages_kind_proactive "
+            "ON messages(conversation_id) WHERE kind = 'proactive'"
+        )
+        await db.commit()
+    except Exception as e:
+        logger.error("[database migration] erro ao criar índices do assistente proativo: %s", e)
+
+    # F2.1.6 — chaves de meta (admin). INSERT OR IGNORE preserva valores já editados.
+    try:
+        for key, value in PROACTIVE_META_DEFAULTS.items():
+            await db.execute(
+                "INSERT OR IGNORE INTO meta (key, value) VALUES (?, ?)", (key, value)
+            )
+        await db.commit()
+    except Exception as e:
+        logger.error("[database migration] erro ao semear meta do assistente proativo: %s", e)
 
 
 async def seed_reasoning_controls(db: aiosqlite.Connection) -> int:

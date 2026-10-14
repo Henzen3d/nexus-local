@@ -11,6 +11,8 @@ from backend.database import get_db
 from backend.fusion.orchestrator import executar_fusion
 from backend.logging_config import configure_logging, get_logger
 from backend.memory import extract_user_memory_background
+from backend.proactive import presence as proactive_presence
+from backend.proactive import service as proactive_service
 from backend.orchestration.build_context import (
     BASE_SYSTEM_PROMPT,
     build_memory_context,
@@ -68,6 +70,7 @@ _user_sockets: dict[str, set[WebSocket]] = {}
 
 def register_socket(user_id: str, ws: WebSocket) -> None:
     _user_sockets.setdefault(user_id, set()).add(ws)
+    proactive_presence.register(user_id, ws)
 
 
 def unregister_socket(user_id: str, ws: WebSocket) -> None:
@@ -75,6 +78,7 @@ def unregister_socket(user_id: str, ws: WebSocket) -> None:
         _user_sockets[user_id].discard(ws)
         if not _user_sockets[user_id]:
             _user_sockets.pop(user_id, None)
+    proactive_presence.remove(user_id, ws)
 
 
 async def notify_user_sockets(user_id: str, message: dict) -> None:
@@ -135,9 +139,20 @@ async def websocket_chat(ws: WebSocket):
 
             msg_type = req.get("type")
             if msg_type == "ping":
+                proactive_presence.touch(user_id, ws)
                 await ws.send_json({"type": "pong"})
                 continue
             if msg_type == "pong":
+                proactive_presence.touch(user_id, ws)
+                continue
+            if msg_type == "presence":
+                # F2.6.2: {type:"presence", state, conversation_id, view} — contrato §3.1
+                proactive_presence.update(
+                    user_id, ws,
+                    state=req.get("state"),
+                    conversation_id=req.get("conversation_id"),
+                    view=req.get("view"),
+                )
                 continue
 
             conversation_id = req.get("conversation_id")
@@ -213,7 +228,28 @@ async def _process_turn(
     provider_id, bypass_cache, attachment_ids, request_project_id,
     project_context_debug, use_memory, fusion_mode, voice_mode: bool = False,
 ):
-    """Processa um turno completo de chat (uma mensagem do usuário)."""
+    """Processa um turno completo de chat (uma mensagem do usuário).
+
+    Mantém a conversa marcada como "turno ativo" (``TurnGuard``) para que o
+    assistente proativo nunca entregue uma bolha no meio de uma resposta.
+    """
+    turn = proactive_service.TurnGuard()
+    try:
+        await _run_turn(
+            ws, db, req, user, conversation_id, user_message, model_id,
+            provider_id, bypass_cache, attachment_ids, request_project_id,
+            project_context_debug, use_memory, fusion_mode, voice_mode, turn=turn,
+        )
+    finally:
+        turn.finish()
+
+
+async def _run_turn(
+    ws, db, req, user, conversation_id, user_message, model_id,
+    provider_id, bypass_cache, attachment_ids, request_project_id,
+    project_context_debug, use_memory, fusion_mode, voice_mode: bool = False,
+    *, turn: "proactive_service.TurnGuard | None" = None,
+):
     user_id = user["id"]
     process_started_at = time.perf_counter()
     is_auto = (model_id == "auto" or not model_id)
@@ -397,6 +433,8 @@ async def _process_turn(
     if created_payload:
         created_payload["conversation_id"] = conversation_id
         await ws.send_json(created_payload)
+    if turn is not None:
+        turn.start(conversation_id)
 
     # ── Save user message ───────────────────────────────────────────
     user_msg_id = await save_user_message(
@@ -639,6 +677,17 @@ async def _process_turn(
                 user["id"], conversation_id, model_id, provider_id
             )
         )
+
+    # ── Assistente proativo (F2.6.1): só agenda; nunca bloqueia o turno ──
+    if turn is not None:
+        turn.finish()
+    try:
+        await proactive_service.schedule_proactive_check(
+            db, user_id, conversation_id, user_msg_id, user_message,
+            web_search_used=bool(web_search_used), model_id=model_id, provider_id=provider_id,
+        )
+    except Exception as exc:  # pragma: no cover — defensivo
+        logger.debug("[Proactive] agendamento falhou: %s", exc)
 
 
 async def _resolve_web_search(

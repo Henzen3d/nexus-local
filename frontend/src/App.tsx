@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
-import { X, AlertCircle, CheckCircle, Info } from 'lucide-react'
+import { X, AlertCircle, CheckCircle, Info, Sparkles } from 'lucide-react'
+import type { ToastItem } from './types'
 import { useTranslation } from 'react-i18next'
 import { useStore } from './store/useStore'
 import { usePWAStore } from './store/pwaStore'
@@ -22,37 +23,51 @@ import { MOBILE_BREAKPOINT } from './hooks/useIsMobile'
 
 function Toast() {
   const { t } = useTranslation()
-  const toast = useStore((s) => s.toast)
+  const toasts = useStore((s) => s.toasts)
   const hideToast = useStore((s) => s.hideToast)
 
-  useEffect(() => {
-    if (!toast) return
-    const timer = setTimeout(() => {
-      hideToast()
-    }, 5000)
-    return () => clearTimeout(timer)
-  }, [toast, hideToast])
+  if (toasts.length === 0) return null
 
-  if (!toast) return null
-
-  const getIcon = () => {
-    switch (toast.type) {
+  const getIcon = (type: ToastItem['type']) => {
+    switch (type) {
       case 'success':
         return <CheckCircle size={16} />
       case 'error':
         return <AlertCircle size={16} />
+      case 'proactive':
+        return <Sparkles size={16} />
       default:
         return <Info size={16} />
     }
   }
 
+  // Pilha de até 3 toasts (o store descarta os mais antigos); o auto-hide é do store.
   return (
-    <div className={`toast-container toast-${toast.type}`}>
-      <div className="toast-icon-wrapper">{getIcon()}</div>
-      <div className="toast-message">{toast.message}</div>
-      <button className="toast-close" onClick={hideToast} aria-label={t('toast.closeAlert')}>
-        <X size={14} />
-      </button>
+    <div className="toast-stack" role="region" aria-live="polite" aria-label={t('toast.regionLabel', { defaultValue: 'Notificações' })}>
+      {toasts.map((toast) => (
+        <div key={toast.id} className={`toast-container toast-${toast.type}`}>
+          <div className="toast-icon-wrapper">{getIcon(toast.type)}</div>
+          <div className="toast-body">
+            {toast.title && <div className="toast-title">{toast.title}</div>}
+            <div className="toast-message">{toast.message}</div>
+            {toast.action && (
+              <button
+                type="button"
+                className="toast-action"
+                onClick={() => {
+                  toast.action?.onClick()
+                  hideToast(toast.id)
+                }}
+              >
+                {toast.action.label}
+              </button>
+            )}
+          </div>
+          <button className="toast-close" onClick={() => hideToast(toast.id)} aria-label={t('toast.closeAlert')}>
+            <X size={14} />
+          </button>
+        </div>
+      ))}
     </div>
   )
 }

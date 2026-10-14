@@ -446,7 +446,8 @@
     "lastDays": "Last {{count}} days"
   },
   "toast": {
-    "closeAlert": "알림 닫기"
+    "closeAlert": "알림 닫기",
+    "regionLabel": "알림"
   },
   "dashboard": {
     "loading": "Loading metrics...",
@@ -685,5 +686,30 @@
     "pinError": "고정 실패",
     "llmSummaries": "LLM 요약",
     "llmSummariesDesc": "추출 모델로 요약 다듬기"
+  },
+  "proactive": {
+    "bubbleBadge": "프로액티브 어시스턴트",
+    "unreadBadge": "프로액티브 어시스턴트의 새 인사이트",
+    "reasonLine": "{{topic}}에 대해 {{emotion}}해 보여서 찾아봤어요.",
+    "knowMore": "더 알고 싶어요",
+    "knowMorePrompt": "{{topic}}에 대해 더 알려줘.",
+    "notThisTopic": "이 주제는 원하지 않아요",
+    "pause": "일시 중지",
+    "toastTitle": "✦ {{topic}}에 대해 찾아봤어요",
+    "toastView": "보기",
+    "researching": "말씀하신 내용을 찾아보는 중…",
+    "synthesizing": "찾은 내용을 정리하는 중…",
+    "blockedNote": "알겠어요 — 이 주제는 더 이상 찾아보지 않을게요.",
+    "dismissedNote": "인사이트를 닫았어요.",
+    "blockedToast": "알겠어요 — 이 주제는 더 이상 꺼내지 않을게요.",
+    "pausedToast": "프로액티브 어시스턴트를 일시 중지했어요. 설정에서 다시 켤 수 있어요.",
+    "ackError": "선택을 저장하지 못했어요. 다시 시도해 주세요.",
+    "category": {
+      "event": "이벤트",
+      "news": "뉴스",
+      "product": "제품",
+      "place": "장소",
+      "other": "기타"
+    }
   }
 }

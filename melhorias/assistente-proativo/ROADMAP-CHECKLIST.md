@@ -7,7 +7,7 @@ Use este arquivo para marcar o progresso. Cada item tem o mesmo ID usado no docu
 | Fase | Documento | Estimativa | Pré-requisito | Status |
 |---|---|---|---|---|
 | F1 Spike do detector | `02-fase-1-spike-detector.md` | 4 h | — | 🟡 código pronto · porteiro GO · classificador aguarda medição local |
-| F2 Núcleo do pipeline | `03-fase-2-nucleo-pipeline.md` | 10 h | F1 go (métricas do classificador) | ⏸️ |
+| F2 Núcleo do pipeline | `03-fase-2-nucleo-pipeline.md` | 10 h | F1 go (métricas do classificador) | 🟡 código pronto · testes verdes · falta validação manual com provedor real |
 | F3 Presença, fila e retorno | `04-fase-3-presenca-fila-retorno.md` | 10 h | F2 | ⏸️ |
 | F4 Controles e admin | `05-fase-4-controles-e-admin.md` | 6 h | F2, F3 | ⏸️ |
 | F5 Qualidade e rollout | `06-fase-5-qualidade-e-rollout.md` | 8 h + 1 semana | F1–F4 | ⏸️ |
@@ -56,75 +56,77 @@ Use este arquivo para marcar o progresso. Cada item tem o mesmo ID usado no docu
 ## ⚙️ F2 — Núcleo do Pipeline (`03-fase-2-nucleo-pipeline.md`)
 
 **F2.1 Esquema**
-- [ ] **F2.1.1** `proactive_insights` + índices
-- [ ] **F2.1.2** `proactive_user_settings` (default `enabled=0`)
-- [ ] **F2.1.3** `proactive_topic_blocklist`
-- [ ] **F2.1.4** `messages.kind`, `messages.proactive_insight_id` + índice parcial
-- [ ] **F2.1.5** `conversations.origin_insight_id`
-- [ ] **F2.1.6** Chaves `meta.proactive_*`
-- [ ] **F2.1.7** Teste de migração idempotente
+- [x] **F2.1.1** `proactive_insights` + índices
+- [x] **F2.1.2** `proactive_user_settings` (default `enabled=0`)
+- [x] **F2.1.3** `proactive_topic_blocklist`
+- [x] **F2.1.4** `messages.kind`, `messages.proactive_insight_id` + índice parcial
+- [x] **F2.1.5** `conversations.origin_insight_id`
+- [x] **F2.1.6** Chaves `meta.proactive_*`
+- [x] **F2.1.7** Teste de migração idempotente
 
 **F2.2 Config e limites**
-- [ ] **F2.2.1** `ProactiveConfig` + `load_config` (meta → env → default, cache 60 s)
-- [ ] **F2.2.2** `get_user_settings` (opt-in)
-- [ ] **F2.2.3** Rate limits em SQL (3/h/conv, 10/dia, cooldown 24 h, máx. 3 pendentes)
-- [ ] **F2.2.4** Semáforo global + timeout total 45 s
-- [ ] **F2.2.5** `schedule_proactive_check` com referência da task guardada
-- [ ] **F2.2.6** `run_pipeline` com status/latências por etapa e falha silenciosa
-- [ ] **F2.2.7** Excluir `kind='proactive'` da memória e do Dream
+- [x] **F2.2.1** `ProactiveConfig` + `load_config` (meta → env → default, cache 60 s)
+- [x] **F2.2.2** `get_user_settings` (opt-in)
+- [x] **F2.2.3** Rate limits em SQL (3/h/conv, 10/dia, cooldown 24 h, máx. 3 pendentes)
+- [x] **F2.2.4** Semáforo global + timeout total 45 s
+- [x] **F2.2.5** `schedule_proactive_check` com referência da task guardada
+- [x] **F2.2.6** `run_pipeline` com status/latências por etapa e falha silenciosa
+- [x] **F2.2.7** Excluir `kind='proactive'` da memória e do Dream
 
 **F2.3 Pesquisa**
-- [ ] **F2.3.1** `research()` / `ResearchResult` / `Source`
-- [ ] **F2.3.2** Consulta (+ cidade/ano se `time_sensitive`; máx. 2 consultas)
-- [ ] **F2.3.3** `resolve_and_execute_search` (respeita config global)
-- [ ] **F2.3.4** Deep read das 2 melhores URLs (anti-SSRF) com datas para eventos
-- [ ] **F2.3.5** Dedupe/ranking, máx. 3 fontes
-- [ ] **F2.3.6** Cache por `topic_hash` 24 h (fontes compartilháveis, síntese por usuário)
-- [ ] **F2.3.7** Timeout 30 s; vazio ⇒ `failed:no_results`
+- [x] **F2.3.1** `research()` / `ResearchResult` / `Source`
+- [x] **F2.3.2** Consulta (+ cidade/ano se `time_sensitive`; máx. 2 consultas)
+- [x] **F2.3.3** `resolve_and_execute_search` (respeita config global)
+- [x] **F2.3.4** Deep read das 2 melhores URLs (anti-SSRF) com datas para eventos
+- [x] **F2.3.5** Dedupe/ranking, máx. 3 fontes
+- [x] **F2.3.6** Cache por `topic_hash` 24 h (fontes compartilháveis, síntese por usuário)
+- [x] **F2.3.7** Timeout 30 s; vazio ⇒ `failed:no_results`
 
 **F2.4 Síntese**
-- [ ] **F2.4.1** Prompt "amigo que pesquisou" (idioma original, ≤ 3 frases, gancho, só fatos das fontes)
-- [ ] **F2.4.2** JSON `{text, reason_line, follow_ups, used_source_urls}` + parser
-- [ ] **F2.4.3** Modelo: `meta.proactive_synth_*` → utilitário → modelo do chat (se permitido)
-- [ ] **F2.4.4** Pós-processamento (sem links no texto, ≤ 600 chars, fontes válidas)
-- [ ] **F2.4.5** `expires_at` por categoria
+- [x] **F2.4.1** Prompt "amigo que pesquisou" (idioma original, ≤ 3 frases, gancho, só fatos das fontes)
+- [x] **F2.4.2** JSON `{text, reason_line, follow_ups, used_source_urls}` + parser
+- [x] **F2.4.3** Modelo: `meta.proactive_synth_*` → utilitário → modelo do chat (se permitido)
+- [x] **F2.4.4** Pós-processamento (sem links no texto, ≤ 600 chars, fontes válidas)
+- [x] **F2.4.5** `expires_at` por categoria
 
 **F2.5 Entrega inline/toast (v. F2)**
-- [ ] **F2.5.1** `deliver()` / `DeliveryOutcome`
-- [ ] **F2.5.2** Persistir `messages(kind='proactive')` sem mexer no título
-- [ ] **F2.5.3** Payload `proactive_insight` via `notify_user_sockets`
-- [ ] **F2.5.4** Guarda de turno ativo (`flush_after_turn`)
-- [ ] **F2.5.5** Sem socket ⇒ permanece `ready` sem mensagem (F3 entrega)
-- [ ] **F2.5.6** Idempotência por `delivered_message_id`
+- [x] **F2.5.1** `deliver()` / `DeliveryOutcome`
+- [x] **F2.5.2** Persistir `messages(kind='proactive')` sem mexer no título
+- [x] **F2.5.3** Payload `proactive_insight` via `notify_user_sockets`
+- [x] **F2.5.4** Guarda de turno ativo (`flush_after_turn`)
+- [x] **F2.5.5** Sem socket ⇒ permanece `ready` sem mensagem (F3 entrega)
+- [x] **F2.5.6** Idempotência por `delivered_message_id`
 
 **F2.6 Integração**
-- [ ] **F2.6.1** Hook em `_process_turn` após a memória (≤ 5 ms)
-- [ ] **F2.6.2** WS `presence` mínimo
-- [ ] **F2.6.3** `GET /conversations/{id}` devolve `kind` + `insight`
-- [ ] **F2.6.4** `routers/proactive.py`: `GET/PUT /settings`, `POST /insights/{id}/ack`
-- [ ] **F2.6.5** Registro em `main.py`
-- [ ] **F2.6.6** Confirmar `load_history` inclui a bolha como `assistant`
+- [x] **F2.6.1** Hook em `_process_turn` após a memória (≤ 5 ms)
+- [x] **F2.6.2** WS `presence` mínimo
+- [x] **F2.6.3** `GET /conversations/{id}` devolve `kind` + `insight`
+- [x] **F2.6.4** `routers/proactive.py`: `GET/PUT /settings`, `POST /insights/{id}/ack`
+- [x] **F2.6.5** Registro em `main.py`
+- [x] **F2.6.6** Confirmar `load_history` inclui a bolha como `assistant`
 
 **F2.7 Frontend**
-- [ ] **F2.7.1** Tipos `Message.kind`, `ProactiveInsight`
-- [ ] **F2.7.2** `useChat`: `proactive_insight`, `proactive_status`
-- [ ] **F2.7.3** `handleProactiveInsight` (inline × toast; respeita streaming/digitação)
-- [ ] **F2.7.4** `presence{conversation_id}` ao trocar de conversa
-- [ ] **F2.7.5** `ProactiveBubble.tsx` (✦, motivo, `SourceShelf`, 3 ações; CSS vars)
-- [ ] **F2.7.6** Render em `ChatWindow` + `ack seen` por viewport
-- [ ] **F2.7.7** Toast com ação e fila (≤ 3), retrocompatível
-- [ ] **F2.7.8** Badge ✦ na sidebar
-- [ ] **F2.7.9** i18n (8 idiomas)
-- [ ] **F2.7.10** `npm run build` 0 erros
+- [x] **F2.7.1** Tipos `Message.kind`, `ProactiveInsight`
+- [x] **F2.7.2** `useChat`: `proactive_insight`, `proactive_status`
+- [x] **F2.7.3** `handleProactiveInsight` (inline × toast; respeita streaming/digitação)
+- [x] **F2.7.4** `presence{conversation_id}` ao trocar de conversa
+- [x] **F2.7.5** `ProactiveBubble.tsx` (✦, motivo, `SourceShelf`, 3 ações; CSS vars)
+- [x] **F2.7.6** Render em `ChatWindow` + `ack seen` por viewport
+- [x] **F2.7.7** Toast com ação e fila (≤ 3), retrocompatível
+- [x] **F2.7.8** Badge ✦ na sidebar
+- [x] **F2.7.9** i18n (8 idiomas)
+- [x] **F2.7.10** `npm run build` 0 erros
 
 **F2.8 Testes**
-- [ ] **F2.8.1** Pipeline completo com fakes
-- [ ] **F2.8.2** Limites e cooldown
-- [ ] **F2.8.3** IDOR em `ack` e na listagem de conversa
-- [ ] **F2.8.4** Memória ignora `kind='proactive'`
-- [ ] **F2.8.5** WS: `proactive_insight` só após `stream_end`
+- [x] **F2.8.1** Pipeline completo com fakes
+- [x] **F2.8.2** Limites e cooldown
+- [x] **F2.8.3** IDOR em `ack` e na listagem de conversa
+- [x] **F2.8.4** Memória ignora `kind='proactive'`
+- [x] **F2.8.5** WS: `proactive_insight` só após `stream_end`
 
 **Aceite F2:** entrega inline ≤ 45 s p95 · nunca durante streaming/digitação · limites testados · sem vazamento · suíte verde · build 0 erros
+
+> **Notas F2 (implementação):** opt-in continua `enabled=0` — para testar, `PUT /api/proactive/settings {"enabled": true}` (UI de configurações chega na F4). O cache de 24 h por `topic_hash` só é consultado se a busca web global estiver habilitada. Nos testes, `research(use_cache=False)` é o padrão porque o DB temporário do `conftest` é compartilhado entre os testes; o teste dedicado de cache usa `topic_hash` único. Ordem WS (`stream_end` → `proactive_status` → `proactive_insight`) verificada com `TestClient` em `test_proactive_ws.py`. Falhos pré-existentes da suíte (fora do escopo): `test_hybrid_search` ×2, `test_memory_scaling` ×2, `test_system_prompt_harness::test_providers_is_local_migration`, `test_jev_fast_standalone` (fastembed ausente).
 
 ---
 

@@ -781,6 +781,7 @@ async def extract_user_memory_background(
             async with db.execute(
                 """SELECT role, content FROM messages
                    WHERE conversation_id = ?
+                     AND COALESCE(kind, 'normal') <> 'proactive'
                    ORDER BY created_at DESC LIMIT 12""",
                 (conversation_id,)
             ) as cur:

@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { useStore } from '../store/useStore'
 import { api } from '../api/client'
 import { MessageBubble, StreamingBubble } from './MessageBubble'
+import { ProactiveBubble, ProactiveResearching } from './ProactiveBubble'
 import { MessageInput } from './MessageInput'
 import { FusionStatusCard } from './FusionStatusCard'
 import { useChatContext } from '../context/ChatContext'
@@ -244,6 +245,7 @@ export function ChatWindow() {
     setProjectName,
     setView,
     setActiveProjectId,
+    proactiveStatus,
   } = useStore()
   const { sendMessage, stopStream } = useChatContext()
   const isMobile = useIsMobile()
@@ -400,7 +402,8 @@ export function ChatWindow() {
       spokenIds.current = new Set(messages.map((m) => m.id))
       return
     }
-    const fresh = messages.filter((m) => m.role === 'assistant' && !spokenIds.current.has(m.id))
+    // Mensagens proativas não entram no auto-TTS/loop de voz (não respondem a uma fala do usuário)
+    const fresh = messages.filter((m) => m.role === 'assistant' && m.kind !== 'proactive' && !spokenIds.current.has(m.id))
     messages.forEach((m) => spokenIds.current.add(m.id))
     const loop = getTalk().mode === 'loop'
     const shouldSpeak = getTtsPrefs().auto || loop
@@ -610,9 +613,15 @@ export function ChatWindow() {
                   />
                 )
               }
+              if (m.kind === 'proactive') {
+                return <ProactiveBubble key={m.id} message={m} />
+              }
               return <MessageBubble key={m.id} message={m} />
             })}
             {isStreaming && <StreamingBubble content={streamingContent} />}
+            {!isStreaming && proactiveStatus && proactiveStatus.conversation_id === activeConversationId && (
+              <ProactiveResearching stage={proactiveStatus.stage} />
+            )}
           </>
         )}
         <div ref={bottomSentinelRef} style={{ height: 0, flexShrink: 0 }} aria-hidden="true" />

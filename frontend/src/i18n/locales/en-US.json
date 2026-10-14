@@ -579,7 +579,8 @@
     "lastDays": "Last {{count}} days"
   },
   "toast": {
-    "closeAlert": "Close alert"
+    "closeAlert": "Close alert",
+    "regionLabel": "Notifications"
   },
   "dashboard": {
     "loading": "Loading metrics...",
@@ -958,5 +959,30 @@
     "exportStandalone": "Download HTML",
     "exportTooltip": "Download standalone interactive tool",
     "computedResult": "Result"
+  },
+  "proactive": {
+    "bubbleBadge": "Proactive assistant",
+    "unreadBadge": "New insight from the proactive assistant",
+    "reasonLine": "I looked this up because you seemed {{emotion}} about {{topic}}.",
+    "knowMore": "Tell me more",
+    "knowMorePrompt": "Tell me more about {{topic}}.",
+    "notThisTopic": "Not this topic",
+    "pause": "Pause",
+    "toastTitle": "✦ I looked into {{topic}}",
+    "toastView": "View",
+    "researching": "Looking into something you mentioned…",
+    "synthesizing": "Putting together what I found…",
+    "blockedNote": "Got it — I won't research this topic again.",
+    "dismissedNote": "Insight dismissed.",
+    "blockedToast": "Got it — I won't bring this topic up again.",
+    "pausedToast": "Proactive assistant paused. You can turn it back on in settings.",
+    "ackError": "Couldn't save your choice. Please try again.",
+    "category": {
+      "event": "Event",
+      "news": "News",
+      "product": "Product",
+      "place": "Place",
+      "other": "Other"
+    }
   }
 }

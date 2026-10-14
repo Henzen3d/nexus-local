@@ -446,7 +446,8 @@
     "lastDays": "Last {{count}} days"
   },
   "toast": {
-    "closeAlert": "Hinweis schließen"
+    "closeAlert": "Hinweis schließen",
+    "regionLabel": "Benachrichtigungen"
   },
   "dashboard": {
     "loading": "Loading metrics...",
@@ -685,5 +686,30 @@
     "pinError": "Anheften fehlgeschlagen.",
     "llmSummaries": "LLM-Zusammenfassungen",
     "llmSummariesDesc": "Verfeinert Zusammenfassungen mit dem Extraktor-Modell."
+  },
+  "proactive": {
+    "bubbleBadge": "Proaktiver Assistent",
+    "unreadBadge": "Neuer Insight vom proaktiven Assistenten",
+    "reasonLine": "Ich habe recherchiert, weil du bei {{topic}} {{emotion}} gewirkt hast.",
+    "knowMore": "Mehr erfahren",
+    "knowMorePrompt": "Erzähl mir mehr über {{topic}}.",
+    "notThisTopic": "Nicht dieses Thema",
+    "pause": "Pausieren",
+    "toastTitle": "✦ Ich habe zu {{topic}} recherchiert",
+    "toastView": "Ansehen",
+    "researching": "Recherchiere etwas, das du erwähnt hast…",
+    "synthesizing": "Fasse zusammen, was ich gefunden habe…",
+    "blockedNote": "Verstanden — ich recherchiere dieses Thema nicht mehr.",
+    "dismissedNote": "Insight verworfen.",
+    "blockedToast": "Verstanden — ich bringe dieses Thema nicht mehr auf.",
+    "pausedToast": "Proaktiver Assistent pausiert. Du kannst ihn in den Einstellungen wieder aktivieren.",
+    "ackError": "Deine Auswahl konnte nicht gespeichert werden. Bitte erneut versuchen.",
+    "category": {
+      "event": "Veranstaltung",
+      "news": "Nachricht",
+      "product": "Produkt",
+      "place": "Ort",
+      "other": "Sonstiges"
+    }
   }
 }

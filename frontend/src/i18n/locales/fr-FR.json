@@ -446,7 +446,8 @@
     "lastDays": "Last {{count}} days"
   },
   "toast": {
-    "closeAlert": "Fermer l'alerte"
+    "closeAlert": "Fermer l'alerte",
+    "regionLabel": "Notifications"
   },
   "dashboard": {
     "loading": "Loading metrics...",
@@ -685,5 +686,30 @@
     "pinError": "Échec épingle.",
     "llmSummaries": "Résumés LLM",
     "llmSummariesDesc": "Affine les résumés via le modèle extracteur."
+  },
+  "proactive": {
+    "bubbleBadge": "Assistant proactif",
+    "unreadBadge": "Nouvel insight de l'assistant proactif",
+    "reasonLine": "J'ai fait des recherches parce que vous sembliez {{emotion}} à propos de {{topic}}.",
+    "knowMore": "En savoir plus",
+    "knowMorePrompt": "Dis-m'en plus sur {{topic}}.",
+    "notThisTopic": "Pas ce sujet",
+    "pause": "Mettre en pause",
+    "toastTitle": "✦ J'ai fait des recherches sur {{topic}}",
+    "toastView": "Voir",
+    "researching": "Recherche sur quelque chose que vous avez mentionné…",
+    "synthesizing": "Je rassemble ce que j'ai trouvé…",
+    "blockedNote": "Entendu — je ne rechercherai plus ce sujet.",
+    "dismissedNote": "Insight ignoré.",
+    "blockedToast": "Entendu — je ne reviendrai plus sur ce sujet.",
+    "pausedToast": "Assistant proactif en pause. Vous pouvez le réactiver dans les paramètres.",
+    "ackError": "Impossible d'enregistrer votre choix. Réessayez.",
+    "category": {
+      "event": "Événement",
+      "news": "Actualité",
+      "product": "Produit",
+      "place": "Lieu",
+      "other": "Autre"
+    }
   }
 }

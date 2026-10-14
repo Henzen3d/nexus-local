@@ -80,6 +80,68 @@ export interface Message {
   was_fallback?: boolean
   auto_route?: AutoRouteDecisionInfo | null
   ui_blocks?: UiEnvelope | null
+  /** Assistente proativo (F2): bolha gerada sem pedido do usuário */
+  kind?: 'normal' | 'proactive'
+  proactive_insight_id?: string | null
+  insight?: ProactiveInsight | null
+}
+
+// ─── Assistente proativo (F2) ────────────────────────────────────────────────
+
+export type ProactiveCategory = 'event' | 'news' | 'product' | 'place' | 'other'
+export type ProactiveStatus =
+  | 'detected' | 'researching' | 'ready' | 'delivered' | 'seen'
+  | 'dismissed' | 'blocked' | 'expired' | 'failed'
+
+export interface ProactiveSource {
+  title: string
+  url: string
+  domain: string
+}
+
+/** Shape do contrato §3.2 (`proactive_insight.insight`) e do `insight` anexado no GET da conversa */
+export interface ProactiveInsight {
+  id: string
+  conversation_id: string
+  message_id: string | null
+  topic: string
+  category: ProactiveCategory
+  text: string
+  reason_line?: string
+  sources: ProactiveSource[]
+  follow_ups: string[]
+  status?: ProactiveStatus | null
+  language?: string | null
+  expires_at?: string | null
+  created_at?: string | null
+}
+
+export type ProactiveChannelHint = 'inline' | 'toast' | 'pending'
+export type ProactiveSensitivity = 'low' | 'medium' | 'high'
+
+export interface ProactiveSettings {
+  enabled: boolean
+  sensitivity: ProactiveSensitivity
+  categories: ProactiveCategory[]
+  quiet_hours?: Record<string, unknown> | null
+  onboarding_seen_at?: string | null
+  updated_at?: string | null
+  allowed_categories?: ProactiveCategory[]
+  allowed_sensitivities?: ProactiveSensitivity[]
+}
+
+export type ProactiveAckAction = 'seen' | 'dismissed' | 'blocked'
+
+export type PresenceState = 'active' | 'idle' | 'hidden'
+
+/** Toast com ação opcional e fila (F2.7.7) — `showToast(message, type)` continua funcionando */
+export interface ToastItem {
+  id: string
+  message: string
+  type: 'success' | 'error' | 'info' | 'proactive'
+  title?: string
+  action?: { label: string; onClick: () => void }
+  durationMs?: number
 }
 
 export type UiBlockType = 'progress' | 'card' | 'chart' | 'controls' | 'sandbox'
@@ -394,6 +456,9 @@ export type WSMessage =
   | { type: 'image_ready'; conversation_id: string; message_id: string; task_id: string; attachment: Attachment }
   | { type: 'image_failed'; conversation_id: string; message_id: string; task_id: string; error: string }
   | { type: 'effort_dropped'; reason: 'failover' | 'unsupported_model' | 'provider_rejected' | 'invalid_level' }
+  | { type: 'proactive_status'; conversation_id: string; stage: 'researching' | 'synthesizing' | string }
+  | { type: 'proactive_insight'; insight: ProactiveInsight; channel_hint: ProactiveChannelHint }
+  | { type: 'proactive_pending'; insights: ProactiveInsight[] }
 
 export interface ProjectContextFileChunk {
   filename: string | null
