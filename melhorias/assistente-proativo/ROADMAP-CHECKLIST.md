@@ -278,3 +278,20 @@ Use este arquivo para marcar o progresso. Cada item tem o mesmo ID usado no docu
 - [ ] **F6.3.2** Autorização
 - [ ] **F6.3.3** Teste manual por plataforma
 - [ ] **F6.3.4** Aceite (≤ 30 s, abre a conversa certa, remove subscription ao desligar)
+
+---
+
+## 🎨 F7 — Central de Notificações, Hub na Sidebar e Mascote (`08-central-de-notificacoes-hub-e-persona.md`)
+
+- [ ] **F7.1.1** Componente `NotificationBell.tsx` no cabeçalho com badge numérico de `pendingInsights`
+- [ ] **F7.1.2** Popover / Dropdown de notificações com cards de resumo, tempo relativo, fontes e ações
+- [ ] **F7.1.3** BottomSheet no mobile para o sininho
+- [ ] **F7.1.4** Link fixo `✦ Assistente Proativo` na `Sidebar.tsx` abaixo de *Artefatos* com contador
+- [ ] **F7.1.5** View dedicada `ProactiveHubPanel.tsx` (`view === 'proactive'`)
+- [ ] **F7.2.1** Feed de histórico de insights do usuário (`GET /api/proactive/history`)
+- [ ] **F7.2.2** Disparador de pesquisa proativa manual sob demanda
+- [ ] **F7.2.3** Gestão visual de tópicos bloqueados e sensibilidade no Hub
+- [ ] **F7.3.1** Mascote vetorial reativo SVG `ProactiveMascot.tsx` (estados: idle, researching, ready, sleep)
+- [ ] **F7.3.2** Toggle nas preferências: "Mascote Lumi" vs. "Orbe Minimalista"
+- [ ] **F7.3.3** Tradução completa em 8 locales e testes de regressão
+

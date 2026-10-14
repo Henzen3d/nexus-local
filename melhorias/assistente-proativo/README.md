@@ -15,6 +15,7 @@ Transformar o Nexus de chat reativo em assistente que percebe **interesse genuí
 | 5 | [`05-fase-4-controles-e-admin.md`](./05-fase-4-controles-e-admin.md) | F4 — opt-in e onboarding, settings do usuário, blocklist, painel admin, logs anonimizados, kill-switch |
 | 6 | [`06-fase-5-qualidade-e-rollout.md`](./06-fase-5-qualidade-e-rollout.md) | F5 — suíte completa, housekeeping, observabilidade, documentação, rollout gradual com a família |
 | 7 | [`07-opcional-web-push-pwa.md`](./07-opcional-web-push-pwa.md) | F6 (pós-MVP) — notificação nativa com o app fechado |
+| 8 | [`08-central-de-notificacoes-hub-e-persona.md`](./08-central-de-notificacoes-hub-e-persona.md) | F7 — Central de notificações (sininho com badge), Hub na sidebar (abaixo de Artefatos), diálogo paralelo e mascote Lumi |
 | ✔ | [`ROADMAP-CHECKLIST.md`](./ROADMAP-CHECKLIST.md) | Todas as tarefas e subtarefas em checkboxes, com IDs, estimativas, critérios de aceite e **notas de implementação por fase** |
 | 📖 | [`../../docs/guia-assistente-proativo.md`](../../docs/guia-assistente-proativo.md) | Guia de 1 página para a família (pt-BR): o que é, como ligar/desligar, como bloquear um assunto, privacidade |
 | 🔐 | [`../../docs/auditoria-sistema.md`](../../docs/auditoria-sistema.md) | Auditoria de segurança que definiu o padrão dos testes de IDOR/SSRF reaproveitado aqui |
@@ -41,6 +42,8 @@ Transformar o Nexus de chat reativo em assistente que percebe **interesse genuí
 | F4 Controles e admin | ✅ opt-in + onboarding, settings, blocklist com desfazer, painel admin, logs anonimizados, kill-switch | PR #7 |
 | F5 Qualidade e rollout | ✅ código: fakes compartilhados, regressão de segurança, carga leve, recuperação no boot, logs estruturados, cards + alarme no dashboard, flag de onboarding, docs · ⏳ **semana de teste com a família** (F5.4.2–F5.4.4, F5.5.3) é operacional e fica com o admin | PR F5 |
 | F6 Web Push (opcional) | 🔮 pós-MVP | — |
+| F7 Central, Hub e Persona | 📐 Especificado / Em planejamento | [`08-central-de-notificacoes-hub-e-persona.md`](./08-central-de-notificacoes-hub-e-persona.md) |
+
 
 ### Como operar (resumo)
 1. **Deploy**: `docker compose build backend frontend && docker compose up -d` — migrações rodam no boot; sobe com `enabled_global=true` e **ninguém** ativado (opt-in).
