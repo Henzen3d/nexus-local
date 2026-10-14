@@ -98,6 +98,7 @@
     "expandThinking": "Développer le raisonnement",
     "collapseThinking": "Réduire le raisonnement",
     "unknown": "Inconnu",
+    "providerModel": "Fournisseur : {{provider}}",
     "webSearchOn": "Recherche web active",
     "webSearchOff": "Activer la recherche web 🌐",
     "selectModel": "Sélectionner un modèle",

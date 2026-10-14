@@ -23,6 +23,7 @@ from backend.orchestration.build_context import (
     detect_model_family,
     wrap_source,
     build_composed_system_prompt,
+    clean_model_display_name,
     BASE_SYSTEM_PROMPT,
     MODEL_FAMILY_PROFILES,
 )
@@ -236,3 +237,12 @@ async def test_providers_is_local_migration(tmp_db):
             row = await cur.fetchone()
             assert row is not None
             assert row[0] == 1
+
+
+def test_clean_model_display_name():
+    """Valida a remoção de sufixos de provedor entre parênteses para manter a pill limpa."""
+    assert clean_model_display_name("Llama 3.3 70B (Cloudflare)", "cloudflare") == "Llama 3.3 70B"
+    assert clean_model_display_name("Llama 3.3 70B (Cloudflare)") == "Llama 3.3 70B"
+    assert clean_model_display_name("Qwen 2.5 Coder 32B (HuggingFace)", "huggingface") == "Qwen 2.5 Coder 32B"
+    assert clean_model_display_name("Llama 3.3 70B") == "Llama 3.3 70B"
+    assert clean_model_display_name("Llama 3.3 70B FP8 (Fast)", "cloudflare") == "Llama 3.3 70B FP8 (Fast)"

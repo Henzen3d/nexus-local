@@ -140,6 +140,7 @@
     "expandThinking": "Expandir raciocínio",
     "collapseThinking": "Recolher raciocínio",
     "unknown": "Desconhecido",
+    "providerModel": "Provedor: {{provider}}",
     "webSearchOn": "Busca web ativa",
     "webSearchOff": "Ativar busca web",
     "selectModel": "Selecionar modelo",

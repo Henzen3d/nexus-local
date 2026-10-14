@@ -98,6 +98,7 @@
     "expandThinking": "推論を展開",
     "collapseThinking": "推論を折りたたむ",
     "unknown": "不明",
+    "providerModel": "プロバイダー: {{provider}}",
     "webSearchOn": "ウェブ検索オン",
     "webSearchOff": "ウェブ検索を有効化 🌐",
     "selectModel": "モデルを選択",

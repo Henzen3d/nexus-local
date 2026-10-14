@@ -140,6 +140,7 @@
     "expandThinking": "Expand reasoning",
     "collapseThinking": "Collapse reasoning",
     "unknown": "Unknown",
+    "providerModel": "Provider: {{provider}}",
     "webSearchOn": "Web search on",
     "webSearchOff": "Enable web search",
     "selectModel": "Select model",

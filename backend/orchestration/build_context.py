@@ -20,15 +20,36 @@ from backend.database import (
     get_conversation_project_tag,
 )
 
+import re
+
 logger = get_logger(__name__)
+
+
+def clean_model_display_name(display_name: str | None, provider: str | None = None) -> str:
+    """Remove sufixos de provedor entre parênteses para exibição limpa (ex: 'Llama 3.3 70B (Cloudflare)' -> 'Llama 3.3 70B')."""
+    if not display_name:
+        return ""
+    cleaned = str(display_name).strip()
+    if provider:
+        cleaned = re.sub(rf"\s*\({re.escape(str(provider).strip())}\)\s*$", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(
+        r"\s*\((Cloudflare|HuggingFace|Groq|OpenRouter|SambaNova|Cerebras|Together|DeepInfra|Mistral|Gemini|NVIDIA|Ollama|SiliconFlow|Bynara)\)\s*$",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    return cleaned.strip()
+
 
 BASE_SYSTEM_PROMPT_TEMPLATE = (
     "IDENTIDADE E TRANSPARÊNCIA\n"
     "- Você é o assistente do NexusLocal. O modelo de inteligência artificial em execução neste turno é: {active_model} (via {active_provider}).\n"
-    "- Se o usuário perguntar quem você é ou qual modelo está usando, responda com clareza e transparência: informe que você é o assistente do NexusLocal e que esta resposta específica está sendo gerada pelo modelo {active_model}.\n\n"
+    "- NUNCA inicie suas respostas se apresentando, saudando formalmente ou anunciando qual modelo ou assistente você é, a menos que o usuário pergunte explicitamente sobre sua identidade ou sobre o modelo.\n"
+    "- Vá direto ao ponto e responda prontamente à solicitação do usuário com naturalidade, clareza e profundidade técnica.\n"
+    "- Apenas se o usuário perguntar quem você é ou qual modelo está respondendo, informe com clareza e transparência que você é o assistente do NexusLocal e que a resposta está sendo gerada pelo modelo {active_model}.\n\n"
     "IDIOMA E ESTILO\n"
     "- Responda no mesmo idioma da última mensagem do usuário.\n"
-    "- Use prosa fluida por padrão. Empregue listas, tabelas ou títulos apenas quando trouxerem clareza imediata.\n"
+    "- Adote um tom prestativo, profissional e engenhoso. Organize suas respostas com fluidez e estrutura clara (títulos, listas ou tabelas) quando a pergunta solicitar ou quando agregarem legibilidade imediata.\n"
     "- Não use emojis nas respostas, salvo se o usuário solicitar explicitamente na mensagem.\n\n"
     "HONESTIDADE E PRECISÃO\n"
     "- Se não souber ou não tiver certeza, declare com franqueza. Nunca invente fontes, links, citações ou dados numéricos.\n"
@@ -283,6 +304,8 @@ async def resolve_project_context(
                 prov_disp = row[1] or provider_id
     except Exception:
         pass
+
+    model_disp = clean_model_display_name(model_disp, prov_disp)
 
     family = detect_model_family(model_id)
     profile_directive = MODEL_FAMILY_PROFILES.get(family, "")

@@ -6,6 +6,7 @@ from backend.database import get_db
 from backend.models import ConversationUpdate
 from backend.auth import get_current_user
 from backend.attachments.signing import attachment_url
+from backend.orchestration.build_context import clean_model_display_name
 
 router = APIRouter(prefix="/api/conversations", tags=["conversations"])
 
@@ -217,7 +218,10 @@ async def get_conversation(conversation_id: str, current_user: dict = Depends(ge
                 "content": m[2],
                 "model_id": m[3],
                 "created_at": m[4],
-                "model_display_name": m[5] or (m[3].split('/')[-1] if m[3] else None),
+                "model_display_name": clean_model_display_name(
+                    m[5] or (m[3].split('/')[-1] if m[3] else None),
+                    m[6] or m[7] or (m[3].split('/')[0] if m[3] and '/' in m[3] else None)
+                ),
                 "provider": m[6] or m[7] or (m[3].split('/')[0] if m[3] and '/' in m[3] else None),
                 "relay_used": bool(m[8]),
                 "relay_model": m[9],

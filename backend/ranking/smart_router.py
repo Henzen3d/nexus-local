@@ -24,6 +24,7 @@ from typing import List, Optional, Dict, Any
 
 import aiosqlite
 from backend.logging_config import get_logger
+from backend.orchestration.build_context import clean_model_display_name
 
 logger = get_logger(__name__)
 
@@ -519,7 +520,7 @@ async def select_best_model(
                 "id": r[0],
                 "provider_id": r[1],
                 "name": r[2],
-                "display_name": r[3],
+                "display_name": clean_model_display_name(r[3], r[1]),
                 "context_length": r[4] or 8192,
                 "confirmed_free": r[5],
                 "prov_is_free": r[6],
@@ -625,7 +626,7 @@ async def select_best_model(
                 latency_ms = round((t_end - t_start) * 1000 + intent_result.processing_time_ms, 3)
                 return AutoRouteDecision(
                     chosen_model_id=prev_m["id"],
-                    chosen_model_name=prev_m["display_name"],
+                    chosen_model_name=clean_model_display_name(prev_m["display_name"], prev_m["provider_id"]),
                     provider_id=prev_m["provider_id"],
                     intent=intent_result.intent,
                     reason_pt=f"{intent_result.reason_label_pt} (KV-Cache)",
@@ -654,7 +655,7 @@ async def select_best_model(
                 latency_ms = round((t_end - t_start) * 1000 + intent_result.processing_time_ms, 3)
                 return AutoRouteDecision(
                     chosen_model_id=chosen["id"],
-                    chosen_model_name=chosen["display_name"],
+                    chosen_model_name=clean_model_display_name(chosen["display_name"], chosen["provider_id"]),
                     provider_id=chosen["provider_id"],
                     intent=intent_result.intent,
                     reason_pt=f"{intent_result.reason_label_pt} (Slot Rotativo)",
@@ -674,7 +675,7 @@ async def select_best_model(
 
     return AutoRouteDecision(
         chosen_model_id=chosen["id"],
-        chosen_model_name=chosen["display_name"],
+        chosen_model_name=clean_model_display_name(chosen["display_name"], chosen["provider_id"]),
         provider_id=chosen["provider_id"],
         intent=intent_result.intent,
         reason_pt=intent_result.reason_label_pt,

@@ -98,6 +98,7 @@
     "expandThinking": "Überlegung ausklappen",
     "collapseThinking": "Überlegung einklappen",
     "unknown": "Unbekannt",
+    "providerModel": "Anbieter: {{provider}}",
     "webSearchOn": "Websuche aktiv",
     "webSearchOff": "Websuche aktivieren 🌐",
     "selectModel": "Modell wählen",

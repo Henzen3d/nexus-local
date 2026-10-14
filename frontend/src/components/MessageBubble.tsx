@@ -150,18 +150,92 @@ const renderCardIcon = (type: string) => {
   }
 }
 
+const KNOWN_PROVIDERS: Record<string, string> = {
+  cloudflare: 'Cloudflare',
+  groq: 'Groq',
+  openrouter: 'OpenRouter',
+  huggingface: 'HuggingFace',
+  sambanova: 'SambaNova',
+  cerebras: 'Cerebras',
+  siliconflow: 'SiliconFlow',
+  nvidia: 'NVIDIA',
+  gemini: 'Google Gemini',
+  ollama: 'Ollama',
+  lmstudio: 'LM Studio',
+  deepinfra: 'DeepInfra',
+  together: 'Together AI',
+  mistral: 'Mistral',
+  cohere: 'Cohere',
+  perplexity: 'Perplexity',
+  bynara: 'Bynara',
+  freetheai: 'FreeTheAI',
+  llm7: 'LLM7',
+  orcarouter: 'OrcaRouter',
+}
+
+function formatProviderName(provider?: string): string {
+  if (!provider) return ''
+  const trimmed = provider.trim()
+  const lower = trimmed.toLowerCase()
+  if (KNOWN_PROVIDERS[lower]) return KNOWN_PROVIDERS[lower]
+  return trimmed.charAt(0).toUpperCase() + trimmed.slice(1)
+}
+
+function cleanModelName(displayName: string, provider?: string): { cleanName: string; detectedProvider?: string } {
+  let cleanName = displayName.trim()
+  let detectedProvider = provider
+
+  const parenMatch = cleanName.match(/^(.+?)\s*\(([^)]+)\)$/)
+  if (parenMatch) {
+    const inside = parenMatch[2].trim()
+    const insideLower = inside.toLowerCase()
+    if (
+      KNOWN_PROVIDERS[insideLower] ||
+      (provider && insideLower === provider.toLowerCase().trim()) ||
+      insideLower.includes('cloudflare') ||
+      insideLower.includes('groq') ||
+      insideLower.includes('openrouter') ||
+      insideLower.includes('huggingface')
+    ) {
+      cleanName = parenMatch[1].trim()
+      if (!detectedProvider) {
+        detectedProvider = inside
+      }
+    }
+  }
+
+  if (detectedProvider) {
+    const escaped = detectedProvider.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    cleanName = cleanName.replace(new RegExp(`\\s*\\(${escaped}\\)$`, 'i'), '').trim()
+  }
+
+  return { cleanName, detectedProvider }
+}
+
 function ModelBadge({ modelId, provider, displayName }: {
   modelId?: string
   provider?: string
   displayName?: string
 }) {
+  const { t } = useTranslation()
   if (!displayName) return null
+
+  const { cleanName, detectedProvider } = cleanModelName(displayName, provider)
+  const formattedProvider = formatProviderName(detectedProvider)
+
+  const tooltipText = formattedProvider
+    ? t('chat.providerModel', {
+        provider: formattedProvider,
+        defaultValue: `${t('chat.providerLabel', { defaultValue: 'Provedor' })}: ${formattedProvider}`,
+      })
+    : cleanName
+
   return (
     <span
       className="model-badge custom-tooltip-trigger"
-      data-tooltip={i18n.t('chat.providerModel', { provider: provider ?? i18n.t('chat.unknown'), model: modelId })}
+      data-tooltip={tooltipText}
     >
-      {displayName}
+      {cleanName}
     </span>
   )
 }

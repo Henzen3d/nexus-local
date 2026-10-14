@@ -135,6 +135,7 @@
     "expandThinking": "Expandir razonamiento",
     "collapseThinking": "Contraer razonamiento",
     "unknown": "Desconocido",
+    "providerModel": "Proveedor: {{provider}}",
     "webSearchOn": "Búsqueda web activa",
     "webSearchOff": "Activar búsqueda web 🌐",
     "selectModel": "Seleccionar modelo",

@@ -98,6 +98,7 @@
     "expandThinking": "추론 펼치기",
     "collapseThinking": "추론 접기",
     "unknown": "알 수 없음",
+    "providerModel": "제공자: {{provider}}",
     "webSearchOn": "웹 검색 켜짐",
     "webSearchOff": "웹 검색 켜기 🌐",
     "selectModel": "모델 선택",
