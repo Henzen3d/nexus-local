@@ -132,7 +132,10 @@ async def get_quota_status(current_user: dict = Depends(require_admin)):
                   q.exhausted_at, q.estimated_reset_at, q.last_error_message
            FROM model_quota_status q
            JOIN models m ON m.id = q.model_id
+           JOIN providers p ON p.id = m.provider_id
            WHERE q.status != 'available'
+             AND m.enabled = 1
+             AND p.enabled = 1
            ORDER BY q.exhausted_at DESC"""
     ) as cur:
         rows = await cur.fetchall()

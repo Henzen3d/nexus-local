@@ -207,3 +207,142 @@ async def test_stream_from_llm_recovers_from_disabled_provider_value_error(setup
             assert len(error_msgs) == 0
 
 
+@pytest.mark.asyncio
+async def test_qwen_model_from_active_provider_allowed_while_qwen_provider_disabled(setup_failover_db):
+    """Garante que modelos da família Qwen providos por provedores ativos participem normalmente,
+    mas modelos do provedor 'qwen' (desabilitado) sejam estritamente bloqueados."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        # Provedor qwen nativo (desativado nas configurações)
+        await db.execute(
+            "INSERT OR REPLACE INTO providers (id, name, base_url, enabled, is_free) "
+            "VALUES ('qwen', 'Qwen Cloud', 'https://dashscope.aliyuncs.com', 0, 0)"
+        )
+        # Provedor cloudflare (ativo) servindo um modelo qwen
+        await db.execute(
+            "INSERT OR REPLACE INTO providers (id, name, base_url, enabled, is_free) "
+            "VALUES ('cloudflare', 'Cloudflare Workers AI', 'https://api.cloudflare.com', 1, 1)"
+        )
+
+        # Modelo 1: Qwen servido pelo provedor Qwen (desativado)
+        await db.execute(
+            "INSERT OR REPLACE INTO models (id, name, display_name, provider_id, enabled, context_length) "
+            "VALUES ('qwen/qwen3.5-plus', 'qwen3.5-plus', 'Qwen 3.5 Plus', 'qwen', 1, 32768)"
+        )
+        await db.execute(
+            "INSERT OR REPLACE INTO model_rankings (model_id, nexuslocal_score, quality_score, popularity_rank) "
+            "VALUES ('qwen/qwen3.5-plus', 99.5, 99.5, 1)"
+        )
+
+        # Modelo 2: Qwen servido pelo provedor Cloudflare (ativo)
+        await db.execute(
+            "INSERT OR REPLACE INTO models (id, name, display_name, provider_id, enabled, context_length) "
+            "VALUES ('cloudflare/qwen-2.5-coder-32b', 'qwen-2.5-coder-32b', 'Qwen 2.5 Coder 32B', 'cloudflare', 1, 32768)"
+        )
+        await db.execute(
+            "INSERT OR REPLACE INTO model_rankings (model_id, nexuslocal_score, quality_score, popularity_rank) "
+            "VALUES ('cloudflare/qwen-2.5-coder-32b', 92.0, 92.0, 2)"
+        )
+        await db.commit()
+
+        # 1. Se requisitar diretamente o modelo do provedor desativado (qwen/qwen3.5-plus)
+        res_direct = await resolve_model_with_failover("qwen/qwen3.5-plus", db, failover_enabled=True)
+        assert res_direct.was_failover is True
+        assert res_direct.provider_id != "qwen"
+        assert res_direct.model_id != "qwen/qwen3.5-plus"
+
+        # 2. Se requisitar o modelo Qwen servido pelo Cloudflare (ativo)
+        res_cf = await resolve_model_with_failover("cloudflare/qwen-2.5-coder-32b", db, failover_enabled=True)
+        assert res_cf.was_failover is False
+        assert res_cf.model_id == "cloudflare/qwen-2.5-coder-32b"
+        assert res_cf.provider_id == "cloudflare"
+
+        # 3. Em failover Tier 2 quando outros estão esgotados, o modelo Qwen do Cloudflare PODE ser o destino
+        await db.execute("INSERT OR REPLACE INTO model_quota_status (model_id, status) VALUES ('model_primary', 'exhausted')")
+        await db.execute("INSERT OR REPLACE INTO model_quota_status (model_id, status) VALUES ('model_tier2_active', 'exhausted')")
+        await db.commit()
+
+        res_fallback = await resolve_model_with_failover("model_primary", db, failover_enabled=True)
+        assert res_fallback.was_failover is True
+        # Não pode ter sido o qwen nativo desativado (mesmo com score 99.5)
+        assert res_fallback.provider_id != "qwen"
+        assert res_fallback.model_id != "qwen/qwen3.5-plus"
+
+
+@pytest.mark.asyncio
+async def test_failover_skips_paid_provider_without_key_when_user_id_passed(setup_failover_db):
+    """Garante que provedores pagos sem chave configurada para o usuário sejam ignorados no failover."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        # Provedor pago ativo, mas usuário não tem chave
+        await db.execute(
+            "INSERT OR REPLACE INTO providers (id, name, base_url, enabled, is_free) "
+            "VALUES ('prov_paid_nokey', 'Paid No Key', 'https://paid', 1, 0)"
+        )
+        await db.execute(
+            "INSERT OR REPLACE INTO models (id, name, display_name, provider_id, enabled, context_length) "
+            "VALUES ('model_paid_nokey', 'paid-nokey', 'Paid No Key', 'prov_paid_nokey', 1, 16384)"
+        )
+        await db.execute(
+            "INSERT OR REPLACE INTO model_rankings (model_id, nexuslocal_score, quality_score, popularity_rank) "
+            "VALUES ('model_paid_nokey', 98.0, 98.0, 1)"
+        )
+
+        # Provedor gratuito ativo (com chave ou local)
+        await db.execute(
+            "INSERT OR REPLACE INTO providers (id, name, base_url, enabled, is_free) "
+            "VALUES ('prov_free_key', 'Free Provider', 'https://free', 1, 1)"
+        )
+        await db.execute(
+            "INSERT OR REPLACE INTO models (id, name, display_name, provider_id, enabled, context_length) "
+            "VALUES ('model_free_key', 'free-key', 'Free Key Model', 'prov_free_key', 1, 16384)"
+        )
+        await db.execute(
+            "INSERT OR REPLACE INTO model_rankings (model_id, nexuslocal_score, quality_score, popularity_rank) "
+            "VALUES ('model_free_key', 80.0, 80.0, 5)"
+        )
+
+        # Marca primário como esgotado
+        await db.execute("INSERT OR REPLACE INTO model_quota_status (model_id, status) VALUES ('model_primary', 'exhausted')")
+        await db.commit()
+
+        # Resolução passando user_id (usuário não tem chave para prov_paid_nokey)
+        resolved = await resolve_model_with_failover("model_primary", db, user_id="user_without_keys")
+        assert resolved.was_failover is True
+        # Deve ter ignorado model_paid_nokey (faltando chave) e prov_disabled (desativado)
+        assert resolved.provider_id != "prov_paid_nokey"
+        assert resolved.provider_id != "prov_disabled"
+
+
+@pytest.mark.asyncio
+async def test_suggest_families_excludes_disabled_providers(setup_failover_db):
+    """Garante que a rota suggest_families nunca liste modelos pertencentes a provedores desativados."""
+    from backend.routers.families import suggest_family_groupings
+    suggestions = await suggest_family_groupings(current_user={"id": "admin", "role": "admin"})
+    
+    for sugg in suggestions:
+        matched = sugg.get("matched_models", [])
+        for m in matched:
+            assert not m["id"].startswith("prov_disabled/")
+            assert "Qwen Max" not in m["display_name"]
+
+
+@pytest.mark.asyncio
+async def test_dashboard_quotas_excludes_disabled_providers(setup_failover_db):
+    """Garante que a rota /dashboard/quotas não liste modelos de provedores desativados como esgotados."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        # Marca modelo do provedor desativado como esgotado
+        await db.execute(
+            "INSERT OR REPLACE INTO model_quota_status (model_id, status, consecutive_errors, last_error_message) "
+            "VALUES ('model_high_score_disabled', 'exhausted', 5, 'Rate limit 429')"
+        )
+        await db.commit()
+
+    from backend.routers.dashboard import get_quota_status
+    quotas = await get_quota_status(current_user={"id": "admin", "role": "admin"})
+    
+    # Não deve incluir model_high_score_disabled porque prov_disabled está desativado (enabled = 0)
+    for q in quotas:
+        assert q["model_id"] != "model_high_score_disabled"
+        assert q["provider_id"] != "prov_disabled"
+
+
+

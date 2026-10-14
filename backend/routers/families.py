@@ -102,9 +102,12 @@ async def suggest_family_groupings(current_user: dict = Depends(get_current_user
     """
     db = await get_db()
 
-    # 1. Carrega todos os modelos habilitados
+    # 1. Carrega todos os modelos habilitados de provedores ativos
     async with db.execute(
-        "SELECT id, display_name FROM models WHERE enabled = 1"
+        """SELECT m.id, m.display_name
+           FROM models m
+           JOIN providers p ON p.id = m.provider_id
+           WHERE m.enabled = 1 AND p.enabled = 1"""
     ) as cur:
         model_rows = await cur.fetchall()
 

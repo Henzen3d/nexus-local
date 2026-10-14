@@ -17,13 +17,14 @@ from __future__ import annotations
 
 import aiosqlite
 
-# Provedores cuja chave é compartilhada/dispensável (mesma lista de admin.py).
-SHARED_KEY_PROVIDERS = ("ollama", "orcarouter", "bynara")
+# Provedores cuja chave é compartilhada/dispensável (mesma lista de admin.py e registry.py).
+SHARED_KEY_PROVIDERS = ("ollama", "orcarouter", "bynara", "freetheai", "llm7")
 
 USABLE_KEY_CONDITION_SQL = """(
-            (k.api_key IS NOT NULL AND k.api_key != '') OR
-            p.id IN ('ollama', 'orcarouter', 'bynara') OR
-            (p.is_free = 1 AND p.api_key IS NOT NULL AND TRIM(p.api_key) != '')
+            (k.api_key IS NOT NULL AND TRIM(k.api_key) != '') OR
+            p.id IN ('ollama', 'orcarouter', 'bynara', 'freetheai', 'llm7') OR
+            (p.is_free = 1 AND p.api_key IS NOT NULL AND TRIM(p.api_key) != '') OR
+            (p.is_local = 1)
         )"""
 
 REASON_PROVIDER_DISABLED = "provider_disabled"

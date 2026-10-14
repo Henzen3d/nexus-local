@@ -365,7 +365,7 @@ async def executar_fusion(
         try:
             conn = await get_db()
             try:
-                resolved = await resolve_model_with_failover(modelo["model_id"], conn)
+                resolved = await resolve_model_with_failover(modelo["model_id"], conn, user_id=user_id)
                 final_model_id = resolved.model_id
                 final_provider_id = resolved.provider_id
 

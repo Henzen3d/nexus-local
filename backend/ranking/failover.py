@@ -15,13 +15,27 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Optional
 
 import aiosqlite
 
 from .quota import get_quota_status
+from backend.ranking.availability import USABLE_KEY_CONDITION_SQL
 
 logger = logging.getLogger("nexuslocal.ranking.failover")
+
+
+def _usable_key_clause(user_id: Optional[str]) -> tuple[str, list[Any], str]:
+    """Gera cláusula SQL, parâmetros e join para validar se o provedor possui credenciais ativas."""
+    if user_id:
+        join_keys = "LEFT JOIN user_api_keys k ON k.provider_id = p.id AND k.user_id = ?"
+        clause = f"({USABLE_KEY_CONDITION_SQL})"
+        params = [user_id]
+    else:
+        join_keys = ""
+        clause = "1=1"
+        params = []
+    return clause, params, join_keys
 
 
 class NoAvailableModelError(Exception):
@@ -62,11 +76,15 @@ async def _get_display_name(model_id: str, db: aiosqlite.Connection) -> str:
 
 
 async def _get_family_for_model(
-    model_id: str, db: aiosqlite.Connection
+    model_id: str,
+    db: aiosqlite.Connection,
+    user_id: Optional[str] = None,
 ) -> Optional[tuple[str, list[tuple[str, str, int]]]]:
     """
     Retorna (family_id, [(model_id, provider_id, fallback_order), ...])
     ordenado por fallback_order ASC, ou None se o modelo não pertence a nenhuma família.
+    Garante que tanto o modelo (m.enabled = 1) quanto o provedor (p.enabled = 1) estejam ativos
+    e que o provedor possua credenciais utilizáveis.
     """
     async with db.execute(
         "SELECT family_id FROM model_family_members WHERE model_id = ?",
@@ -79,17 +97,24 @@ async def _get_family_for_model(
 
     family_id = row[0]
 
-    # Busca todos os membros da família cujo modelo e provedor estejam habilitados
+    key_clause, _, join_keys = _usable_key_clause(user_id)
+    query_params = ([user_id] if user_id else []) + [family_id]
+
+    # Busca todos os membros da família cujo modelo e provedor estejam habilitados e utilizáveis
     async with db.execute(
-        """
+        f"""
         SELECT mfm.model_id, m.provider_id, mfm.fallback_order
         FROM model_family_members mfm
         JOIN models m ON m.id = mfm.model_id
         JOIN providers p ON p.id = m.provider_id
-        WHERE mfm.family_id = ? AND m.enabled = 1 AND p.enabled = 1
+        {join_keys}
+        WHERE mfm.family_id = ?
+          AND m.enabled = 1
+          AND p.enabled = 1
+          AND {key_clause}
         ORDER BY mfm.fallback_order ASC
         """,
-        (family_id,)
+        tuple(query_params),
     ) as cur:
         members = await cur.fetchall()
 
@@ -100,13 +125,15 @@ async def _get_next_best_ranked_model(
     db: aiosqlite.Connection,
     exclude_model_ids: list[str],
     exclude_family_ids: list[str],
+    user_id: Optional[str] = None,
 ) -> Optional[tuple[str, str, str]]:
     """
     Retorna (model_id, provider_id, display_name) do melhor modelo disponível
     no ranking geral, excluindo os modelos e famílias especificados.
 
     Tier 2: fallback para fora da família, baseado em nexuslocal_score.
-    Garante que tanto o modelo (m.enabled = 1) quanto o provedor (p.enabled = 1) estejam ativos.
+    Garante que tanto o modelo (m.enabled = 1) quanto o provedor (p.enabled = 1) estejam ativos
+    e que o provedor possua credenciais utilizáveis.
     """
     # Constrói lista de exclusão por família (model_ids dos membros das famílias excluídas)
     family_excluded_model_ids: list[str] = []
@@ -119,19 +146,25 @@ async def _get_next_best_ranked_model(
 
     all_excluded = set(exclude_model_ids) | set(family_excluded_model_ids)
 
+    key_clause, _, join_keys = _usable_key_clause(user_id)
+    query_params = [user_id] if user_id else []
+
     # Query: modelos e provedores habilitados com registro de ranking, não esgotados, não excluídos
     async with db.execute(
-        """
+        f"""
         SELECT m.id, m.provider_id, m.display_name, r.nexuslocal_score
         FROM models m
         JOIN providers p ON p.id = m.provider_id
         JOIN model_rankings r ON r.model_id = m.id
         LEFT JOIN model_quota_status q ON q.model_id = m.id
+        {join_keys}
         WHERE m.enabled = 1
           AND p.enabled = 1
           AND (q.status IS NULL OR q.status = 'available')
+          AND {key_clause}
         ORDER BY r.nexuslocal_score DESC
-        """
+        """,
+        tuple(query_params),
     ) as cur:
         rows = await cur.fetchall()
 
@@ -155,6 +188,7 @@ async def resolve_model_with_failover(
     failover_enabled: bool = True,
     force_skip: bool = False,
     exclude_model_ids: Optional[list[str]] = None,
+    user_id: Optional[str] = None,
 ) -> ResolvedModel:
     """
     Resolve o modelo final a ser usado, com cascata de failover de 2 tiers.
@@ -178,15 +212,17 @@ async def resolve_model_with_failover(
         force_skip = True
 
     # ── Verificação de integridade e ativação (modelo E provedor) ────────────
-    async with db.execute(
-        """
-        SELECT m.enabled, p.enabled, m.provider_id, m.display_name
+    key_clause, _, join_keys = _usable_key_clause(user_id)
+    check_query = f"""
+        SELECT m.enabled, p.enabled, m.provider_id, m.display_name,
+               CASE WHEN {key_clause} THEN 1 ELSE 0 END AS has_usable_key
         FROM models m
         JOIN providers p ON p.id = m.provider_id
+        {join_keys}
         WHERE m.id = ?
-        """,
-        (requested_model_id,),
-    ) as cur:
+    """
+    check_params = ([user_id] if user_id else []) + [requested_model_id]
+    async with db.execute(check_query, tuple(check_params)) as cur:
         model_row = await cur.fetchone()
 
     provider_id = None
@@ -201,10 +237,15 @@ async def resolve_model_with_failover(
         force_skip = True
         skip_reason = "model_not_found"
     else:
-        m_enabled, p_enabled, provider_id, display_name = model_row
-        if not m_enabled or not p_enabled:
+        m_enabled, p_enabled, provider_id, display_name, has_usable_key = model_row
+        if not m_enabled or not p_enabled or not has_usable_key:
             force_skip = True
-            skip_reason = "provider_disabled" if not p_enabled else "model_disabled"
+            if not p_enabled:
+                skip_reason = "provider_disabled"
+            elif not m_enabled:
+                skip_reason = "model_disabled"
+            else:
+                skip_reason = "missing_key"
             failover_reason = skip_reason
 
     # ── Verificação do modelo solicitado ─────────────────────────────────────
@@ -227,6 +268,7 @@ async def resolve_model_with_failover(
                 failover_enabled=failover_enabled, 
                 force_skip=True,
                 exclude_model_ids=exclude_model_ids,
+                user_id=user_id,
             )
 
         # Caminho feliz — sem failover
@@ -252,7 +294,7 @@ async def resolve_model_with_failover(
     )
 
     # ── Tier 1 — Irmãos da mesma família ─────────────────────────────────────
-    family_result = await _get_family_for_model(requested_model_id, db)
+    family_result = await _get_family_for_model(requested_model_id, db, user_id=user_id)
     family_id: Optional[str] = None
 
     if family_result:
@@ -304,6 +346,7 @@ async def resolve_model_with_failover(
         db=db,
         exclude_model_ids=all_excluded,
         exclude_family_ids=[family_id] if family_id else [],
+        user_id=user_id,
     )
 
     if next_best:

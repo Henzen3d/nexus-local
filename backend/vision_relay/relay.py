@@ -113,7 +113,7 @@ async def describe_image_via_relay(
             raise RelayError("Imagem ausente para o Vision Relay.")
 
         from backend.ranking.failover import resolve_model_with_failover
-        resolved = await resolve_model_with_failover(config["relay_model_id"], db)
+        resolved = await resolve_model_with_failover(config["relay_model_id"], db, user_id=user_id)
         final_model_id = resolved.model_id
         final_provider_id = resolved.provider_id
 

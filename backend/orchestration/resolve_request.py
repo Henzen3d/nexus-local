@@ -122,6 +122,7 @@ async def stream_from_llm(
                 db,
                 failover_enabled=True,
                 exclude_model_ids=list(attempted_model_ids),
+                user_id=user_id,
             )
         except NoAvailableModelError as e:
             await ws.send_json({"type": "error", "message": str(e)})
