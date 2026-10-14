@@ -154,7 +154,11 @@ function ProjectsListPage({
             <div className="claude-projects-list-actions list-panel-actions">
               <div className="claude-sort-pill">
                 <span>{t('projects.sortBy', { defaultValue: 'Ordenar por' })}:</span>
-                <select value={sort} onChange={(e) => setSort(e.target.value as SortKey)}>
+                <select
+                  value={sort}
+                  onChange={(e) => setSort(e.target.value as SortKey)}
+                  aria-label={t('projects.sortBy', { defaultValue: 'Ordenar por' })}
+                >
                   <option value="updated">
                     {t('projects.sortUpdated', { defaultValue: 'Última atualização' })}
                   </option>

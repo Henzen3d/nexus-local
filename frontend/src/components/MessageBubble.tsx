@@ -368,7 +368,7 @@ export function MessageBubble({ message }: Props) {
       <div className="message error">
         <ErrorAvatar />
         <div className="message-body error-body">
-          <div className="error-title">{t('chat.generationError')}</div>
+          <div className="error-title">{t('chat.generationError', { defaultValue: 'Erro na geração da resposta' })}</div>
           <div className="error-content">{message.content}</div>
         </div>
       </div>

@@ -67,6 +67,7 @@
     "tooManyAttempts": "Demasiados intentos de inicio de sesión. Espera unos minutos e inténtalo de nuevo."
   },
   "chat": {
+    "generationError": "Error al generar la respuesta",
     "openSidebar": "Abrir barra lateral",
     "greetingMorning": "Buenos días",
     "greetingAfternoon": "Buenas tardes",
@@ -812,7 +813,7 @@
     "statExtractTotal": "Extracciones totales",
     "onboardingTitle": "NexusLocal aprende contigo",
     "onboardingBody": "La memoria adaptativa ya está activa por defecto y personaliza las respuestas con control total.",
-    "onboardingLocal": "Todo queda en tu máquina.",
+    "onboardingLocal": "Almacenado localmente en tu máquina — solo se envían fragmentos relevantes al proveedor de modelo que elijas.",
     "onboardingControl": "Consulta, exporta o borra cada hecho en Ajustes → Memoria. Allí también la activas o desactivas globalmente (predeterminado: activada).",
     "onboardingChatToggle": "La memoria permanece activa en todas las conversaciones. Desactívala solo en Ajustes → Memoria si lo prefieres.",
     "onboardingCta": "Entendido",

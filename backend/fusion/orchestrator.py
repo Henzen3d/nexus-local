@@ -387,9 +387,23 @@ async def executar_fusion(
             # usando o histórico já refinado (se foi).
             history_com_critica = [dict(m) for m in history_para_modelos]
             if history_com_critica and history_com_critica[-1].get("role") == "user":
-                history_com_critica[-1]["content"] = (
-                    history_com_critica[-1]["content"] + SELF_CRITIQUE_SUFFIX
-                )
+                last_content = history_com_critica[-1].get("content")
+                if isinstance(last_content, str):
+                    history_com_critica[-1]["content"] = last_content + SELF_CRITIQUE_SUFFIX
+                elif isinstance(last_content, list):
+                    # Multimodal parts: list of dicts, e.g. [{"type": "text", "text": "..."}, {"type": "image_url", ...}]
+                    new_parts = []
+                    appended = False
+                    for part in last_content:
+                        if isinstance(part, dict) and part.get("type") == "text" and not appended:
+                            new_parts.append({**part, "text": part.get("text", "") + SELF_CRITIQUE_SUFFIX})
+                            appended = True
+                        else:
+                            new_parts.append(part)
+                    if not appended:
+                        new_parts.append({"type": "text", "text": SELF_CRITIQUE_SUFFIX.strip()})
+                    history_com_critica[-1]["content"] = new_parts
+
 
             async def _stream():
                 texto = ""
@@ -521,11 +535,26 @@ async def executar_fusion(
         f"Data atual do sistema: {current_date}. Você deve usar esta data como referência para o tempo presente."
     )
 
-    # Substitui a instrução de sistema padrão pela do Juiz
+    # Preserva o contexto do sistema original (regras do projeto, RAG, memórias)
+    # combinando-o com as diretrizes do Juiz, em vez de sobrescrever e perder as fontes.
+    original_system = ""
     if mensagens_juiz and mensagens_juiz[0].get("role") == "system":
-        mensagens_juiz[0]["content"] = judge_system_prompt_final
+        original_system = mensagens_juiz[0].get("content") or ""
+
+    if original_system and original_system.strip():
+        combined_judge_system = (
+            f"{original_system.strip()}\n\n"
+            f"=== DIRETRIZES DO JUIZ DE CONSOLIDAÇÃO (FUSION JUDGE) ===\n"
+            f"{judge_system_prompt_final}"
+        )
     else:
-        mensagens_juiz.insert(0, {"role": "system", "content": judge_system_prompt_final})
+        combined_judge_system = judge_system_prompt_final
+
+    if mensagens_juiz and mensagens_juiz[0].get("role") == "system":
+        mensagens_juiz[0]["content"] = combined_judge_system
+    else:
+        mensagens_juiz.insert(0, {"role": "system", "content": combined_judge_system})
+
 
     # Anexa as respostas para consolidação na última mensagem do usuário
     if mensagens_juiz and mensagens_juiz[-1].get("role") == "user":

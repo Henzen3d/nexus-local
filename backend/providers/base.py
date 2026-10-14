@@ -102,9 +102,11 @@ class OpenAICompatProvider(BaseProvider):
         reasoning_control: Optional[str] = None,
     ) -> AsyncIterator[str]:
         headers = {
-            "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
         }
+        if self.api_key and self.api_key.strip():
+            headers["Authorization"] = f"Bearer {self.api_key.strip()}"
+
 
         # OpenRouter requires these headers for free tier ranking
         if "openrouter" in self.base_url:

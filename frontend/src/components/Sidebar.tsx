@@ -677,6 +677,7 @@ export function Sidebar() {
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
+      {...((!sidebarOpen && isMobile) ? { inert: '' } : {})}
     >
       {portalMenu}
       {/* Header: expandido = brand+busca+recolher | rail = só expandir */}
@@ -923,33 +924,41 @@ export function Sidebar() {
         </div>
         {/* User card → Configurações */}
         <div
-          className={`user-card custom-tooltip-trigger ${view === 'admin' ? 'active' : ''}`}
-          style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', cursor: 'pointer' }}
-          data-tooltip={t('sidebar.settings')}
-          role="button"
-          tabIndex={0}
-          onClick={() => {
-            if (view === 'admin') {
-              setView('chat')
-            } else {
-              setView('admin')
-              if (window.innerWidth <= MOBILE_BREAKPOINT) setSidebarOpen(false)
-            }
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault()
-              ;(e.currentTarget as HTMLDivElement).click()
-            }
-          }}
+          className={`user-card ${view === 'admin' ? 'active' : ''}`}
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <button
+            type="button"
+            className="user-card-main-btn custom-tooltip-trigger"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              background: 'none',
+              border: 'none',
+              padding: 0,
+              cursor: 'pointer',
+              textAlign: 'left',
+              color: 'inherit',
+              flex: 1,
+            }}
+            data-tooltip={t('sidebar.settings')}
+            aria-label={t('sidebar.settings')}
+            onClick={() => {
+              if (view === 'admin') {
+                setView('chat')
+              } else {
+                setView('admin')
+                if (window.innerWidth <= MOBILE_BREAKPOINT) setSidebarOpen(false)
+              }
+            }}
+          >
             <div className="user-avatar">{USER_INITIAL}</div>
             <div className="user-info">
               <span className="user-name">{USER_NAME}</span>
               <span className="user-plan" style={{ fontSize: '13px', color: 'var(--muted)', display: 'block' }}>{t('sidebar.settings')}</span>
             </div>
-          </div>
+          </button>
           <div className="user-card-actions" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
             <Button
               variant="ghost"
@@ -959,6 +968,7 @@ export function Sidebar() {
                 setTheme(theme === 'dark' ? 'light' : 'dark')
               }}
               title={theme === 'dark' ? t('sidebar.themeToLight') : t('sidebar.themeToDark')}
+              aria-label={theme === 'dark' ? t('sidebar.themeToLight') : t('sidebar.themeToDark')}
             >
               {theme === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
             </Button>
@@ -970,6 +980,7 @@ export function Sidebar() {
                 logout()
               }}
               title={t('sidebar.logout')}
+              aria-label={t('sidebar.logout')}
             >
               <LogOut size={14} />
             </Button>

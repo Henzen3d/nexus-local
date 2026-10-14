@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import Optional, List
 from backend.database import get_db
 from backend.auth import get_current_user, require_admin
+
 
 router = APIRouter(prefix="/api/fusion", tags=["fusion"])
 
@@ -97,6 +98,15 @@ async def get_config(current_user: dict = Depends(get_current_user)):
 
 @router.post("/config", response_model=FusionConfigOut)
 async def save_config(body: FusionConfigIn, current_user: dict = Depends(require_admin)):
+    if body.models is not None:
+        # B15 / M3: Validar unicidade dos provedores antes de qualquer modificação no banco
+        providers = [m.provider_id for m in body.models if m.provider_id]
+        if len(providers) != len(set(providers)):
+            raise HTTPException(
+                status_code=422,
+                detail="Cada modelo no Fusion deve pertencer a um provedor diferente."
+            )
+
     db = await get_db()
     try:
         current = await _get_judge_config()
@@ -136,6 +146,7 @@ async def save_config(body: FusionConfigIn, current_user: dict = Depends(require
             await db.commit()
         finally:
             await db.close()
+
 
     judge = await _get_judge_config()
     models = await _get_models()

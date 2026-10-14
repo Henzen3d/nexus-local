@@ -424,6 +424,16 @@ export function useChat() {
     const s = useStore.getState()
     if (!s.isStreaming && !s.fusionActive) return
 
+    // Interrompe imediatamente a geração no backend fechando o socket ativo;
+    // o handler de onclose reconecta automaticamente com estado limpo.
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      try {
+        wsRef.current.close()
+      } catch {
+        /* ignore */
+      }
+    }
+
     if (s.streamingContent.trim()) {
       // Preserva a resposta parcial gerada até o momento da parada
       s.finalizeStream(

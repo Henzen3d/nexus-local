@@ -67,6 +67,7 @@
     "tooManyAttempts": "Too many login attempts. Wait a few minutes and try again."
   },
   "chat": {
+    "generationError": "Error generating response",
     "openSidebar": "Open sidebar",
     "greetingMorning": "Good morning",
     "greetingAfternoon": "Good afternoon",
@@ -872,7 +873,7 @@
     "statExtractTotal": "Total extractions",
     "onboardingTitle": "NexusLocal learns with you",
     "onboardingBody": "Adaptive memory is on by default and makes answers more personal over time—with full transparency and control.",
-    "onboardingLocal": "Everything stays on your machine—memory is not sent to a cloud.",
+    "onboardingLocal": "Locally stored on your machine — relevant context excerpts are only sent to the model provider you select.",
     "onboardingControl": "View, edit, export, or delete every fact in Settings → Memory. There you also turn memory on or off globally (default: on).",
     "onboardingChatToggle": "Memory stays on across all chats. Turn it off only in Settings → Memory if you prefer.",
     "onboardingCta": "Got it",

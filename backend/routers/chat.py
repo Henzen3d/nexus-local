@@ -162,7 +162,11 @@ async def websocket_chat(ws: WebSocket):
                 await ws.send_json({"type": "error", "message": "JSON inválido."})
                 continue
 
-            msg_type = req.get("type")
+            if not isinstance(req, dict):
+                await ws.send_json({"type": "error", "message": "Envelope JSON deve ser um objeto."})
+                continue
+
+            msg_type = req.get("type") if isinstance(req.get("type"), str) else None
             if msg_type == "ping":
                 _presence_transition(user_id, ws, proactive_presence.touch(user_id, ws))
                 await ws.send_json({"type": "pong"})
@@ -182,17 +186,21 @@ async def websocket_chat(ws: WebSocket):
                 continue
 
             conversation_id = req.get("conversation_id")
-            user_message = (req.get("message") or "").strip()
+            raw_msg = req.get("message")
+            user_message = (raw_msg if isinstance(raw_msg, str) else str(raw_msg or "")).strip()
             model_id = req.get("model_id")
             provider_id = req.get("provider_id")
-            bypass_cache = req.get("bypass_cache", False)
-            raw_attachment_ids = req.get("attachment_ids") or []
+            bypass_cache = bool(req.get("bypass_cache", False))
+            raw_attachment_ids = req.get("attachment_ids")
+            if not isinstance(raw_attachment_ids, list):
+                raw_attachment_ids = []
             attachment_ids = [a for a in raw_attachment_ids if isinstance(a, str) and a.strip()]
             request_project_id = req.get("project_id")
             project_context_debug = bool(req.get("project_context_debug", False))
             use_memory = req.get("use_memory", True)
             if isinstance(use_memory, str):
                 use_memory = use_memory.lower() not in ("0", "false", "no", "off")
+
             fusion_mode = req.get("fusion", False)
             voice_mode = bool(req.get("voice_mode", False))
 
@@ -532,6 +540,18 @@ async def _run_turn(
         request_context=req_ctx,
     )
     req_ctx.record_phase("rag_memory", t_rag_start)
+
+    # B03/Q4: Namespace semantic cache by project, attachments, and web search context
+    # para evitar que perguntas em projetos distintos ou com anexos reaproveitem cache indevido
+    context_parts = [context_fingerprint or "default"]
+    if active_project_id:
+        context_parts.append(f"proj:{active_project_id}")
+    if attachment_ids:
+        context_parts.append(f"att:{','.join(sorted(attachment_ids))}")
+    if web_search_used:
+        context_parts.append("web:1")
+    context_fingerprint = ":".join(context_parts)
+
 
     if image_job_created:
         system_instruction += "\n\nO usuário pediu uma imagem raster que está sendo gerada separadamente. Não escreva código SVG nem gere tags de imagem neste turno."

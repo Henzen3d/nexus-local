@@ -4,7 +4,9 @@ import ReactMarkdown from 'react-markdown'
 import { markdownComponents } from './markdownComponents'
 import remarkGfm from 'remark-gfm'
 import { useTranslation } from 'react-i18next'
+import { useStore } from '../store/useStore'
 import type { FusionStatusEntry } from '../types'
+
 
 interface Props {
   fusionStatuses: FusionStatusEntry[]
@@ -25,10 +27,15 @@ export function FusionStatusCard({ fusionStatuses, fusionJudgeModelId, fusionGro
     }))
   }
 
+  const isStreaming = useStore((s) => s.isStreaming)
+  const fusionActive = useStore((s) => s.fusionActive)
+  const isComplete = !isStreaming && !fusionActive
+
   if (fusionStatuses.length === 0) return null
 
   const allDone = fusionStatuses.every((s) => s.status === 'done' || s.status === 'error')
-  const collapsed = !expanded && allDone
+  const collapsed = !expanded && (allDone || isComplete)
+
 
   const statusIcon = (status: string) => {
     switch (status) {
@@ -140,15 +147,20 @@ export function FusionStatusCard({ fusionStatuses, fusionJudgeModelId, fusionGro
           )}
 
           {fusionJudgeModelId && (
-            <div className="fusion-status-row judge">
+            <div className={`fusion-status-row judge ${isComplete ? 'done' : allDone ? 'running' : 'pending'}`}>
               <Brain size={14} className="fusion-icon-judge" />
               <span className="fusion-status-model">{fusionJudgeModelId}</span>
               <span className="fusion-status-provider">{t('fusion.judgeTag')}</span>
               <span className="fusion-status-label">
-                {allDone ? t('fusion.consolidating') : t('fusion.waiting')}
+                {isComplete
+                  ? t('chat.done', { defaultValue: 'Concluído' })
+                  : allDone
+                    ? t('fusion.consolidating', { defaultValue: 'Consolidando…' })
+                    : t('fusion.waiting', { defaultValue: 'Aguardando' })}
               </span>
             </div>
           )}
+
 
           {fusionRefinedPrompt && (
             <div className="fusion-status-row fusion-refined-prompt-row">

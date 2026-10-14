@@ -20,7 +20,7 @@ import hashlib
 import json
 import uuid
 import struct
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, NamedTuple, Any
 import aiosqlite
 
@@ -360,14 +360,15 @@ class CacheManager:
             await db.execute("DELETE FROM cache_semantic")
             await db.commit()
 
+    @staticmethod
+    def _utc_cutoff(hours: int) -> str:
+        """Retorna timestamp UTC no formato 'YYYY-MM-DD HH:MM:SS' idêntico ao datetime('now') do SQLite."""
+        return (datetime.now(timezone.utc) - timedelta(hours=hours)).strftime("%Y-%m-%d %H:%M:%S")
+
     async def clear_expired(self) -> dict:
         settings = await self.get_settings()
-        cutoff_exact = (
-            datetime.now() - timedelta(hours=settings["exact_ttl_hours"])
-        ).isoformat()
-        cutoff_sem = (
-            datetime.now() - timedelta(hours=settings["semantic_ttl_hours"])
-        ).isoformat()
+        cutoff_exact = self._utc_cutoff(settings["exact_ttl_hours"])
+        cutoff_sem = self._utc_cutoff(settings["semantic_ttl_hours"])
         async with self._db() as db:
             async with db.execute(
                 "DELETE FROM cache_exact WHERE created_at < ?", (cutoff_exact,)
@@ -391,7 +392,7 @@ class CacheManager:
         self, model_id: str, messages: list, ttl_hours: int, user_id: str | None = None
     ) -> Optional[CacheHit]:
         h = self._hash_messages(model_id, messages, user_id=user_id)
-        cutoff = (datetime.now() - timedelta(hours=ttl_hours)).isoformat()
+        cutoff = self._utc_cutoff(ttl_hours)
 
         async with self._db() as db:
             async with db.execute(
@@ -451,7 +452,7 @@ class CacheManager:
         context_fingerprint: str | None = None,
         query_text: str | None = None,
     ) -> Optional[CacheHit]:
-        cutoff = (datetime.now() - timedelta(hours=ttl_hours)).isoformat()
+        cutoff = self._utc_cutoff(ttl_hours)
         fp = hashlib.sha256(prompt_text.strip().encode("utf-8")).hexdigest()
         scope_prefix = f"[mem:{context_fingerprint}]\n" if context_fingerprint else None
         scope_clause = (

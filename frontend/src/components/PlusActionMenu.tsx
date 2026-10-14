@@ -203,7 +203,7 @@ export function PlusActionMenu({
           onClose={() => setOpen(false)}
           title={t('chat.plusMenu', { defaultValue: 'Ações e ferramentas' })}
         >
-          <div className="composer-tools-sheet" style={{ padding: '8px 12px 20px' }}>
+          <div className="composer-tools-sheet" role="menu" style={{ padding: '8px 12px 20px' }}>
             {renderMenuItems()}
           </div>
         </BottomSheet>

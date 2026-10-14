@@ -67,6 +67,7 @@
     "tooManyAttempts": "Muitas tentativas de login. Aguarde alguns minutos e tente novamente."
   },
   "chat": {
+    "generationError": "Erro na geração da resposta",
     "openSidebar": "Abrir menu lateral",
     "greetingMorning": "Bom dia",
     "greetingAfternoon": "Boa tarde",
@@ -871,7 +872,7 @@
     "statExtractTotal": "Extrações total",
     "onboardingTitle": "NexusLocal aprende com você",
     "onboardingBody": "A memória adaptativa já fica ativa por padrão e torna as respostas mais pessoais com o tempo — com total transparência e controle.",
-    "onboardingLocal": "Tudo fica na sua máquina — sem enviar memória para a nuvem.",
+    "onboardingLocal": "Armazenamento local na sua máquina — trechos relevantes de contexto são enviados apenas ao provedor que você escolher.",
     "onboardingControl": "Veja, edite, exporte ou apague cada fato em Configurações → Memória. Lá você também liga ou desliga a memória globalmente (padrão: ligada).",
     "onboardingChatToggle": "A memória fica ativa em todas as conversas. Desative só em Configurações → Memória se preferir.",
     "onboardingCta": "Entendi",
