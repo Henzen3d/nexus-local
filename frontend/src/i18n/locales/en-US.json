@@ -1316,6 +1316,21 @@
     "pushBlockedWarning": "Notifications are blocked in your browser settings. Allow permissions to enable.",
     "pushNotSupported": "Your current browser does not support Push notifications or Service Worker.",
     "pushSubscribedSuccess": "Push notifications successfully enabled on this device!",
-    "pushNotificationsDesc": "Receive discreet alerts for new insights even when the tab is closed or inside installed PWA."
+    "pushNotificationsDesc": "Receive discreet alerts for new insights even when the tab is closed or inside installed PWA.",
+    "companionPersonaName": "Lumi",
+    "artifactSubtitle": "Structured report",
+    "artifactFallbackTitle": "Guide & Highlights",
+    "artifactBannerDesc": "Structured report with complete data, sources, and tables.",
+    "viewArtifactAction": "View Artifact",
+    "viewArtifactFull": "View Full Report",
+    "expandToChatTooltip": "Continue in a regular NexusLocal conversation",
+    "openInChat": "Open in chat",
+    "artifactUpdatedNotice": "Artifact updated:",
+    "companionThinking": "Lumi thinking and refining notes...",
+    "suggestedChips": "Quick suggestions:",
+    "companionInputPlaceholder": "Chat with Lumi or ask for deeper research...",
+    "companionShortChatHint": "✦ Quick friendly chat between friends. Dense details are organized in the Artifact.",
+    "talkToLumi": "Chat",
+    "openCompanionTitle": "Chat with Lumi in dedicated window"
   }
 }

@@ -19,6 +19,7 @@ import { ChatProvider } from './context/ChatContext'
 import { Login } from './components/Login'
 import { MemoryOnboarding } from './components/MemoryOnboarding'
 import { ProactiveOnboarding } from './components/ProactiveOnboarding'
+import { ProactiveCompanionModal } from './components/ProactiveCompanionModal'
 import { loadTtsPrefs } from './lib/ttsPlayer'
 import { PwaInstallBanner } from './components/PwaInstallBanner'
 import { applyDocumentLang } from './i18n'
@@ -239,6 +240,7 @@ export default function App() {
       <Toast />
       <MemoryOnboarding />
       <ProactiveOnboarding />
+      <ProactiveCompanionModal />
     </ChatProvider>
   )
 }

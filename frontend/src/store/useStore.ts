@@ -1,6 +1,6 @@
 import type { UiError } from '../lib/nexusUi'
 import { create } from 'zustand'
-import type { Artifact, Conversation, ConversationDetail, Message, Model, CacheStats, CacheSettings, FusionStatusEntry, Attachment, LibraryItem, WebSearchSource, AutoRouteDecisionInfo, UiEnvelope, ProgressBlock, IntelligentUiConfig, ProcessStep, ProactiveInsight, ProactiveAckAction, ProactiveChannelHint, ProactiveExpandMode, ProactiveSettings, ToastItem } from '../types'
+import type { Artifact, Conversation, ConversationDetail, Message, Model, CacheStats, CacheSettings, FusionStatusEntry, Attachment, LibraryItem, WebSearchSource, AutoRouteDecisionInfo, UiEnvelope, ProgressBlock, IntelligentUiConfig, ProcessStep, ProactiveInsight, ProactiveAckAction, ProactiveChannelHint, ProactiveExpandMode, ProactiveSettings, ToastItem, CompanionMessage } from '../types'
 import { api } from '../api/client'
 import i18n, { detectInitialLocale } from '../i18n'
 import { effectivePreferredModel } from '../lib/modelSelection'
@@ -379,6 +379,14 @@ interface AppState {
   handleImagePending: (event: { conversation_id: string; message_id: string; task_id: string; prompt: string }) => void
   handleImageReady: (event: { conversation_id: string; message_id: string; task_id: string; attachment: Attachment }) => void
   handleImageFailed: (event: { conversation_id: string; message_id: string; task_id: string; error: string }) => void
+  // Companion Modal ("conversa curta entre amigos" + artefato)
+  proactiveCompanionOpen: boolean
+  proactiveCompanionInsight: ProactiveInsight | null
+  proactiveCompanionMessages: CompanionMessage[]
+  isCompanionSending: boolean
+  openProactiveCompanion: (insight: ProactiveInsight, initialPrompt?: string) => void
+  closeProactiveCompanion: () => void
+  sendProactiveCompanionMessage: (text: string) => Promise<void>
 }
 
 // ── Assistente proativo: estado efêmero fora do store ──────────────────────
@@ -643,6 +651,10 @@ export const useStore = create<AppState>((set, get) => ({
   activeConversationArtifacts: [],
   allArtifacts: [],
   _pendingArtifactId: null,
+  proactiveCompanionOpen: false,
+  proactiveCompanionInsight: null,
+  proactiveCompanionMessages: [],
+  isCompanionSending: false,
   libraryItems: [],
   libraryLoading: false,
   libraryFilter: 'all',
@@ -1057,6 +1069,111 @@ export const useStore = create<AppState>((set, get) => ({
       }))
     } catch (e) {
       console.warn('[proactive] onboarding-seen falhou:', e)
+    }
+  },
+
+  openProactiveCompanion: (insight, initialPrompt) => {
+    if (insight.id) {
+      void get().ackProactiveInsight(insight.id, 'know_more', { silent: true })
+    }
+    const initialGreeting = insight.text || ''
+    const initialMessages: CompanionMessage[] = []
+    if (initialGreeting) {
+      initialMessages.push({
+        id: `greeting-${insight.id}`,
+        role: 'assistant',
+        content: initialGreeting,
+        created_at: new Date().toISOString(),
+        artifact: insight.artifact_id
+          ? {
+              id: insight.artifact_id,
+              title: insight.artifact_title || insight.topic,
+              content: insight.artifact_content || '',
+              version: 1,
+            }
+          : null,
+      })
+    }
+    set({
+      proactiveCompanionOpen: true,
+      proactiveCompanionInsight: insight,
+      proactiveCompanionMessages: initialMessages,
+      isCompanionSending: false,
+    })
+    if (initialPrompt && initialPrompt.trim()) {
+      void get().sendProactiveCompanionMessage(initialPrompt.trim())
+    }
+  },
+
+  closeProactiveCompanion: () => {
+    set({ proactiveCompanionOpen: false })
+  },
+
+  sendProactiveCompanionMessage: async (text: string) => {
+    const { proactiveCompanionInsight, proactiveCompanionMessages, isCompanionSending } = get()
+    if (!proactiveCompanionInsight || isCompanionSending || !text.trim()) return
+
+    const userMsg: CompanionMessage = {
+      id: `user-${Date.now()}`,
+      role: 'user',
+      content: text.trim(),
+      created_at: new Date().toISOString(),
+    }
+
+    const updatedMessages = [...proactiveCompanionMessages, userMsg]
+    set({
+      proactiveCompanionMessages: updatedMessages,
+      isCompanionSending: true,
+    })
+
+    try {
+      const history = updatedMessages
+        .slice(0, -1)
+        .map((m) => ({ role: m.role, content: m.content }))
+
+      const res = await api.chatProactiveCompanion(
+        proactiveCompanionInsight.id,
+        userMsg.content,
+        history,
+      )
+
+      const assistantMsg: CompanionMessage = {
+        id: `lumi-${Date.now()}`,
+        role: 'assistant',
+        content: res.reply,
+        created_at: new Date().toISOString(),
+        artifact: res.artifact || undefined,
+      }
+
+      set((s) => ({
+        proactiveCompanionMessages: [...s.proactiveCompanionMessages, assistantMsg],
+        proactiveCompanionInsight:
+          res.artifact && s.proactiveCompanionInsight
+            ? {
+                ...s.proactiveCompanionInsight,
+                artifact_id: res.artifact.id,
+                artifact_title: res.artifact.title,
+                artifact_content: res.artifact.content,
+              }
+            : s.proactiveCompanionInsight,
+      }))
+
+      if (res.artifact) {
+        void get().loadActiveConversationArtifacts()
+      }
+    } catch (e) {
+      console.error('[proactive] companion chat falhou:', e)
+      const errorMsg: CompanionMessage = {
+        id: `err-${Date.now()}`,
+        role: 'assistant',
+        content: 'Tive uma pequena instabilidade para processar sua pergunta agora, mas você ainda pode visualizar todas as pesquisas no artefato!',
+        created_at: new Date().toISOString(),
+      }
+      set((s) => ({
+        proactiveCompanionMessages: [...s.proactiveCompanionMessages, errorMsg],
+      }))
+    } finally {
+      set({ isCompanionSending: false })
     }
   },
 

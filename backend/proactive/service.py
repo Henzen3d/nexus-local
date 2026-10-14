@@ -839,6 +839,8 @@ async def _run_stages(
         tokens_in=tokens_in,
         tokens_out=tokens_out,
         expires_at=expires_at,
+        artifact_title=synthesis.artifact_title or None,
+        artifact_content=synthesis.artifact_content or None,
         ready_at=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),  # mesma base de datetime('now')
     )
     log_stage("ready", insight_id=insight_id, stage="synth", latency_ms=synthesis.latency_ms,
@@ -1052,6 +1054,8 @@ async def manual_investigate(
                     synth_model=synth_label,
                     latency_synth_ms=int(synthesis.latency_ms),
                     expires_at=expires_at,
+                    artifact_title=synthesis.artifact_title or None,
+                    artifact_content=synthesis.artifact_content or None,
                     ready_at=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
                 )
                 await enforce_pending_limit(task_db, user_id, config.max_pending, keep_id=insight_id)

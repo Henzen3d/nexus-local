@@ -1189,6 +1189,21 @@
     "pushBlockedWarning": "Las notificaciones están bloqueadas en la configuración de tu navegador.",
     "pushNotSupported": "Tu navegador actual no admite notificaciones Push o Service Worker.",
     "pushSubscribedSuccess": "¡Notificaciones push activadas con éxito en este dispositivo!",
-    "pushNotificationsDesc": "Recibe avisos discretos de nuevos hallazgos incluso con la pestaña cerrada o en el PWA instalado."
+    "pushNotificationsDesc": "Recibe avisos discretos de nuevos hallazgos incluso con la pestaña cerrada o en el PWA instalado.",
+    "companionPersonaName": "Lumi",
+    "artifactSubtitle": "Informe estructurado",
+    "artifactFallbackTitle": "Guía y Destacados",
+    "artifactBannerDesc": "Informe estructurado con datos completos, fuentes y tablas.",
+    "viewArtifactAction": "Ver Artefacto",
+    "viewArtifactFull": "Ver Informe Completo",
+    "expandToChatTooltip": "Continuar en una conversación normal de NexusLocal",
+    "openInChat": "Abrir en chat",
+    "artifactUpdatedNotice": "Artefacto actualizado:",
+    "companionThinking": "Lumi pensando y refinando las notas...",
+    "suggestedChips": "Sugerencias rápidas:",
+    "companionInputPlaceholder": "Conversa con Lumi o pide profundizar...",
+    "companionShortChatHint": "✦ Conversación corta entre amigos. Los detalles densos se organizan en el Artefacto.",
+    "talkToLumi": "Conversar",
+    "openCompanionTitle": "Conversar con Lumi en ventana dedicada"
   }
 }

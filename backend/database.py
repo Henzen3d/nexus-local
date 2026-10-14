@@ -1979,6 +1979,10 @@ async def _migrate_proactive_schema(db: aiosqlite.Connection) -> None:
         # F5.2.4: custo estimado (chars/4) do detector + síntese, para o dashboard admin
         ("tokens_in", "INTEGER"),
         ("tokens_out", "INTEGER"),
+        # Artefato estruturado gerado em background
+        ("artifact_id", "TEXT"),
+        ("artifact_title", "TEXT"),
+        ("artifact_content", "TEXT"),
     ]:
         try:
             await db.execute(f"SELECT {col_name} FROM proactive_insights LIMIT 1")

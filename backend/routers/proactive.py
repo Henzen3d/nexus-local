@@ -21,6 +21,7 @@ Admin (``require_admin``):
 """
 from __future__ import annotations
 
+import asyncio
 from typing import Any, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -79,6 +80,12 @@ class AckBody(BaseModel):
 
 class ExpandBody(BaseModel):
     mode: Literal["same", "new_chat"] = Field("new_chat", description="same | new_chat")
+
+
+class CompanionChatBody(BaseModel):
+    insight_id: str
+    message: str = Field(..., min_length=1, max_length=2000)
+    history: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class AdminConfigUpdate(BaseModel):
@@ -341,6 +348,173 @@ async def expand_insight(insight_id: str, body: ExpandBody, current_user: dict =
         except RuntimeError:
             raise HTTPException(status_code=409, detail="Não foi possível iniciar a conversa.")
         return {"ok": True, "mode": "new_chat", **result}
+    finally:
+        await db.close()
+
+
+@router.post("/companion/chat")
+async def companion_chat(body: CompanionChatBody, current_user: dict = Depends(get_current_user)) -> dict:
+    """Conversa curta entre amigos com o assistente proativo (Lumi).
+    
+    Mantém o chat breve (2-4 frases) e atualiza o Artefato em background quando necessário.
+    """
+    db = await get_db()
+    try:
+        insight = await _load_owned_insight(db, body.insight_id, current_user["id"])
+
+        # Garante que o artefato inicial existe
+        art_id = insight.get("artifact_id")
+        if not art_id:
+            art_id = await delivery.ensure_proactive_artifact(
+                db, insight["conversation_id"], insight.get("delivered_message_id") or "", insight
+            )
+            if art_id:
+                fresh = await delivery.load_insight(db, insight["id"])
+                if fresh:
+                    insight = fresh
+
+        # Carrega o artefato atual
+        art_title = (insight.get("artifact_title") or f"Pesquisa: {insight.get('topic') or 'Destaques'}").strip()
+        art_content = (insight.get("artifact_content") or "").strip()
+        art_version = 1
+        if art_id:
+            async with db.execute(
+                "SELECT title, content, version FROM artifacts WHERE id = ?",
+                (art_id,),
+            ) as cur:
+                art_row = await cur.fetchone()
+                if art_row:
+                    art_title = art_row[0] or art_title
+                    art_content = art_row[1] or art_content
+                    art_version = art_row[2] or 1
+
+        # Resolve modelo para conversa
+        from backend.proactive import synthesizer
+        config = await load_config(db)
+        try:
+            provider, model_name, _ = await synthesizer.resolve_synth_model(
+                db, current_user["id"], None, None, config
+            )
+        except Exception as exc:
+            logger.warning("[Proactive] erro ao resolver modelo do companion: %s", exc)
+            return {
+                "ok": True,
+                "reply": "Oi! No momento estou sem acesso direto ao modelo de síntese, mas você pode consultar todas as informações no artefato ao lado!",
+                "artifact": {
+                    "id": art_id,
+                    "title": art_title,
+                    "content": art_content,
+                    "version": art_version,
+                } if art_id else None,
+            }
+
+        topic = (insight.get("topic") or "").strip()
+        system_prompt = (
+            f"Você é o Lumi, o assistente proativo e parceiro de exploração do NexusLocal.\n"
+            f"Você está tendo uma conversa curta, amigável e descontraída entre amigos com o usuário sobre o tema: \"{topic}\".\n\n"
+            f"REGRAS INEGOCIÁVEIS:\n"
+            f"1. TOM: casual, caloroso, espirituoso e direto (\"conversa curta entre amigos\").\n"
+            f"2. RESPOSTA DE CHAT: NUNCA passe de 2 a 4 frases. Seja breve e agradável.\n"
+            f"3. NUNCA coloque tabelas longas, listas gigantes ou parágrafos densos no chat.\n"
+            f"4. Todo conteúdo denso (comparações, listas completas, tópicos aprofundados) DEVE ficar dentro do ARTEFATO Markdown.\n"
+            f"5. Se o usuário perguntar algo novo ou pedir mais detalhes, responda em 1 ou 2 frases amigáveis e ATUALIZE o Artefato Markdown completo no bloco final.\n"
+            f"6. Se você atualizar o artefato, finalize OBRIGATORIAMENTE sua resposta com o bloco:\n"
+            f"```artifact\n"
+            f"TITULO: <titulo descritivo do artefato>\n"
+            f"<conteudo markdown completo e formatado do artefato>\n"
+            f"```\n"
+            f"Se não houver novos dados para atualizar no artefato, NÃO inclua o bloco ```artifact."
+        )
+
+        llm_messages: list[dict[str, str]] = [{"role": "system", "content": system_prompt}]
+        if art_content:
+            llm_messages.append({
+                "role": "system",
+                "content": f"[ARTEFATO ATUAL]\nTÍTULO: {art_title}\n\n{art_content[:4000]}",
+            })
+
+        for h in (body.history or [])[-6:]:
+            role = "assistant" if h.get("role") == "assistant" else "user"
+            content = str(h.get("content") or "").strip()
+            if content:
+                llm_messages.append({"role": role, "content": content})
+
+        llm_messages.append({"role": "user", "content": body.message.strip()})
+
+        chunks: list[str] = []
+        try:
+            async def _collect() -> None:
+                async for token in provider.stream_chat(
+                    model=model_name, messages=llm_messages, temperature=0.7, max_tokens=1500
+                ):
+                    chunks.append(str(token))
+
+            await asyncio.wait_for(_collect(), timeout=25.0)
+        except Exception as exc:
+            logger.warning("[Proactive] erro durante chat do companion: %s", exc)
+            return {
+                "ok": True,
+                "reply": "Puxa, tive uma oscilação aqui para pesquisar mais a fundo, mas todo o nosso guia está salvo no artefato logo acima!",
+                "artifact": {
+                    "id": art_id,
+                    "title": art_title,
+                    "content": art_content,
+                    "version": art_version,
+                } if art_id else None,
+            }
+
+        raw_output = "".join(chunks).strip()
+        reply = raw_output
+        updated_art_content = None
+        updated_art_title = art_title
+
+        if "```artifact" in raw_output:
+            parts = raw_output.split("```artifact")
+            reply = parts[0].strip()
+            art_block = parts[1].split("```")[0].strip()
+            if art_block:
+                lines = art_block.splitlines()
+                if lines and lines[0].upper().startswith("TITULO:"):
+                    updated_art_title = lines[0][7:].strip() or art_title
+                    updated_art_content = "\n".join(lines[1:]).strip()
+                else:
+                    updated_art_content = art_block
+
+        if updated_art_content and len(updated_art_content) > 20:
+            from backend.orchestration.artifacts import save_artifact
+            try:
+                new_art_id = await save_artifact(
+                    db,
+                    insight["conversation_id"],
+                    insight.get("delivered_message_id") or None,
+                    {
+                        "type": "text/markdown",
+                        "title": updated_art_title,
+                        "content": updated_art_content,
+                    },
+                )
+                await db.execute(
+                    "UPDATE proactive_insights SET artifact_id = ?, artifact_title = ?, artifact_content = ? WHERE id = ?",
+                    (new_art_id, updated_art_title, updated_art_content, insight["id"]),
+                )
+                await db.commit()
+                art_id = new_art_id
+                art_title = updated_art_title
+                art_content = updated_art_content
+                art_version += 1
+            except Exception as exc:
+                logger.warning("[Proactive] erro ao salvar versão atualizada do artifact: %s", exc)
+
+        return {
+            "ok": True,
+            "reply": reply or "Prontinho! Atualizei os detalhes no nosso artefato.",
+            "artifact": {
+                "id": art_id,
+                "title": art_title,
+                "content": art_content,
+                "version": art_version,
+            } if art_id else None,
+        }
     finally:
         await db.close()
 

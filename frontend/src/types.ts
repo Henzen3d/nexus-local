@@ -126,6 +126,18 @@ export interface ProactiveInsight {
   origin?: ProactiveOrigin | null
   /** F4.3.2: hash do tópico — "Desfazer" do bloqueio (`DELETE /blocklist/{hash}`) */
   topic_hash?: string | null
+  /** Artefato gerado em background com os dados da pesquisa */
+  artifact_id?: string | null
+  artifact_title?: string | null
+  artifact_content?: string | null
+}
+
+export interface CompanionMessage {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  created_at?: string
+  artifact?: { id: string; title: string; content: string; version: number } | null
 }
 
 export interface ProactiveOrigin {

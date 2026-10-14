@@ -29,6 +29,7 @@ export const ProactiveHubPanel: React.FC = () => {
   const setView = useStore((s) => s.setView)
   const openPendingInsight = useStore((s) => s.openPendingInsight)
   const expandProactiveInsight = useStore((s) => s.expandProactiveInsight)
+  const openProactiveCompanion = useStore((s) => s.openProactiveCompanion)
   const dismissPendingInsight = useStore((s) => s.dismissPendingInsight)
   const proactiveSettings = useStore((s) => s.proactiveSettings)
   const loadProactiveSettings = useStore((s) => s.loadProactiveSettings)
@@ -293,6 +294,15 @@ export const ProactiveHubPanel: React.FC = () => {
                     )}
 
                     <footer className="card-actions">
+                      <button
+                        type="button"
+                        className="card-btn card-btn--companion"
+                        onClick={() => openProactiveCompanion(item)}
+                        title={t('proactive.openCompanionTitle', { defaultValue: 'Conversar com Lumi em janela dedicada' })}
+                      >
+                        <Sparkles size={14} />
+                        <span>{t('proactive.talkToLumi', { defaultValue: 'Conversar' })}</span>
+                      </button>
                       <button
                         type="button"
                         className="card-btn card-btn--open"

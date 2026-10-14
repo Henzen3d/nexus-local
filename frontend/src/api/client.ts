@@ -643,6 +643,19 @@ export const api = {
       `/proactive/insights/${encodeURIComponent(insightId)}/expand`,
       { method: 'POST', body: JSON.stringify({ mode }) },
     ),
+  chatProactiveCompanion: (
+    insightId: string,
+    message: string,
+    history: Array<{ role: string; content: string }> = []
+  ) =>
+    fetchJSON<{
+      ok: boolean
+      reply: string
+      artifact?: { id: string; title: string; content: string; version: number } | null
+    }>('/proactive/companion/chat', {
+      method: 'POST',
+      body: JSON.stringify({ insight_id: insightId, message, history }),
+    }),
   // F6 — Web Push no PWA
   getVapidPublicKey: () => fetchJSON<{ publicKey: string }>('/push/vapid-public-key'),
   subscribePush: (data: { endpoint: string; keys: { p256dh: string; auth: string }; user_agent?: string }) =>

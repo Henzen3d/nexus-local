@@ -49,6 +49,7 @@ INSIGHT_COLUMNS = (
     "channel", "synthesized_text", "reason_line", "sources_json", "follow_ups_json",
     "language", "emotion", "error_code", "detector_model", "synth_model",
     "created_at", "ready_at", "delivered_at", "seen_at", "expires_at",
+    "artifact_id", "artifact_title", "artifact_content",
 )
 
 # §3.4 — "Ao vivo": "Fiquei curioso com *{topic}* e fui pesquisar: {resumo}. {gancho}"
@@ -200,6 +201,9 @@ def insight_public_dict(insight: dict, *, message_id: Optional[str] = None) -> d
         "origin": origin,
         # F4.3.2: "Desfazer" do bloqueio precisa do hash (é só um hash do tópico, não dado sensível)
         "topic_hash": insight.get("topic_hash"),
+        "artifact_id": insight.get("artifact_id"),
+        "artifact_title": insight.get("artifact_title"),
+        "artifact_content": insight.get("artifact_content"),
     }
 
 
@@ -291,6 +295,65 @@ async def persist_proactive_message(
     return message_id
 
 
+async def ensure_proactive_artifact(
+    db: Any,
+    conv_id: str,
+    message_id: str,
+    insight: dict,
+) -> Optional[str]:
+    """Cria e vincula o Artifact Markdown ao insight e à mensagem, se ainda não existir."""
+    if insight.get("artifact_id"):
+        return str(insight["artifact_id"])
+
+    art_title = (insight.get("artifact_title") or "").strip()
+    art_content = (insight.get("artifact_content") or "").strip()
+
+    # Se não tinha artefato explícito, gera a partir das fontes e texto sintetizado
+    if not art_content and (insight.get("synthesized_text") or insight.get("sources_json")):
+        try:
+            from backend.proactive.synthesizer import build_proactive_artifact
+            sources = _loads(insight.get("sources_json"), []) or []
+            art_title, art_content = build_proactive_artifact(
+                topic=insight.get("topic") or "",
+                category=insight.get("category") or "other",
+                synthesis_text=insight.get("synthesized_text") or "",
+                sources=sources,
+                custom_title=art_title,
+            )
+        except Exception as exc:
+            logger.debug("[Proactive] erro ao gerar artefato sob demanda: %s", exc)
+
+    if not art_content:
+        return None
+
+    from backend.orchestration.artifacts import save_artifact
+
+    try:
+        final_title = art_title or f"Pesquisa: {insight.get('topic') or 'Destaques'}"
+        art_id = await save_artifact(
+            db,
+            conv_id,
+            message_id,
+            {
+                "type": "text/markdown",
+                "title": final_title,
+                "content": art_content,
+            },
+        )
+        await db.execute(
+            "UPDATE proactive_insights SET artifact_id = ?, artifact_title = ?, artifact_content = ? WHERE id = ?",
+            (art_id, final_title, art_content, insight["id"]),
+        )
+        await db.commit()
+        insight["artifact_id"] = art_id
+        insight["artifact_title"] = final_title
+        insight["artifact_content"] = art_content
+        return art_id
+    except Exception as exc:
+        logger.warning("[Proactive] falha ao salvar artifact para insight %s: %s", insight.get("id"), exc)
+        return None
+
+
 async def claim_and_persist(
     db: Any,
     insight: dict,
@@ -324,6 +387,8 @@ async def claim_and_persist(
                 await db.rollback()
                 return None
             await db.commit()
+            target_conv = conversation_id or insight["conversation_id"]
+            await ensure_proactive_artifact(db, target_conv, message_id, insight)
             return message_id
         except Exception:
             try:
@@ -618,6 +683,7 @@ async def expand_new_chat(db: Any, insight: dict) -> dict:
                     return await expand_new_chat(db, fresh)
                 raise RuntimeError("expand_conflict")
             await db.commit()
+            await ensure_proactive_artifact(db, new_conv_id, message_id, insight)
         except Exception:
             try:
                 await db.rollback()

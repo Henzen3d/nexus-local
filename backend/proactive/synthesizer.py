@@ -60,6 +60,9 @@ class Synthesis:
     # telemetria para custo estimado (F5.2.4): chars do prompt e da resposta
     prompt_chars: int = 0
     response_chars: int = 0
+    # Artefato gerado em background com detalhes da pesquisa
+    artifact_title: str = ""
+    artifact_content: str = ""
 
     @property
     def ok(self) -> bool:
@@ -129,7 +132,83 @@ def parse_event_date(value: Any) -> Optional[str]:
         return None
 
 
-def parse_synthesis(raw: str, sources: Sequence[Source]) -> Synthesis:
+def build_proactive_artifact(
+    *,
+    topic: str = "",
+    category: str = "other",
+    synthesis_text: str = "",
+    sources: Sequence[Source] = (),
+    custom_title: str = "",
+    custom_content: str = "",
+) -> tuple[str, str]:
+    """Gera título e conteúdo Markdown estruturado para o artefato proativo."""
+    clean_topic = topic.strip() or "Pesquisa e Destaques"
+    if custom_title and custom_content:
+        return custom_title[:80], custom_content
+
+    prefix_map = {
+        "event": "Roteiro & Evento",
+        "place": "Guia de Viagem & Destaques",
+        "product": "Análise & Especificações",
+        "news": "Briefing de Notícias",
+    }
+    prefix = prefix_map.get(category, "Guia & Destaques")
+    title = custom_title or f"{prefix}: {clean_topic}"
+    if len(title) > 75:
+        title = title[:74] + "…"
+
+    if custom_content:
+        return title, custom_content
+
+    md_lines = [
+        f"# {title}",
+        "",
+        "> ✦ *Pesquisa autônoma e curadoria organizada pelo Assistente Proativo (NexusLocal).*  ",
+        f"> *Tema: **{clean_topic}** · Categoria: **{category.title()}***",
+        "",
+        "## 📌 Resumo & Destaques",
+        "",
+        synthesis_text or "Informações consolidadas a partir das principais fontes públicas pesquisadas.",
+        "",
+    ]
+
+    if sources:
+        md_lines.append("## 🔍 Principais Descobertas e Informações")
+        md_lines.append("")
+        for idx, src in enumerate(sources, 1):
+            s_title = (src.get("title") if isinstance(src, dict) else getattr(src, "title", "")) or ""
+            s_domain = (src.get("domain") if isinstance(src, dict) else getattr(src, "domain", "")) or ""
+            s_snippet = (src.get("snippet") if isinstance(src, dict) else getattr(src, "snippet", "")) or ""
+            s_excerpt = (src.get("content_excerpt") if isinstance(src, dict) else getattr(src, "content_excerpt", "")) or ""
+            
+            src_title = (s_title or s_domain or f"Fonte {idx}").strip()
+            md_lines.append(f"### {idx}. {src_title}")
+            if s_domain:
+                md_lines.append(f"**Origem:** `{s_domain}`")
+            if s_snippet:
+                md_lines.append(f"> {s_snippet}")
+            if s_excerpt and s_excerpt != s_snippet:
+                excerpt = s_excerpt.strip()[:600]
+                md_lines.append("")
+                md_lines.append(excerpt)
+            md_lines.append("")
+
+        md_lines.append("## 🌐 Fontes e Links Consultados")
+        md_lines.append("")
+        for src in sources:
+            s_title = (src.get("title") if isinstance(src, dict) else getattr(src, "title", "")) or ""
+            s_domain = (src.get("domain") if isinstance(src, dict) else getattr(src, "domain", "")) or ""
+            s_url = (src.get("url") if isinstance(src, dict) else getattr(src, "url", "")) or ""
+            if not s_url:
+                continue
+            src_title = (s_title or s_domain or s_url).strip()
+            md_lines.append(f"- [{src_title}]({s_url}) ({s_domain or 'web'})")
+        md_lines.append("")
+
+    return title, "\n".join(md_lines).strip()
+
+
+def parse_synthesis(raw: str, sources: Sequence[Source], signal: Optional[InterestSignal] = None) -> Synthesis:
     """Parser tolerante + pós-processamento. ``error='synth_parse'`` se não houver texto."""
     synthesis = Synthesis(raw=raw or "")
     blob = _slice_first_json_object(raw or "")
@@ -160,6 +239,26 @@ def parse_synthesis(raw: str, sources: Sequence[Source]) -> Synthesis:
         if original and original not in used:
             used.append(original)
     synthesis.used_source_urls = used
+
+    # Geração ou extração do artefato estruturado
+    art_data = data.get("artifact") if isinstance(data.get("artifact"), dict) else {}
+    custom_title = str(art_data.get("title") or data.get("artifact_title") or "").strip()
+    custom_content = str(art_data.get("content") or data.get("artifact_content") or "").strip()
+    
+    topic = (signal.topic if signal else str(data.get("topic") or "")).strip()
+    category = signal.category if signal else str(data.get("category") or "other")
+    if sources or custom_content:
+        art_title, art_content = build_proactive_artifact(
+            topic=topic,
+            category=category,
+            synthesis_text=text,
+            sources=sources,
+            custom_title=custom_title,
+            custom_content=custom_content,
+        )
+        synthesis.artifact_title = art_title
+        synthesis.artifact_content = art_content
+
     return synthesis
 
 
@@ -315,7 +414,7 @@ async def synthesize(
                          latency_ms=(time.perf_counter() - started) * 1000,
                          prompt_chars=prompt_chars, response_chars=len(raw))
 
-    synthesis = parse_synthesis("".join(chunks), sources)
+    synthesis = parse_synthesis("".join(chunks), sources, signal=signal)
     synthesis.latency_ms = (time.perf_counter() - started) * 1000
     synthesis.model_label = model_name
     synthesis.model_source = model_source

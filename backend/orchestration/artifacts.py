@@ -275,7 +275,7 @@ async def save_artifact(db, conv_id: str, msg_id: str, detected: dict) -> str:
         (
             artifact_id,
             conv_id,
-            msg_id,
+            msg_id or None,
             detected["type"],
             detected["title"],
             detected["content"],

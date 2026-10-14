@@ -14,6 +14,7 @@ export const NotificationBell: React.FC = () => {
   const openPendingInsight = useStore((s) => s.openPendingInsight)
   const dismissPendingInsight = useStore((s) => s.dismissPendingInsight)
   const expandProactiveInsight = useStore((s) => s.expandProactiveInsight)
+  const openProactiveCompanion = useStore((s) => s.openProactiveCompanion)
   const setView = useStore((s) => s.setView)
   const proactiveSettings = useStore((s) => s.proactiveSettings)
 
@@ -63,6 +64,11 @@ export const NotificationBell: React.FC = () => {
   const handleOpenConversation = async (insightId: string) => {
     setIsOpen(false)
     await openPendingInsight(insightId)
+  }
+
+  const handleOpenCompanion = (insight: ProactiveInsight) => {
+    setIsOpen(false)
+    openProactiveCompanion(insight)
   }
 
   const handleExpandNewChat = async (insightId: string) => {
@@ -178,18 +184,19 @@ export const NotificationBell: React.FC = () => {
                         <button
                           type="button"
                           className="item-action-btn item-action-open"
-                          onClick={() => handleOpenConversation(insight.id)}
+                          onClick={() => handleOpenCompanion(insight)}
+                          title={t('proactive.openCompanionTitle', { defaultValue: 'Conversar em modal dedicado com o assistente' })}
                         >
-                          <MessageSquare size={13} />
-                          <span>{t('proactive.cardOpen', { defaultValue: 'Abrir conversa' })}</span>
+                          <Sparkles size={13} />
+                          <span>{t('proactive.talkToLumi', { defaultValue: 'Conversar' })}</span>
                         </button>
                         <button
                           type="button"
                           className="item-action-btn item-action-expand"
-                          onClick={() => handleExpandNewChat(insight.id)}
+                          onClick={() => handleOpenConversation(insight.id)}
                         >
-                          <Sparkles size={13} />
-                          <span>{t('proactive.cardTellMeHere', { defaultValue: 'Me conta aqui' })}</span>
+                          <MessageSquare size={13} />
+                          <span>{t('proactive.cardOpen', { defaultValue: 'Abrir conversa' })}</span>
                         </button>
                       </div>
                     </div>

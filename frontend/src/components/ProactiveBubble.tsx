@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { Sparkles, MessageCircle, Ban, PauseCircle, Loader2, CornerUpLeft } from 'lucide-react'
+import { Sparkles, MessageCircle, Ban, PauseCircle, Loader2, CornerUpLeft, FileText } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { Message, WebSearchSource } from '../types'
 import { useStore } from '../store/useStore'
+import { api } from '../api/client'
 import { AssistantAvatar } from './Avatars'
 import { ProactiveMascot } from './ProactiveMascot'
 import { markdownComponents } from './markdownComponents'
@@ -12,7 +13,7 @@ import { SourceShelf } from './SourceShelf'
 
 // ─── ProactiveBubble — bolha do assistente proativo (F2.7.3) ──────────────────
 // Mensagem `kind='proactive'`: badge ✦, texto sintetizado, linha de motivo,
-// fontes (SourceShelf) e três ações: "Quero saber mais" (pré-preenche o composer),
+// fontes (SourceShelf) e três ações: "Quero saber mais" (abre o Companion Modal),
 // "Não quero sobre isso" (ack blocked) e "Pausar" (settings.enabled=false).
 // O ack `seen` é enviado uma única vez quando a bolha entra na viewport.
 // F3.3.3: em chat iniciado por "Me conta aqui", mostra "veio de «conversa de origem»".
@@ -45,10 +46,13 @@ export function ProactiveBubble({ message }: { message: Message }) {
   const { t } = useTranslation()
   const ackProactiveInsight = useStore((s) => s.ackProactiveInsight)
   const pauseProactive = useStore((s) => s.pauseProactive)
-  const setComposerPrefill = useStore((s) => s.setComposerPrefill)
   const loadConversation = useStore((s) => s.loadConversation)
   const activeConversationId = useStore((s) => s.activeConversationId)
   const proactiveSettings = useStore((s) => s.proactiveSettings)
+  const openProactiveCompanion = useStore((s) => s.openProactiveCompanion)
+  const setActiveArtifact = useStore((s) => s.setActiveArtifact)
+  const setArtifactPanelOpen = useStore((s) => s.setArtifactPanelOpen)
+  const loadArtifactHistory = useStore((s) => s.loadArtifactHistory)
   const rootRef = useRef<HTMLDivElement>(null)
 
   const insight = message.insight || null
@@ -65,6 +69,18 @@ export function ProactiveBubble({ message }: { message: Message }) {
     if (fromInsight.length) return fromInsight
     return message.web_search_sources || []
   }, [insight, message.web_search_sources])
+
+  const artifacts = useMemo(() => {
+    if (message.artifacts && message.artifacts.length > 0) return message.artifacts
+    if (insight?.artifact_id) {
+      return [{
+        id: insight.artifact_id,
+        type: 'text/markdown',
+        title: insight.artifact_title || insight.topic || t('proactive.artifactFallbackTitle', { defaultValue: 'Guia & Pesquisa' }),
+      }]
+    }
+    return []
+  }, [message.artifacts, insight?.artifact_id, insight?.artifact_title, insight?.topic, t])
 
   const content = (message.content || insight?.text || '').trim()
   const topic = insight?.topic || ''
@@ -91,12 +107,34 @@ export function ProactiveBubble({ message }: { message: Message }) {
     return () => obs.disconnect()
   }, [insightId, status, isClosed, ackProactiveInsight])
 
+  const handleCardClick = async (artId: string) => {
+    try {
+      const artifact = await api.getArtifact(artId)
+      setActiveArtifact(artifact)
+      setArtifactPanelOpen(true)
+      if (artifact.artifact_group_id) {
+        await loadArtifactHistory(artifact.artifact_group_id)
+      }
+    } catch (e) {
+      console.error('Falha ao abrir artifact pelo card:', e)
+    }
+  }
+
   const handleKnowMore = () => {
-    const followUp = insight?.follow_ups?.[0]
-    const prompt = followUp && followUp.trim() ? followUp.trim() : t('proactive.knowMorePrompt', { topic })
-    setComposerPrefill(prompt)
-    // F4: métrica "quero saber mais" (não altera o status da bolha)
-    if (insightId) void ackProactiveInsight(insightId, 'know_more', { silent: true })
+    if (insight) {
+      openProactiveCompanion(insight)
+    } else if (insightId) {
+      openProactiveCompanion({
+        id: insightId,
+        conversation_id: activeConversationId || '',
+        message_id: message.id,
+        topic: topic || t('proactive.hubTitle', { defaultValue: 'Assistente Proativo' }),
+        category: 'other',
+        text: content,
+        sources: sources.map((s) => ({ title: s.title, url: s.url, domain: '' })),
+        follow_ups: [],
+      })
+    }
   }
 
   const handleNotThisTopic = () => {
@@ -146,6 +184,43 @@ export function ProactiveBubble({ message }: { message: Message }) {
               <CornerUpLeft size={12} aria-hidden="true" />
               <span>{t('proactive.cameFrom', { title: origin.title || '…' })}</span>
             </button>
+          )}
+
+          {artifacts.length > 0 && (
+            <div className="artifact-chat-card-list">
+              {artifacts.map((art) => (
+                <div
+                  key={art.id}
+                  className="artifact-chat-card"
+                  onClick={() => void handleCardClick(art.id)}
+                  title={t('chat.openArtifact', { defaultValue: 'Abrir no painel de artefatos' })}
+                >
+                  <div className="artifact-chat-card-content">
+                    <div className="artifact-chat-card-preview" aria-hidden="true">
+                      <div className="artifact-chat-card-sheet">
+                        <FileText size={16} />
+                      </div>
+                    </div>
+                    <div className="artifact-chat-card-info">
+                      <div className="artifact-chat-card-title">{art.title}</div>
+                      <div className="artifact-chat-card-subtitle">{t('proactive.artifactSubtitle', { defaultValue: 'Relatório estruturado' })}</div>
+                    </div>
+                    <div className="artifact-chat-card-actions">
+                      <button
+                        type="button"
+                        className="artifact-chat-card-download-btn"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          void handleCardClick(art.id)
+                        }}
+                      >
+                        {t('chat.view', { defaultValue: 'Visualizar' })}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
 
           {sources.length > 0 && <SourceShelf sources={sources} />}

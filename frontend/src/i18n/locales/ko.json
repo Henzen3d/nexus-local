@@ -1033,6 +1033,21 @@
     "pushBlockedWarning": "브라우저 설정에서 알림이 차단되어 있습니다.",
     "pushNotSupported": "현재 브라우저는 푸시 알림을 지원하지 않습니다.",
     "pushSubscribedSuccess": "이 기기에서 푸시 알림이 활성화되었습니다!",
-    "pushNotificationsDesc": "탭이 닫혀 있거나 설치된 PWA에서도 조용히 새 인사이트를 알려드립니다."
+    "pushNotificationsDesc": "탭이 닫혀 있거나 설치된 PWA에서도 조용히 새 인사이트를 알려드립니다.",
+    "companionPersonaName": "Lumi",
+    "artifactSubtitle": "구조화된 보고서",
+    "artifactFallbackTitle": "가이드 및 주요 내용",
+    "artifactBannerDesc": "전체 데이터, 출처 및 표가 포함된 구조화된 보고서입니다.",
+    "viewArtifactAction": "아티팩트 보기",
+    "viewArtifactFull": "전체 보고서 보기",
+    "expandToChatTooltip": "NexusLocal 일반 대화에서 계속하기",
+    "openInChat": "채팅에서 열기",
+    "artifactUpdatedNotice": "아티팩트가 업데이트되었습니다:",
+    "companionThinking": "Lumi가 생각하며 메모를 다듬는 중...",
+    "suggestedChips": "빠른 추천:",
+    "companionInputPlaceholder": "Lumi와 대화하거나 더 깊이 알아보기...",
+    "companionShortChatHint": "✦ 친구 간의 짧은 대화입니다. 상세하고 방대한 내용은 아티팩트에 정리됩니다.",
+    "talkToLumi": "대화하기",
+    "openCompanionTitle": "전용 창에서 Lumi와 대화하기"
   }
 }

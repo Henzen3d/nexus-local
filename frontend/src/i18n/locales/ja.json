@@ -1033,6 +1033,21 @@
     "pushBlockedWarning": "ブラウザの設定で通知がブロックされています。",
     "pushNotSupported": "お使いのブラウザはプッシュ通知をサポートしていません。",
     "pushSubscribedSuccess": "この端末でプッシュ通知が有効になりました！",
-    "pushNotificationsDesc": "タブが閉じている時やPWAアプリでも、新しい発見を静かに通知します。"
+    "pushNotificationsDesc": "タブが閉じている時やPWAアプリでも、新しい発見を静かに通知します。",
+    "companionPersonaName": "Lumi",
+    "artifactSubtitle": "構造化レポート",
+    "artifactFallbackTitle": "ガイド＆ハイライト",
+    "artifactBannerDesc": "完全なデータ、情報源、表を含む構造化レポート。",
+    "viewArtifactAction": "成果物を表示",
+    "viewArtifactFull": "全レポートを表示",
+    "expandToChatTooltip": "通常のNexusLocalチャットで続ける",
+    "openInChat": "チャットで開く",
+    "artifactUpdatedNotice": "成果物を更新しました：",
+    "companionThinking": "Lumiが思考してメモを整理中...",
+    "suggestedChips": "クイック候補：",
+    "companionInputPlaceholder": "Lumiとおしゃべり、または詳しく質問...",
+    "companionShortChatHint": "✦ 友達同士の簡潔な会話。詳しい情報は成果物にまとめられます。",
+    "talkToLumi": "話す",
+    "openCompanionTitle": "専用ウィンドウでLumiと話す"
   }
 }

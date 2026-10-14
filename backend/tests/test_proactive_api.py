@@ -430,3 +430,44 @@ async def test_fake_socket_and_presence_helpers():
     else:  # pragma: no cover
         raise AssertionError("socket fechado deveria falhar")
     presence.reset()
+
+
+async def test_proactive_companion_chat_endpoint(_isolation, monkeypatch):
+    """Testa o endpoint POST /api/proactive/companion/chat com proteção IDOR e atualização de artefato."""
+    db = await get_db()
+    try:
+        owner, conv_id, msg_id = await seed_user_conv(db)
+        stranger, _, _ = await seed_user_conv(db)
+        result, _ = await run_full_pipeline(db, owner, conv_id, msg_id)
+        insight_id = result.insight_id
+    finally:
+        await db.close()
+
+    client = _routers()
+
+    # IDOR: stranger não pode conversar no companion de outro usuário
+    res_idor = client.post(
+        "/api/proactive/companion/chat",
+        json={"insight_id": insight_id, "message": "Quais os horários?", "history": []},
+        headers=_auth(stranger),
+    )
+    assert res_idor.status_code == 404
+
+    # Owner tem acesso e recebe resposta amigável e artefato
+    res_owner = client.post(
+        "/api/proactive/companion/chat",
+        json={
+            "insight_id": insight_id,
+            "message": "Pode me resumir os melhores setores?",
+            "history": [],
+        },
+        headers=_auth(owner),
+    )
+    assert res_owner.status_code == 200
+    data = res_owner.json()
+    assert data["ok"] is True
+    assert data["reply"]
+    assert data["artifact"] is not None
+    assert data["artifact"]["id"]
+    assert data["artifact"]["title"]
+
