@@ -63,7 +63,8 @@
     "fillRequired": "Informe usuário e senha para continuar.",
     "emailRequired": "Informe o e-mail usado no cadastro.",
     "registerError": "Não foi possível criar a conta. Este usuário ou e-mail pode já estar em uso.",
-    "loginError": "Usuário ou senha incorretos. Verifique e tente de novo."
+    "loginError": "Usuário ou senha incorretos. Verifique e tente de novo.",
+    "tooManyAttempts": "Muitas tentativas de login. Aguarde alguns minutos e tente novamente."
   },
   "chat": {
     "openSidebar": "Abrir menu lateral",

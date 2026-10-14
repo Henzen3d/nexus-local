@@ -15,6 +15,7 @@ from backend.image_gen.queue import (
     recover_stale_tasks,
 )
 from backend.attachments.storage import save_attachment_for_conversation
+from backend.attachments.signing import attachment_url
 from backend.logging_config import get_logger
 from backend.providers.base import CloudflareProvider, RateLimitError
 
@@ -183,9 +184,9 @@ async def process_image_task(task: dict):
         size_bytes = len(jpeg_bytes)
 
         await db.execute(
-            """INSERT INTO attachments (id, message_id, filename, mime_type, file_type, size_bytes, file_hash, storage_path, thumbnail_path)
-               VALUES (?, ?, ?, 'image/jpeg', 'image', ?, ?, ?, ?)""",
-            (att_id, msg_id, filename, size_bytes, file_hash, file_rel, thumb_rel),
+            """INSERT INTO attachments (id, message_id, filename, mime_type, file_type, size_bytes, file_hash, storage_path, thumbnail_path, user_id)
+               VALUES (?, ?, ?, 'image/jpeg', 'image', ?, ?, ?, ?, ?)""",
+            (att_id, msg_id, filename, size_bytes, file_hash, file_rel, thumb_rel, user_id),
         )
 
         # Limpa o texto residual provisório do placeholder ("Gerando imagem…")
@@ -209,8 +210,8 @@ async def process_image_task(task: dict):
                 "mime_type": "image/jpeg",
                 "file_type": "image",
                 "size_bytes": size_bytes,
-                "file_url": f"/attachments/{file_rel}",
-                "thumbnail_url": f"/attachments/{thumb_rel}" if thumb_rel else None,
+                "file_url": attachment_url(file_rel),
+                "thumbnail_url": attachment_url(thumb_rel),
             },
         })
 

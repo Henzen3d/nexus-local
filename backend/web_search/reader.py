@@ -1,5 +1,8 @@
 import asyncio
+import ipaddress
+import os
 import re
+import socket
 from urllib.parse import urljoin, urlparse
 import httpx
 from loguru import logger
@@ -124,24 +127,103 @@ def extract_articles_and_content(html_text: str, base_url: str) -> dict:
     }
 
 
-async def fetch_page_content(url: str, timeout: float = 6.0) -> dict | None:
-    """Faz requisição HTTP assíncrona com timeout estrito e extrai o conteúdo."""
+_MAX_REDIRECTS = 4
+_MAX_BODY_BYTES = 2 * 1024 * 1024  # 2 MB — só precisamos de texto, não de downloads
+
+
+def _is_private_ip(ip_str: str) -> bool:
     try:
+        ip = ipaddress.ip_address(ip_str)
+    except ValueError:
+        return True
+    return (
+        ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast
+        or ip.is_reserved or ip.is_unspecified
+        or (ip.version == 6 and ip.ipv4_mapped is not None and _is_private_ip(str(ip.ipv4_mapped)))
+    )
+
+
+async def is_safe_public_url(url: str) -> bool:
+    """Bloqueia SSRF: só http(s) e só hosts que resolvem para IPs públicos.
+
+    O domínio lido pelo Deep Reader vem do prompt do usuário (``extract_domains_and_urls``);
+    sem esta checagem era possível apontar um DNS para 127.0.0.1 / 172.x (rede
+    Docker: backend, Portainer no host, metadata endpoints) e receber o conteúdo
+    de volta dentro do contexto do modelo.
+    """
+    try:
+        parsed = urlparse(url)
+    except Exception:
+        return False
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        return False
+    host = parsed.hostname.strip("[]").lower()
+    if host in ("localhost",) or host.endswith((".local", ".internal", ".localhost")):
+        return False
+    if os.getenv("WEB_SEARCH_ALLOW_PRIVATE_HTTP", "false").lower() in ("1", "true", "yes"):
+        return True
+    try:
+        loop = asyncio.get_running_loop()
+        infos = await asyncio.wait_for(
+            loop.run_in_executor(None, lambda: socket.getaddrinfo(host, parsed.port or 80, proto=socket.IPPROTO_TCP)),
+            timeout=3.0,
+        )
+    except Exception:
+        return False
+    addrs = {info[4][0] for info in infos}
+    if not addrs:
+        return False
+    return not any(_is_private_ip(a) for a in addrs)
+
+
+async def fetch_page_content(url: str, timeout: float = 6.0) -> dict | None:
+    """Faz requisição HTTP assíncrona com timeout estrito e extrai o conteúdo.
+
+    Redirects são seguidos manualmente para revalidar cada destino contra a
+    lista de IPs privados (um 302 para http://169.254.169.254 não passa).
+    """
+    try:
+        current = url
         async with httpx.AsyncClient(
             headers=DESKTOP_HEADERS,
-            follow_redirects=True,
+            follow_redirects=False,
             timeout=timeout,
             verify=False,
         ) as client:
-            res = await client.get(url)
-            if res.status_code != 200:
-                logger.debug(f"[reader] {url} respondeu {res.status_code}")
-                return None
-
-            html_text = res.text
-            extracted = extract_articles_and_content(html_text, str(res.url))
-            extracted["url"] = str(res.url)
-            return extracted
+            for _hop in range(_MAX_REDIRECTS + 1):
+                if not await is_safe_public_url(current):
+                    logger.debug(f"[reader] URL bloqueada por política anti-SSRF: {current}")
+                    return None
+                async with client.stream("GET", current) as res:
+                    if res.status_code in (301, 302, 303, 307, 308):
+                        location = res.headers.get("location")
+                        if not location:
+                            return None
+                        current = urljoin(current, location)
+                        continue
+                    if res.status_code != 200:
+                        logger.debug(f"[reader] {current} respondeu {res.status_code}")
+                        return None
+                    ctype = (res.headers.get("content-type") or "").lower()
+                    if ctype and not any(t in ctype for t in ("html", "xml", "text/plain")):
+                        return None
+                    chunks: list[bytes] = []
+                    total = 0
+                    async for chunk in res.aiter_bytes():
+                        total += len(chunk)
+                        if total > _MAX_BODY_BYTES:
+                            break
+                        chunks.append(chunk)
+                    raw = b"".join(chunks)
+                    try:
+                        html_text = raw.decode(res.encoding or "utf-8", errors="replace")
+                    except (LookupError, TypeError):
+                        html_text = raw.decode("utf-8", errors="replace")
+                    extracted = extract_articles_and_content(html_text, current)
+                    extracted["url"] = current
+                    return extracted
+            logger.debug(f"[reader] Excesso de redirects a partir de {url}")
+            return None
     except Exception as e:
         logger.debug(f"[reader] Erro ao acessar {url}: {e}")
         return None

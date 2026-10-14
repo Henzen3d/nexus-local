@@ -278,6 +278,11 @@ async def stream_from_llm(
                         STREAM_TTFT_TIMEOUT_SECONDS, current_provider_id, current_model_id,
                     )
                     attempted_model_ids.add(current_model_id)
+                    # Libera a conexão HTTP do pool imediatamente (não espera o GC finalizar o generator)
+                    try:
+                        await stream_iter.aclose()
+                    except Exception:
+                        pass
                     continue
 
                 # Consome o restante do stream com micro-lotes de coalescência (~35ms ou 8 tokens)

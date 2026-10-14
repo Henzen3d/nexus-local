@@ -13,8 +13,7 @@ from backend.models import ProviderUpdate, ModelToggle, ModelUpdate, FreeRegistr
 logger = get_logger(__name__)
 
 from backend.providers.model_fetcher import ModelFetcher
-from backend.providers.model_fetcher import ModelFetcher
-from backend.auth import get_current_user, require_admin, hash_password
+from backend.auth import get_current_user, require_admin, hash_password, invalidate_user_state_cache
 from backend.free_registry.sync import sync_free_registry
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -859,6 +858,7 @@ async def delete_user(user_id: str, current_user: dict = Depends(require_admin))
         # Deleta o usuário (conversas e chaves são deletadas via ON DELETE CASCADE no SQLite)
         await db.execute("DELETE FROM users WHERE id = ?", (user_id,))
         await db.commit()
+        invalidate_user_state_cache(user_id)  # tokens ainda válidos passam a ser rejeitados
         return {"ok": True}
     finally:
         await db.close()

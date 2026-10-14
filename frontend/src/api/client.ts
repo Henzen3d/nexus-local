@@ -13,6 +13,30 @@ export interface UserProfileApi {
 const apiURL = import.meta.env.VITE_API_URL
 const BASE = apiURL ? (apiURL.endsWith('/api') ? apiURL : `${apiURL}/api`) : '/api'
 
+/** Evento global disparado quando a API responde 401 (token expirado/revogado). */
+export const UNAUTHORIZED_EVENT = 'nexuslocal:unauthorized'
+
+export class ApiError extends Error {
+  status: number
+  detail?: string
+  constructor(status: number, detail?: string) {
+    super(`HTTP ${status}`)
+    this.name = 'ApiError'
+    this.status = status
+    this.detail = detail
+  }
+}
+
+let unauthorizedNotified = false
+
+function notifyUnauthorized() {
+  // Evita uma tempestade de eventos quando várias chamadas falham ao mesmo tempo
+  if (unauthorizedNotified) return
+  unauthorizedNotified = true
+  setTimeout(() => { unauthorizedNotified = false }, 2000)
+  window.dispatchEvent(new CustomEvent(UNAUTHORIZED_EVENT))
+}
+
 async function fetchJSON<T>(url: string, opts?: RequestInit): Promise<T> {
   const token = localStorage.getItem('nexuslocal_token')
   const headers: HeadersInit = { 'Content-Type': 'application/json' }
@@ -28,7 +52,21 @@ async function fetchJSON<T>(url: string, opts?: RequestInit): Promise<T> {
       ...(opts?.headers || {})
     },
   })
-  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  if (!res.ok) {
+    // 401 em rota autenticada = sessão expirada/revogada → volta para o login.
+    // O login em si também devolve 401 (credenciais erradas) e não deve deslogar ninguém.
+    if (res.status === 401 && token && !url.startsWith('/auth/login')) {
+      notifyUnauthorized()
+    }
+    let detail: string | undefined
+    try {
+      const body = await res.json()
+      if (body && typeof body.detail === 'string') detail = body.detail
+    } catch {
+      /* corpo não-JSON */
+    }
+    throw new ApiError(res.status, detail)
+  }
   return res.json()
 }
 

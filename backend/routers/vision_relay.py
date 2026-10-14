@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Optional
 from backend.database import get_db
-from backend.auth import get_current_user
+from backend.auth import get_current_user, require_admin
 from backend.vision_relay import get_vision_relay_config
 
 router = APIRouter(prefix="/api/vision-relay", tags=["vision-relay"])
@@ -26,7 +26,8 @@ async def get_config(current_user: dict = Depends(get_current_user)):
         await db.close()
 
 @router.post("/config")
-async def update_config(body: VisionRelayConfigUpdate, current_user: dict = Depends(get_current_user)):
+async def update_config(body: VisionRelayConfigUpdate, current_user: dict = Depends(require_admin)):
+    """Config global (relay_system_prompt afeta todos os usuários) → só admin."""
     db = await get_db()
     try:
         # Check if row exists

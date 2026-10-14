@@ -63,7 +63,8 @@
     "fillRequired": "Bitte Benutzername und Passwort eingeben.",
     "emailRequired": "Bitte Ihre Registrierungs-E-Mail eingeben.",
     "registerError": "Registrierung fehlgeschlagen. Benutzername oder E-Mail existiert möglicherweise bereits.",
-    "loginError": "Benutzername oder Passwort falsch."
+    "loginError": "Benutzername oder Passwort falsch.",
+    "tooManyAttempts": "Zu viele Anmeldeversuche. Warten Sie einige Minuten und versuchen Sie es erneut."
   },
   "chat": {
     "openSidebar": "Seitenleiste öffnen",

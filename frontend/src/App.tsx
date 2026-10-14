@@ -17,6 +17,7 @@ import { MemoryOnboarding } from './components/MemoryOnboarding'
 import { loadTtsPrefs } from './lib/ttsPlayer'
 import { PwaInstallBanner } from './components/PwaInstallBanner'
 import { applyDocumentLang } from './i18n'
+import { UNAUTHORIZED_EVENT } from './api/client'
 import { MOBILE_BREAKPOINT } from './hooks/useIsMobile'
 
 function Toast() {
@@ -130,6 +131,15 @@ export default function App() {
       loadTtsPrefs().catch(() => {})
     }
   }, [token, hydrateProfileFromServer])
+
+  // Sessão expirada/revogada (401 em qualquer chamada autenticada) → limpa e volta ao login
+  useEffect(() => {
+    const onUnauthorized = () => {
+      if (useStore.getState().token) useStore.getState().logout()
+    }
+    window.addEventListener(UNAUTHORIZED_EVENT, onUnauthorized)
+    return () => window.removeEventListener(UNAUTHORIZED_EVENT, onUnauthorized)
+  }, [])
 
   useEffect(() => {
     const handler = (e: Event) => {

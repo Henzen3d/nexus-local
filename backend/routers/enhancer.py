@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from typing import Optional
 from backend.database import get_db, check_and_deactivate_model
 from backend.providers.registry import get_provider, get_model_name
-from backend.auth import get_current_user
+from backend.auth import get_current_user, require_admin
 
 router = APIRouter(prefix="/api/enhancer", tags=["enhancer"])
 
@@ -68,7 +68,8 @@ async def get_config(current_user: dict = Depends(get_current_user)):
 
 
 @router.post("/config", response_model=EnhancerConfigOut)
-async def save_config(body: EnhancerConfigIn, current_user: dict = Depends(get_current_user)):
+async def save_config(body: EnhancerConfigIn, current_user: dict = Depends(require_admin)):
+    """Config global (system prompt do enhancer é compartilhado) → só admin."""
     db = await get_db()
     try:
         current = await _get_config()

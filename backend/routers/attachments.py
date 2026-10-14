@@ -1,11 +1,60 @@
+import mimetypes
 import uuid
 import hashlib
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends
+from urllib.parse import quote
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends, Query
+from fastapi.responses import FileResponse
 from backend.database import get_db
 from backend.auth import get_current_user
-from backend.attachments import validate_attachment, save_file, extract_text, get_absolute_path
+from backend.attachments import validate_attachment, save_file, extract_text, get_absolute_path, attachment_url
+from backend.attachments.signing import normalize_rel_path, verify_attachment_signature
+from backend.attachments.storage import STORAGE_DIR
 
 router = APIRouter(prefix="/api/attachments", tags=["attachments"])
+
+# Rota pública (sem prefixo /api) que substitui o antigo mount StaticFiles.
+files_router = APIRouter(tags=["attachments"])
+
+# Tipos que o navegador pode renderizar inline sem risco de executar script.
+_INLINE_SAFE_MIME = {
+    "image/png", "image/jpeg", "image/webp", "image/gif",
+    "application/pdf", "text/plain", "text/csv", "text/markdown",
+}
+
+
+@files_router.get("/attachments/{rel_path:path}")
+async def serve_attachment(
+    rel_path: str,
+    exp: str | None = Query(default=None),
+    sig: str | None = Query(default=None),
+):
+    """Serve um anexo mediante URL assinada (ver ``backend/attachments/signing.py``).
+
+    Substitui o mount ``StaticFiles`` que expunha todos os uploads sem autenticação.
+    """
+    rel = normalize_rel_path(rel_path)
+    if not rel or not verify_attachment_signature(rel, exp, sig):
+        raise HTTPException(status_code=403, detail="Link de anexo inválido ou expirado.")
+
+    base = STORAGE_DIR.resolve()
+    try:
+        target = (base / rel).resolve(strict=True)
+    except (FileNotFoundError, RuntimeError, OSError):
+        raise HTTPException(status_code=404, detail="Arquivo não encontrado.")
+    # Defesa em profundidade contra traversal mesmo com assinatura válida.
+    if base not in target.parents or not target.is_file():
+        raise HTTPException(status_code=404, detail="Arquivo não encontrado.")
+
+    media_type = mimetypes.guess_type(target.name)[0] or "application/octet-stream"
+    disposition = "inline" if media_type in _INLINE_SAFE_MIME else "attachment"
+    # Nome exibido ao usuário: remove o prefixo att_<hex>_ gerado internamente.
+    display_name = target.name.split("_", 2)[-1] if target.name.startswith("att_") else target.name
+    headers = {
+        "Cache-Control": "private, max-age=3600",
+        "X-Content-Type-Options": "nosniff",
+        "Content-Disposition": f"{disposition}; filename*=UTF-8''{quote(display_name)}",
+    }
+    return FileResponse(str(target), media_type=media_type, headers=headers)
 
 @router.post("/upload")
 async def upload_attachment(
@@ -57,10 +106,10 @@ async def upload_attachment(
                     abs_path.unlink()
                 raise HTTPException(status_code=400, detail=f"Falha ao extrair texto do documento: {str(e)}")
 
-        # Save record in db
+        # Save record in db (user_id = dono do upload; usado na autorização do move)
         await db.execute(
-            """INSERT INTO attachments (id, message_id, filename, mime_type, file_type, size_bytes, file_hash, extracted_text, storage_path, thumbnail_path)
-               VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            """INSERT INTO attachments (id, message_id, filename, mime_type, file_type, size_bytes, file_hash, extracted_text, storage_path, thumbnail_path, user_id)
+               VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 attachment_id,
                 file.filename,
@@ -70,7 +119,8 @@ async def upload_attachment(
                 file_hash,
                 extracted_text,
                 storage_rel,
-                thumb_rel
+                thumb_rel,
+                current_user["id"],
             )
         )
         await db.commit()
@@ -88,8 +138,8 @@ async def upload_attachment(
             "mime_type": mime_type,
             "size_bytes": size_bytes,
             "extracted_text_preview": preview_text,
-            "thumbnail_url": f"/attachments/{thumb_rel}" if thumb_rel else None,
-            "file_url": f"/attachments/{storage_rel}"
+            "thumbnail_url": attachment_url(thumb_rel),
+            "file_url": attachment_url(storage_rel)
         }
     finally:
         await db.close()
@@ -169,8 +219,8 @@ async def list_library_items(
                 "size_bytes": size_bytes,
                 "storage_path": norm_storage,
                 "thumbnail_path": norm_thumb,
-                "thumbnail_url": f"/attachments/{norm_thumb}" if norm_thumb else None,
-                "file_url": f"/attachments/{norm_storage}",
+                "thumbnail_url": attachment_url(norm_thumb),
+                "file_url": attachment_url(norm_storage),
                 "created_at": created_at,
                 "conversation_id": conv_id,
                 "conversation_title": conv_title,

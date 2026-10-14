@@ -1,11 +1,12 @@
 import json
 import asyncio
+import re
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Optional
 
-from backend.auth import get_current_user
+from backend.auth import get_current_user, require_admin
 from backend.database import (
     get_db,
     get_user_memory,
@@ -48,7 +49,8 @@ logger = get_logger(__name__)
 
 
 async def _error_sse(code: str, msg: str):
-    yield f"event: error\ndata: {{\"error\": \"{code}\", \"message\": {msg!r}}}\n\n"
+    # json.dumps garante JSON válido (o antigo {msg!r} gerava aspas simples → parse falhava no cliente)
+    yield f"event: error\ndata: {json.dumps({'error': code, 'message': msg}, ensure_ascii=False)}\n\n"
 
 
 router = APIRouter(prefix="/api/memory", tags=["memory"])
@@ -197,7 +199,7 @@ async def get_extractor_config(user: dict = Depends(get_current_user)):
 
 
 @router.put("/extractor-config")
-async def put_extractor_config(body: ExtractorConfigIn, user: dict = Depends(get_current_user)):
+async def put_extractor_config(body: ExtractorConfigIn, user: dict = Depends(require_admin)):
     """Save dedicated extractor provider/model (empty string clears → falls back to enhancer)."""
     if not user:
         raise HTTPException(status_code=401, detail="Não autorizado")
@@ -703,7 +705,7 @@ async def get_dream_config(user: dict = Depends(get_current_user)):
 
 
 @router.put("/dream-config")
-async def save_dream_config(body: DreamConfigIn, user: dict = Depends(get_current_user)):
+async def save_dream_config(body: DreamConfigIn, user: dict = Depends(require_admin)):
     """Atualiza configurações de agendamento e modelo do Dream."""
     if not user:
         raise HTTPException(status_code=401, detail="Não autorizado")

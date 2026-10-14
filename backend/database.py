@@ -10,7 +10,9 @@ from backend.logging_config import get_logger
 
 logger = get_logger(__name__)
 
-DB_PATH = Path(__file__).parent / "nexuslocal.db"
+# Caminho do banco. Sobrescrevível por env (DB_PATH) para testes e deploys
+# com volume separado; o padrão continua sendo backend/nexuslocal.db.
+DB_PATH = Path(os.getenv("DB_PATH") or (Path(__file__).parent / "nexuslocal.db"))
 
 SCHEMA = """
 PRAGMA journal_mode=WAL;
@@ -984,6 +986,36 @@ async def init_db():
         except aiosqlite.OperationalError:
             await db.execute("ALTER TABLE models ADD COLUMN supports_vision INTEGER DEFAULT 0")
             await db.commit()
+
+        # Incremental migration: attachments.user_id (dono do upload).
+        # Sem esta coluna não havia como verificar quem enviou um anexo ainda
+        # "unsent" — qualquer usuário conseguia reivindicar o att_* de outro.
+        try:
+            await db.execute("SELECT user_id FROM attachments LIMIT 1")
+        except aiosqlite.OperationalError:
+            await db.execute("ALTER TABLE attachments ADD COLUMN user_id TEXT")
+            await db.commit()
+            # Backfill: anexos já vinculados a mensagens herdam o dono da conversa.
+            try:
+                await db.execute(
+                    """UPDATE attachments
+                       SET user_id = (
+                           SELECT c.user_id FROM messages m
+                           JOIN conversations c ON c.id = m.conversation_id
+                           WHERE m.id = attachments.message_id
+                       )
+                       WHERE user_id IS NULL AND message_id IS NOT NULL"""
+                )
+                await db.commit()
+            except Exception as e:
+                logger.warning("Backfill de attachments.user_id falhou (não crítico):", exc_info=e)
+        try:
+            await db.execute(
+                "CREATE INDEX IF NOT EXISTS idx_attachments_user_unsent ON attachments(user_id) WHERE message_id IS NULL"
+            )
+            await db.commit()
+        except Exception:
+            pass
 
         # Incremental migration check for models reasoning controls (Fase 2)
         for col, col_def in [

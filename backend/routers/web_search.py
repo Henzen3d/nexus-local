@@ -1,20 +1,23 @@
 from fastapi import APIRouter, HTTPException, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional, List
 from backend.database import get_db
-from backend.auth import get_current_user
+from backend.auth import get_current_user, require_admin
 from backend.web_search.providers import get_web_search_config
 
 router = APIRouter(prefix="/api/web-search", tags=["web-search"])
 
 class WebSearchConfigUpdate(BaseModel):
-    enabled: Optional[int]
-    search_provider: Optional[str]
-    api_key: Optional[str]
-    max_results: Optional[int]
-    heuristic_enabled: Optional[int]
-    heuristic_sensitivity: Optional[str]
-    injection_template: Optional[str]
+    # Pydantic v2: `Optional[X]` SEM default é campo OBRIGATÓRIO (aceita null, mas
+    # precisa estar presente). Com `= None` o painel pode enviar só o que mudou,
+    # e `exclude_unset=True` abaixo passa a funcionar como pretendido.
+    enabled: Optional[int] = None
+    search_provider: Optional[str] = None
+    api_key: Optional[str] = None
+    max_results: Optional[int] = Field(default=None, ge=1, le=20)
+    heuristic_enabled: Optional[int] = None
+    heuristic_sensitivity: Optional[str] = None
+    injection_template: Optional[str] = Field(default=None, max_length=8000)
 
 @router.get("/config")
 async def get_config(current_user: dict = Depends(get_current_user)):
@@ -36,7 +39,8 @@ async def get_config(current_user: dict = Depends(get_current_user)):
         await db.close()
 
 @router.post("/config")
-async def update_config(body: WebSearchConfigUpdate, current_user: dict = Depends(get_current_user)):
+async def update_config(body: WebSearchConfigUpdate, current_user: dict = Depends(require_admin)):
+    """Config global (inclui api_key e injection_template injetado no prompt de TODOS) → só admin."""
     db = await get_db()
     try:
         async with db.execute("SELECT id FROM web_search_config WHERE id = 1") as cur:

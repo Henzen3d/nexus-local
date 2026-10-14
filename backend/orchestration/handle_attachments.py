@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import hashlib
+import os
 
 from backend.attachments.storage import get_absolute_path
 from backend.logging_config import get_logger
@@ -389,3 +390,126 @@ async def check_model_vision_support(db, model_id: str) -> bool:
     ) as cur:
         row = await cur.fetchone()
     return bool(row[0]) if row else False
+
+
+# ── Poda do histórico ────────────────────────────────────────────────────────
+# Custo aproximado de uma imagem inline (base64) em tokens de entrada. Os
+# provedores cobram por tiles (~85–1500 tokens); contar os caracteres do base64
+# (chars/4) superestimaria em 100x e podaria a conversa inteira.
+_IMAGE_PART_TOKENS = 1000
+_PER_MESSAGE_OVERHEAD_TOKENS = 4
+
+
+def estimate_message_tokens(msg: dict) -> int:
+    """Estimativa de tokens de uma mensagem (texto ou multimodal)."""
+    from backend.projects.context_builder import estimate_tokens
+
+    content = msg.get("content")
+    total = _PER_MESSAGE_OVERHEAD_TOKENS
+    if isinstance(content, str):
+        total += estimate_tokens(content)
+    elif isinstance(content, list):
+        for part in content:
+            if not isinstance(part, dict):
+                continue
+            if part.get("type") == "text":
+                total += estimate_tokens(part.get("text") or "")
+            elif part.get("type") == "image_url":
+                total += _IMAGE_PART_TOKENS
+    return total
+
+
+def trim_history_to_budget(
+    history: list[dict],
+    budget_tokens: int,
+    reserved_tokens: int = 0,
+    min_keep: int = 2,
+) -> tuple[list[dict], int]:
+    """Mantém as mensagens mais recentes que cabem em ``budget_tokens``.
+
+    - ``reserved_tokens`` é o que já está comprometido fora do histórico
+      (system prompt, memória, contexto de projeto).
+    - A última mensagem do usuário é SEMPRE mantida, mesmo que sozinha
+      exceda o orçamento (o provedor devolve um erro claro nesse caso, em vez
+      de a aplicação descartar silenciosamente a pergunta).
+    - Remove sempre do início (mensagens mais antigas) para preservar a
+      coerência do fim da conversa; nunca remove menos que ``min_keep`` do fim
+      se elas couberem.
+
+    Retorna ``(history_podado, mensagens_removidas)``.
+    """
+    if not history:
+        return history, 0
+    available = max(0, int(budget_tokens) - int(reserved_tokens))
+    costs = [estimate_message_tokens(m) for m in history]
+    if sum(costs) <= available:
+        return history, 0
+
+    kept: list[dict] = []
+    used = 0
+    for idx in range(len(history) - 1, -1, -1):
+        cost = costs[idx]
+        is_last = idx == len(history) - 1
+        if is_last or used + cost <= available or len(kept) < min_keep and used + cost <= available * 1.2:
+            kept.append(history[idx])
+            used += cost
+            continue
+        break
+    kept.reverse()
+    # Não começar o histórico com uma resposta do assistente órfã (alguns
+    # provedores — Anthropic/Gemini — exigem que a primeira mensagem seja do usuário).
+    while len(kept) > 1 and kept[0].get("role") == "assistant":
+        kept.pop(0)
+    removed = len(history) - len(kept)
+    if removed:
+        logger.info(
+            "Histórico podado para caber no orçamento de entrada",
+            extra={
+                "removed_messages": removed,
+                "kept_messages": len(kept),
+                "budget_tokens": available,
+                "estimated_tokens": used,
+            },
+        )
+    return kept, removed
+
+
+async def resolve_input_budget(db, model_id: str | None, provider_id: str | None) -> int:
+    """Orçamento de tokens de entrada para o modelo (context_length × margem, TPM, provedor)."""
+    from backend.projects.context_builder import compute_safe_input_tokens
+
+    ctx_window = 8192
+    known_tpm = None
+    if model_id:
+        try:
+            async with db.execute(
+                """SELECT m.context_length, q.known_tpm
+                   FROM models m
+                   LEFT JOIN model_quota_status q ON q.model_id = m.id
+                   WHERE m.id = ?""",
+                (model_id,),
+            ) as cur:
+                row = await cur.fetchone()
+                if row and row[0]:
+                    ctx_window = int(row[0])
+                if row and len(row) > 1 and row[1]:
+                    known_tpm = int(row[1])
+        except Exception:
+            try:
+                async with db.execute(
+                    "SELECT context_length FROM models WHERE id = ?", (model_id,)
+                ) as cur:
+                    row = await cur.fetchone()
+                    if row and row[0]:
+                        ctx_window = int(row[0])
+            except Exception:
+                logger.debug("Não leu context_length para orçamento do histórico", exc_info=True)
+    # O hard_cap padrão (7000) é pensado para a injeção de RAG de projetos; para o
+    # histórico usamos um teto maior, configurável, respeitando TPM e regras por provedor.
+    try:
+        history_cap = int(os.getenv("HISTORY_INPUT_TOKEN_CAP", "32000"))
+    except ValueError:
+        history_cap = 32000
+    return compute_safe_input_tokens(
+        ctx_window, known_tpm=known_tpm, provider_id=provider_id, hard_cap=max(2048, history_cap)
+    )

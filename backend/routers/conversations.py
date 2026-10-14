@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from backend.database import get_db
 from backend.models import ConversationUpdate
 from backend.auth import get_current_user
+from backend.attachments.signing import attachment_url
 
 router = APIRouter(prefix="/api/conversations", tags=["conversations"])
 
@@ -133,8 +134,8 @@ async def get_conversation(conversation_id: str, current_user: dict = Depends(ge
                 if m_id not in msg_attachments:
                     msg_attachments[m_id] = []
                 
-                thumb_url = f"/attachments/{thumb_path}" if thumb_path else None
-                file_url = f"/attachments/{storage_path}"
+                thumb_url = attachment_url(thumb_path)
+                file_url = attachment_url(storage_path)
                 
                 msg_attachments[m_id].append({
                     "id": a_id,

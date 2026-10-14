@@ -32,7 +32,8 @@ export function Login({ onLoginSuccess }: LoginProps) {
       onLoginSuccess(res.token, res.user)
     } catch (err: any) {
       console.error(err)
-      setError(t('auth.loginError'))
+      // 429 = bloqueio temporário por excesso de tentativas (rate limit do backend)
+      setError(err?.status === 429 ? t('auth.tooManyAttempts') : t('auth.loginError'))
     } finally {
       setLoading(false)
     }

@@ -1,5 +1,7 @@
 from abc import ABC, abstractmethod
+from contextlib import asynccontextmanager
 from typing import AsyncIterator, List, Dict, Any, Optional
+import asyncio
 import httpx
 import hashlib
 import time
@@ -8,6 +10,48 @@ import json
 from backend.logging_config import get_logger
 
 logger = get_logger(__name__)
+
+
+# ── Pool HTTP compartilhado ───────────────────────────────────────────────────
+# Antes, cada chamada a um provedor criava um httpx.AsyncClient novo: handshake
+# TCP + TLS a cada turno de chat (~100-300 ms de latência extra e mais CPU).
+# Um cliente único por event loop reaproveita conexões keep-alive entre turnos.
+_shared_client: Optional[httpx.AsyncClient] = None
+_shared_client_loop: Optional[asyncio.AbstractEventLoop] = None
+
+
+def get_http_client() -> httpx.AsyncClient:
+    """Cliente httpx com pool de conexões, criado preguiçosamente no loop atual."""
+    global _shared_client, _shared_client_loop
+    loop = asyncio.get_running_loop()
+    if _shared_client is None or _shared_client.is_closed or _shared_client_loop is not loop:
+        _shared_client = httpx.AsyncClient(
+            timeout=httpx.Timeout(connect=15.0, read=120.0, write=30.0, pool=15.0),
+            limits=httpx.Limits(max_connections=64, max_keepalive_connections=20, keepalive_expiry=60.0),
+            follow_redirects=False,
+        )
+        _shared_client_loop = loop
+    return _shared_client
+
+
+async def close_http_client() -> None:
+    global _shared_client
+    if _shared_client is not None and not _shared_client.is_closed:
+        try:
+            await _shared_client.aclose()
+        except Exception:
+            pass
+    _shared_client = None
+
+
+@asynccontextmanager
+async def _pooled_client(timeout: float = 120.0):
+    """Drop-in para ``async with httpx.AsyncClient(timeout=...)`` que NÃO fecha o pool.
+
+    O ``timeout`` é mantido na assinatura por compatibilidade; o pool usa
+    read=120s (o maior valor usado), suficiente para streaming de respostas longas.
+    """
+    yield get_http_client()
 
 
 class RateLimitError(Exception):
@@ -83,7 +127,7 @@ class OpenAICompatProvider(BaseProvider):
                 base_payload=payload,
             )
 
-        async with httpx.AsyncClient(timeout=120.0) as client:
+        async with _pooled_client(timeout=120.0) as client:
             async with client.stream(
                 "POST",
                 f"{self.base_url}/chat/completions",
@@ -268,7 +312,7 @@ class CloudflareProvider(BaseProvider):
         }
         url = self._run_url(model, account_id=account_id)
 
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        async with _pooled_client(timeout=60.0) as client:
             response = await client.post(url, headers=headers, json=payload)
             if response.status_code == 429:
                 retry_after_raw = response.headers.get("Retry-After")
@@ -347,7 +391,7 @@ class CloudflareProvider(BaseProvider):
 
         url = self._run_url(model)
 
-        async with httpx.AsyncClient(timeout=120.0) as client:
+        async with _pooled_client(timeout=120.0) as client:
             async with client.stream(
                 "POST",
                 url,
@@ -473,7 +517,7 @@ class GeminiProvider(BaseProvider):
                     if system_instruction:
                         cache_payload["systemInstruction"] = system_instruction
 
-                    async with httpx.AsyncClient(timeout=30.0) as client:
+                    async with _pooled_client(timeout=30.0) as client:
                         r = await client.post(
                             "https://generativelanguage.googleapis.com/v1beta/cachedContents",
                             headers=headers,
@@ -518,7 +562,7 @@ class GeminiProvider(BaseProvider):
                     }
 
                     # Call streamGenerateContent
-                    async with httpx.AsyncClient(timeout=120.0) as client:
+                    async with _pooled_client(timeout=120.0) as client:
                         async with client.stream(
                             "POST",
                             f"https://generativelanguage.googleapis.com/v1beta/{model_name}:streamGenerateContent?alt=sse",
@@ -616,10 +660,11 @@ class GeminiProvider(BaseProvider):
                         "Authorization": f"Bearer {self.api_key}"
                     }
                 else:
-                    native_url = f"https://generativelanguage.googleapis.com/v1beta/{model_name}:streamGenerateContent?alt=sse&key={self.api_key}"
-                    native_headers = {"Content-Type": "application/json"}
+                    native_url = f"https://generativelanguage.googleapis.com/v1beta/{model_name}:streamGenerateContent?alt=sse"
+                    # Chave no header (x-goog-api-key) em vez da query string: não aparece em logs/URLs.
+                    native_headers = {"Content-Type": "application/json", "x-goog-api-key": self.api_key}
                 
-                async with httpx.AsyncClient(timeout=120.0) as client:
+                async with _pooled_client(timeout=120.0) as client:
                     async with client.stream(
                         "POST",
                         native_url,
