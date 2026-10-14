@@ -20,9 +20,19 @@ melhorias/
 │   └── 07-chatkit-referencia.md
 │
 ├── assistente-proativo/        # 🤖 Assistente Proativo (Detecção de emoção/entidades + pesquisa background)
-│   ├── assistente-proativo-plano.md
-│   ├── brainstorm-assistente-proativo.md
-│   └── design-assistente-proativo.md
+│   ├── README.md               # Hub e índice (comece aqui)
+│   ├── 00-visao-geral-v2.md    # Visão ajustada ao código, decisões de produto, fases
+│   ├── 01-decisao-entrega-e-presenca.md # Toast × bolha × cartão de retorno × push; presença; contratos
+│   ├── 02-fase-1-spike-detector.md
+│   ├── 03-fase-2-nucleo-pipeline.md
+│   ├── 04-fase-3-presenca-fila-retorno.md
+│   ├── 05-fase-4-controles-e-admin.md
+│   ├── 06-fase-5-qualidade-e-rollout.md
+│   ├── 07-opcional-web-push-pwa.md
+│   ├── ROADMAP-CHECKLIST.md    # Tarefas e subtarefas com IDs e critérios de aceite
+│   ├── assistente-proativo-plano.md      # (histórico) plano original de 2026-10-07
+│   ├── brainstorm-assistente-proativo.md # (histórico)
+│   └── design-assistente-proativo.md     # (histórico)
 │
 ├── dream-memory/               # 🌙 Consolidação Noturna de Memória ("Dream Memory" - Kimi/Claude Code/Mem0)
 │   ├── 00-visao-geral.md       # Diagnóstico, decisão e arquitetura geral
