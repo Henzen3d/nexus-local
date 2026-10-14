@@ -116,3 +116,14 @@ Pizza, vídeo, proxy de imagem, widget dentro do cache semântico e Thesys não 
 - [x] Exportação CSV: `tableToCsv` e `chartToCsv` para ação "Copiar dados" com escape correto de vírgulas, aspas e quebras de linha.
 - [x] Componentes React: `TableCard` com `UiCard`, ordenação interativa por cabeçalho (`aria-sort`), números alinhados à direita com `tabular-nums`, colapso acima de 10 linhas ("Mostrar todas" / "Mostrar menos"); `ChartCard` com `PieChart`/`Pie`/`Cell` do Recharts, tooltip com porcentagem relativa e tabela acessível `nexus-ui-sr-only`.
 - [x] i18n nos 8 idiomas: strings novas (`tableTitle`, `tableShowAll`, `tableShowLess`, `tableOthers`, `pieTotal`) traduzidas em `pt-BR`, `en-US`, `es-ES`, `es-419`, `fr-FR`, `de-DE`, `ja`, `ko`.
+
+## Plano 12 — passo 6, renderização progressiva e partial JSON no stream (2026-10-14)
+
+- [x] Scanner tolerante de stream (`nexusUiStream.ts`): autômato que extrai blocos fechados à medida que chegam na transmissão SSE e identifica `pendingType` quando o bloco iniciou `{ "type": "..."` mas ainda não fechou.
+- [x] Invariante de prefixo validado: para qualquer prefixo de fence transmitido, os blocos extraídos são rigorosamente um prefixo da lista final de blocos, sem quebras nem divergências.
+- [x] Tratamento robusto de cortes difíceis: chaves literais `}` dentro de strings e sequências de escape `\"` não corrompem o parsing nem geram blocos fantasmas.
+- [x] Desativação de interatividade no stream: `ControlsCard` desabilita todos os inputs e submissões enquanto `streaming=true`; `FollowUpCard` desabilita cliques em sugestões durante o stream; `SandboxCard` mantém ações desabilitadas.
+- [x] Prevenção de execução insegura e vazamento de iframes no stream: `SandboxCard` não monta o iframe com código JS parcial durante o stream (renderiza placeholder com altura reservada); o iframe só monta após o encerramento do turno.
+- [x] Prevenção de Layout Shift (Zero CLS): `DynamicRenderer` exibe esqueleto com altura reservada correspondente ao `pendingType` antes mesmo do bloco fechar.
+- [x] Integração completa no `StreamingBubble`: `scanPartialEnvelope(deferredResponse)` mesclado com blocos do host via `mergeUiEnvelopes`, sem exibir fences parciais na resposta markdown (`stripUiFences`).
+- [x] Testes automatizados: testes unitários de autômato e propriedade em `nexusUiStream.test.ts` e testes de UI de componentes em `scripts/tests/stream.ui.tsx`, integrados ao runner `npm test`.

@@ -10,6 +10,7 @@ import { UiCard } from './UiCard'
 
 interface Props {
   block: ControlsBlock
+  streaming?: boolean
 }
 
 /** Spec §4.4: `text` tem teto de 200 caracteres no cliente, declare o modelo ou não. */
@@ -27,7 +28,7 @@ function clampNumber(raw: number, min?: number, max?: number): number {
   return n
 }
 
-export function ControlsCard({ block }: Props) {
+export function ControlsCard({ block, streaming }: Props) {
   const { t, i18n } = useTranslation()
   const { sendMessage } = useChatContext()
   // Seletores pontuais: a bolha não pode re-renderizar a cada token do store
@@ -71,6 +72,7 @@ export function ControlsCard({ block }: Props) {
 
   const [submitted, setSubmitted] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const isDisabled = submitted || Boolean(streaming)
 
   // Cálculo reativo em tempo real
   const computedResult = useMemo(() => {
@@ -91,13 +93,14 @@ export function ControlsCard({ block }: Props) {
   if (isSetModel && models.length === 0) return null
 
   const handleFieldChange = (id: string, val: string | number) => {
+    if (isDisabled) return
     setError(null)
     setFormValues((prev) => ({ ...prev, [id]: val }))
   }
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (submitted) return
+    if (isDisabled) return
 
     if (action.name === 'send_message' && action.template) {
       let msg = action.template
@@ -164,7 +167,7 @@ export function ControlsCard({ block }: Props) {
           )}
           <button
             type="submit"
-            disabled={submitted}
+            disabled={isDisabled}
             className="nexus-ui-button nexus-ui-button--primary"
             data-done={submitted || undefined}
             aria-label={submitted ? doneLabel : undefined}
@@ -199,7 +202,7 @@ export function ControlsCard({ block }: Props) {
                   value={String(val || '')}
                   placeholder={field.placeholder}
                   maxLength={TEXT_MAX_LENGTH}
-                  disabled={submitted}
+                  disabled={isDisabled}
                   onChange={(e) => handleFieldChange(field.id, e.target.value.slice(0, TEXT_MAX_LENGTH))}
                 />
               </div>
@@ -222,7 +225,7 @@ export function ControlsCard({ block }: Props) {
                   max={field.max}
                   step={field.step ?? 1}
                   value={typeof val === 'number' ? val : ''}
-                  disabled={submitted}
+                  disabled={isDisabled}
                   onChange={(e) => handleFieldChange(field.id, parseFloat(e.target.value) || 0)}
                   onBlur={(e) =>
                     handleFieldChange(field.id, clampNumber(parseFloat(e.target.value), field.min, field.max))
@@ -259,7 +262,7 @@ export function ControlsCard({ block }: Props) {
                   aria-valuemin={field.min}
                   aria-valuemax={field.max}
                   aria-valuenow={rangeVal}
-                  disabled={submitted}
+                  disabled={isDisabled}
                   style={{ ['--nexus-ui-range-pct' as string]: `${pct}%` }}
                   onChange={(e) =>
                     handleFieldChange(field.id, clampNumber(parseFloat(e.target.value), field.min, field.max))
@@ -285,7 +288,7 @@ export function ControlsCard({ block }: Props) {
                   name={field.id}
                   className="nexus-ui-select"
                   value={String(val || '')}
-                  disabled={submitted}
+                  disabled={isDisabled}
                   aria-invalid={isModelPicker && error ? true : undefined}
                   onChange={(e) => handleFieldChange(field.id, e.target.value)}
                 >

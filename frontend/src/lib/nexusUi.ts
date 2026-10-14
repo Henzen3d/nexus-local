@@ -943,3 +943,19 @@ export function diagnoseUiText(text: string, imageHosts: string[] = [], allowPri
   }
   return { envelope: null, dropped: 0, errors: [] }
 }
+
+/**
+ * Mescla blocos gerados pelo host (ui_progress) com os blocos do modelo.
+ * Os blocos do host vêm primeiro (ordem cronológica); deduplica por id preservando
+ * a primeira ocorrência e respeita o teto MAX_BLOCKS.
+ */
+export function mergeUiEnvelopes(host: UiEnvelope | null | undefined, model?: UiEnvelope | null | undefined): UiEnvelope | null {
+  if (!host?.blocks?.length) return model ?? null
+  const seen = new Set<string>()
+  const blocks = [...host.blocks, ...(model?.blocks ?? [])].filter((b) => {
+    if (seen.has(b.id)) return false
+    seen.add(b.id)
+    return true
+  })
+  return { v: 1, blocks: blocks.slice(0, MAX_BLOCKS) }
+}

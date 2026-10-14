@@ -7,6 +7,7 @@ import type { FollowUpBlock } from '../../types'
 
 interface Props {
   block: FollowUpBlock
+  streaming?: boolean
 }
 
 /**
@@ -16,14 +17,15 @@ interface Props {
  * (spec §7). O item escolhido fica marcado; os outros continuam clicáveis, e a
  * lista permanece no histórico como estava.
  */
-export function FollowUpCard({ block }: Props) {
+export function FollowUpCard({ block, streaming }: Props) {
   const { t } = useTranslation()
   const { sendMessage } = useChatContext()
   const isStreaming = useStore((s) => s.isStreaming)
+  const isDisabled = isStreaming || Boolean(streaming)
   const [chosen, setChosen] = useState<string | null>(null)
 
   const handleClick = (text: string) => {
-    if (isStreaming) return
+    if (isDisabled) return
     sendMessage(text)
     setChosen(text)
   }
@@ -42,7 +44,7 @@ export function FollowUpCard({ block }: Props) {
                 type="button"
                 className="nexus-ui-followup"
                 onClick={() => handleClick(text)}
-                disabled={isStreaming}
+                disabled={isDisabled}
                 aria-label={t('intelligentUi.followUpHint', { text })}
                 aria-pressed={isChosen}
                 data-chosen={isChosen || undefined}

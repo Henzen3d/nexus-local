@@ -17,7 +17,8 @@ import { playSpeech, useTtsPlay } from '../lib/ttsPlayer'
 import { AutoRouteBadge } from './AutoRouteBadge'
 import { CorrectionNotice } from '../ui/components/CorrectionNotice'
 import { DynamicRenderer } from '../ui/DynamicRenderer'
-import { stripUiFences } from '../lib/nexusUi'
+import { mergeUiEnvelopes, parseUiEnvelope, stripUiFences } from '../lib/nexusUi'
+import { scanPartialEnvelope } from '../lib/nexusUiStream'
 import { useIntelligentUiEnabled } from '../ui/hooks/useIntelligentUi'
 import { ExecutionSequence } from './ExecutionSequence'
 import { mergeProcessTree } from '../lib/processTree'
@@ -756,6 +757,21 @@ export function StreamingBubble({ content }: { content: string }) {
   const streamUiEnabled = useIntelligentUiEnabled()
   const streamText = streamUiEnabled ? stripUiFences(deferredResponse) : deferredResponse
 
+  // Extrai blocos fechados e bloco pendente do fence em streaming
+  const { streamEnvelope, pendingBlockType } = React.useMemo(() => {
+    if (!streamUiEnabled) {
+      return { streamEnvelope: streamingUiBlocks || null, pendingBlockType: null }
+    }
+    const scanned = scanPartialEnvelope(deferredResponse)
+    const modelEnvelope =
+      scanned.blocks.length > 0 ? parseUiEnvelope({ v: 1, blocks: scanned.blocks }) : null
+    const merged = mergeUiEnvelopes(streamingUiBlocks, modelEnvelope)
+    return {
+      streamEnvelope: merged,
+      pendingBlockType: scanned.pendingType,
+    }
+  }, [streamUiEnabled, deferredResponse, streamingUiBlocks])
+
   // A fase de preparação ativa (busca web / thinking) termina assim que os primeiros tokens
   // da resposta final começam a ser gerados.
   const isStillWorking = isThinking || !streamText.trim()
@@ -805,8 +821,14 @@ export function StreamingBubble({ content }: { content: string }) {
           <span className="streaming-cursor" aria-hidden="true">▍</span>
         )}
 
-        {/* Progresso do host durante o turno (Fusion, busca, upload). O renderer já respeita a flag. */}
-        {streamingUiBlocks && <DynamicRenderer envelope={streamingUiBlocks} />}
+        {/* Componentes UI do host ou modelo durante o stream */}
+        {(streamEnvelope || pendingBlockType) && (
+          <DynamicRenderer
+            envelope={streamEnvelope}
+            streaming={true}
+            pendingType={pendingBlockType}
+          />
+        )}
       </div>
     </div>
   )

@@ -18,6 +18,7 @@ import { UiCard, UiCardAction } from './UiCard'
 
 interface Props {
   block: SandboxBlock
+  streaming?: boolean
   onRuntimeError?: (title: string, message: string) => void
 }
 
@@ -29,7 +30,7 @@ function escapeScriptClose(code: string): string {
   return code.replace(/<\/script/gi, '<\\/script')
 }
 
-export function SandboxCard({ block, onRuntimeError }: Props) {
+export function SandboxCard({ block, streaming, onRuntimeError }: Props) {
   const { t, i18n } = useTranslation()
   const { sendMessage } = useChatContext()
   const { image_hosts } = useIntelligentUiConfig()
@@ -178,7 +179,7 @@ export function SandboxCard({ block, onRuntimeError }: Props) {
 
   const handleFullscreen = () => {
     const target = card as (HTMLElement & { webkitRequestFullscreen?: () => void }) | null
-    if (!target) return
+    if (!target || streaming) return
     if (document.fullscreenElement === target) {
       void document.exitFullscreen?.()
     } else if (target.requestFullscreen) {
@@ -189,6 +190,7 @@ export function SandboxCard({ block, onRuntimeError }: Props) {
   }
 
   const handleDownload = () => {
+    if (streaming) return
     downloadStandaloneHtml(title, html, css, js, isDark, lang)
   }
 
@@ -203,18 +205,26 @@ export function SandboxCard({ block, onRuntimeError }: Props) {
       title={title}
       actions={
         <>
-          <UiCardAction icon={<RotateCcw size={14} />} label={restartLabel} onClick={handleRestart} hideLabel />
+          <UiCardAction
+            icon={<RotateCcw size={14} />}
+            label={restartLabel}
+            onClick={handleRestart}
+            hideLabel
+            disabled={streaming}
+          />
           <UiCardAction
             icon={<Maximize2 size={14} />}
             label={t('intelligentUi.fullscreen') || 'Tela cheia'}
             onClick={handleFullscreen}
             hideLabel
+            disabled={streaming}
           />
           {standalone_download && (
             <UiCardAction
               icon={<Download size={14} />}
               label={t('intelligentUi.exportStandalone') || 'Baixar HTML'}
               onClick={handleDownload}
+              disabled={streaming}
             />
           )}
         </>
@@ -225,10 +235,12 @@ export function SandboxCard({ block, onRuntimeError }: Props) {
         {escaped ? (
           <div className="nexus-ui-sandbox__notice" role="alert">
             <p>{t('intelligentUi.sandboxEscaped') || 'O conteúdo tentou sair do sandbox e foi interrompido.'}</p>
-            <button type="button" className="nexus-ui-button" onClick={handleRestart}>
+            <button type="button" className="nexus-ui-button" onClick={handleRestart} disabled={streaming}>
               <RotateCcw size={14} aria-hidden="true" /> {restartLabel}
             </button>
           </div>
+        ) : streaming ? (
+          <div className="nexus-ui-sandbox__placeholder" aria-hidden="true" />
         ) : near ? (
           <iframe
             key={run}

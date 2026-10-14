@@ -16,6 +16,8 @@ const FollowUpCard = React.lazy(() => import('./components/FollowUpCard'))
 
 interface Props {
   envelope?: UiEnvelope | null
+  streaming?: boolean
+  pendingType?: string | null
   onRuntimeError?: (title: string, message: string) => void
 }
 
@@ -25,12 +27,12 @@ interface Props {
  * Valores batem com o tamanho real dos cartões do plano 11 (casca `UiCard`:
  * cabeçalho ≈ 34 px, corpo com 12/14 px de respiro; gráfico = 220 px de desenho).
  */
-function reservedHeight(block: UiBlock): number {
+function reservedHeight(block: { type: string; [k: string]: any }): number {
   switch (block.type) {
     case 'progress': {
       const hasValue = block.value !== undefined && block.max !== undefined
       const steps = Array.isArray(block.steps) ? block.steps.length : 0
-      return (hasValue ? 88 : 0) + (steps > 0 ? 60 + steps * 32 : 0)
+      return (hasValue || steps === 0 ? 88 : 0) + (steps > 0 ? 60 + steps * 32 : 0)
     }
     case 'card': {
       const facts = Array.isArray(block.facts) && block.facts.length > 0 ? 64 : 0
@@ -38,21 +40,30 @@ function reservedHeight(block: UiBlock): number {
     }
     case 'chart':
       return 280
-    case 'controls':
-      return 128 + block.fields.length * 62
+    case 'controls': {
+      const count = Array.isArray(block.fields) ? block.fields.length : 2
+      return 128 + count * 62
+    }
     case 'sandbox':
       return (block.initial_height || 300) + 44
-    case 'metric':
-      // Plano 12 §2.1: cabeçalho + uma linha de tiles (duas quando há mais de 2 itens em bolha estreita)
-      return (block.title ? 34 : 0) + 14 + 70 * (block.items.length > 2 ? 2 : 1)
-    case 'table':
-      return 56 + 36 * Math.min(block.rows?.length || 1, 11)
-    case 'callout':
-      return 56 + 20 * Math.ceil(block.body.length / 80)
-    case 'follow_up':
-      return 28 + block.items.length * 40
+    case 'metric': {
+      const itemsCount = Array.isArray(block.items) ? block.items.length : 2
+      return (block.title ? 34 : 0) + 14 + 70 * (itemsCount > 2 ? 2 : 1)
+    }
+    case 'table': {
+      const rowCount = Array.isArray(block.rows) ? block.rows.length : 4
+      return 56 + 36 * Math.min(rowCount, 11)
+    }
+    case 'callout': {
+      const len = typeof block.body === 'string' ? block.body.length : 60
+      return 56 + 20 * Math.ceil(len / 80)
+    }
+    case 'follow_up': {
+      const items = Array.isArray(block.items) ? block.items.length : 3
+      return 28 + items * 40
+    }
     default:
-      return 0
+      return 120
   }
 }
 
@@ -71,20 +82,21 @@ function BlockSkeleton({ blocks }: { blocks: UiBlock[] }) {
   )
 }
 
-export function DynamicRenderer({ envelope, onRuntimeError }: Props) {
+export function DynamicRenderer({ envelope, streaming, pendingType, onRuntimeError }: Props) {
   // Flag desligada (ou ainda não carregada): nada é pintado, mesmo com payload.
   const enabled = useIntelligentUiEnabled()
-  if (!enabled || !envelope) return null
+  if (!enabled || (!envelope && !pendingType)) return null
 
-  const validEnvelope = parseUiEnvelope(envelope)
-  if (!validEnvelope || validEnvelope.blocks.length === 0) {
+  const validEnvelope = envelope ? parseUiEnvelope(envelope) : null
+  const blocks = validEnvelope?.blocks || []
+  if (blocks.length === 0 && !pendingType) {
     return null
   }
 
   return (
     <div className="nexus-ui-container">
-      <Suspense fallback={<BlockSkeleton blocks={validEnvelope.blocks} />}>
-        {validEnvelope.blocks.map((block) => {
+      <Suspense fallback={<BlockSkeleton blocks={blocks} />}>
+        {blocks.map((block) => {
           if (block.type === 'progress') {
             const hasValue = block.value !== undefined && block.max !== undefined
             const hasSteps = Array.isArray(block.steps) && block.steps.length > 0
@@ -106,11 +118,11 @@ export function DynamicRenderer({ envelope, onRuntimeError }: Props) {
           }
 
           if (block.type === 'controls') {
-            return <ControlsCard key={block.id} block={block} />
+            return <ControlsCard key={block.id} block={block} streaming={streaming} />
           }
 
           if (block.type === 'sandbox') {
-            return <SandboxCard key={block.id} block={block} onRuntimeError={onRuntimeError} />
+            return <SandboxCard key={block.id} block={block} streaming={streaming} onRuntimeError={onRuntimeError} />
           }
 
           if (block.type === 'metric') {
@@ -126,11 +138,18 @@ export function DynamicRenderer({ envelope, onRuntimeError }: Props) {
           }
 
           if (block.type === 'follow_up') {
-            return <FollowUpCard key={block.id} block={block} />
+            return <FollowUpCard key={block.id} block={block} streaming={streaming} />
           }
 
           return null
         })}
+        {pendingType && (
+          <div
+            className="nexus-ui-card nexus-ui-skeleton"
+            style={{ minHeight: reservedHeight({ type: pendingType, id: '__pending__' }) }}
+            aria-hidden="true"
+          />
+        )}
       </Suspense>
     </div>
   )

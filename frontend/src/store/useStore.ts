@@ -4,7 +4,7 @@ import type { Artifact, Conversation, ConversationDetail, Message, Model, CacheS
 import { api } from '../api/client'
 import i18n, { detectInitialLocale } from '../i18n'
 import { effectivePreferredModel } from '../lib/modelSelection'
-import { MAX_BLOCKS } from '../lib/nexusUi'
+import { MAX_BLOCKS, mergeUiEnvelopes } from '../lib/nexusUi'
 import { bubbleContent, mergePending, newIds, pruneExpired, toastPreview } from '../lib/proactivePending'
 
 // ── Persistência de provedor/modelo (por usuário quando possível) ───────────
@@ -454,21 +454,6 @@ function upsertUiBlock(env: UiEnvelope | null, block: ProgressBlock): UiEnvelope
   return { v: 1, blocks }
 }
 
-/**
- * Host primeiro, modelo depois; id repetido fica com o do host; teto de MAX_BLOCKS.
- * O `follow_up` do modelo continua por último (plano 12 §2.3) porque entra depois
- * dos blocos do host e o validador já o pôs no fim do envelope dele.
- */
-function mergeUiEnvelopes(host: UiEnvelope | null, model?: UiEnvelope | null): UiEnvelope | null {
-  if (!host?.blocks.length) return model ?? null
-  const seen = new Set<string>()
-  const blocks = [...host.blocks, ...(model?.blocks ?? [])].filter((b) => {
-    if (seen.has(b.id)) return false
-    seen.add(b.id)
-    return true
-  })
-  return { v: 1, blocks: blocks.slice(0, MAX_BLOCKS) }
-}
 
 export const useStore = create<AppState>((set, get) => ({
   token: typeof window !== 'undefined' ? localStorage.getItem('nexuslocal_token') : null,
