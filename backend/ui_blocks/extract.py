@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from backend.ui_blocks.validate import validate_envelope
+from backend.ui_blocks.diagnostics import validate_with_diagnostics, ui_error
 
 # Fences só contam quando a abertura está no início de uma linha (até 3 espaços,
 # como no CommonMark) e seguida de quebra de linha. Uma menção inline na prosa
@@ -34,6 +34,7 @@ def extract_ui(
     *,
     image_hosts: list[str] | None = None,
     allow_private_http: bool | None = None,
+    diagnostics: dict | None = None,
 ) -> tuple[str, dict[str, Any] | None]:
     """Extrai o último fence de UI da prosa.
 
@@ -41,11 +42,16 @@ def extract_ui(
     retorna (prosa_limpa, None). ``image_hosts``/``allow_private_http`` são a
     configuração efetiva do turno; ``None`` cai no ambiente.
     """
+    if diagnostics is not None:
+        diagnostics.update(errors=[], dropped=0)
     if not isinstance(text, str) or not text:
         return text or "", None
 
     def _validate(raw_json: str) -> dict[str, Any] | None:
-        return validate_envelope(raw_json, image_hosts=image_hosts, allow_private_http=allow_private_http)
+        report = validate_with_diagnostics(raw_json, image_hosts=image_hosts, allow_private_http=allow_private_http)
+        if diagnostics is not None:
+            diagnostics.update(errors=report['errors'], dropped=report['dropped'])
+        return report['envelope']
 
     # 1. Tenta padrão primário nexus-ui
     closed_matches = list(FENCE_CLOSED_REGEX.finditer(text))
@@ -72,6 +78,8 @@ def extract_ui(
 
     # 3. Se não há fechado, verifica se há fence aberto em streaming
     if FENCE_OPEN_REGEX.search(text):
+        if diagnostics is not None:
+            diagnostics.update(errors=[ui_error('fence_unclosed')], dropped=1)
         cleaned_text = FENCE_OPEN_REGEX.sub("", text).rstrip()
         return cleaned_text, None
 

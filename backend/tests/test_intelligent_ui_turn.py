@@ -14,6 +14,7 @@ painel chegando ao filtro de imagem do turno.
 from __future__ import annotations
 
 import asyncio
+import sys
 import time
 import uuid
 
@@ -83,7 +84,7 @@ def _collect_until(ws, wanted: str, limit: int = 40) -> list[dict]:
     raise AssertionError(f"frame {wanted!r} não chegou; recebidos: {[f.get('type') for f in frames]}")
 
 
-def _run_turn(user_id: str, message: str, *, voice_mode: bool = False) -> dict:
+def _run_turn(user_id: str, message: str, *, voice_mode: bool = False, conversation_id: str | None = None, correction_id: str | None = None) -> dict:
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
 
@@ -96,7 +97,8 @@ def _run_turn(user_id: str, message: str, *, voice_mode: bool = False) -> dict:
         with client.websocket_connect(f"/ws/chat?token={token}") as ws:
             assert ws.receive_json() == {"type": "ready"}
             payload = {
-                "conversation_id": None,
+                "conversation_id": conversation_id,
+                "ui_correction_message_id": correction_id,
                 "message": message,
                 "model_id": "m/x",
                 "provider_id": "p",
@@ -134,6 +136,7 @@ def test_flag_desligada_turno_identico_ao_chat_sem_o_recurso(turn_env):
     result = _run_turn(turn_env["user_id"], "compare os custos dos modelos")
     end = result["stream_end"]
     assert "ui_blocks" not in end
+    assert "ui_errors" not in end and "ui_dropped" not in end
 
     msg_id, content, ui_row = asyncio.get_event_loop().run_until_complete(_assistant_row(result["conversation_id"]))
     assert content == MODEL_REPLY  # fence permanece no texto, como antes do recurso
@@ -282,3 +285,77 @@ def test_telemetria_conta_oferta_producao_validade_e_descartes(turn_env, monkeyp
         assert client.get("/api/intelligent-ui/stats", headers={"Authorization": f"Bearer {user_tok}"}).status_code in (401, 403)
         r = client.get("/api/intelligent-ui/stats", headers={"Authorization": f"Bearer {admin_tok}"})
         assert r.status_code == 200 and r.json()["turns"] == 2
+
+
+def test_correction_errors_transport_and_next_turn_metrics(turn_env, monkeypatch):
+    from backend.ui_blocks.telemetry import intelligent_ui_telemetry
+    intelligent_ui_telemetry.reset()
+    monkeypatch.setenv('INTELLIGENT_UI_ENABLED', 'true')
+    monkeypatch.setattr(sys.modules[__name__], 'MODEL_REPLY',
+                        'prose\n```nexus-ui\n{"blocks":[{"id":"broken","type":"metric"}]}\n```')
+    first = _run_turn(turn_env['user_id'], 'compare os custos')
+    end = first['stream_end']
+    assert end['ui_errors'][0]['code'] == 'missing_required'
+    assert end['ui_errors'][0]['block_id'] == 'broken'
+    assert end['ui_dropped'] == 1 and 'ui_blocks' not in end
+    _, content, ui_row = asyncio.get_event_loop().run_until_complete(_assistant_row(first['conversation_id']))
+    assert content == 'prose' and ui_row is None
+    monkeypatch.setattr(sys.modules[__name__], 'MODEL_REPLY',
+                        'fixed\n```nexus-ui\n{"blocks":[{"type":"metric","items":[{"label":"Value","value":2}]}]}\n```')
+    second = _run_turn(turn_env['user_id'], 'Corrija o visual broken. metric: items[{label,value}]',
+                       conversation_id=first['conversation_id'], correction_id=end['message_id'])
+    assert 'metric: title' in turn_env['captured']['system_prompt']
+    assert 'sandbox: title' not in turn_env['captured']['system_prompt']
+    assert second['stream_end']['ui_errors'] == []
+    assert second['stream_end']['ui_blocks']['blocks'][0]['type'] == 'metric'
+    assert second['stream_end']['ui_dropped'] == 0
+    counts = intelligent_ui_telemetry.snapshot()['corrections']['m/x']
+    assert counts == dict(correction_offered=1, correction_requested=1, correction_valid=1, valid_rate=1.0)
+    # Replayed metadata cannot count a second request for the same message.
+    _run_turn(turn_env['user_id'], 'Corrija novamente',
+              conversation_id=first['conversation_id'], correction_id=end['message_id'])
+    assert intelligent_ui_telemetry.snapshot()['corrections']['m/x'] == counts
+
+
+def test_invalid_json_transport_is_bounded_and_telemetry_has_no_payload(turn_env, monkeypatch):
+    from backend.ui_blocks.telemetry import intelligent_ui_telemetry
+    intelligent_ui_telemetry.reset()
+    monkeypatch.setenv('INTELLIGENT_UI_ENABLED', 'true')
+    monkeypatch.setattr(sys.modules[__name__], 'MODEL_REPLY',
+                        'prose\n```nexus-ui\n{"private-payload":\n```')
+    result = _run_turn(turn_env['user_id'], 'compare os custos')
+    assert result['stream_end']['ui_errors'][0]['code'] == 'invalid_json'
+    assert len(result['stream_end']['ui_errors']) <= 4
+    snap = intelligent_ui_telemetry.snapshot()
+    assert snap['ui_error_codes'] == {'invalid_json': 1}
+    assert 'private-payload' not in str(snap)
+
+
+def test_runtime_correction_offer_owner_flag_and_dedup(turn_env, monkeypatch):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from backend.auth import create_access_token
+    from backend.ui_blocks.telemetry import intelligent_ui_telemetry
+    intelligent_ui_telemetry.reset()
+    # Valid response has no unsafe image, and therefore no validation offer.
+    monkeypatch.setattr(sys.modules[__name__], 'MODEL_REPLY',
+                        'tool\n```nexus-ui\n{"blocks":[{"type":"sandbox","html":"<p>tool</p>"}]}\n```')
+    monkeypatch.setenv('INTELLIGENT_UI_ENABLED', 'true')
+    result = _run_turn(turn_env['user_id'], 'ferramenta interativa')
+    app = FastAPI()
+    app.include_router(iui_router.router)
+    uid, other = turn_env['user_id'], turn_env['admin_id']
+    headers = {'Authorization': f'Bearer {create_access_token(uid, uid, "user")}'}
+    other_headers = {'Authorization': f'Bearer {create_access_token(other, other, "admin")}'}
+    payload = {'message_id': result['stream_end']['message_id']}
+    with TestClient(app) as client:
+        assert client.post('/api/intelligent-ui/correction-offered', json=payload).status_code in (401, 403)
+        assert client.post('/api/intelligent-ui/correction-offered', json=payload, headers=other_headers).status_code == 404
+        assert client.post('/api/intelligent-ui/correction-offered', json={'message_id': 'absent'}, headers=headers).status_code == 404
+        monkeypatch.setenv('INTELLIGENT_UI_ENABLED', 'false')
+        assert client.post('/api/intelligent-ui/correction-offered', json=payload, headers=headers).status_code == 200
+        assert intelligent_ui_telemetry.snapshot()['corrections'] == {}
+        monkeypatch.setenv('INTELLIGENT_UI_ENABLED', 'true')
+        for _ in range(2):
+            assert client.post('/api/intelligent-ui/correction-offered', json=payload, headers=headers).status_code == 200
+    assert intelligent_ui_telemetry.snapshot()['corrections']['m/x']['correction_offered'] == 1

@@ -75,6 +75,10 @@ class IntelligentUiTelemetry:
             self.block_types: Counter[str] = Counter()
             self.modules_offered: Counter[str] = Counter()
             self.modules_produced: Counter[str] = Counter()
+            self.error_codes: Counter[str] = Counter()
+            self.diagnostic_dropped = 0
+            self.corrections: dict[str, Counter] = {}
+            self._correction_messages: dict[tuple[str, str], tuple[str, bool]] = {}
 
     def record_turn(
         self,
@@ -85,6 +89,8 @@ class IntelligentUiTelemetry:
         envelope: dict[str, Any] | None,
         voice_mode: bool = False,
         request_id: str | None = None,
+        ui_errors: list[dict] | None = None,
+        ui_dropped: int = 0,
     ) -> dict[str, Any]:
         """Registra um turno com a flag ligada. Devolve o resumo (também vai para o log)."""
         info = inspect_fence(text)
@@ -104,6 +110,8 @@ class IntelligentUiTelemetry:
         dropped = max(0, int(info["raw_blocks"]) - out_blocks) if produced and info["json_ok"] else 0
 
         with self._lock:
+            self.error_codes.update(e["code"] for e in (ui_errors or []))
+            self.diagnostic_dropped += ui_dropped
             self.turns += 1
             if offered:
                 self.offered += 1
@@ -146,6 +154,37 @@ class IntelligentUiTelemetry:
         )
         return summary
 
+    def offer_correction(self, user_id: str, message_id: str, model_id: str) -> None:
+        with self._lock:
+            key = (user_id, message_id)
+            if key in self._correction_messages:
+                return
+            # Bounded process-only state, no error payload or conversation text.
+            if len(self._correction_messages) >= 2048:
+                self._correction_messages.pop(next(iter(self._correction_messages)))
+            self._correction_messages[key] = (model_id, False)
+            counts = self.corrections.setdefault(model_id, Counter(
+                correction_offered=0, correction_requested=0, correction_valid=0))
+            counts['correction_offered'] += 1
+
+    def request_correction(self, user_id: str, message_id: str) -> str | None:
+        with self._lock:
+            key = (user_id, message_id)
+            offer = self._correction_messages.get(key)
+            if not offer or offer[1]:
+                return None
+            model_id = offer[0]
+            self._correction_messages[key] = (model_id, True)
+            self.corrections[model_id]['correction_requested'] += 1
+            return model_id
+
+    def correction_result(self, model_id: str, valid: bool) -> None:
+        if valid:
+            with self._lock:
+                counts = self.corrections.get(model_id)
+                if counts is not None:
+                    counts['correction_valid'] += 1
+
     def snapshot(self) -> dict[str, Any]:
         with self._lock:
             return {
@@ -163,6 +202,9 @@ class IntelligentUiTelemetry:
                 "block_types": dict(self.block_types),
                 "modules_offered": dict(self.modules_offered),
                 "modules_produced": dict(self.modules_produced),
+                "ui_error_codes": dict(self.error_codes),
+                "ui_dropped": self.diagnostic_dropped,
+                "corrections": {model: {**dict(counts), "valid_rate": _ratio(counts["correction_valid"], counts["correction_requested"])} for model, counts in self.corrections.items()},
                 "rates": {
                     "produced_given_offered": _ratio(self.produced_when_offered, self.offered),
                     "valid_given_produced": _ratio(self.valid, self.produced),

@@ -1,0 +1,464 @@
+[
+  {
+    "name": "valid",
+    "raw": {
+      "v": 1,
+      "blocks": [
+        {
+          "type": "callout",
+          "body": "ok"
+        }
+      ]
+    },
+    "codes": [],
+    "dropped": 0
+  },
+  {
+    "name": "bad-json",
+    "raw": "{\"v\":1,",
+    "codes": [
+      "invalid_json"
+    ],
+    "dropped": 0
+  },
+  {
+    "name": "wrong-version",
+    "raw": {
+      "v": 2,
+      "blocks": [
+        {
+          "type": "callout",
+          "body": "ok"
+        }
+      ]
+    },
+    "codes": [
+      "rejected_envelope"
+    ],
+    "dropped": 1
+  },
+  {
+    "name": "boolean-version",
+    "raw": {
+      "v": true,
+      "blocks": [
+        {
+          "type": "callout",
+          "body": "ok"
+        }
+      ]
+    },
+    "codes": [
+      "rejected_envelope"
+    ],
+    "dropped": 1
+  },
+  {
+    "name": "solo-version",
+    "raw": {
+      "v": 2,
+      "type": "callout",
+      "body": "ok"
+    },
+    "codes": [
+      "rejected_envelope"
+    ],
+    "dropped": 1
+  },
+  {
+    "name": "not-object",
+    "raw": [],
+    "codes": [
+      "rejected_envelope"
+    ],
+    "dropped": 0
+  },
+  {
+    "name": "empty",
+    "raw": {
+      "blocks": []
+    },
+    "codes": [
+      "rejected_envelope"
+    ],
+    "dropped": 0
+  },
+  {
+    "name": "unknown",
+    "raw": {
+      "blocks": [
+        {
+          "type": "video",
+          "id": "x"
+        }
+      ]
+    },
+    "codes": [
+      "unknown_type"
+    ],
+    "dropped": 1
+  },
+  {
+    "name": "untyped",
+    "raw": {
+      "blocks": [
+        {}
+      ]
+    },
+    "codes": [
+      "unknown_type"
+    ],
+    "dropped": 1
+  },
+  {
+    "name": "missing",
+    "raw": {
+      "blocks": [
+        {
+          "type": "metric",
+          "id": "m"
+        },
+        {
+          "type": "callout",
+          "body": ""
+        }
+      ]
+    },
+    "codes": [
+      "missing_required",
+      "missing_required"
+    ],
+    "dropped": 2
+  },
+  {
+    "name": "bad-cell",
+    "raw": {
+      "blocks": [
+        {
+          "type": "metric",
+          "items": [
+            {
+              "label": "l",
+              "value": true
+            }
+          ]
+        }
+      ]
+    },
+    "codes": [
+      "type_mismatch"
+    ],
+    "dropped": 1
+  },
+  {
+    "name": "non-block",
+    "raw": {
+      "blocks": [
+        null
+      ]
+    },
+    "codes": [
+      "type_mismatch"
+    ],
+    "dropped": 1
+  },
+  {
+    "name": "bad-kind",
+    "raw": {
+      "blocks": [
+        {
+          "type": "chart",
+          "kind": "pie",
+          "series": [
+            {
+              "key": "v"
+            }
+          ],
+          "rows": [
+            {
+              "x": "a",
+              "v": 1
+            }
+          ]
+        }
+      ]
+    },
+    "codes": [
+      "type_mismatch"
+    ],
+    "dropped": 1
+  },
+  {
+    "name": "missing-rows",
+    "raw": {
+      "blocks": [
+        {
+          "type": "chart",
+          "series": [
+            {
+              "key": "v"
+            }
+          ]
+        }
+      ]
+    },
+    "codes": [
+      "missing_required"
+    ],
+    "dropped": 1
+  },
+  {
+    "name": "bad-action",
+    "raw": {
+      "blocks": [
+        {
+          "type": "controls",
+          "fields": [
+            {
+              "id": "x",
+              "kind": "text"
+            }
+          ],
+          "action": {
+            "name": "fetch"
+          }
+        }
+      ]
+    },
+    "codes": [
+      "invalid_action"
+    ],
+    "dropped": 1
+  },
+  {
+    "name": "bad-placeholder",
+    "raw": {
+      "blocks": [
+        {
+          "type": "controls",
+          "fields": [
+            {
+              "id": "x",
+              "kind": "text"
+            }
+          ],
+          "action": {
+            "name": "send_message",
+            "template": "{secret}"
+          }
+        }
+      ]
+    },
+    "codes": [
+      "invalid_action"
+    ],
+    "dropped": 1
+  },
+  {
+    "name": "unsafe-image",
+    "raw": {
+      "blocks": [
+        {
+          "type": "card",
+          "image": {
+            "url": "javascript:alert(1)",
+            "alt": "x"
+          }
+        }
+      ]
+    },
+    "codes": [
+      "unsafe_url"
+    ],
+    "dropped": 0
+  },
+  {
+    "name": "safe-image",
+    "raw": {
+      "blocks": [
+        {
+          "type": "card",
+          "image": {
+            "url": "/attachments/x",
+            "alt": "x"
+          }
+        }
+      ]
+    },
+    "codes": [],
+    "dropped": 0
+  },
+  {
+    "name": "healed-ids",
+    "raw": {
+      "blocks": [
+        {
+          "type": "callout",
+          "id": "a",
+          "body": "ok"
+        },
+        {
+          "type": "callout",
+          "id": "a",
+          "body": "ok"
+        }
+      ]
+    },
+    "codes": [],
+    "dropped": 0
+  },
+  {
+    "name": "per-type",
+    "raw": {
+      "blocks": [
+        {
+          "type": "follow_up",
+          "items": [
+            "abc"
+          ]
+        },
+        {
+          "type": "follow_up",
+          "items": [
+            "def"
+          ]
+        }
+      ]
+    },
+    "codes": [
+      "limit_exceeded"
+    ],
+    "dropped": 1
+  },
+  {
+    "name": "bounded",
+    "raw": {
+      "blocks": [
+        {
+          "type": "unknown"
+        },
+        {
+          "type": "unknown"
+        },
+        {
+          "type": "unknown"
+        },
+        {
+          "type": "unknown"
+        },
+        {
+          "type": "unknown"
+        },
+        {
+          "type": "unknown"
+        },
+        {
+          "type": "unknown"
+        },
+        {
+          "type": "unknown"
+        }
+      ]
+    },
+    "codes": [
+      "unknown_type",
+      "unknown_type",
+      "unknown_type",
+      "unknown_type"
+    ],
+    "dropped": 8
+  },
+  {
+    "name": "cap",
+    "raw": {
+      "blocks": [
+        {
+          "type": "callout",
+          "body": "ok"
+        },
+        {
+          "type": "callout",
+          "body": "ok"
+        },
+        {
+          "type": "callout",
+          "body": "ok"
+        },
+        {
+          "type": "callout",
+          "body": "ok"
+        },
+        {
+          "type": "callout",
+          "body": "ok"
+        },
+        {
+          "type": "callout",
+          "body": "ok"
+        },
+        {
+          "type": "callout",
+          "body": "ok"
+        }
+      ]
+    },
+    "codes": [
+      "limit_exceeded"
+    ],
+    "dropped": 1
+  },
+  {
+    "name": "mixed",
+    "raw": {
+      "blocks": [
+        {
+          "type": "video"
+        },
+        {
+          "type": "callout",
+          "body": "ok"
+        }
+      ]
+    },
+    "codes": [
+      "unknown_type"
+    ],
+    "dropped": 1
+  },
+  {
+    "name": "prototype-type",
+    "raw": {
+      "blocks": [
+        {
+          "type": "__proto__"
+        }
+      ]
+    },
+    "codes": [
+      "unknown_type"
+    ],
+    "dropped": 1
+  },
+  {
+    "name": "valid-controls",
+    "raw": {
+      "blocks": [
+        {
+          "type": "controls",
+          "fields": [
+            {
+              "id": "x",
+              "kind": "text"
+            }
+          ],
+          "action": {
+            "name": "send_message",
+            "template": "{x}"
+          }
+        }
+      ]
+    },
+    "codes": [],
+    "dropped": 0
+  }
+]

@@ -182,7 +182,9 @@ export function useChat() {
             msg.was_fallback,
             msg.ui_blocks,
             msg.process_duration_ms,
-            msg.process_steps
+            msg.process_steps,
+            msg.ui_errors,
+            msg.ui_dropped
           )
           s.loadConversations()
           break
@@ -468,6 +470,7 @@ export function useChat() {
       attachmentIds?: string[],
       attachments?: Attachment[],
       voiceMode?: boolean,
+      uiCorrectionMessageId?: string,
     ) => {
       if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
         console.warn('WebSocket not ready')
@@ -477,11 +480,11 @@ export function useChat() {
           }),
           'error'
         )
-        return
+        return false
       }
       if (!selectedModelId || !selectedProviderId) {
         console.warn('No model selected')
-        return
+        return false
       }
 
       isGeneratingRef.current = true
@@ -501,6 +504,7 @@ export function useChat() {
         JSON.stringify({
           conversation_id: activeConversationId,
           message: text,
+          ui_correction_message_id: uiCorrectionMessageId,
           model_id: selectedModelId,
           provider_id: selectedProviderId,
           reasoning_effort: activeEffort || undefined,
@@ -516,6 +520,7 @@ export function useChat() {
           client_timezone_offset: new Date().getTimezoneOffset(),
         })
       )
+      return true
     },
     [
       activeConversationId,

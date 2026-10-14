@@ -9,7 +9,8 @@ interface ChatContextValue {
     attachmentIds?: string[],
     attachments?: Attachment[],
     voiceMode?: boolean,
-  ) => void
+    uiCorrectionMessageId?: string,
+  ) => boolean
   stopStream: () => void
 }
 

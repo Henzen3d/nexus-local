@@ -14126,3 +14126,22 @@ html[data-theme="light"] .model-option-provider-tag {
   .hub-tab-btn { flex: 1; justify-content: center; padding: 8px 6px; font-size: 12px; }
   .sensitivity-selector { grid-template-columns: 1fr; }
 }
+
+/* Plano 12.6: correção discreta, alvo acessível, sem envio automático. */
+.nexus-ui-correction {
+  color: var(--ink-muted);
+  font-size: 12px;
+  margin-top: 8px;
+}
+.nexus-ui-correction button {
+  min-height: 44px;
+  padding: 8px;
+  border: 0;
+  background: transparent;
+  color: var(--primary);
+  font: inherit;
+  cursor: pointer;
+}
+.nexus-ui-correction button:hover { text-decoration: underline; }
+.nexus-ui-correction button:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.nexus-ui-correction button:disabled { opacity: .5; cursor: not-allowed; }

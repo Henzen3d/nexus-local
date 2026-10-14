@@ -84,7 +84,7 @@ Limites do envelope, iguais no backend e no frontend:
 | Situação | Tratamento | Motivo |
 |---|---|---|
 | `v` ausente | assume 1 | modelo pequeno esquece o campo |
-| `v` presente e ≠ 1 (inclusive `null`) | envelope inteiro descartado | outro contrato |
+| `v` presente e ≠ 1 (inclusive `null`/booleano; também no bloco solto) | envelope inteiro descartado | outro contrato |
 | Bloco solto sem envelope, ou `blocks` como objeto | embrulha em `{"v":1,"blocks":[…]}` | idem |
 | `type` ausente | inferido pelos campos, nesta ordem: `kind+series` → chart, `steps`/`value+max` → progress, `fields` → controls, `html` → sandbox, `items` de textos → follow_up, `items` de `{label, value}` → metric, `kind` de callout + `body` → callout, `facts`/`body`/`title` → card | idem |
 | `callout.kind` fora da união | sinônimos mapeados (`warn` → warning, `error` → danger, `note`/`tip` → info, `ok` → success); o resto vira `info` | aviso errado de cor é melhor que aviso perdido |
@@ -99,6 +99,8 @@ Limites do envelope, iguais no backend e no frontend:
 | `controls.fields` com mais de 4 | corta nos 4 primeiros; placeholder que aponta para campo cortado invalida o bloco | teto da spec (4.4) |
 | `sandbox.html` > 12000, `css` > 4000, `js` > 8000 | html estoura → bloco fora; css/js estouram → campo fora | caber nos 16000 do fence com folga |
 | `sandbox.initial_height` string numérica/decimal | arredonda; fora de 120–800 → 300 | tolerância de tipo |
+
+**Diagnósticos aditivos (plano 12.6):** as APIs legadas continuam retornando somente envelope sanitizado ou nulo. `validate_with_diagnostics` (Python) e `parseUiEnvelopeWithDiagnostics` (TS) devolvem também `errors` e `dropped`, sem colocar os erros dentro do envelope. No `stream_end`, com a flag ligada, `ui_errors` tem até 4 objetos `{code, block_id, path, message, hint}` (`message` ≤160) e `ui_dropped` é inteiro. Mensagens descrevem o esquema, não valores/URLs recebidos. Os válidos permanecem, inclusive card cuja imagem foi recusada. As tolerâncias da tabela acima continuam valendo; reparação de id não é erro. Botão de correção é gesto explícito do usuário, no máximo uma solicitação por mensagem na sessão, sem envio automático. Não há persistência de payload de erro na telemetria.
 
 A prosa tem de fazer sentido sem os blocos. Bloco é complemento. Se o dado importante só existir no JSON, o turno falhou o critério de aceite, mesmo com o widget bonito.
 

@@ -738,7 +738,7 @@ def validate_envelope(
 
     # `v` escrito e diferente de 1 é outro contrato: envelope inteiro descartado.
     # `v` ausente é tolerado (assume 1).
-    if "v" in data and data.get("v") not in (1, "1"):
+    if "v" in data and (isinstance(data.get("v"), bool) or data.get("v") not in (1, "1")):
         return None
 
     # Normalização de bloco único ou envelope sem "v"
@@ -776,6 +776,8 @@ def validate_envelope(
                 item["type"] = b_type
         if isinstance(b_type, str):
             b_type = b_type.strip().lower()
+        else:
+            b_type = ""
 
         # Subteto por tipo (plano 12 §0): o excedente cai, os demais seguem.
         if b_type in MAX_BLOCKS_PER_TYPE and per_type.get(b_type, 0) >= MAX_BLOCKS_PER_TYPE[b_type]:

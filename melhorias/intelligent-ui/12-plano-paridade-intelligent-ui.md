@@ -1,7 +1,7 @@
 # Plano 12 — Paridade com o Intelligent UI do ChatGPT
 
 **Data:** 2026-10-14
-**Estado:** em andamento. Passos 1 e 2 da seção 8 entregues em 2026-10-14 (`Origin` no WebSocket; blocos `metric`, `callout`, `follow_up`; teto 6 com subtetos; catálogo com os três tipos). Os demais passos continuam planejados; a ordem da seção 8 vale.
+**Estado:** em andamento. Passos 1 e 2 da seção 8 entregues em 2026-10-14 (`Origin` no WebSocket; blocos `metric`, `callout`, `follow_up`; teto 6 com subtetos; catálogo com os três tipos). Passo 3 entregue no PR #16 (catálogo modular por gatilho). Passo 4 implementado neste PR, aguardando revisão/merge: diagnósticos aditivos e laço de correção. O próximo passo é o 5; a ordem da seção 8 vale.
 **Depende de:** Fases 1–7 e plano 11. A cena 2D/3D tem plano próprio (13).
 **Referências:** [10-referencias-answerui-openui-openwebui.md](10-referencias-answerui-openui-openwebui.md) (tabela de paridade na seção 1; mecanismos do OpenUI na seção 3; padrões do Open WebUI na seção 4).
 
@@ -236,9 +236,9 @@ O que torna a calculadora do ChatGPT "viva": mexer no campo recalcula tudo. O Op
 |---|---|---|---|
 | 1 | 12.9 (Origin, headers) | `test_ws_origin.py`; header no `index.html` | **Entregue** (2026-10-14): `backend/ws_origin.py`, checagem em `websocket_chat`, CORS e WS com a mesma lista; `test_ws_origin.py` (7 testes). Headers de clickjacking já existiam no nginx (`frame-ancestors 'self'`, `X-Frame-Options: SAMEORIGIN`) — mantidos em `'self'` porque os iframes `srcdoc` herdam a CSP do pai. O `POST /config` só aceita corpo JSON (Pydantic) e JWT por cabeçalho: sem CSRF por formulário. |
 | 2 | 12.1 `metric`, `callout`, `follow_up` + teto 6 | paridade Python/TS por tipo; `mergeUiEnvelopes` com teto 6; render SSR dos três cartões | **Entregue** (2026-10-14): validadores espelhados (`validate.py` / `nexusUi.ts`) com `MAX_BLOCKS = 6` e `MAX_BLOCKS_PER_TYPE`; `MetricCard`, `CalloutCard`, `FollowUpCard`; `DynamicRenderer` com alturas reservadas; 9 chaves i18n ×8; catálogo com os três tipos (≈ 389 tokens, ainda sob o teto de 400); testes em `test_ui_blocks.py` (+5) e `nexusUi.test.ts` (+5). |
-| 3 | 12.4 catálogo modular | teto por combinação; gatilhos com casos positivos e negativos (falsos positivos do `should_offer` de hoje continuam cobertos) | Próximo: o catálogo está a 11 tokens do teto; `table`/`options`/`pie` não cabem sem os módulos. |
-| 4 | 12.6 laço de correção | códigos de erro iguais nos dois lados; `stream_end.ui_errors`; botão só com flag ligada; um pedido por mensagem | Planejado |
-| 5 | 12.2 `table`, 12.8 `pie`/`unit`/`stacked` | validação de célula; CSV; `pie` com "Outros" | Planejado |
+| 3 | 12.4 catálogo modular | teto por combinação; gatilhos com casos positivos e negativos (falsos positivos do `should_offer` de hoje continuam cobertos) | **Entregue** (2026-10-14, PR #16): módulos por gatilho, orçamento por combinação e telemetria por módulo; contratos futuros não são anunciados. |
+| 4 | 12.6 laço de correção | códigos de erro iguais nos dois lados; `stream_end.ui_errors`; botão só com flag ligada; um pedido por mensagem | **Implementado neste PR**: `validate_with_diagnostics` / `parseUiEnvelopeWithDiagnostics`, fixtures compartilhadas de JSON/fence, transporte limitado, botão explícito e one-shot por mensagem, erros de runtime do sandbox e taxas por modelo no admin. APIs legadas dos validadores preservadas. |
+| 5 | 12.2 `table`, 12.8 `pie`/`unit`/`stacked` | validação de célula; CSV; `pie` com "Outros" | **Próximo** |
 | 6 | 12.5 render progressivo | propriedade "prefixo ⊆ final"; fixtures de corte; bloco interativo desabilitado no stream | Planejado (`referencias-codigo/partial-json.ts` pronto) |
 | 7 | 12.3 `options` | um clique envia só em `single`; trava após envio; `{choice}` em `multiple` | Planejado |
 | 8 | 12.7 estado compartilhado | expressões (paridade), ciclo, ids desconhecidos, recalculo de `metric`/`chart` | Planejado |
@@ -263,3 +263,15 @@ Cada passo é um PR com a flag desligada por padrão; o `06-criterios-aceite.md`
 - **`Query`/`Mutation` genéricos do OpenUI** (widget chamando ferramenta do servidor): ação de widget continua lista fechada (`send_message`, `set_model`). Uma terceira ação nasce no backend, nunca no prompt.
 - **Edição incremental de UI** (patch por nome como no OpenUI §2.6): um envelope por mensagem (spec §5). Mudança pede nova resposta.
 - **Árvore livre de layout** (Stack/Tabs/Accordion): rejeitada na v1 e continua fora; o `DynamicRenderer` empilha blocos.
+
+## Registro do passo 4 (12.6)
+
+- API aditiva: `validate_with_diagnostics` retorna `{envelope, errors, dropped}`; `validate_envelope` continua devolvendo envelope/`None`. TS espelha via `parseUiEnvelopeWithDiagnostics`; `parseUiEnvelope` continua envelope/`null`. Não há alteração no contrato `nexus-ui/1`.
+- Erros possuem código, id/índice, caminho, mensagem e assinatura; até 4 itens, mensagem ≤160. Não incluem valores brutos, URLs ou o conteúdo da conversa. IDs duplicados continuam auto-healed (sem falso erro); `duplicate_id` e `invalid_expression` são códigos reservados para rejeições que os futuros passos introduzirem, não novas regras neste passo.
+- `ui_dropped` conta blocos descartados, não campos opcionais removidos; URL insegura gera `unsafe_url`, mas o card permanece. JSON ilegível tem contagem 0 (não se inventa uma quantidade de blocos); fence aberto conta uma tentativa descartada.
+- `stream_end` ganha campos só com a flag ligada. O store mantém os erros da resposta atual; os erros/payloads não ganham tabela nem são gravados em telemetria. Releitura do histórico mantém o envelope sanitizado existente, sem novos diagnósticos persistidos.
+- Um pedido explícito, visível no chat, por mensagem na sessão; validadores e todos os sandboxes da mensagem compartilham a trava. Remontar o cartão não libera novo pedido; offline/sem modelo permite tentar novamente. Não há envio automático nem loop.
+- Sandbox captura `error`/`unhandledrejection`, limita a 500 caracteres e o host confere `event.source === iframe.contentWindow`; sandbox/CSP permanecem intactos. Texto de runtime é dado não confiável, nunca HTML. Cenas do plano 13 ainda não existem e continuam naquele plano.
+- Telemetria de processo: contagens/códigos, `correction_offered/requested/valid`, taxa por modelo, aviso no admin abaixo de 50%. Correlação aceita apenas mensagem do assistente da mesma conversa já autorizada; endpoint de oferta de runtime é autenticado, owner-only (404), limitado a sandbox persistido e deduplicado. Estado de correlação limitado a 2048 mensagens, sem texto. Reiniciar zera esses contadores como antes.
+- Turno de correção verificado recebe catálogo modular (máximo dois módulos) a partir da assinatura da solicitação e/ou envelope anterior sanitizado, sem mudar gatilhos de turnos normais nem o orçamento do PR #16.
+- Traduções novas reais nos oito locales; pendência global preexistente separada na [issue #17](https://github.com/Henzen3d/nexus-local/issues/17), sem enfraquecer o checker.

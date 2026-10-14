@@ -630,6 +630,9 @@ export function parseUiEnvelope(raw: unknown): UiEnvelope | null {
     return null
   }
 
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return null
+  if ('v' in data && data.v !== 1 && data.v !== '1') return null
+
   // Normalização de bloco único ou ausência de "blocks"
   if (!Array.isArray(data.blocks)) {
     if (data.blocks && typeof data.blocks === 'object') {
@@ -656,9 +659,8 @@ export function parseUiEnvelope(raw: unknown): UiEnvelope | null {
 
     let bType = typeof obj.type === 'string' ? obj.type.trim().toLowerCase() : undefined
     if (!bType) {
-      // Sem `type` e sem campo reconhecível: o Python descarta; aqui o card
-      // continua sendo o fallback histórico (validateCard exige só um título).
-      bType = inferType(obj) ?? 'card'
+      // Sem tipo e sem campos reconhecíveis: descarta, como no Python.
+      bType = inferType(obj) ?? ''
       obj.type = bType
     }
 
@@ -716,4 +718,99 @@ export function stripUiFences(text: string): string {
     .replace(/^[ \t]{0,3}```(?:chart|ui)[ \t]*\r?\n\s*\{[\s\S]*?\}\s*\r?\n[ \t]{0,3}```[ \t]*$/gm, '')
     .replace(/^[ \t]{0,3}```(?:nexus-ui(?:\/1)?|nexus)[ \t]*(?:\r?\n[\s\S]*)?$/gm, '')
     .trim()
+}
+
+// Plano 12.6: API aditiva; parseUiEnvelope mantém o retorno legado.
+export const UI_ERROR_CODES = [
+  'unknown_type', 'missing_required', 'type_mismatch', 'limit_exceeded',
+  'invalid_action', 'invalid_expression', 'unsafe_url', 'duplicate_id',
+  'invalid_json', 'fence_unclosed', 'rejected_envelope',
+] as const
+export type UiErrorCode = typeof UI_ERROR_CODES[number]
+export interface UiError {
+  code: UiErrorCode
+  block_id: string
+  path: string
+  message: string
+  hint: string
+}
+const UI_SIGNATURES: Record<string, string> = {
+  progress: 'progress: value, max or steps[{label,state}]',
+  card: 'card: title, body?, facts?, image?',
+  chart: 'chart: kind bar|line|compare, x_key, series[{key,label}], rows[]',
+  controls: 'controls: fields[], action{name:send_message|set_model,template?|field?}',
+  sandbox: 'sandbox: title, html, css?, js?',
+  metric: 'metric: items[{label,value}]',
+  callout: 'callout: body, kind info|success|warning|danger',
+  follow_up: 'follow_up: items[string]',
+}
+const UI_REQUIRED: Record<string, string> = {
+  chart: 'series', controls: 'fields', sandbox: 'html', metric: 'items', callout: 'body', follow_up: 'items',
+}
+export function parseUiEnvelopeWithDiagnostics(raw: unknown, imageHosts: string[] = [], allowPrivateHttp = false): { envelope: UiEnvelope | null; errors: UiError[]; dropped: number } {
+  const result: { envelope: UiEnvelope | null; errors: UiError[]; dropped: number } = { envelope: null, errors: [], dropped: 0 }
+  const error = (code: UiErrorCode, blockId = '', path = '', hint = '') => {
+    if (result.errors.length < 4) result.errors.push({ code, block_id: blockId.slice(0, 32), path: path.slice(0, 80), message: `${code}: ${path || 'envelope'}`.slice(0, 160), hint: hint.slice(0, 160) })
+  }
+  if (typeof raw === 'string') {
+    if (raw.length > MAX_RAW_JSON_LENGTH) { error('limit_exceeded'); return result }
+    try { raw = JSON.parse(raw) } catch { error('invalid_json'); return result }
+  }
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) { error('rejected_envelope'); return result }
+  const data = raw as Record<string, unknown>
+  let blocks = data.blocks ?? (data.type || inferType(data) ? [data] : [])
+  if (blocks && typeof blocks === 'object' && !Array.isArray(blocks)) blocks = [blocks]
+  if ('v' in data && data.v !== 1 && data.v !== '1') {
+    result.dropped = Array.isArray(blocks) ? blocks.length : 0
+    error('rejected_envelope', '', 'v'); return result
+  }
+  if (!Array.isArray(blocks) || !blocks.length) { error('rejected_envelope', '', 'blocks'); return result }
+  result.envelope = parseUiEnvelope(structuredClone(data))
+  const counts: Record<string, number> = {}
+  blocks.slice(0, MAX_BLOCKS).forEach((rawBlock: unknown, idx: number) => {
+    let blockId = String(idx)
+    if (!rawBlock || typeof rawBlock !== 'object' || Array.isArray(rawBlock)) {
+      result.dropped++; error('type_mismatch', blockId, `blocks[${idx}]`); return
+    }
+    const block = rawBlock as Record<string, unknown>
+    if (typeof block.id === 'string') blockId = block.id
+    const kind = String(block.type || inferType(block) || '').trim().toLowerCase()
+    const hint = Object.prototype.hasOwnProperty.call(UI_SIGNATURES, kind) ? UI_SIGNATURES[kind] : ''
+    let code: UiErrorCode, path: string
+    if (!Object.prototype.hasOwnProperty.call(UI_SIGNATURES, kind)) { code = 'unknown_type'; path = 'type' }
+    else if ((counts[kind] ?? 0) >= (MAX_BLOCKS_PER_TYPE[kind] ?? MAX_BLOCKS)) { code = 'limit_exceeded'; path = 'blocks' }
+    else {
+      const clean = parseUiEnvelope({ v: 1, blocks: [structuredClone(block)] })
+      if (clean) {
+        counts[kind] = (counts[kind] ?? 0) + 1
+        const image = block.image as Record<string, unknown> | undefined
+        if (image && typeof image.url === 'string' && !isAllowedImageUrl(image.url, imageHosts, undefined, allowPrivateHttp)) error('unsafe_url', blockId, 'image.url', hint)
+        return
+      }
+      const required = UI_REQUIRED[kind]
+      const value = block[required]
+      const action = block.action as Record<string, unknown> | undefined
+      if (required && (value === undefined || value === null || value === '' || (Array.isArray(value) && !value.length))) { code = 'missing_required'; path = required }
+      else if (kind === 'controls' && (!action || !['send_message', 'set_model'].includes(String(action.name)))) { code = 'invalid_action'; path = 'action.name' }
+      else if (kind === 'controls') { code = 'invalid_action'; path = 'action' }
+      else if (kind === 'sandbox' && typeof block.html === 'string' && block.html.length > MAX_SANDBOX_HTML) { code = 'limit_exceeded'; path = 'html' }
+      else if (kind === 'chart' && (!block.rows || (Array.isArray(block.rows) && !block.rows.length)) && !(Array.isArray(block.series) && block.series[0] && typeof block.series[0] === 'object' && 'rows' in block.series[0])) { code = 'missing_required'; path = 'rows' }
+      else { code = 'type_mismatch'; path = kind === 'chart' && !['bar', 'line', 'compare'].includes(String(block.kind || 'bar').trim().toLowerCase()) ? 'kind' : required || 'value' }
+    }
+    result.dropped++; error(code, blockId, path, hint)
+  })
+  if (blocks.length > MAX_BLOCKS) { result.dropped += blocks.length - MAX_BLOCKS; error('limit_exceeded', String(MAX_BLOCKS), 'blocks') }
+  return result
+}
+
+/** Diagnostic counterpart of extract_ui; never used to render client-side payloads. */
+export function diagnoseUiText(text: string, imageHosts: string[] = [], allowPrivateHttp = false) {
+  const primary = [...text.matchAll(/^[ \t]{0,3}```(?:nexus-ui(?:\/1)?|nexus)[ \t]*\r?\n([\s\S]*?)\r?\n[ \t]{0,3}```[ \t]*$/gm)]
+  const alternate = primary.length ? [] : [...text.matchAll(/^[ \t]{0,3}```(?:chart|ui)[ \t]*\r?\n\s*(\{[\s\S]*?\})\s*\r?\n[ \t]{0,3}```[ \t]*$/gm)]
+  const matches = primary.length ? primary : alternate
+  if (matches.length) return parseUiEnvelopeWithDiagnostics(matches[matches.length - 1][1].trim(), imageHosts, allowPrivateHttp)
+  if (/^[ \t]{0,3}```(?:nexus-ui(?:\/1)?|nexus)[ \t]*(?:\r?\n[\s\S]*)?$/m.test(text)) {
+    return { envelope: null, dropped: 1, errors: [{ code: 'fence_unclosed' as const, block_id: '', path: '', message: 'fence_unclosed: envelope', hint: '' }] }
+  }
+  return { envelope: null, dropped: 0, errors: [] }
 }

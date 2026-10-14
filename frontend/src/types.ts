@@ -1,3 +1,4 @@
+import type { UiError } from './lib/nexusUi'
 export interface Attachment {
   id: string
   filename: string
@@ -79,6 +80,8 @@ export interface Message {
   process_duration_ms?: number
   was_fallback?: boolean
   auto_route?: AutoRouteDecisionInfo | null
+  ui_errors?: UiError[]
+  ui_dropped?: number
   ui_blocks?: UiEnvelope | null
   /** Assistente proativo (F2): bolha gerada sem pedido do usuário */
   kind?: 'normal' | 'proactive'
@@ -497,6 +500,7 @@ export interface IntelligentUiStats {
   blocks_dropped: number
   discarded: Record<'no_fence' | 'invalid_json' | 'rejected_envelope' | 'empty_after_validation', number>
   block_types: Record<string, number>
+  corrections?: Record<string, { correction_offered: number; correction_requested: number; correction_valid: number; valid_rate: number | null }>
   rates: {
     produced_given_offered: number | null
     valid_given_produced: number | null
@@ -784,7 +788,7 @@ export type WSMessage =
   | { type: 'conversation_created'; conversation_id: string; title: string; project_id?: string | null }
   | { type: 'stream_start'; conversation_id: string; from_cache?: boolean; cache_type?: string | null; cache_similarity?: number | null }
   | { type: 'token'; content: string }
-  | { type: 'stream_end'; message_id: string; conversation_id: string; artifact_id?: string | null; artifact_type?: string | null; artifact_title?: string | null; artifacts?: { id: string; type: string; title: string }[]; relay_used?: boolean; relay_model?: string | null; web_search_used?: boolean; web_search_query?: string; web_search_sources?: WebSearchSource[]; process_steps?: ProcessStep[]; was_fallback?: boolean; ui_blocks?: UiEnvelope | null; process_duration_ms?: number; source_count?: number }
+  | { type: 'stream_end'; message_id: string; conversation_id: string; artifact_id?: string | null; artifact_type?: string | null; artifact_title?: string | null; artifacts?: { id: string; type: string; title: string }[]; relay_used?: boolean; relay_model?: string | null; web_search_used?: boolean; web_search_query?: string; web_search_sources?: WebSearchSource[]; process_steps?: ProcessStep[]; was_fallback?: boolean; ui_errors?: UiError[]; ui_dropped?: number; ui_blocks?: UiEnvelope | null; process_duration_ms?: number; source_count?: number }
   | { type: 'ui_progress'; block: ProgressBlock }
   | { type: 'error'; message: string }
   | { type: 'failover_notice'; original_model: string; fallback_model: string; reason: string }
