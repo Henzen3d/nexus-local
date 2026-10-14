@@ -199,6 +199,68 @@ def test_should_offer_ui_triggers():
     assert should_offer_ui("10, 20 e 30 gatos correram") is False
 
 
+def test_should_offer_ui_sem_falsos_positivos_por_radical():
+    # Palavras comuns que contêm os radicais da spec mas não pedem visual
+    assert should_offer_ui("compartilhe o link do documento comigo") is False
+    assert should_offer_ui("preciso comparecer na reunião amanhã") is False
+    assert should_offer_ui("rode as duas tarefas simultaneamente") is False
+    assert should_offer_ui("o barraco embarrou com a chuva") is False
+    assert should_offer_ui("imprima o cartaz e troque o cartucho") is False
+    assert should_offer_ui("qual a diferença entre simulação e simultaneidade?") is True  # 'simulação' vale
+    # Formas legítimas continuam disparando
+    assert should_offer_ui("faça um comparativo entre as opções") is True
+    assert should_offer_ui("simule o financiamento em 36 vezes") is True
+    assert should_offer_ui("quais etapas faltam?") is True
+    assert should_offer_ui("mostra a foto da placa") is True
+    assert should_offer_ui("cálculo do IMC") is True
+    assert should_offer_ui("GPT-4o vs Claude") is True
+    # Números com palavra de medida colada em outra palavra não contam
+    assert should_offer_ui("1, 2 e 3 contratempos no modelito") is False
+
+
+def test_catalogo_cabe_no_teto_e_tem_as_regras_da_spec():
+    from pathlib import Path
+
+    text = (Path(__file__).resolve().parent.parent / "ui_blocks" / "catalog.txt").read_text(encoding="utf-8")
+    assert len(text) / 4 <= 400, "catálogo estourou os 400 tokens estimados (spec §8)"
+    for frase in (
+        "Máximo 4 blocos",
+        "Sem cor",
+        "{id_do_campo}",
+        "não invente id de modelo",
+        "URL de imagem só se for arquivo do app ou host da lista confiável",
+        "Não escreva HTML na bolha principal",
+        "```nexus-ui",
+        "pending|active|done|error",
+        "bar|line|compare",
+        "text|select|number|range",
+    ):
+        assert frase in text, f"catálogo sem a linha: {frase}"
+    # Sanidade: o exemplo do catálogo é um envelope válido (modelo que copiar acerta),
+    # e as menções inline a ```nexus-ui na prosa do catálogo não são tratadas como fence.
+    _clean, envelope = extract_ui(text)
+    assert envelope is not None and envelope["blocks"][0]["type"] == "chart"
+    assert "use SEMPRE o nome de fence ```nexus-ui" in _clean
+
+
+def test_mencao_inline_a_fence_nao_e_fence():
+    text = "Peça ao modelo para usar o fence ```nexus-ui no final, assim: ```nexus-ui {...} ``` e pronto."
+    prose, env = extract_ui(text)
+    assert env is None
+    assert prose == text  # prosa intacta: nada foi engolido
+
+    # Abertura precisa estar no início da linha; indentação de até 3 espaços vale
+    indented = '   ```nexus-ui\n{"v":1,"blocks":[{"id":"p","type":"progress","label":"A","value":1,"max":2}]}\n   ```'
+    prose, env = extract_ui("Texto.\n\n" + indented)
+    assert env is not None and prose == "Texto."
+
+    # Fence aberto em streaming só conta no início da linha
+    prose, env = extract_ui("falando de ```nexus-ui no meio da frase")
+    assert env is None and prose == "falando de ```nexus-ui no meio da frase"
+    prose, env = extract_ui("Texto.\n```nexus-ui\n{\"v\":1,\"blo")
+    assert env is None and prose == "Texto."
+
+
 # ─── Isolamento de Banco de Dados para Tabela Nova ───────────────────────────
 
 @pytest.mark.asyncio

@@ -7,20 +7,24 @@ from typing import Any
 
 from backend.ui_blocks.validate import validate_envelope
 
-# Regex para fences nexus-ui fechados (aceita ```nexus-ui, ```nexus-ui/1, ```nexus e ```chart com JSON)
+# Fences só contam quando a abertura está no início de uma linha (até 3 espaços,
+# como no CommonMark) e seguida de quebra de linha. Uma menção inline na prosa
+# ("use o fence ```nexus-ui no final") não é fence e não pode engolir o texto.
+# Aceita ```nexus-ui, ```nexus-ui/1 e ```nexus; o fechamento é ``` sozinho na linha.
 FENCE_CLOSED_REGEX = re.compile(
-    r"```(?:nexus-ui(?:/1)?|nexus)\s*([\s\S]*?)\s*```",
+    r"^[ \t]{0,3}```(?:nexus-ui(?:/1)?|nexus)[ \t]*\r?\n([\s\S]*?)\r?\n[ \t]{0,3}```[ \t]*$",
     re.MULTILINE,
 )
 
+# Tolerância para modelo que escreve ```chart { ... } ``` ou ```ui { ... } ``` direto
 FENCE_CHART_CLOSED_REGEX = re.compile(
-    r"```(?:chart|ui)\s*(\{[\s\S]*?\})\s*```",
+    r"^[ \t]{0,3}```(?:chart|ui)[ \t]*\r?\n\s*(\{[\s\S]*?\})\s*\r?\n[ \t]{0,3}```[ \t]*$",
     re.MULTILINE,
 )
 
-# Regex para fence aberto (stream incompleto ou fence não fechado)
+# Fence aberto (stream incompleto ou fence não fechado): do início da linha até o fim
 FENCE_OPEN_REGEX = re.compile(
-    r"```(?:nexus-ui(?:/1)?|nexus)[\s\S]*$",
+    r"^[ \t]{0,3}```(?:nexus-ui(?:/1)?|nexus)[ \t]*(?:\r?\n[\s\S]*)?$",
     re.MULTILINE,
 )
 
@@ -67,7 +71,7 @@ def extract_ui(
             return cleaned_text, envelope
 
     # 3. Se não há fechado, verifica se há fence aberto em streaming
-    if "```nexus-ui" in text or "```nexus" in text:
+    if FENCE_OPEN_REGEX.search(text):
         cleaned_text = FENCE_OPEN_REGEX.sub("", text).rstrip()
         return cleaned_text, None
 

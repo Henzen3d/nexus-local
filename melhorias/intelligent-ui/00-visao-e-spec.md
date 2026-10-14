@@ -77,6 +77,7 @@ Limites do envelope, iguais no backend e no frontend:
 - Bloco inválido: descartar o bloco. Os válidos permanecem.
 - Fence sem fechar no `stream_end`: descartar o fence, não pintar JSON parcial.
 - Mais de um fence: usar só o último. Os anteriores saem da prosa e não viram bloco.
+- Fence só conta com a abertura no início da linha (até 3 espaços) e o fechamento ``` sozinho na linha. Menção inline a ```` ```nexus-ui ```` no meio de uma frase não é fence e não some da prosa. Mesma regra em `extract.py` e em `stripUiFences`.
 
 **Tolerâncias do validador** (iguais em `backend/ui_blocks/validate.py` e `frontend/src/lib/nexusUi.ts`; os testes `test_ui_blocks.py` e `nexusUi.test.ts` cobrem a paridade):
 
@@ -324,29 +325,27 @@ Texto fixo, arquivo futuro `backend/ui_blocks/catalog.txt`. Injeção só quando
 
 Heurístico, case insensitive, na última mensagem do usuário. Ligar o catálogo se qualquer item bater:
 
-- regex: `gráfico|grafico|compar|versus|\bvs\b|etapa|progresso|escolh|selecion|cartão|cartao|imagem|foto|indicador|barra|calcul|simul`
+- regex: `gráfico|grafico|compar|versus|\bvs\b|etapa|progresso|escolh|selecion|cartão|cartao|imagem|foto|indicador|barra|calcul|simul` — cada radical ancorado no início de palavra (`\b`), com exclusões para `compartilhar`/`comparecer`, `simultâneo`, `embarrar`/`barraco`, `cartaz`/`cartucho` (ver `should_offer.py`). Disparo à toa custa ~280 tokens de catálogo e convida widget onde cabia prosa.
 - ou três ou mais números e uma destas palavras: `custo`, `tempo`, `modelo`, `%`, `taxa`, `valor`
 
 Turno que não bater: sem catálogo, sem cobrança de token extra, sem widget de modelo. Bloco de host (Fusion, busca, upload) não depende deste heurístico.
 
-Texto do catálogo, copiar literal na implementação. O bloco usa quatro crases para o fence interno não fechar o externo.
+Texto do catálogo, copiar literal na implementação (`backend/ui_blocks/catalog.txt`; o teste `test_catalogo_cabe_no_teto_e_tem_as_regras_da_spec` confere o teto e as linhas obrigatórias). O exemplo concreto de `chart` e a regra "use SEMPRE o nome de fence" entraram porque modelos pequenos escreviam ```` ```chart ```` solto. O bloco usa quatro tis para o fence interno não fechar o externo.
 
 ~~~~
-Se um visual ajudar, anexe um único fence no final, depois da prosa. A prosa tem de bastar sozinha.
+Se um visual ajudar, anexe UM único fence ```nexus-ui no final, depois da prosa. A prosa tem de bastar sozinha; sem visual útil, não gere fence.
 
 ```nexus-ui
-{"v":1,"blocks":[]}
+{"v":1,"blocks":[{"type":"chart","title":"Título","kind":"bar","x_key":"x","series":[{"key":"y","label":"Rótulo"}],"rows":[{"x":"Item","y":10}]}]}
 ```
 
-Máximo 4 blocos. Tipos: progress, card, chart, controls, sandbox.
-progress: label, value, max, steps com state pending|active|done|error.
-card: title, body, image com url e alt, facts com label e value.
-chart: kind bar|line|compare, x_key, series, rows numéricas. Sem cor.
-controls: fields text|select|number|range, computed opcional e uma action.
-action send_message usa template com {id_do_campo}.
-action set_model usa field do select. Não invente id de modelo.
-sandbox: title, initial_height, html, css, js, standalone_download (para simulações/calculadoras dinâmicas isoladas).
-Não escreva HTML na bolha principal. URL de imagem só se for arquivo do app ou host da lista confiável. Sem visual, sem fence.
+Máximo 4 blocos. Tipos no campo "type":
+- progress: label, value, max, steps com label e state pending|active|done|error.
+- card: title, body, facts (lista de {label, value}), image opcional com url e alt. URL de imagem só se for arquivo do app ou host da lista confiável.
+- chart: kind bar|line|compare, x_key, series (key e label), rows numéricas. Sem cor.
+- controls: title, submit_label, fields (text|select|number|range, máximo 4), computed opcional e uma action: send_message usa template com {id_do_campo}; set_model usa field do select e não invente id de modelo.
+- sandbox: title, initial_height, html, css, js, standalone_download (simulação interativa isolada).
+Regras: use SEMPRE o nome de fence ```nexus-ui, nunca ```chart ou ```card. Não escreva HTML na bolha principal.
 ~~~~
 
 O fence de exemplo dentro do catálogo é texto de instrução, não um bloco a renderizar. O extrator só olha a resposta do assistente, não o system prompt.

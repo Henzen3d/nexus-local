@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { isAllowedImageUrl, parseUiEnvelope } from './nexusUi.ts'
+import { isAllowedImageUrl, parseUiEnvelope, stripUiFences } from './nexusUi.ts'
 
 test('rejeita versao errada', () => {
   assert.equal(parseUiEnvelope('{"v":2,"blocks":[]}'), null)
@@ -177,4 +177,16 @@ test('sandbox: limites 12000/4000/8000 e altura tolerante', () => {
     assert.equal(cssGrande.blocks[0].css, undefined)
     assert.equal(cssGrande.blocks[0].js, undefined)
   }
+})
+
+test('stripUiFences: remove fence no inicio da linha, preserva mencao inline', () => {
+  const comFence = 'Prosa.\n\n```nexus-ui\n{"v":1,"blocks":[]}\n```'
+  assert.equal(stripUiFences(comFence), 'Prosa.')
+  const inline = 'Use o fence ```nexus-ui no final, assim: ```nexus-ui {...} ``` e pronto.'
+  assert.equal(stripUiFences(inline), inline)
+  const indentado = 'Texto.\n   ```nexus-ui\n{"v":1,"blocks":[]}\n   ```'
+  assert.equal(stripUiFences(indentado), 'Texto.')
+  // fence aberto durante o stream some; menção inline não
+  assert.equal(stripUiFences('Texto.\n```nexus-ui\n{"v":1,"blo'), 'Texto.')
+  assert.equal(stripUiFences('falando de ```nexus-ui no meio'), 'falando de ```nexus-ui no meio')
 })

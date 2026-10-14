@@ -560,11 +560,16 @@ export function parseUiEnvelope(raw: unknown): UiEnvelope | null {
 /**
  * Remove blocos nexus-ui e chart fences do texto para exibição limpa em Markdown.
  */
+/**
+ * Remove os fences nexus-ui da prosa para exibição (o envelope já veio do servidor).
+ * Mesmas âncoras do extrator Python (backend/ui_blocks/extract.py): a abertura
+ * tem de estar no início da linha; menção inline a ```nexus-ui na prosa não é fence.
+ */
 export function stripUiFences(text: string): string {
   if (!text) return ''
   return text
-    .replace(/```(?:nexus-ui(?:\/1)?|nexus)\s*[\s\S]*?```/g, '')
-    .replace(/```(?:chart|ui)\s*\{[\s\S]*?\}\s*```/g, '')
-    .replace(/```(?:nexus-ui(?:\/1)?|nexus)[\s\S]*$/g, '')
+    .replace(/^[ \t]{0,3}```(?:nexus-ui(?:\/1)?|nexus)[ \t]*\r?\n[\s\S]*?\r?\n[ \t]{0,3}```[ \t]*$/gm, '')
+    .replace(/^[ \t]{0,3}```(?:chart|ui)[ \t]*\r?\n\s*\{[\s\S]*?\}\s*\r?\n[ \t]{0,3}```[ \t]*$/gm, '')
+    .replace(/^[ \t]{0,3}```(?:nexus-ui(?:\/1)?|nexus)[ \t]*(?:\r?\n[\s\S]*)?$/gm, '')
     .trim()
 }
