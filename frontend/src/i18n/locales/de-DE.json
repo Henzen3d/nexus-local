@@ -630,7 +630,21 @@
     "familiesListTitle": "Current Families",
     "selectEnabledModel": "Select an enabled model...",
     "fallbackChain": "Fallback Chain ({{count}})",
-    "familyNamePlaceholder:": "e.g.: Advanced Reasoning"
+    "familyNamePlaceholder:": "e.g.: Advanced Reasoning",
+    "intelligentUiTitle": "Intelligente Oberfläche",
+    "intelligentUiDesc": "Fortschrittsbalken, Karten, Diagramme, Steuerelemente und Mikro-Tools, die die App selbst aus strukturierten Daten der KI zeichnet. Der Text bleibt auch ohne sie vollständig.",
+    "intelligentUiEnable": "Visuelle Blöcke in Antworten aktivieren",
+    "intelligentUiEnableDesc": "Ausgeschaltet ist der Chat identisch wie zuvor: kein Katalog im Prompt, keine Extraktion, keine Blöcke in der Sprechblase.",
+    "intelligentUiImageHosts": "Vertrauenswürdige Hosts für Kartenbilder",
+    "intelligentUiImageHostsHint": "Durch Komma getrennt. Eigene Anhänge der App sind immer erlaubt. Jeder andere https-Host außerhalb dieser Liste wird aus der Karte entfernt (die KI wählt die Liste nicht).",
+    "intelligentUiPrivateHttp": "http:// für private LAN-IPs / .local erlauben",
+    "intelligentUiPrivateHttpDesc": "Für Bilder von Kamera, NAS oder 3D-Drucker zu Hause (10.x, 192.168.x, 172.16-31.x, *.local).",
+    "intelligentUiSourceInfo": "Aktueller Wert",
+    "intelligentUiSourceDb": "in diesem Panel festgelegt",
+    "intelligentUiSourceEnv": "aus der .env des Servers",
+    "intelligentUiSourceDefault": "Standard (nie konfiguriert)",
+    "intelligentUiSourceHint": "Nach dem Speichern hier wird die .env für diese Optionen nicht mehr gelesen.",
+    "intelligentUiSaveError": "Speichern fehlgeschlagen. Bitte erneut versuchen."
   },
   "memory": {
     "useMemoryGlobal": "Gedächtnis in Gesprächen (Standard: an)",

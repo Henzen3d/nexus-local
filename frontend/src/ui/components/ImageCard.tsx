@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { isAllowedImageUrl } from '../../lib/nexusUi'
 import type { CardBlock } from '../../types'
+import { useIntelligentUiConfig } from '../hooks/useIntelligentUi'
 
 interface Props {
   block: CardBlock
@@ -9,11 +10,19 @@ interface Props {
 export function ImageCard({ block }: Props) {
   const { title, body, facts, image } = block
   const [imgError, setImgError] = useState(false)
+  // Mesma lista de hosts e mesma flag de rede privada que o servidor usou ao
+  // validar o bloco (spec, seção 6): o frontend repete a checagem antes do <img>.
+  const { image_hosts, allow_private_http } = useIntelligentUiConfig()
 
   const isImgValid =
     image &&
     !imgError &&
-    isAllowedImageUrl(image.url, [], typeof window !== 'undefined' ? window.location.host : undefined)
+    isAllowedImageUrl(
+      image.url,
+      image_hosts,
+      typeof window !== 'undefined' ? window.location.host : undefined,
+      allow_private_http
+    )
 
   return (
     <div

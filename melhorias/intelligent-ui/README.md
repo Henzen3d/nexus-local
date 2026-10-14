@@ -1,6 +1,6 @@
 # Intelligent UI — documentação e planos
 
-Spec, planos e registro de auditoria do Intelligent UI. **O código das Fases 1 a 7 está implementado no repositório** (ver seção *Estado*). A flag `INTELLIGENT_UI_ENABLED` nasce desligada e hoje controla apenas a injeção do catálogo no prompt.
+Spec, planos e registro de auditoria do Intelligent UI. **O código das Fases 1 a 7 está implementado no repositório** (ver seção *Estado*). A flag nasce desligada (`INTELLIGENT_UI_ENABLED` no `.env`, ou o toggle em Configurações → Ferramentas → Interface Inteligente, que manda sobre o `.env`) e, desde as correções de 2026-10-14, desliga o recurso inteiro: catálogo, extração, persistência, `stream_end.ui_blocks` e render.
 
 O Multi+ continua o frontend atual (React 18, Vite, Zustand, Vanilla CSS). O sistema adota a estratégia do **Generative UI Spectrum** (inspirada nos lançamentos de outubro de 2026: ChatGPT Intelligent UI e [CopilotKit Open Intelligent UI](https://github.com/CopilotKit/OpenIntelligentUI)):
 1. **Nível 1 — Controlled Generative UI (Fases 1 a 6):** O modelo entrega um JSON pequeno e validado (`nexus-ui/1`). O frontend renderiza através de componentes nativos rápidos e seguros, 100% integrados aos design tokens do Multi+ (`var(--primary)`, `var(--surface-card)`, etc.).
@@ -42,9 +42,9 @@ Ordem de execução: 01, depois 02, 03, 04, 05. O 06 acompanha cada fase, não e
 
 | Fase | Plano | Situação | Evidência |
 |---|---|---|---|
-| 1 | 01-plano-fundacao | Implementada, 1 pendência | `backend/ui_blocks/validate.py`, `extract.py`; tabela `message_ui_blocks` em `database.py`; `save_ui_blocks` em `persist_turn.py`; `frontend/src/lib/nexusUi.ts`. Pendência: a flag não desliga extração/persistência/render. |
+| 1 | 01-plano-fundacao | Implementada | `backend/ui_blocks/validate.py`, `extract.py`, `config.py`; tabelas `message_ui_blocks` e `intelligent_ui_config` em `database.py`; `save_ui_blocks` em `persist_turn.py`; `routers/intelligent_ui.py`; `frontend/src/lib/nexusUi.ts`, `ui/hooks/useIntelligentUi.ts`, `components/IntelligentUiSettings.tsx`. Flag fecha o recurso inteiro; teste de turno em `tests/test_intelligent_ui_turn.py`. |
 | 2 | 02-plano-indicadores | Implementada | `ProgressCard.tsx`, `ChecklistCard.tsx`, `DynamicRenderer.tsx`, `handleUiProgress` no store, `should_offer.py`, `catalog.txt`, gate em `chat.py`. |
-| 3 | 03-plano-cartoes-imagens | Implementada, 1 pendência | `ImageCard.tsx`, `isAllowedImageUrl` nos dois lados. Pendência: frontend não recebe `INTELLIGENT_UI_IMAGE_HOSTS`/`ALLOW_PRIVATE_HTTP`. |
+| 3 | 03-plano-cartoes-imagens | Implementada | `ImageCard.tsx`, `isAllowedImageUrl` nos dois lados; hosts e flag privada chegam ao frontend por `GET /api/intelligent-ui/config`. Falta só teste de render do cartão. |
 | 4 | 04-plano-graficos | Implementada, 1 pendência | `ChartCard.tsx` (bar/line/compare, tabela sr-only). Pendência: `recharts` ainda no chunk principal via `AdminPanel` estático. |
 | 5 | 05-plano-controles | Implementada, `set_model` parcial | `ControlsCard.tsx`, `lib/safeMath.ts`. Pendência: select de `set_model` usa options do modelo, não `models` do store. |
 | 6 | 06-criterios-aceite | 37 de 44 itens atendidos | Bloqueadores para ligar em produção listados no topo do arquivo. |

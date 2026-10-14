@@ -421,6 +421,17 @@ export interface UiEnvelope {
   blocks: UiBlock[]
 }
 
+/** Configuração efetiva do Intelligent UI (GET /api/intelligent-ui/config). */
+export interface IntelligentUiConfig {
+  enabled: boolean
+  /** Hosts remotos confiáveis para imagem de cartão (já normalizados pelo servidor). */
+  image_hosts: string[]
+  allow_private_http: boolean
+  /** De onde veio o valor efetivo: painel ('db'), .env ('env') ou padrão. */
+  source?: 'db' | 'env' | 'default'
+  updated_at?: string | null
+}
+
 export interface AutoRouteAlternative {
   model_id: string
   model_name: string

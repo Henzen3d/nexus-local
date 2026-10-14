@@ -25,21 +25,30 @@ FENCE_OPEN_REGEX = re.compile(
 )
 
 
-def extract_ui(text: str) -> tuple[str, dict[str, Any] | None]:
+def extract_ui(
+    text: str,
+    *,
+    image_hosts: list[str] | None = None,
+    allow_private_http: bool | None = None,
+) -> tuple[str, dict[str, Any] | None]:
     """Extrai o último fence de UI da prosa.
 
     Retorna (prosa_limpa, envelope_validado). Se nenhum envelope for válido,
-    retorna (prosa_limpa, None).
+    retorna (prosa_limpa, None). ``image_hosts``/``allow_private_http`` são a
+    configuração efetiva do turno; ``None`` cai no ambiente.
     """
     if not isinstance(text, str) or not text:
         return text or "", None
+
+    def _validate(raw_json: str) -> dict[str, Any] | None:
+        return validate_envelope(raw_json, image_hosts=image_hosts, allow_private_http=allow_private_http)
 
     # 1. Tenta padrão primário nexus-ui
     closed_matches = list(FENCE_CLOSED_REGEX.finditer(text))
     if closed_matches:
         last_match = closed_matches[-1]
         raw_json = last_match.group(1).strip()
-        envelope = validate_envelope(raw_json)
+        envelope = _validate(raw_json)
 
         # Remove todos os fences fechados da prosa
         cleaned_text = FENCE_CLOSED_REGEX.sub("", text)
@@ -52,7 +61,7 @@ def extract_ui(text: str) -> tuple[str, dict[str, Any] | None]:
     if chart_matches:
         last_match = chart_matches[-1]
         raw_json = last_match.group(1).strip()
-        envelope = validate_envelope(raw_json)
+        envelope = _validate(raw_json)
         if envelope:
             cleaned_text = FENCE_CHART_CLOSED_REGEX.sub("", text).rstrip()
             return cleaned_text, envelope

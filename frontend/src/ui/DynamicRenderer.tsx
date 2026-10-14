@@ -1,6 +1,7 @@
 import React, { Suspense } from 'react'
 import { parseUiEnvelope } from '../lib/nexusUi'
 import type { UiEnvelope } from '../types'
+import { useIntelligentUiEnabled } from './hooks/useIntelligentUi'
 
 const ProgressCard = React.lazy(() => import('./components/ProgressCard'))
 const ChecklistCard = React.lazy(() => import('./components/ChecklistCard'))
@@ -14,7 +15,9 @@ interface Props {
 }
 
 export function DynamicRenderer({ envelope }: Props) {
-  if (!envelope) return null
+  // Flag desligada (ou ainda não carregada): nada é pintado, mesmo com payload.
+  const enabled = useIntelligentUiEnabled()
+  if (!enabled || !envelope) return null
 
   const validEnvelope = parseUiEnvelope(envelope)
   if (!validEnvelope || validEnvelope.blocks.length === 0) {

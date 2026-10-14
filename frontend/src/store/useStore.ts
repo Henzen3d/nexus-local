@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Artifact, Conversation, ConversationDetail, Message, Model, CacheStats, CacheSettings, FusionStatusEntry, Attachment, LibraryItem, WebSearchSource, AutoRouteDecisionInfo, UiEnvelope, ProgressBlock, ProcessStep, ProactiveInsight, ProactiveAckAction, ProactiveChannelHint, ProactiveExpandMode, ProactiveSettings, ToastItem } from '../types'
+import type { Artifact, Conversation, ConversationDetail, Message, Model, CacheStats, CacheSettings, FusionStatusEntry, Attachment, LibraryItem, WebSearchSource, AutoRouteDecisionInfo, UiEnvelope, ProgressBlock, IntelligentUiConfig, ProcessStep, ProactiveInsight, ProactiveAckAction, ProactiveChannelHint, ProactiveExpandMode, ProactiveSettings, ToastItem } from '../types'
 import { api } from '../api/client'
 import i18n, { detectInitialLocale } from '../i18n'
 import { effectivePreferredModel } from '../lib/modelSelection'
@@ -193,6 +193,12 @@ interface AppState {
   processSteps: ProcessStep[]
   processStartedAt: number | null
   lastCacheHit: { type: string; similarity: number } | null
+
+  // Intelligent UI (blocos nexus-ui/1 na bolha)
+  /** null = ainda não carregado. Enquanto null, nada é renderizado (ausente = desligado). */
+  intelligentUiConfig: IntelligentUiConfig | null
+  loadIntelligentUiConfig: () => Promise<void>
+  setIntelligentUiConfig: (cfg: IntelligentUiConfig | null) => void
 
   // Model selection
   models: Model[]
@@ -541,6 +547,7 @@ export const useStore = create<AppState>((set, get) => ({
   pendingInsights: [],
   proactiveSettings: null,
   composerPrefill: null,
+  intelligentUiConfig: null,
   models: [],
   selectedModelId: typeof window !== 'undefined' ? readPersistedModelSelection().modelId : null,
   selectedProviderId: typeof window !== 'undefined' ? readPersistedModelSelection().providerId : null,
@@ -1308,6 +1315,17 @@ export const useStore = create<AppState>((set, get) => ({
   })),
 
   setLastCacheHit: (hit) => set({ lastCacheHit: hit }),
+
+  loadIntelligentUiConfig: async () => {
+    try {
+      const cfg = await api.getIntelligentUiConfig()
+      set({ intelligentUiConfig: cfg })
+    } catch {
+      // Backend antigo ou erro de rede: trata como desligado (ausente = falso).
+      set({ intelligentUiConfig: { enabled: false, image_hosts: [], allow_private_http: false, source: 'default' } })
+    }
+  },
+  setIntelligentUiConfig: (cfg) => set({ intelligentUiConfig: cfg }),
 
   loadModels: async () => {
     const models = await api.getModels()

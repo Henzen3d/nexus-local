@@ -1,5 +1,6 @@
 import type { Components } from 'react-markdown'
 import { CodeBlock } from './CodeBlock'
+import { isIntelligentUiEnabled } from '../ui/hooks/useIntelligentUi'
 
 /**
  * Componentes react-markdown compartilhados.
@@ -21,8 +22,9 @@ export const markdownComponents: Components = {
       Boolean(className && /language-/.test(className)) ||
       (raw.includes('\n') && raw.length > 40)
 
-    // Não renderiza blocos nexus-ui como código bruto — eles são desenhados pelo DynamicRenderer
-    if (className && /language-nexus(-ui)?(\/1)?\b/i.test(className)) {
+    // Com o Intelligent UI ligado, o fence nexus-ui não é código para o usuário:
+    // o DynamicRenderer desenha o bloco. Desligado, mostra como código (comportamento antigo).
+    if (className && /language-nexus(-ui)?(\/1)?\b/i.test(className) && isIntelligentUiEnabled()) {
       return null
     }
 

@@ -148,6 +148,8 @@ export default function App() {
     if (token) {
       hydrateProfileFromServer()
       loadTtsPrefs().catch(() => {})
+      // Intelligent UI: flag e hosts de imagem vêm do servidor (painel > .env)
+      useStore.getState().loadIntelligentUiConfig()
     }
   }, [token, hydrateProfileFromServer])
 

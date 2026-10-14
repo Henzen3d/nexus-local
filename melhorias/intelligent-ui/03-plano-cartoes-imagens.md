@@ -10,7 +10,7 @@
 
 **Spec:** `melhorias/intelligent-ui/00-visao-e-spec.md` seções 4.2 e 6.
 
-**Estado (auditoria 2026-10-14):** implementado. Pendência relevante: o `ImageCard` chama `isAllowedImageUrl(url, [], window.location.host)` com lista de hosts vazia e `allowPrivateHttp=false` fixos — o frontend não recebe `INTELLIGENT_UI_IMAGE_HOSTS`/`INTELLIGENT_UI_ALLOW_PRIVATE_HTTP`, então imagens liberadas pelo backend por essas variáveis são barradas na bolha. Só URL relativa e host da própria página pintam de fato.
+**Estado (correções 2026-10-14):** implementado, pendência fechada. O `ImageCard` lê `image_hosts` e `allow_private_http` de `useIntelligentUiConfig()` (store, carregado de `GET /api/intelligent-ui/config` no boot) e repete a checagem com a mesma lista que o servidor usou. `test_painel_manda_sobre_env_e_lista_de_hosts_chega_ao_filtro` cobre o lado do servidor. Falta ainda o teste de render do cartão (Step 1 abaixo).
 
 ## Global Constraints
 
