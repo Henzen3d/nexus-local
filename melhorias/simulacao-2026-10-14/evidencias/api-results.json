@@ -1,0 +1,1960 @@
+[
+  {
+    "test": "cadastro_fechado",
+    "status": 403,
+    "ms": 25.8,
+    "body": {
+      "detail": "Cadastro público fechado. Peça ao administrador para criar a conta."
+    }
+  },
+  {
+    "test": "vazio",
+    "elapsed_ms": 14.8,
+    "ttft_ms": null,
+    "events": [
+      {
+        "type": "error",
+        "message": "Mensagem ou anexo requerido."
+      }
+    ]
+  },
+  {
+    "test": "unicode",
+    "elapsed_ms": 365.0,
+    "ttft_ms": 158.6,
+    "events": [
+      {
+        "type": "conversation_created",
+        "conversation_id": "fa6aa682-d36f-4bce-a416-75a7a6618d9b",
+        "title": "Ação 日本語 👩🏽‍💻 <script>alert(1)</script>",
+        "project_id": null
+      },
+      {
+        "type": "stream_start",
+        "conversation_id": "fa6aa682-d36f-4bce-a416-75a7a6618d9b",
+        "from_cache": false
+      },
+      {
+        "type": "token",
+        "content": "Resposta simulada qa-a. "
+      },
+      {
+        "type": "token",
+        "content": "Unicode: ação, 日本語, 👩🏽‍💻"
+      },
+      {
+        "type": "token",
+        "content": ".\n\nConteúdo determinísti"
+      },
+      {
+        "type": "token",
+        "content": "co para testes de interf"
+      },
+      {
+        "type": "token",
+        "content": "ace."
+      },
+      {
+        "type": "stream_end",
+        "message_id": "466a5f8c-f641-4076-b06a-394976c25afc",
+        "conversation_id": "fa6aa682-d36f-4bce-a416-75a7a6618d9b",
+        "from_cache": false,
+        "cache_type": null,
+        "cache_similarity": null,
+        "artifact_id": null,
+        "artifact_type": null,
+        "artifact_title": null,
+        "artifacts": [],
+        "relay_used": false,
+        "relay_model": null,
+        "web_search_used": false,
+        "web_search_query": "",
+        "web_search_sources": [],
+        "process_steps": [],
+        "process_duration_ms": 359,
+        "source_count": 0,
+        "phase_latencies": {
+          "rag_memory": 0.408,
+          "llm_ttfb": 122.632
+        }
+      }
+    ]
+  },
+  {
+    "test": "texto_gigante_100k",
+    "elapsed_ms": 381.5,
+    "ttft_ms": 166.0,
+    "events": [
+      {
+        "type": "conversation_created",
+        "conversation_id": "103f89c0-f1b8-462a-9ad9-458ed2506c2f",
+        "title": "測測測測測測測測測測測測測測測測測測測測測測測測測測測測測測測測測測測測測測測測測測測測測測測測測測測測測測測測測測測測…",
+        "project_id": null
+      },
+      {
+        "type": "stream_start",
+        "conversation_id": "103f89c0-f1b8-462a-9ad9-458ed2506c2f",
+        "from_cache": false
+      },
+      {
+        "type": "token",
+        "content": "Resposta simulada qa-a. "
+      },
+      {
+        "type": "token",
+        "content": "Unicode: ação, 日本語, 👩🏽‍💻"
+      },
+      {
+        "type": "token",
+        "content": ".\n\nConteúdo determinísti"
+      },
+      {
+        "type": "token",
+        "content": "co para testes de interf"
+      },
+      {
+        "type": "token",
+        "content": "ace."
+      },
+      {
+        "type": "stream_end",
+        "message_id": "c4ea0f51-a676-4f1b-b7a5-6c2026c78f6d",
+        "conversation_id": "103f89c0-f1b8-462a-9ad9-458ed2506c2f",
+        "from_cache": false,
+        "cache_type": null,
+        "cache_similarity": null,
+        "artifact_id": null,
+        "artifact_type": null,
+        "artifact_title": null,
+        "artifacts": [],
+        "relay_used": false,
+        "relay_model": null,
+        "web_search_used": false,
+        "web_search_query": "",
+        "web_search_sources": [],
+        "process_steps": [],
+        "process_duration_ms": 363,
+        "source_count": 0,
+        "phase_latencies": {
+          "rag_memory": 0.387,
+          "llm_ttfb": 124.577
+        }
+      }
+    ]
+  },
+  {
+    "test": "duplicado_sem_request_id",
+    "elapsed_ms": 724.7,
+    "ttft_ms": 159.9,
+    "events": [
+      {
+        "type": "conversation_created",
+        "conversation_id": "c3e8107d-0875-4528-a8fe-fab6b87eaddf",
+        "title": "QA duplo envio",
+        "project_id": null
+      },
+      {
+        "type": "stream_start",
+        "conversation_id": "c3e8107d-0875-4528-a8fe-fab6b87eaddf",
+        "from_cache": false
+      },
+      {
+        "type": "token",
+        "content": "Resposta simulada qa-a. "
+      },
+      {
+        "type": "token",
+        "content": "Unicode: ação, 日本語, 👩🏽‍💻"
+      },
+      {
+        "type": "token",
+        "content": ".\n\nConteúdo determinísti"
+      },
+      {
+        "type": "token",
+        "content": "co para testes de interf"
+      },
+      {
+        "type": "token",
+        "content": "ace."
+      },
+      {
+        "type": "stream_end",
+        "message_id": "0a0850c7-4c7c-4f2a-99e6-2ba62ad0f243",
+        "conversation_id": "c3e8107d-0875-4528-a8fe-fab6b87eaddf",
+        "from_cache": false,
+        "cache_type": null,
+        "cache_similarity": null,
+        "artifact_id": null,
+        "artifact_type": null,
+        "artifact_title": null,
+        "artifacts": [],
+        "relay_used": false,
+        "relay_model": null,
+        "web_search_used": false,
+        "web_search_query": "",
+        "web_search_sources": [],
+        "process_steps": [],
+        "process_duration_ms": 359,
+        "source_count": 0,
+        "phase_latencies": {
+          "rag_memory": 0.358,
+          "llm_ttfb": 122.384
+        }
+      },
+      {
+        "type": "conversation_created",
+        "conversation_id": "58c36b0b-a012-48f4-acf2-b75c199ea453",
+        "title": "QA duplo envio",
+        "project_id": null
+      },
+      {
+        "type": "stream_start",
+        "conversation_id": "58c36b0b-a012-48f4-acf2-b75c199ea453",
+        "from_cache": false
+      },
+      {
+        "type": "token",
+        "content": "Resposta simulada qa-a. "
+      },
+      {
+        "type": "token",
+        "content": "Unicode: ação, 日本語, 👩🏽‍💻"
+      },
+      {
+        "type": "token",
+        "content": ".\n\nConteúdo determinísti"
+      },
+      {
+        "type": "token",
+        "content": "co para testes de interf"
+      },
+      {
+        "type": "token",
+        "content": "ace."
+      },
+      {
+        "type": "stream_end",
+        "message_id": "edb843a0-1872-4ee0-a266-b7666492d1c4",
+        "conversation_id": "58c36b0b-a012-48f4-acf2-b75c199ea453",
+        "from_cache": false,
+        "cache_type": null,
+        "cache_similarity": null,
+        "artifact_id": null,
+        "artifact_type": null,
+        "artifact_title": null,
+        "artifacts": [],
+        "relay_used": false,
+        "relay_model": null,
+        "web_search_used": false,
+        "web_search_query": "",
+        "web_search_sources": [],
+        "process_steps": [],
+        "process_duration_ms": 357,
+        "source_count": 0,
+        "phase_latencies": {
+          "rag_memory": 0.113,
+          "llm_ttfb": 123.623
+        }
+      }
+    ]
+  },
+  {
+    "test": "aba_fechada",
+    "elapsed_ms": 1199.4,
+    "ttft_ms": 1198.5,
+    "events": [
+      {
+        "type": "conversation_created",
+        "conversation_id": "8405b0f6-49b4-4ecb-8f55-8b31cfb083e6",
+        "title": "QA fechar aba",
+        "project_id": null
+      },
+      {
+        "type": "stream_start",
+        "conversation_id": "8405b0f6-49b4-4ecb-8f55-8b31cfb083e6",
+        "from_cache": false
+      },
+      {
+        "type": "token",
+        "content": "Resposta simulada qa-slo"
+      }
+    ]
+  },
+  {
+    "test": "ws_shape_[]",
+    "result": "ConnectionClosedError: no close frame received or sent"
+  },
+  {
+    "test": "ws_shape_{\"message\":42}",
+    "result": "ConnectionClosedError: no close frame received or sent"
+  },
+  {
+    "test": "ws_shape_null",
+    "result": "ConnectionClosedError: no close frame received or sent"
+  },
+  {
+    "test": "projeto_criado",
+    "status": 200,
+    "ms": 6.2,
+    "body": {
+      "id": "e78008c1-ee61-48ad-923d-00dab8f70b38",
+      "name": "QA RAG Unicode 日本語",
+      "description": "",
+      "instructions": "REGRA_PROJETO_QA: responda citando o documento.",
+      "model_default": null,
+      "is_favorite": false,
+      "archived": false,
+      "retrieval_top_k": 6,
+      "retrieval_threshold": 0.42,
+      "created_at": "2026-10-14 14:12:15",
+      "updated_at": "2026-10-14 14:12:15",
+      "file_count": 0,
+      "chat_count": 0,
+      "memory_preview": null
+    }
+  },
+  {
+    "test": "upload_project_manual.md",
+    "status": 200,
+    "ms": 5.8,
+    "body": {
+      "id": "pf_a34143590d93464d910f707da3ef7b58",
+      "filename": "manual.md",
+      "mime_type": "text/markdown",
+      "size_bytes": 42734,
+      "index_status": "pending"
+    }
+  },
+  {
+    "test": "upload_project_regras.txt",
+    "status": 200,
+    "ms": 6.9,
+    "body": {
+      "id": "pf_7871b96a2a6941b381aa7a6fbe91ad11",
+      "filename": "regras.txt",
+      "mime_type": "text/plain",
+      "size_bytes": 48,
+      "index_status": "pending"
+    }
+  },
+  {
+    "test": "upload_project_terceiro.txt",
+    "status": 200,
+    "ms": 7.3,
+    "body": {
+      "id": "pf_1571bbf958104fa18e4382921f12fb9a",
+      "filename": "terceiro.txt",
+      "mime_type": "text/plain",
+      "size_bytes": 33,
+      "index_status": "pending"
+    }
+  },
+  {
+    "test": "upload_project_corrompido.pdf",
+    "status": 200,
+    "ms": 121.0,
+    "body": {
+      "id": "pf_994fbc40654d44078e492dd618625232",
+      "filename": "corrompido.pdf",
+      "mime_type": "application/pdf",
+      "size_bytes": 22,
+      "index_status": "pending"
+    }
+  },
+  {
+    "test": "upload_project_programa.exe",
+    "status": 200,
+    "ms": 8.1,
+    "body": {
+      "id": "pf_e1592742b5194ab0811ccdbbd4fded14",
+      "filename": "programa.exe",
+      "mime_type": "application/octet-stream",
+      "size_bytes": 20,
+      "index_status": "pending"
+    }
+  },
+  {
+    "test": "upload_project_vazio.txt",
+    "status": 400,
+    "ms": 8.1,
+    "body": {
+      "detail": "Arquivo vazio."
+    }
+  },
+  {
+    "test": "upload_project_grande.txt",
+    "status": 400,
+    "ms": 111.6,
+    "body": {
+      "detail": "Arquivo excede 25MB."
+    }
+  },
+  {
+    "test": "arquivos_indexados",
+    "status": 200,
+    "ms": 7.2,
+    "body": [
+      {
+        "id": "pf_a34143590d93464d910f707da3ef7b58",
+        "filename": "manual.md",
+        "mime_type": "text/markdown",
+        "size_bytes": 42734,
+        "index_status": "ready",
+        "index_error": null,
+        "indexed_at": "2026-10-14 14:12:15",
+        "created_at": "2026-10-14 14:12:15"
+      },
+      {
+        "id": "pf_7871b96a2a6941b381aa7a6fbe91ad11",
+        "filename": "regras.txt",
+        "mime_type": "text/plain",
+        "size_bytes": 48,
+        "index_status": "ready",
+        "index_error": null,
+        "indexed_at": "2026-10-14 14:12:15",
+        "created_at": "2026-10-14 14:12:15"
+      },
+      {
+        "id": "pf_1571bbf958104fa18e4382921f12fb9a",
+        "filename": "terceiro.txt",
+        "mime_type": "text/plain",
+        "size_bytes": 33,
+        "index_status": "ready",
+        "index_error": null,
+        "indexed_at": "2026-10-14 14:12:15",
+        "created_at": "2026-10-14 14:12:15"
+      },
+      {
+        "id": "pf_994fbc40654d44078e492dd618625232",
+        "filename": "corrompido.pdf",
+        "mime_type": "application/pdf",
+        "size_bytes": 22,
+        "index_status": "error",
+        "index_error": "PDF sem texto extraível — provavelmente escaneado. Não foi possível renderizar as páginas para transcrição.",
+        "indexed_at": null,
+        "created_at": "2026-10-14 14:12:15"
+      },
+      {
+        "id": "pf_e1592742b5194ab0811ccdbbd4fded14",
+        "filename": "programa.exe",
+        "mime_type": "application/octet-stream",
+        "size_bytes": 20,
+        "index_status": "error",
+        "index_error": "Tipo de arquivo '.exe' não suportado para extração de texto.",
+        "indexed_at": null,
+        "created_at": "2026-10-14 14:12:15"
+      }
+    ]
+  },
+  {
+    "test": "pergunta_rag",
+    "elapsed_ms": 386.9,
+    "ttft_ms": 168.3,
+    "events": [
+      {
+        "type": "conversation_created",
+        "conversation_id": "5e23f344-5d7c-4ac8-94c6-593aff7e9e7d",
+        "title": "Qual o código secreto de devolução?",
+        "project_id": "e78008c1-ee61-48ad-923d-00dab8f70b38"
+      },
+      {
+        "type": "project_context_debug",
+        "project_id": "e78008c1-ee61-48ad-923d-00dab8f70b38",
+        "debug": {
+          "project_name": "QA RAG Unicode 日本語",
+          "threshold": 0.42,
+          "top_k": 6,
+          "retrieval_mode": "none",
+          "safe_input_tokens": 6144,
+          "system_budget": 3620,
+          "file_rag_budget": 1800,
+          "chat_rag_budget": 724,
+          "context_window": 8192,
+          "known_tpm": null,
+          "provider_id": "ollama",
+          "budget_note": "",
+          "file_inventory": [
+            {
+              "filename": "manual.md",
+              "index_status": "ready",
+              "size_bytes": 42734
+            },
+            {
+              "filename": "regras.txt",
+              "index_status": "ready",
+              "size_bytes": 48
+            },
+            {
+              "filename": "terceiro.txt",
+              "index_status": "ready",
+              "size_bytes": 33
+            },
+            {
+              "filename": "corrompido.pdf",
+              "index_status": "error",
+              "size_bytes": 22
+            },
+            {
+              "filename": "programa.exe",
+              "index_status": "error",
+              "size_bytes": 20
+            }
+          ],
+          "file_scores": [],
+          "chat_scores": [],
+          "trimmed": [],
+          "tokens_est": 748
+        },
+        "file_chunks": [],
+        "chat_chunks": [],
+        "tokens_est": 748,
+        "trimmed": [],
+        "safe_input_tokens": 6144,
+        "system_tokens_est": 748
+      },
+      {
+        "type": "stream_start",
+        "conversation_id": "5e23f344-5d7c-4ac8-94c6-593aff7e9e7d",
+        "from_cache": false
+      },
+      {
+        "type": "token",
+        "content": "Resposta simulada qa-a. "
+      },
+      {
+        "type": "token",
+        "content": "Unicode: ação, 日本語, 👩🏽‍💻"
+      },
+      {
+        "type": "token",
+        "content": ".\n\nConteúdo determinísti"
+      },
+      {
+        "type": "token",
+        "content": "co para testes de interf"
+      },
+      {
+        "type": "token",
+        "content": "ace."
+      },
+      {
+        "type": "stream_end",
+        "message_id": "785fdc11-f97a-4436-a314-f3f76540a10b",
+        "conversation_id": "5e23f344-5d7c-4ac8-94c6-593aff7e9e7d",
+        "from_cache": false,
+        "cache_type": null,
+        "cache_similarity": null,
+        "artifact_id": null,
+        "artifact_type": null,
+        "artifact_title": null,
+        "artifacts": [],
+        "relay_used": false,
+        "relay_model": null,
+        "web_search_used": false,
+        "web_search_query": "",
+        "web_search_sources": [],
+        "process_steps": [],
+        "process_duration_ms": 379,
+        "source_count": 0,
+        "phase_latencies": {
+          "rag_memory": 5.799,
+          "llm_ttfb": 123.685
+        }
+      }
+    ]
+  },
+  {
+    "test": "idor_project",
+    "status": 403,
+    "ms": 10.4,
+    "body": {
+      "detail": "Acesso não autorizado."
+    }
+  },
+  {
+    "test": "upload_imagem",
+    "status": 200,
+    "ms": 164.6,
+    "body": {
+      "id": "att_c513a4e1e98b473d86ce2b4744cec01e",
+      "attachment_id": "att_c513a4e1e98b473d86ce2b4744cec01e",
+      "file_type": "image",
+      "filename": "imagem.png",
+      "mime_type": "image/png",
+      "size_bytes": 102,
+      "extracted_text_preview": null,
+      "thumbnail_url": "/attachments/unsent/att_c513a4e1e98b473d86ce2b4744cec01e_thumb.jpg?exp=1792591937&sig=REDACTED",
+      "file_url": "/attachments/unsent/att_c513a4e1e98b473d86ce2b4744cec01e_imagem.png?exp=1792591937&sig=REDACTED"
+    }
+  },
+  {
+    "test": "upload_anexo_vazio",
+    "status": 200,
+    "ms": 20.5,
+    "body": {
+      "id": "att_c8cd2b28e5ff4e1383542cdbc1994e8d",
+      "attachment_id": "att_c8cd2b28e5ff4e1383542cdbc1994e8d",
+      "file_type": "document",
+      "filename": "vazio.txt",
+      "mime_type": "text/plain",
+      "size_bytes": 0,
+      "extracted_text_preview": null,
+      "thumbnail_url": null,
+      "file_url": "/attachments/unsent/att_c8cd2b28e5ff4e1383542cdbc1994e8d_vazio.txt?exp=1792591937&sig=REDACTED"
+    }
+  },
+  {
+    "test": "upload_pdf_corrompido",
+    "status": 400,
+    "ms": 21.4,
+    "body": {
+      "detail": "Falha ao extrair texto do documento: PDF sem texto extraível — provavelmente escaneado. Não foi possível renderizar as páginas para transcrição."
+    }
+  },
+  {
+    "test": "fusion_config",
+    "status": 500,
+    "ms": 13.2,
+    "body": "Internal Server Error"
+  },
+  {
+    "test": "fusion_tres_modelos",
+    "elapsed_ms": 15.2,
+    "ttft_ms": null,
+    "events": [
+      {
+        "type": "conversation_created",
+        "conversation_id": "55d15d7f-9526-481e-ac0f-b713bf18ab03",
+        "title": "QA fusion com projeto",
+        "project_id": "e78008c1-ee61-48ad-923d-00dab8f70b38"
+      },
+      {
+        "type": "error",
+        "message": "Nenhum modelo paralelo configurado para o Fusion."
+      }
+    ]
+  },
+  {
+    "test": "fusion_imagem",
+    "elapsed_ms": 10.4,
+    "ttft_ms": null,
+    "events": [
+      {
+        "type": "conversation_created",
+        "conversation_id": "1e79f54d-bebf-4a2d-82a0-56e0241d5053",
+        "title": "Descreva a imagem QA",
+        "project_id": null
+      },
+      {
+        "type": "error",
+        "message": "Nenhum modelo paralelo configurado para o Fusion."
+      }
+    ]
+  },
+  {
+    "test": "fusion_config_uma_falha",
+    "status": 500,
+    "ms": 9.1,
+    "body": "Internal Server Error"
+  },
+  {
+    "test": "fusion_uma_falha",
+    "elapsed_ms": 12.3,
+    "ttft_ms": null,
+    "events": [
+      {
+        "type": "conversation_created",
+        "conversation_id": "7eb728cc-f41a-47c7-aba3-80b186149dc1",
+        "title": "QA uma falha isolada",
+        "project_id": null
+      },
+      {
+        "type": "error",
+        "message": "Nenhum modelo paralelo configurado para o Fusion."
+      }
+    ]
+  },
+  {
+    "test": "cors_hostil",
+    "status": 400,
+    "ms": 4.5,
+    "body": "Disallowed CORS origin"
+  },
+  {
+    "test": "busca_conteudo_nao_titulo",
+    "status": 200,
+    "ms": 5.2,
+    "body": []
+  },
+  {
+    "test": "busca_unicode_titulo",
+    "status": 200,
+    "ms": 4.8,
+    "body": [
+      {
+        "id": "fa6aa682-d36f-4bce-a416-75a7a6618d9b",
+        "title": "Ação 日本語 👩🏽‍💻 <script>alert(1)</script>",
+        "model_id": "ollama/qa-a",
+        "provider_id": "ollama",
+        "created_at": "2026-10-14 14:12:12",
+        "updated_at": "2026-10-14 14:12:12",
+        "message_count": 2,
+        "is_favorite": false,
+        "favorited_at": null,
+        "project_tag": null,
+        "project_id": null,
+        "origin_insight_id": null
+      },
+      {
+        "id": "dd277bb2-7114-46d4-94e8-409b18312be9",
+        "title": "Teste diário: ação, 日本語, 👩🏽‍💻 e <script>alert(1)</script>",
+        "model_id": "ollama/qa-a",
+        "provider_id": "ollama",
+        "created_at": "2026-10-14 14:11:32",
+        "updated_at": "2026-10-14 14:11:32",
+        "message_count": 2,
+        "is_favorite": false,
+        "favorited_at": null,
+        "project_tag": null,
+        "project_id": null,
+        "origin_insight_id": null
+      },
+      {
+        "id": "9c70e971-595d-4b42-a5b4-e91037e77291",
+        "title": "Teste diário: ação, 日本語, 👩🏽‍💻 e <script>alert(1)</script>",
+        "model_id": "ollama/qa-a",
+        "provider_id": "ollama",
+        "created_at": "2026-10-14 14:11:15",
+        "updated_at": "2026-10-14 14:11:15",
+        "message_count": 1,
+        "is_favorite": false,
+        "favorited_at": null,
+        "project_tag": null,
+        "project_id": null,
+        "origin_insight_id": null
+      },
+      {
+        "id": "c0d3c3e2-6941-45f8-a8b9-a9fee7c8c49c",
+        "title": "Olá! Como começo a usar? Ação, 日本語, 👩🏽‍💻",
+        "model_id": "bynara/nemotron-3-ultra-free",
+        "provider_id": "bynara",
+        "created_at": "2026-10-14 14:10:11",
+        "updated_at": "2026-10-14 14:10:11",
+        "message_count": 1,
+        "is_favorite": false,
+        "favorited_at": null,
+        "project_tag": null,
+        "project_id": null,
+        "origin_insight_id": null
+      }
+    ]
+  },
+  {
+    "test": "sqlite_integrity",
+    "result": [
+      [
+        "ok"
+      ]
+    ]
+  },
+  {
+    "test": "rag_embeddings",
+    "rows": [
+      [
+        "terceiro.txt",
+        "ready",
+        1,
+        0
+      ],
+      [
+        "regras.txt",
+        "ready",
+        1,
+        0
+      ],
+      [
+        "corrompido.pdf",
+        "error",
+        0,
+        0
+      ],
+      [
+        "manual.md",
+        "ready",
+        62,
+        0
+      ],
+      [
+        "programa.exe",
+        "error",
+        0,
+        0
+      ]
+    ]
+  },
+  {
+    "test": "fusion_tres_provedores_config",
+    "status": 200
+  },
+  {
+    "test": "fusion_tres_provedores",
+    "elapsed_ms": 692.5,
+    "ttft_ms": 510.2,
+    "events": [
+      {
+        "type": "conversation_created",
+        "conversation_id": "8c57126c-1c7b-49cd-b5ac-6eb9f756d3fd",
+        "title": "QA Fusion: qual código de devolução nos arquivos?",
+        "project_id": "e78008c1-ee61-48ad-923d-00dab8f70b38"
+      },
+      {
+        "type": "project_context_debug",
+        "project_id": "e78008c1-ee61-48ad-923d-00dab8f70b38",
+        "debug": {
+          "project_name": "QA RAG Unicode 日本語",
+          "threshold": 0.42,
+          "top_k": 6,
+          "retrieval_mode": "fallback",
+          "safe_input_tokens": 6144,
+          "system_budget": 3620,
+          "file_rag_budget": 1800,
+          "chat_rag_budget": 724,
+          "context_window": 8192,
+          "known_tpm": null,
+          "provider_id": "ollama",
+          "budget_note": "",
+          "file_inventory": [
+            {
+              "filename": "manual.md",
+              "index_status": "ready",
+              "size_bytes": 42734
+            },
+            {
+              "filename": "regras.txt",
+              "index_status": "ready",
+              "size_bytes": 48
+            },
+            {
+              "filename": "terceiro.txt",
+              "index_status": "ready",
+              "size_bytes": 33
+            },
+            {
+              "filename": "corrompido.pdf",
+              "index_status": "error",
+              "size_bytes": 22
+            },
+            {
+              "filename": "programa.exe",
+              "index_status": "error",
+              "size_bytes": 20
+            }
+          ],
+          "file_scores": [
+            {
+              "filename": "manual.md",
+              "score": 0.375,
+              "score_dense": null,
+              "score_lexical": null,
+              "source": "file_fallback",
+              "chars": 198,
+              "preview": "irrelevante contexto irrelevante contexto irrelevante contexto irrelevante contexto irrelevante contexto irrelevante con"
+            },
+            {
+              "filename": "regras.txt",
+              "score": 0.25,
+              "score_dense": null,
+              "score_lexical": null,
+              "source": "file_fallback",
+              "chars": 47,
+              "preview": "A garantia é de 37 dias. Fonte complementar QA."
+            },
+            {
+              "filename": "terceiro.txt",
+              "score": 0.125,
+              "score_dense": null,
+              "score_lexical": null,
+              "source": "file_fallback",
+              "chars": 31,
+              "preview": "Horário de suporte: 9h até 17h."
+            },
+            {
+              "filename": "manual.md",
+              "score": 0.125,
+              "score_dense": null,
+              "score_lexical": null,
+              "source": "file_fallback",
+              "chars": 1096,
+              "preview": "Dado de teste 0. contexto irrelevante contexto irrelevante contexto irrelevante contexto irrelevante contexto irrelevant"
+            }
+          ],
+          "chat_scores": [],
+          "trimmed": [],
+          "tokens_est": 1251
+        },
+        "file_chunks": [
+          {
+            "filename": "manual.md",
+            "score": 0.375,
+            "preview": "irrelevante contexto irrelevante contexto irrelevante contexto irrelevante contexto irrelevante contexto irrelevante contexto irrelevante\n\n## Política final\nO código secreto de devolução é AZUL-739."
+          },
+          {
+            "filename": "regras.txt",
+            "score": 0.25,
+            "preview": "A garantia é de 37 dias. Fonte complementar QA."
+          },
+          {
+            "filename": "terceiro.txt",
+            "score": 0.125,
+            "preview": "Horário de suporte: 9h até 17h."
+          },
+          {
+            "filename": "manual.md",
+            "score": 0.125,
+            "preview": "Dado de teste 0. contexto irrelevante contexto irrelevante contexto irrelevante contexto irrelevante contexto irrelevante contexto irrelevante contexto irrelevante contexto irrelevante contexto irrele"
+          }
+        ],
+        "chat_chunks": [],
+        "tokens_est": 1251,
+        "trimmed": [],
+        "safe_input_tokens": 6144,
+        "system_tokens_est": 1251
+      },
+      {
+        "type": "fusion_start",
+        "models": [
+          "ollama/qa-a",
+          "qa-provider-b/qa-b",
+          "qa-provider-c/qa-c"
+        ]
+      },
+      {
+        "type": "fusion_phase",
+        "phase": "proposers"
+      },
+      {
+        "type": "fusion_status",
+        "model_id": "qa-provider-b/qa-b",
+        "provider_id": "qa-provider-b",
+        "status": "running",
+        "was_fallback": false,
+        "original_model_id": null
+      },
+      {
+        "type": "fusion_status",
+        "model_id": "ollama/qa-a",
+        "provider_id": "ollama",
+        "status": "running",
+        "was_fallback": false,
+        "original_model_id": null
+      },
+      {
+        "type": "fusion_status",
+        "model_id": "qa-provider-c/qa-c",
+        "provider_id": "qa-provider-c",
+        "status": "running",
+        "was_fallback": false,
+        "original_model_id": null
+      },
+      {
+        "type": "fusion_status",
+        "model_id": "qa-provider-b/qa-b",
+        "status": "done",
+        "response": "Resposta simulada qa-b. Unicode: ação, 日本語, 👩🏽‍💻.\n\nConteúdo determinístico para testes de interface.",
+        "confidence": null,
+        "confidence_reason": null
+      },
+      {
+        "type": "fusion_status",
+        "model_id": "ollama/qa-a",
+        "status": "done",
+        "response": "Resposta simulada qa-a. Unicode: ação, 日本語, 👩🏽‍💻.\n\nConteúdo determinístico para testes de interface.",
+        "confidence": null,
+        "confidence_reason": null
+      },
+      {
+        "type": "fusion_status",
+        "model_id": "qa-provider-c/qa-c",
+        "status": "done",
+        "response": "Resposta simulada qa-c. Unicode: ação, 日本語, 👩🏽‍💻.\n\nConteúdo determinístico para testes de interface.",
+        "confidence": null,
+        "confidence_reason": null
+      },
+      {
+        "type": "fusion_judge_start",
+        "model_id": "ollama/qa-judge"
+      },
+      {
+        "type": "stream_start",
+        "conversation_id": "8c57126c-1c7b-49cd-b5ac-6eb9f756d3fd",
+        "from_cache": false
+      },
+      {
+        "type": "token",
+        "content": "Síntese simu"
+      },
+      {
+        "type": "token",
+        "content": "lada de QA. "
+      },
+      {
+        "type": "token",
+        "content": "Esta saída v"
+      },
+      {
+        "type": "token",
+        "content": "alida o tran"
+      },
+      {
+        "type": "token",
+        "content": "sporte, não "
+      },
+      {
+        "type": "token",
+        "content": "a qualidade "
+      },
+      {
+        "type": "token",
+        "content": "do Judge."
+      },
+      {
+        "type": "stream_end",
+        "message_id": "3cae4a66-96bf-4d14-a5e8-66d2ed92accb",
+        "conversation_id": "8c57126c-1c7b-49cd-b5ac-6eb9f756d3fd",
+        "from_cache": false,
+        "artifact_id": null,
+        "artifact_type": null,
+        "artifact_title": null,
+        "artifacts": []
+      }
+    ]
+  },
+  {
+    "test": "fusion_falha_401_um_proposer",
+    "elapsed_ms": 679.3,
+    "ttft_ms": 497.3,
+    "events": [
+      {
+        "type": "conversation_created",
+        "conversation_id": "c8572b22-f497-45a4-8e21-5f91a082deb3",
+        "title": "Explique QA com uma falha",
+        "project_id": null
+      },
+      {
+        "type": "fusion_start",
+        "models": [
+          "ollama/qa-a",
+          "qa-provider-b/qa-b",
+          "qa-provider-c/qa-c"
+        ]
+      },
+      {
+        "type": "fusion_phase",
+        "phase": "proposers"
+      },
+      {
+        "type": "fusion_status",
+        "model_id": "qa-provider-b/qa-b",
+        "provider_id": "qa-provider-b",
+        "status": "running",
+        "was_fallback": false,
+        "original_model_id": null
+      },
+      {
+        "type": "fusion_status",
+        "model_id": "qa-provider-c/qa-c",
+        "provider_id": "qa-provider-c",
+        "status": "running",
+        "was_fallback": false,
+        "original_model_id": null
+      },
+      {
+        "type": "fusion_status",
+        "model_id": "ollama/qa-a",
+        "provider_id": "ollama",
+        "status": "running",
+        "was_fallback": false,
+        "original_model_id": null
+      },
+      {
+        "type": "fusion_status",
+        "model_id": "qa-provider-c/qa-c",
+        "status": "error"
+      },
+      {
+        "type": "fusion_status",
+        "model_id": "qa-provider-b/qa-b",
+        "status": "done",
+        "response": "Resposta simulada qa-b. Unicode: ação, 日本語, 👩🏽‍💻.\n\nConteúdo determinístico para testes de interface.",
+        "confidence": null,
+        "confidence_reason": null
+      },
+      {
+        "type": "fusion_status",
+        "model_id": "ollama/qa-a",
+        "status": "done",
+        "response": "Resposta simulada qa-a. Unicode: ação, 日本語, 👩🏽‍💻.\n\nConteúdo determinístico para testes de interface.",
+        "confidence": null,
+        "confidence_reason": null
+      },
+      {
+        "type": "fusion_judge_start",
+        "model_id": "ollama/qa-judge"
+      },
+      {
+        "type": "stream_start",
+        "conversation_id": "c8572b22-f497-45a4-8e21-5f91a082deb3",
+        "from_cache": false
+      },
+      {
+        "type": "token",
+        "content": "Síntese simu"
+      },
+      {
+        "type": "token",
+        "content": "lada de QA. "
+      },
+      {
+        "type": "token",
+        "content": "Esta saída v"
+      },
+      {
+        "type": "token",
+        "content": "alida o tran"
+      },
+      {
+        "type": "token",
+        "content": "sporte, não "
+      },
+      {
+        "type": "token",
+        "content": "a qualidade "
+      },
+      {
+        "type": "token",
+        "content": "do Judge."
+      },
+      {
+        "type": "stream_end",
+        "message_id": "047ee4a3-75c9-4cd8-bac8-f724efe9b709",
+        "conversation_id": "c8572b22-f497-45a4-8e21-5f91a082deb3",
+        "from_cache": false,
+        "artifact_id": null,
+        "artifact_type": null,
+        "artifact_title": null,
+        "artifacts": []
+      }
+    ]
+  },
+  {
+    "test": "fusion_multimodal_tres_provedores",
+    "elapsed_ms": 20.5,
+    "ttft_ms": null,
+    "events": [
+      {
+        "type": "conversation_created",
+        "conversation_id": "93ddf898-d35d-4830-a8ca-21ff7781d11a",
+        "title": "Descreva imagem",
+        "project_id": null
+      },
+      {
+        "type": "fusion_start",
+        "models": [
+          "ollama/qa-a",
+          "qa-provider-b/qa-b",
+          "qa-provider-c/qa-c"
+        ]
+      },
+      {
+        "type": "fusion_phase",
+        "phase": "proposers"
+      },
+      {
+        "type": "fusion_status",
+        "model_id": "ollama/qa-a",
+        "provider_id": "ollama",
+        "status": "running",
+        "was_fallback": false,
+        "original_model_id": null
+      },
+      {
+        "type": "fusion_status",
+        "model_id": "ollama/qa-a",
+        "status": "error"
+      },
+      {
+        "type": "fusion_status",
+        "model_id": "qa-provider-b/qa-b",
+        "provider_id": "qa-provider-b",
+        "status": "running",
+        "was_fallback": false,
+        "original_model_id": null
+      },
+      {
+        "type": "fusion_status",
+        "model_id": "qa-provider-c/qa-c",
+        "provider_id": "qa-provider-c",
+        "status": "running",
+        "was_fallback": false,
+        "original_model_id": null
+      },
+      {
+        "type": "fusion_status",
+        "model_id": "qa-provider-b/qa-b",
+        "status": "error"
+      },
+      {
+        "type": "fusion_status",
+        "model_id": "qa-provider-c/qa-c",
+        "status": "error"
+      },
+      {
+        "type": "error",
+        "message": "Nenhum modelo retornou resposta válida."
+      }
+    ]
+  },
+  {
+    "test": "rag_fallback_explicito",
+    "elapsed_ms": 379.4,
+    "ttft_ms": 166.0,
+    "events": [
+      {
+        "type": "conversation_created",
+        "conversation_id": "2bc3322e-dede-4b1e-a729-da26556fd373",
+        "title": "Nos arquivos do projeto, qual é o código secreto de devoluçã…",
+        "project_id": "e78008c1-ee61-48ad-923d-00dab8f70b38"
+      },
+      {
+        "type": "project_context_debug",
+        "project_id": "e78008c1-ee61-48ad-923d-00dab8f70b38",
+        "debug": {
+          "project_name": "QA RAG Unicode 日本語",
+          "threshold": 0.42,
+          "top_k": 6,
+          "retrieval_mode": "fallback",
+          "safe_input_tokens": 6144,
+          "system_budget": 3620,
+          "file_rag_budget": 1800,
+          "chat_rag_budget": 724,
+          "context_window": 8192,
+          "known_tpm": null,
+          "provider_id": "ollama",
+          "budget_note": "",
+          "file_inventory": [
+            {
+              "filename": "manual.md",
+              "index_status": "ready",
+              "size_bytes": 42734
+            },
+            {
+              "filename": "regras.txt",
+              "index_status": "ready",
+              "size_bytes": 48
+            },
+            {
+              "filename": "terceiro.txt",
+              "index_status": "ready",
+              "size_bytes": 33
+            },
+            {
+              "filename": "corrompido.pdf",
+              "index_status": "error",
+              "size_bytes": 22
+            },
+            {
+              "filename": "programa.exe",
+              "index_status": "error",
+              "size_bytes": 20
+            }
+          ],
+          "file_scores": [
+            {
+              "filename": "manual.md",
+              "score": 0.4444,
+              "score_dense": null,
+              "score_lexical": null,
+              "source": "file_fallback",
+              "chars": 198,
+              "preview": "irrelevante contexto irrelevante contexto irrelevante contexto irrelevante contexto irrelevante contexto irrelevante con"
+            },
+            {
+              "filename": "regras.txt",
+              "score": 0.1111,
+              "score_dense": null,
+              "score_lexical": null,
+              "source": "file_fallback",
+              "chars": 47,
+              "preview": "A garantia é de 37 dias. Fonte complementar QA."
+            },
+            {
+              "filename": "terceiro.txt",
+              "score": 0.1111,
+              "score_dense": null,
+              "score_lexical": null,
+              "source": "file_fallback",
+              "chars": 31,
+              "preview": "Horário de suporte: 9h até 17h."
+            },
+            {
+              "filename": "manual.md",
+              "score": 0.1111,
+              "score_dense": null,
+              "score_lexical": null,
+              "source": "file_fallback",
+              "chars": 1096,
+              "preview": "Dado de teste 0. contexto irrelevante contexto irrelevante contexto irrelevante contexto irrelevante contexto irrelevant"
+            }
+          ],
+          "chat_scores": [],
+          "trimmed": [],
+          "tokens_est": 1251
+        },
+        "file_chunks": [
+          {
+            "filename": "manual.md",
+            "score": 0.4444,
+            "preview": "irrelevante contexto irrelevante contexto irrelevante contexto irrelevante contexto irrelevante contexto irrelevante contexto irrelevante\n\n## Política final\nO código secreto de devolução é AZUL-739."
+          },
+          {
+            "filename": "regras.txt",
+            "score": 0.1111,
+            "preview": "A garantia é de 37 dias. Fonte complementar QA."
+          },
+          {
+            "filename": "terceiro.txt",
+            "score": 0.1111,
+            "preview": "Horário de suporte: 9h até 17h."
+          },
+          {
+            "filename": "manual.md",
+            "score": 0.1111,
+            "preview": "Dado de teste 0. contexto irrelevante contexto irrelevante contexto irrelevante contexto irrelevante contexto irrelevante contexto irrelevante contexto irrelevante contexto irrelevante contexto irrele"
+          }
+        ],
+        "chat_chunks": [],
+        "tokens_est": 1251,
+        "trimmed": [],
+        "safe_input_tokens": 6144,
+        "system_tokens_est": 1251
+      },
+      {
+        "type": "stream_start",
+        "conversation_id": "2bc3322e-dede-4b1e-a729-da26556fd373",
+        "from_cache": false
+      },
+      {
+        "type": "token",
+        "content": "Resposta simulada qa-a. "
+      },
+      {
+        "type": "token",
+        "content": "Unicode: ação, 日本語, 👩🏽‍💻"
+      },
+      {
+        "type": "token",
+        "content": ".\n\nConteúdo determinísti"
+      },
+      {
+        "type": "token",
+        "content": "co para testes de interf"
+      },
+      {
+        "type": "token",
+        "content": "ace."
+      },
+      {
+        "type": "stream_end",
+        "message_id": "e0993eb6-876f-48b1-b780-9dc2a4d55747",
+        "conversation_id": "2bc3322e-dede-4b1e-a729-da26556fd373",
+        "from_cache": false,
+        "cache_type": null,
+        "cache_similarity": null,
+        "artifact_id": null,
+        "artifact_type": null,
+        "artifact_title": null,
+        "artifacts": [],
+        "relay_used": false,
+        "relay_model": null,
+        "web_search_used": false,
+        "web_search_query": "",
+        "web_search_sources": [],
+        "process_steps": [],
+        "process_duration_ms": 374,
+        "source_count": 0,
+        "phase_latencies": {
+          "rag_memory": 8.483,
+          "llm_ttfb": 123.285
+        }
+      }
+    ]
+  },
+  {
+    "test": "web_search_rede_bloqueada",
+    "elapsed_ms": 556.9,
+    "ttft_ms": 349.6,
+    "events": [
+      {
+        "type": "conversation_created",
+        "conversation_id": "9c4fec77-7a73-48e4-b7c7-da3ba1c09e41",
+        "title": "Pesquise na web as novidades do FastAPI",
+        "project_id": null
+      },
+      {
+        "type": "search_start",
+        "query": "Pesquise na web as novidades do FastAPI"
+      },
+      {
+        "type": "process_step_start",
+        "id": "search-step-0",
+        "step_type": "search",
+        "title": "Pesquisado na web por: na web as novidades do FastAPI",
+        "detail": "na web as novidades do FastAPI"
+      },
+      {
+        "type": "process_step_end",
+        "id": "search-step-0",
+        "status": "completed"
+      },
+      {
+        "type": "stream_start",
+        "conversation_id": "9c4fec77-7a73-48e4-b7c7-da3ba1c09e41",
+        "from_cache": false
+      },
+      {
+        "type": "token",
+        "content": "Resposta simulada qa-a. "
+      },
+      {
+        "type": "token",
+        "content": "Unicode: ação, 日本語, 👩🏽‍💻"
+      },
+      {
+        "type": "token",
+        "content": ".\n\nConteúdo determinísti"
+      },
+      {
+        "type": "token",
+        "content": "co para testes de interf"
+      },
+      {
+        "type": "token",
+        "content": "ace."
+      },
+      {
+        "type": "stream_end",
+        "message_id": "add62b7e-7ae6-483f-97db-90d1e6961387",
+        "conversation_id": "9c4fec77-7a73-48e4-b7c7-da3ba1c09e41",
+        "from_cache": false,
+        "cache_type": null,
+        "cache_similarity": null,
+        "artifact_id": null,
+        "artifact_type": null,
+        "artifact_title": null,
+        "artifacts": [],
+        "relay_used": false,
+        "relay_model": null,
+        "web_search_used": false,
+        "web_search_query": "Pesquise na web as novidades do FastAPI",
+        "web_search_sources": [],
+        "process_steps": [
+          {
+            "id": "search-step-0",
+            "type": "search",
+            "title": "Pesquisado na web por: na web as novidades do FastAPI",
+            "detail": "na web as novidades do FastAPI",
+            "status": "completed"
+          }
+        ],
+        "process_duration_ms": 551,
+        "source_count": 0,
+        "phase_latencies": {
+          "rag_memory": 0.382,
+          "llm_ttfb": 122.852
+        }
+      }
+    ]
+  },
+  {
+    "test": "modelo_offline",
+    "elapsed_ms": 9.3,
+    "ttft_ms": null,
+    "events": [
+      {
+        "type": "conversation_created",
+        "conversation_id": "a49caee6-0899-4334-a912-94f3c014af52",
+        "title": "QA offline",
+        "project_id": null
+      },
+      {
+        "type": "error",
+        "message": "Todos os modelos configurados estão indisponíveis. Não foi possível realizar failover a partir de 'nao-existe'."
+      }
+    ]
+  },
+  {
+    "test": "rate_limit_fixture",
+    "elapsed_ms": 13.2,
+    "ttft_ms": null,
+    "events": [
+      {
+        "type": "conversation_created",
+        "conversation_id": "d010e61f-5c61-4493-b087-a3d8f230e4d3",
+        "title": "QA429",
+        "project_id": null
+      },
+      {
+        "type": "stream_start",
+        "conversation_id": "d010e61f-5c61-4493-b087-a3d8f230e4d3",
+        "from_cache": false
+      },
+      {
+        "type": "error",
+        "message": "Todos os modelos configurados estão indisponíveis. Não foi possível realizar failover a partir de 'ollama/qa-a'."
+      }
+    ]
+  },
+  {
+    "test": "final_integrity",
+    "result": [
+      [
+        "ok"
+      ]
+    ]
+  },
+  {
+    "test": "historico_160_turnos",
+    "elapsed_ms": 379.7,
+    "ttft_ms": 172.0,
+    "events": [
+      {
+        "type": "stream_start",
+        "conversation_id": "22f96f39-e42a-4771-9685-51495fc361e6",
+        "from_cache": false
+      },
+      {
+        "type": "token",
+        "content": "Resposta simulada qa-a. "
+      },
+      {
+        "type": "token",
+        "content": "Unicode: ação, 日本語, 👩🏽‍💻"
+      },
+      {
+        "type": "token",
+        "content": ".\n\nConteúdo determinísti"
+      },
+      {
+        "type": "token",
+        "content": "co para testes de interf"
+      },
+      {
+        "type": "token",
+        "content": "ace."
+      },
+      {
+        "type": "stream_end",
+        "message_id": "d7e8de67-69ed-498d-936f-1bf54f6b7373",
+        "conversation_id": "22f96f39-e42a-4771-9685-51495fc361e6",
+        "from_cache": false,
+        "cache_type": null,
+        "cache_similarity": null,
+        "artifact_id": null,
+        "artifact_type": null,
+        "artifact_title": null,
+        "artifacts": [],
+        "relay_used": false,
+        "relay_model": null,
+        "web_search_used": false,
+        "web_search_query": "",
+        "web_search_sources": [],
+        "process_steps": [],
+        "process_duration_ms": 361,
+        "source_count": 0,
+        "phase_latencies": {
+          "rag_memory": 0.388,
+          "llm_ttfb": 122.959
+        }
+      }
+    ]
+  },
+  {
+    "test": "concorrencia_0",
+    "elapsed_ms": 383.6,
+    "ttft_ms": 179.1,
+    "events": [
+      {
+        "type": "conversation_created",
+        "conversation_id": "131afaf3-79a7-4ec7-8009-a741d8403965",
+        "title": "QA concorrência 0",
+        "project_id": null
+      },
+      {
+        "type": "stream_start",
+        "conversation_id": "131afaf3-79a7-4ec7-8009-a741d8403965",
+        "from_cache": false
+      },
+      {
+        "type": "token",
+        "content": "Resposta simulada qa-a. "
+      },
+      {
+        "type": "token",
+        "content": "Unicode: ação, 日本語, 👩🏽‍💻"
+      },
+      {
+        "type": "token",
+        "content": ".\n\nConteúdo determinísti"
+      },
+      {
+        "type": "token",
+        "content": "co para testes de interf"
+      },
+      {
+        "type": "token",
+        "content": "ace."
+      },
+      {
+        "type": "stream_end",
+        "message_id": "dd033824-35ea-4c98-a8e1-afea07dd61ec",
+        "conversation_id": "131afaf3-79a7-4ec7-8009-a741d8403965",
+        "from_cache": false,
+        "cache_type": null,
+        "cache_similarity": null,
+        "artifact_id": null,
+        "artifact_type": null,
+        "artifact_title": null,
+        "artifacts": [],
+        "relay_used": false,
+        "relay_model": null,
+        "web_search_used": false,
+        "web_search_query": "",
+        "web_search_sources": [],
+        "process_steps": [],
+        "process_duration_ms": 364,
+        "source_count": 0,
+        "phase_latencies": {
+          "rag_memory": 0.255,
+          "llm_ttfb": 124.586
+        }
+      }
+    ]
+  },
+  {
+    "test": "concorrencia_3",
+    "elapsed_ms": 388.9,
+    "ttft_ms": 183.1,
+    "events": [
+      {
+        "type": "conversation_created",
+        "conversation_id": "4bf4c46a-dc05-4447-96b7-13685744bee5",
+        "title": "QA concorrência 3",
+        "project_id": null
+      },
+      {
+        "type": "stream_start",
+        "conversation_id": "4bf4c46a-dc05-4447-96b7-13685744bee5",
+        "from_cache": false
+      },
+      {
+        "type": "token",
+        "content": "Resposta simulada qa-a. "
+      },
+      {
+        "type": "token",
+        "content": "Unicode: ação, 日本語, 👩🏽‍💻"
+      },
+      {
+        "type": "token",
+        "content": ".\n\nConteúdo determinísti"
+      },
+      {
+        "type": "token",
+        "content": "co para testes de interf"
+      },
+      {
+        "type": "token",
+        "content": "ace."
+      },
+      {
+        "type": "stream_end",
+        "message_id": "8532ed2f-8926-4f5a-9980-3d3dc0cb7f73",
+        "conversation_id": "4bf4c46a-dc05-4447-96b7-13685744bee5",
+        "from_cache": false,
+        "cache_type": null,
+        "cache_similarity": null,
+        "artifact_id": null,
+        "artifact_type": null,
+        "artifact_title": null,
+        "artifacts": [],
+        "relay_used": false,
+        "relay_model": null,
+        "web_search_used": false,
+        "web_search_query": "",
+        "web_search_sources": [],
+        "process_steps": [],
+        "process_duration_ms": 371,
+        "source_count": 0,
+        "phase_latencies": {
+          "rag_memory": 1.189,
+          "llm_ttfb": 123.328
+        }
+      }
+    ]
+  },
+  {
+    "test": "concorrencia_1",
+    "elapsed_ms": 399.3,
+    "ttft_ms": 191.4,
+    "events": [
+      {
+        "type": "conversation_created",
+        "conversation_id": "068c82f1-b539-41fd-8e1e-b3c87277585f",
+        "title": "QA concorrência 1",
+        "project_id": null
+      },
+      {
+        "type": "stream_start",
+        "conversation_id": "068c82f1-b539-41fd-8e1e-b3c87277585f",
+        "from_cache": false
+      },
+      {
+        "type": "token",
+        "content": "Resposta simulada qa-a. "
+      },
+      {
+        "type": "token",
+        "content": "Unicode: ação, 日本語, 👩🏽‍💻"
+      },
+      {
+        "type": "token",
+        "content": ".\n\nConteúdo determinísti"
+      },
+      {
+        "type": "token",
+        "content": "co para testes de interf"
+      },
+      {
+        "type": "token",
+        "content": "ace."
+      },
+      {
+        "type": "stream_end",
+        "message_id": "0fcbbd94-991d-460f-b828-d9f617ea7272",
+        "conversation_id": "068c82f1-b539-41fd-8e1e-b3c87277585f",
+        "from_cache": false,
+        "cache_type": null,
+        "cache_similarity": null,
+        "artifact_id": null,
+        "artifact_type": null,
+        "artifact_title": null,
+        "artifacts": [],
+        "relay_used": false,
+        "relay_model": null,
+        "web_search_used": false,
+        "web_search_query": "",
+        "web_search_sources": [],
+        "process_steps": [],
+        "process_duration_ms": 380,
+        "source_count": 0,
+        "phase_latencies": {
+          "rag_memory": 1.498,
+          "llm_ttfb": 122.021
+        }
+      }
+    ]
+  },
+  {
+    "test": "concorrencia_4",
+    "elapsed_ms": 401.8,
+    "ttft_ms": 194.4,
+    "events": [
+      {
+        "type": "conversation_created",
+        "conversation_id": "5242918d-3c3c-4dba-9ffd-66f476602d14",
+        "title": "QA concorrência 4",
+        "project_id": null
+      },
+      {
+        "type": "stream_start",
+        "conversation_id": "5242918d-3c3c-4dba-9ffd-66f476602d14",
+        "from_cache": false
+      },
+      {
+        "type": "token",
+        "content": "Resposta simulada qa-a. "
+      },
+      {
+        "type": "token",
+        "content": "Unicode: ação, 日本語, 👩🏽‍💻"
+      },
+      {
+        "type": "token",
+        "content": ".\n\nConteúdo determinísti"
+      },
+      {
+        "type": "token",
+        "content": "co para testes de interf"
+      },
+      {
+        "type": "token",
+        "content": "ace."
+      },
+      {
+        "type": "stream_end",
+        "message_id": "42caf846-a828-4003-b1a1-fc58edea1bfd",
+        "conversation_id": "5242918d-3c3c-4dba-9ffd-66f476602d14",
+        "from_cache": false,
+        "cache_type": null,
+        "cache_similarity": null,
+        "artifact_id": null,
+        "artifact_type": null,
+        "artifact_title": null,
+        "artifacts": [],
+        "relay_used": false,
+        "relay_model": null,
+        "web_search_used": false,
+        "web_search_query": "",
+        "web_search_sources": [],
+        "process_steps": [],
+        "process_duration_ms": 385,
+        "source_count": 0,
+        "phase_latencies": {
+          "rag_memory": 1.32,
+          "llm_ttfb": 123.069
+        }
+      }
+    ]
+  },
+  {
+    "test": "concorrencia_2",
+    "elapsed_ms": 405.5,
+    "ttft_ms": 196.5,
+    "events": [
+      {
+        "type": "conversation_created",
+        "conversation_id": "a7d74465-caa9-4604-bf29-10f0d664834f",
+        "title": "QA concorrência 2",
+        "project_id": null
+      },
+      {
+        "type": "stream_start",
+        "conversation_id": "a7d74465-caa9-4604-bf29-10f0d664834f",
+        "from_cache": false
+      },
+      {
+        "type": "token",
+        "content": "Resposta simulada qa-a. "
+      },
+      {
+        "type": "token",
+        "content": "Unicode: ação, 日本語, 👩🏽‍💻"
+      },
+      {
+        "type": "token",
+        "content": ".\n\nConteúdo determinísti"
+      },
+      {
+        "type": "token",
+        "content": "co para testes de interf"
+      },
+      {
+        "type": "token",
+        "content": "ace."
+      },
+      {
+        "type": "stream_end",
+        "message_id": "dd645242-e9c2-4cca-a629-d9b9cf8f29a0",
+        "conversation_id": "a7d74465-caa9-4604-bf29-10f0d664834f",
+        "from_cache": false,
+        "cache_type": null,
+        "cache_similarity": null,
+        "artifact_id": null,
+        "artifact_type": null,
+        "artifact_title": null,
+        "artifacts": [],
+        "relay_used": false,
+        "relay_model": null,
+        "web_search_used": false,
+        "web_search_query": "",
+        "web_search_sources": [],
+        "process_steps": [],
+        "process_duration_ms": 385,
+        "source_count": 0,
+        "phase_latencies": {
+          "rag_memory": 4.674,
+          "llm_ttfb": 123.307
+        }
+      }
+    ]
+  },
+  {
+    "test": "concorrencia_5",
+    "elapsed_ms": 410.8,
+    "ttft_ms": 188.6,
+    "events": [
+      {
+        "type": "conversation_created",
+        "conversation_id": "b803da19-6aee-495b-9642-12ae3ac51c1e",
+        "title": "QA concorrência 5",
+        "project_id": null
+      },
+      {
+        "type": "stream_start",
+        "conversation_id": "b803da19-6aee-495b-9642-12ae3ac51c1e",
+        "from_cache": false
+      },
+      {
+        "type": "token",
+        "content": "Resposta simulada qa-a. "
+      },
+      {
+        "type": "token",
+        "content": "Unicode: ação, 日本語, 👩🏽‍💻"
+      },
+      {
+        "type": "token",
+        "content": ".\n\nConteúdo determinísti"
+      },
+      {
+        "type": "token",
+        "content": "co para testes de interf"
+      },
+      {
+        "type": "token",
+        "content": "ace."
+      },
+      {
+        "type": "stream_end",
+        "message_id": "7184e40c-83f8-4b23-b91d-8b6b0fc96476",
+        "conversation_id": "b803da19-6aee-495b-9642-12ae3ac51c1e",
+        "from_cache": false,
+        "cache_type": null,
+        "cache_similarity": null,
+        "artifact_id": null,
+        "artifact_type": null,
+        "artifact_title": null,
+        "artifacts": [],
+        "relay_used": false,
+        "relay_model": null,
+        "web_search_used": false,
+        "web_search_query": "",
+        "web_search_sources": [],
+        "process_steps": [],
+        "process_duration_ms": 394,
+        "source_count": 0,
+        "phase_latencies": {
+          "rag_memory": 4.141,
+          "llm_ttfb": 123.463
+        }
+      }
+    ]
+  },
+  {
+    "test": "sqlite_after_concurrency",
+    "integrity": [
+      "ok"
+    ]
+  }
+]

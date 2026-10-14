@@ -1,0 +1,72 @@
+{
+  "project_files": [
+    [
+      "manual.md",
+      42689,
+      "ready"
+    ],
+    [
+      "regras.txt",
+      47,
+      "ready"
+    ],
+    [
+      "terceiro.txt",
+      31,
+      "ready"
+    ],
+    [
+      "corrompido.pdf",
+      null,
+      "error"
+    ],
+    [
+      "programa.exe",
+      null,
+      "error"
+    ]
+  ],
+  "integrity": [
+    "ok"
+  ],
+  "screen_count": 37,
+  "long_history_requests": [
+    {
+      "messages": 18,
+      "chars": 24059,
+      "first_non_system": "MARCADOR_144 contexto contexto contexto contexto c"
+    }
+  ],
+  "stop_requests": [
+    {
+      "id": "1791988384105440851",
+      "model": "qa-slow",
+      "end": [
+        {
+          "event": "cancelled",
+          "elapsed_s": 6.783
+        }
+      ]
+    },
+    {
+      "id": "1791988444216902465",
+      "model": "qa-slow",
+      "end": [
+        {
+          "event": "complete",
+          "elapsed_s": 16.365
+        }
+      ]
+    },
+    {
+      "id": "1791988460594462534",
+      "model": "qa-slow",
+      "end": [
+        {
+          "event": "complete",
+          "elapsed_s": 16.345
+        }
+      ]
+    }
+  ]
+}

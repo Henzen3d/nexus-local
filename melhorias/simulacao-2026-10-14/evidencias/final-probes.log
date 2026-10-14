@@ -1,0 +1,38 @@
+historico_160_turnos {'elapsed_ms': 379.7, 'ttft_ms': 172.0, 'events': [{'type': 'stream_start', 'conversation_id': '22f96f39-e42a-4771-9685-51495fc361e6', 'from_cache': False}, {'type': 'token', 'content': 'Resposta simulada qa-a. '}, {'type': 'token', 'content': 'Unicode: ação, 日本語, 👩🏽\u200d💻'}, {'type': 'token', 'content': '.\n\nConteúdo determinísti'}, {'type': 'token', 'content': 'co para testes de interf'}, {'type': 'token', 'content': 'ace.'}, {'type': 'stream_end', 'message_id': 'd7e8de67-69ed-498d-936f-1bf5
+concorrencia_0 {'elapsed_ms': 383.6, 'ttft_ms': 179.1, 'events': [{'type': 'conversation_created', 'conversation_id': '131afaf3-79a7-4ec7-8009-a741d8403965', 'title': 'QA concorrência 0', 'project_id': None}, {'type': 'stream_start', 'conversation_id': '131afaf3-79a7-4ec7-8009-a741d8403965', 'from_cache': False}, {'type': 'token', 'content': 'Resposta simulada qa-a. '}, {'type': 'token', 'content': 'Unicode: ação, 日本語, 👩🏽\u200d💻'}, {'type': 'token', 'content': '.\n\nConteúdo determinísti'}, {'type': 'token', '
+concorrencia_3 {'elapsed_ms': 388.9, 'ttft_ms': 183.1, 'events': [{'type': 'conversation_created', 'conversation_id': '4bf4c46a-dc05-4447-96b7-13685744bee5', 'title': 'QA concorrência 3', 'project_id': None}, {'type': 'stream_start', 'conversation_id': '4bf4c46a-dc05-4447-96b7-13685744bee5', 'from_cache': False}, {'type': 'token', 'content': 'Resposta simulada qa-a. '}, {'type': 'token', 'content': 'Unicode: ação, 日本語, 👩🏽\u200d💻'}, {'type': 'token', 'content': '.\n\nConteúdo determinísti'}, {'type': 'token', '
+concorrencia_1 {'elapsed_ms': 399.3, 'ttft_ms': 191.4, 'events': [{'type': 'conversation_created', 'conversation_id': '068c82f1-b539-41fd-8e1e-b3c87277585f', 'title': 'QA concorrência 1', 'project_id': None}, {'type': 'stream_start', 'conversation_id': '068c82f1-b539-41fd-8e1e-b3c87277585f', 'from_cache': False}, {'type': 'token', 'content': 'Resposta simulada qa-a. '}, {'type': 'token', 'content': 'Unicode: ação, 日本語, 👩🏽\u200d💻'}, {'type': 'token', 'content': '.\n\nConteúdo determinísti'}, {'type': 'token', '
+concorrencia_4 {'elapsed_ms': 401.8, 'ttft_ms': 194.4, 'events': [{'type': 'conversation_created', 'conversation_id': '5242918d-3c3c-4dba-9ffd-66f476602d14', 'title': 'QA concorrência 4', 'project_id': None}, {'type': 'stream_start', 'conversation_id': '5242918d-3c3c-4dba-9ffd-66f476602d14', 'from_cache': False}, {'type': 'token', 'content': 'Resposta simulada qa-a. '}, {'type': 'token', 'content': 'Unicode: ação, 日本語, 👩🏽\u200d💻'}, {'type': 'token', 'content': '.\n\nConteúdo determinísti'}, {'type': 'token', '
+concorrencia_2 {'elapsed_ms': 405.5, 'ttft_ms': 196.5, 'events': [{'type': 'conversation_created', 'conversation_id': 'a7d74465-caa9-4604-bf29-10f0d664834f', 'title': 'QA concorrência 2', 'project_id': None}, {'type': 'stream_start', 'conversation_id': 'a7d74465-caa9-4604-bf29-10f0d664834f', 'from_cache': False}, {'type': 'token', 'content': 'Resposta simulada qa-a. '}, {'type': 'token', 'content': 'Unicode: ação, 日本語, 👩🏽\u200d💻'}, {'type': 'token', 'content': '.\n\nConteúdo determinísti'}, {'type': 'token', '
+concorrencia_5 {'elapsed_ms': 410.8, 'ttft_ms': 188.6, 'events': [{'type': 'conversation_created', 'conversation_id': 'b803da19-6aee-495b-9642-12ae3ac51c1e', 'title': 'QA concorrência 5', 'project_id': None}, {'type': 'stream_start', 'conversation_id': 'b803da19-6aee-495b-9642-12ae3ac51c1e', 'from_cache': False}, {'type': 'token', 'content': 'Resposta simulada qa-a. '}, {'type': 'token', 'content': 'Unicode: ação, 日本語, 👩🏽\u200d💻'}, {'type': 'token', 'content': '.\n\nConteúdo determinísti'}, {'type': 'token', '
+sqlite_after_concurrency {'integrity': ('ok',)}
+Traceback (most recent call last):
+  File "/home/user/nexus-local/tests/simulacao/final_probes.py", line 35, in <module>
+    asyncio.run(main())
+  File "/usr/lib/python3.11/asyncio/runners.py", line 190, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.11/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.11/asyncio/base_events.py", line 653, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "/home/user/nexus-local/tests/simulacao/final_probes.py", line 27, in main
+    await page.get_by_role('button',name='Ações e ferramentas',exact=True).click();await page.get_by_role('menuitemcheckbox').filter(has_text='Modo Fusion').click();await page.keyboard.press('Escape')
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/user/nexus-local/.venv/lib/python3.11/site-packages/playwright/async_api/_generated.py", line 11018, in click
+    await self._impl_obj.click(
+  File "/home/user/nexus-local/.venv/lib/python3.11/site-packages/playwright/_impl/_locator.py", line 174, in click
+    return await self._frame._click(self._selector, strict=True, **params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/user/nexus-local/.venv/lib/python3.11/site-packages/playwright/_impl/_frame.py", line 598, in _click
+    await self._channel.send("click", self._timeout, locals_to_params(locals()))
+  File "/home/user/nexus-local/.venv/lib/python3.11/site-packages/playwright/_impl/_connection.py", line 78, in send
+    return await self._connection.wrap_api_call(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/user/nexus-local/.venv/lib/python3.11/site-packages/playwright/_impl/_connection.py", line 636, in wrap_api_call
+    raise rewrite_error(error, f"{parsed_st['apiName']}: {error}") from None
+playwright._impl._errors.TimeoutError: Locator.click: Timeout 5000ms exceeded.
+Call log:
+  - waiting for get_by_role("button", name="Ações e ferramentas", exact=True)

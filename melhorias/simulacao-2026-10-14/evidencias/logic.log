@@ -1,0 +1,47 @@
+2026-10-14 14:12:40 [INFO] nexuslocal.backend.database: [OK] conversations.project_id: added
+2026-10-14 14:12:40 [INFO] nexuslocal.backend.database: Seed de reasoning controls aplicado a 110 modelos.
+2026-10-14 14:12:40 [INFO] nexuslocal.ranking.sync: Ranking: 110 modelos novos semeados (heurística determinística).
+2026-10-14 14:12:40 [INFO] nexuslocal.ranking.scorer: Scores calculados para 110 modelos.
+2026-10-14 14:12:40 [INFO] nexuslocal.ranking.scorer: 110 scores persistidos na tabela model_rankings.
+2026-10-14 14:12:40 [INFO] nexuslocal.backend.database: [database migration] model_rankings: 110 registros semeados/normalizados (base determinística)
+2026-10-14 14:12:40 [INFO] nexuslocal.backend.database: [OK] Ranking & Failover & Reasoning tables: initialized
+{
+  "cross_project_same_user": {
+    "response": "Projeto A: 37 dias",
+    "similarity": 1.0,
+    "expected": "MISS (sistema/projeto diferente)",
+    "synthetic_embeddings": true
+  },
+  "cross_user": {
+    "hit": false,
+    "expected": "MISS"
+  },
+  "forced_vector_collision": {
+    "hit": true,
+    "note": "Vetor artificial idêntico; NÃO mede taxa real de falso positivo do MiniLM."
+  },
+  "ttl_71_of_72_hours": {
+    "hit": false,
+    "expected": "HIT",
+    "created_at": "2026-10-11 15:12:40"
+  },
+  "expired_refresh": {
+    "rows": [
+      [
+        "antiga",
+        "2026-10-06 06:12:40"
+      ]
+    ],
+    "expected": "resposta nova e created_at renovado"
+  },
+  "oversize": {
+    "chars": 100000,
+    "estimated_tokens": 25004,
+    "budget": 6144,
+    "removed": 0
+  },
+  "tiny_context": {
+    "advertised": 512,
+    "safe_input": 1024
+  }
+}

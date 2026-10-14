@@ -1,0 +1,19 @@
+11:from backend.fusion.orchestrator import executar_fusion
+56:# Retrocompatibilidade: fusion/orchestrator.py importava estes nomes de chat.py.
+72:def register_socket(user_id: str, ws: WebSocket) -> None:
+77:def unregister_socket(user_id: str, ws: WebSocket) -> None:
+85:async def notify_user_sockets(user_id: str, message: dict) -> None:
+96:def _presence_transition(user_id: str, ws: WebSocket, transition) -> None:
+110:async def websocket_chat(ws: WebSocket):
+196:            fusion_mode = req.get("fusion", False)
+215:                    project_context_debug, use_memory, fusion_mode, voice_mode,
+252:async def _process_turn(
+255:    project_context_debug, use_memory, fusion_mode, voice_mode: bool = False,
+267:            project_context_debug, use_memory, fusion_mode, voice_mode, turn=turn,
+273:async def _run_turn(
+276:    project_context_debug, use_memory, fusion_mode, voice_mode: bool = False,
+523:    user_mem_text, context_fingerprint = await build_memory_context(
+585:    if fusion_mode:
+586:        await executar_fusion(
+609:        history, context_fingerprint, bypass_cache,
+719:async def _resolve_web_search(

@@ -1,0 +1,5 @@
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+  File "/home/user/nexus-local/backend/main.py", line 10, in <module>
+    from backend.logging_config import configure_logging, get_logger
+ModuleNotFoundError: No module named 'backend'

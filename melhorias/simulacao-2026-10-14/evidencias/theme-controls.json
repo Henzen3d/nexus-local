@@ -1,0 +1,407 @@
+[
+  {
+    "title": "",
+    "tooltip": "Início",
+    "cls": "sidebar-brand custom-tooltip-trigger"
+  },
+  {
+    "title": "",
+    "tooltip": "Buscar conversas",
+    "cls": "btn btn-ghost btn-icon custom-tooltip-trigger sidebar-action-search"
+  },
+  {
+    "title": "",
+    "tooltip": "Recolher barra lateral",
+    "cls": "btn btn-ghost btn-icon custom-tooltip-trigger"
+  },
+  {
+    "title": "",
+    "tooltip": "Nova conversa",
+    "cls": "new-chat-btn custom-tooltip-trigger"
+  },
+  {
+    "title": "",
+    "tooltip": "Conversas",
+    "cls": "sidebar-fixed-nav-item custom-tooltip-trigger "
+  },
+  {
+    "title": "",
+    "tooltip": "Projetos",
+    "cls": "sidebar-fixed-nav-item custom-tooltip-trigger "
+  },
+  {
+    "title": "",
+    "tooltip": "Biblioteca",
+    "cls": "sidebar-fixed-nav-item custom-tooltip-trigger "
+  },
+  {
+    "title": "",
+    "tooltip": "Artefatos",
+    "cls": "sidebar-fixed-nav-item custom-tooltip-trigger "
+  },
+  {
+    "title": "",
+    "tooltip": null,
+    "cls": "conv-title"
+  },
+  {
+    "title": "Ações",
+    "tooltip": null,
+    "cls": "conv-menu-trigger"
+  },
+  {
+    "title": "",
+    "tooltip": null,
+    "cls": "conv-title"
+  },
+  {
+    "title": "Ações",
+    "tooltip": null,
+    "cls": "conv-menu-trigger"
+  },
+  {
+    "title": "",
+    "tooltip": null,
+    "cls": "conv-title"
+  },
+  {
+    "title": "Ações",
+    "tooltip": null,
+    "cls": "conv-menu-trigger"
+  },
+  {
+    "title": "",
+    "tooltip": null,
+    "cls": "conv-title"
+  },
+  {
+    "title": "Ações",
+    "tooltip": null,
+    "cls": "conv-menu-trigger"
+  },
+  {
+    "title": "",
+    "tooltip": null,
+    "cls": "conv-title"
+  },
+  {
+    "title": "Ações",
+    "tooltip": null,
+    "cls": "conv-menu-trigger"
+  },
+  {
+    "title": "",
+    "tooltip": null,
+    "cls": "conv-title"
+  },
+  {
+    "title": "Ações",
+    "tooltip": null,
+    "cls": "conv-menu-trigger"
+  },
+  {
+    "title": "",
+    "tooltip": null,
+    "cls": "conv-title"
+  },
+  {
+    "title": "Ações",
+    "tooltip": null,
+    "cls": "conv-menu-trigger"
+  },
+  {
+    "title": "",
+    "tooltip": null,
+    "cls": "conv-title"
+  },
+  {
+    "title": "Ações",
+    "tooltip": null,
+    "cls": "conv-menu-trigger"
+  },
+  {
+    "title": "",
+    "tooltip": null,
+    "cls": "conv-title"
+  },
+  {
+    "title": "Ações",
+    "tooltip": null,
+    "cls": "conv-menu-trigger"
+  },
+  {
+    "title": "",
+    "tooltip": null,
+    "cls": "conv-title"
+  },
+  {
+    "title": "Ações",
+    "tooltip": null,
+    "cls": "conv-menu-trigger"
+  },
+  {
+    "title": "",
+    "tooltip": null,
+    "cls": "conv-title"
+  },
+  {
+    "title": "Ações",
+    "tooltip": null,
+    "cls": "conv-menu-trigger"
+  },
+  {
+    "title": "",
+    "tooltip": null,
+    "cls": "conv-title"
+  },
+  {
+    "title": "Ações",
+    "tooltip": null,
+    "cls": "conv-menu-trigger"
+  },
+  {
+    "title": "",
+    "tooltip": null,
+    "cls": "conv-title"
+  },
+  {
+    "title": "Ações",
+    "tooltip": null,
+    "cls": "conv-menu-trigger"
+  },
+  {
+    "title": "",
+    "tooltip": null,
+    "cls": "conv-title"
+  },
+  {
+    "title": "Ações",
+    "tooltip": null,
+    "cls": "conv-menu-trigger"
+  },
+  {
+    "title": "",
+    "tooltip": null,
+    "cls": "conv-title"
+  },
+  {
+    "title": "Ações",
+    "tooltip": null,
+    "cls": "conv-menu-trigger"
+  },
+  {
+    "title": "",
+    "tooltip": null,
+    "cls": "conv-title"
+  },
+  {
+    "title": "Ações",
+    "tooltip": null,
+    "cls": "conv-menu-trigger"
+  },
+  {
+    "title": "",
+    "tooltip": null,
+    "cls": "conv-title"
+  },
+  {
+    "title": "Ações",
+    "tooltip": null,
+    "cls": "conv-menu-trigger"
+  },
+  {
+    "title": "",
+    "tooltip": null,
+    "cls": "conv-title"
+  },
+  {
+    "title": "Ações",
+    "tooltip": null,
+    "cls": "conv-menu-trigger"
+  },
+  {
+    "title": "",
+    "tooltip": null,
+    "cls": "conv-title"
+  },
+  {
+    "title": "Ações",
+    "tooltip": null,
+    "cls": "conv-menu-trigger"
+  },
+  {
+    "title": "",
+    "tooltip": null,
+    "cls": "conv-title"
+  },
+  {
+    "title": "Ações",
+    "tooltip": null,
+    "cls": "conv-menu-trigger"
+  },
+  {
+    "title": "",
+    "tooltip": null,
+    "cls": "conv-title"
+  },
+  {
+    "title": "Ações",
+    "tooltip": null,
+    "cls": "conv-menu-trigger"
+  },
+  {
+    "title": "",
+    "tooltip": null,
+    "cls": "conv-title"
+  },
+  {
+    "title": "Ações",
+    "tooltip": null,
+    "cls": "conv-menu-trigger"
+  },
+  {
+    "title": "",
+    "tooltip": null,
+    "cls": "conv-title"
+  },
+  {
+    "title": "Ações",
+    "tooltip": null,
+    "cls": "conv-menu-trigger"
+  },
+  {
+    "title": "",
+    "tooltip": null,
+    "cls": "conv-title"
+  },
+  {
+    "title": "Ações",
+    "tooltip": null,
+    "cls": "conv-menu-trigger"
+  },
+  {
+    "title": "",
+    "tooltip": null,
+    "cls": "conv-title"
+  },
+  {
+    "title": "Ações",
+    "tooltip": null,
+    "cls": "conv-menu-trigger"
+  },
+  {
+    "title": "",
+    "tooltip": null,
+    "cls": "conv-title"
+  },
+  {
+    "title": "Ações",
+    "tooltip": null,
+    "cls": "conv-menu-trigger"
+  },
+  {
+    "title": "",
+    "tooltip": null,
+    "cls": "conv-title"
+  },
+  {
+    "title": "Ações",
+    "tooltip": null,
+    "cls": "conv-menu-trigger"
+  },
+  {
+    "title": "",
+    "tooltip": null,
+    "cls": "conv-title"
+  },
+  {
+    "title": "Ações",
+    "tooltip": null,
+    "cls": "conv-menu-trigger"
+  },
+  {
+    "title": "",
+    "tooltip": null,
+    "cls": "conv-title"
+  },
+  {
+    "title": "Ações",
+    "tooltip": null,
+    "cls": "conv-menu-trigger"
+  },
+  {
+    "title": "",
+    "tooltip": null,
+    "cls": "conv-title"
+  },
+  {
+    "title": "Ações",
+    "tooltip": null,
+    "cls": "conv-menu-trigger"
+  },
+  {
+    "title": "",
+    "tooltip": null,
+    "cls": "conv-title"
+  },
+  {
+    "title": "Ações",
+    "tooltip": null,
+    "cls": "conv-menu-trigger"
+  },
+  {
+    "title": "",
+    "tooltip": "Usar tema escuro",
+    "cls": "btn btn-ghost btn-icon custom-tooltip-trigger"
+  },
+  {
+    "title": "",
+    "tooltip": "Sair da conta",
+    "cls": "btn btn-ghost btn-icon custom-tooltip-trigger"
+  },
+  {
+    "title": "",
+    "tooltip": "Copiar",
+    "cls": "meta-copy-btn custom-tooltip-trigger"
+  },
+  {
+    "title": "",
+    "tooltip": null,
+    "cls": "fusion-status-header"
+  },
+  {
+    "title": "",
+    "tooltip": null,
+    "cls": "execution-sequence-toggle"
+  },
+  {
+    "title": "",
+    "tooltip": "Copiar",
+    "cls": "meta-copy-btn custom-tooltip-trigger"
+  },
+  {
+    "title": "",
+    "tooltip": "Ouvir resposta",
+    "cls": "meta-copy-btn custom-tooltip-trigger  "
+  },
+  {
+    "title": "",
+    "tooltip": "Ações e ferramentas",
+    "cls": "composer-plus-btn touch-target "
+  },
+  {
+    "title": "",
+    "tooltip": "Falar",
+    "cls": "composer-tool-btn touch-target"
+  },
+  {
+    "title": "",
+    "tooltip": "Conversar",
+    "cls": "composer-tool-btn touch-target"
+  },
+  {
+    "title": "",
+    "tooltip": null,
+    "cls": "model-trigger compact"
+  }
+]

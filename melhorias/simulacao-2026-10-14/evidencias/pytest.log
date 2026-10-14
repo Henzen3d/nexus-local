@@ -1,0 +1,492 @@
+...................................................................FEFEE [ 17%]
+........................................................................ [ 34%]
+........................................................................ [ 52%]
+.....................s.................................................. [ 69%]
+...........................................................FFF.......... [ 86%]
+.......................................................                  [100%]
+==================================== ERRORS ====================================
+_____________ ERROR at setup of test_semantic_cache_user_isolation _____________
+file /home/user/nexus-local/backend/tests/test_jev_fast_standalone.py, line 184
+  async def test_semantic_cache_user_isolation(db: aiosqlite.Connection):
+      """Valida que o cache semântico e exato de user_A nunca atende user_B."""
+      print("[2/6] Testando Isolamento Estrito de Usuário no Cache Semântico e Exato...")
+      prompt = "Qual a capital do Japão?"
+      response = "A capital do Japão é Tóquio."
+      model_id = "model-fast"
+
+      # Fase A: Testar isolamento estrito no Cache Semântico (desativando cache exato)
+      await cache_manager.update_settings({"exact_enabled": False, "semantic_enabled": True})
+
+      # Popula cache semântico para user_alpha
+      await cache_manager.set(
+          model_id=model_id,
+          messages=[{"role": "user", "content": prompt}],
+          response=response,
+          user_id="user_alpha",
+      )
+
+      # 1. Consulta para user_beta (deve ser MISS no cache semântico)
+      hit_beta = await cache_manager.get(
+          model_id=model_id,
+          messages=[{"role": "user", "content": prompt}],
+          user_id="user_beta",
+      )
+      assert hit_beta is None, "Cache semântico de user_alpha NÃO pode ser retornado para user_beta"
+
+      # 2. Consulta para user_alpha (deve ser HIT pelo bypass SHA-256 fingerprint do cache semântico)
+      t0 = time.perf_counter()
+      hit_alpha = await cache_manager.get(
+          model_id=model_id,
+          messages=[{"role": "user", "content": prompt}],
+          user_id="user_alpha",
+      )
+      t_fp = (time.perf_counter() - t0) * 1000.0
+      assert hit_alpha is not None, "Cache semântico para user_alpha deve ser retornado"
+      assert hit_alpha.response == response
+      assert hit_alpha.similarity == 1.0
+      assert hit_alpha.cache_type == "semantic"
+      print(f"  [OK] Bypass SHA-256 fingerprint do cache semântico validado em {t_fp:.3f}ms")
+
+      # Fase B: Testar isolamento no Cache Exato
+      await cache_manager.update_settings({"exact_enabled": True, "semantic_enabled": True})
+      hit_beta_exact = await cache_manager.get(
+          model_id=model_id,
+          messages=[{"role": "user", "content": prompt}],
+          user_id="user_beta",
+      )
+      assert hit_beta_exact is None, "Cache exato de user_alpha NÃO pode ser retornado para user_beta"
+
+      print("  [OK] Passou! user_beta teve MISS e user_alpha teve HIT com 100% de isolamento.")
+E       fixture 'db' not found
+>       available fixtures: _asyncio_loop_factory, _class_scoped_runner, _function_scoped_runner, _isolated_db_path, _module_scoped_runner, _package_scoped_runner, _session_scoped_runner, anyio_backend, anyio_backend_name, anyio_backend_options, cache, capfd, capfdbinary, caplog, capsys, capsysbinary, capteesys, doctest_namespace, event_loop_policy, free_tcp_port, free_tcp_port_factory, free_udp_port, free_udp_port_factory, monkeypatch, pytestconfig, record_property, record_testsuite_property, record_xml_attribute, recwarn, subtests, tmp_path, tmp_path_factory, tmpdir, tmpdir_factory, unused_tcp_port, unused_tcp_port_factory, unused_udp_port, unused_udp_port_factory
+>       use 'pytest --fixtures [testpath]' for help on them.
+
+/home/user/nexus-local/backend/tests/test_jev_fast_standalone.py:184
+_________ ERROR at setup of test_model_cache_and_reactive_invalidation _________
+file /home/user/nexus-local/backend/tests/test_jev_fast_standalone.py, line 255
+  async def test_model_cache_and_reactive_invalidation(db: aiosqlite.Connection):
+      """Valida que o Model Cache em RAM atualiza status de cota imediatamente após invalidate_model_cache()."""
+      print("[4/6] Testando Model Cache e Invalidação Reativa...")
+      invalidate_model_cache()
+
+      intent_result = IntentClassificationResult(
+          intent=IntentKey.TRIVIAL_QUICK,
+          complexity=ComplexityTier.LIGHT,
+          confidence=1.0,
+          matched_signals=["test"],
+          reason_label_pt="Teste",
+      )
+
+      # Seleção 1: model-fast está available
+      decision1 = await select_best_model(intent_result, "balanced_smart", db)
+      assert decision1.chosen_model_id == "model-fast", f"Esperado model-fast, obteve {decision1.chosen_model_id}"
+
+      # Esgota cota de model-fast e invalida cache
+      await mark_model_exhausted("model-fast", db, retry_after=3600, error_msg="Rate limit")
+      invalidate_model_cache()
+
+      # Seleção 2: Deve selecionar model-fallback imediatamente
+      decision2 = await select_best_model(intent_result, "balanced_smart", db)
+      assert decision2.chosen_model_id == "model-fallback", f"Esperado model-fallback, obteve {decision2.chosen_model_id}"
+
+      # Libera cotas expiradas
+      await db.execute("UPDATE model_quota_status SET estimated_reset_at = datetime('now', '-1 minute') WHERE model_id = 'model-fast'")
+      await db.commit()
+      released = await release_expired_quotas(db)
+      assert released >= 1, "model-fast deve ser liberado"
+
+      # Seleção 3: model-fast deve voltar ao topo imediatamente
+      decision3 = await select_best_model(intent_result, "balanced_smart", db)
+      assert decision3.chosen_model_id == "model-fast", f"Esperado model-fast após liberação, obteve {decision3.chosen_model_id}"
+
+      print("  [OK] Passou! Status de cota e invalidate_model_cache() sincronizados com perfeição.")
+E       fixture 'db' not found
+>       available fixtures: _asyncio_loop_factory, _class_scoped_runner, _function_scoped_runner, _isolated_db_path, _module_scoped_runner, _package_scoped_runner, _session_scoped_runner, anyio_backend, anyio_backend_name, anyio_backend_options, cache, capfd, capfdbinary, caplog, capsys, capsysbinary, capteesys, doctest_namespace, event_loop_policy, free_tcp_port, free_tcp_port_factory, free_udp_port, free_udp_port_factory, monkeypatch, pytestconfig, record_property, record_testsuite_property, record_xml_attribute, recwarn, subtests, tmp_path, tmp_path_factory, tmpdir, tmpdir_factory, unused_tcp_port, unused_tcp_port_factory, unused_udp_port, unused_udp_port_factory
+>       use 'pytest --fixtures [testpath]' for help on them.
+
+/home/user/nexus-local/backend/tests/test_jev_fast_standalone.py:255
+_________________ ERROR at setup of test_vision_relay_l1_cache _________________
+file /home/user/nexus-local/backend/tests/test_jev_fast_standalone.py, line 293
+  async def test_vision_relay_l1_cache(db: aiosqlite.Connection):
+      """Valida cache L1 em RAM para Vision Relay com LRU 512 e invalidação."""
+      print("[5/6] Testando Vision Relay L1 LRU Cache em RAM...")
+      invalidate_vision_l1_cache()
+
+      file_hash = "sha256_mock_hash_image_123"
+      desc = "Uma foto nítida de uma praia tropical ao pôr do sol."
+
+      # Salva descrição
+      await save_description_cache(file_hash, desc, "gemini-2.0-flash", db)
+      assert file_hash in _VISION_L1_CACHE
+
+      # Obtém do L1 (RAM)
+      t0 = time.perf_counter()
+      retrieved = await get_cached_description(file_hash, db)
+      lat = (time.perf_counter() - t0) * 1000
+
+      assert retrieved == desc
+      assert lat < 1.0, f"Leitura em L1 deve ser < 1ms (levou {lat:.4f}ms)"
+
+      # Invalidação
+      invalidate_vision_l1_cache()
+      assert len(_VISION_L1_CACHE) == 0
+
+      # Próxima leitura carrega do banco e repopula L1
+      retrieved_db = await get_cached_description(file_hash, db)
+      assert retrieved_db == desc
+      assert file_hash in _VISION_L1_CACHE
+      print("  [OK] Passou! L1 LRU em RAM entregou descrição em < 1ms e invalidou perfeitamente.")
+E       fixture 'db' not found
+>       available fixtures: _asyncio_loop_factory, _class_scoped_runner, _function_scoped_runner, _isolated_db_path, _module_scoped_runner, _package_scoped_runner, _session_scoped_runner, anyio_backend, anyio_backend_name, anyio_backend_options, cache, capfd, capfdbinary, caplog, capsys, capsysbinary, capteesys, doctest_namespace, event_loop_policy, free_tcp_port, free_tcp_port_factory, free_udp_port, free_udp_port_factory, monkeypatch, pytestconfig, record_property, record_testsuite_property, record_xml_attribute, recwarn, subtests, tmp_path, tmp_path_factory, tmpdir, tmpdir_factory, unused_tcp_port, unused_tcp_port_factory, unused_udp_port, unused_udp_port_factory
+>       use 'pytest --fixtures [testpath]' for help on them.
+
+/home/user/nexus-local/backend/tests/test_jev_fast_standalone.py:293
+=================================== FAILURES ===================================
+______________________ test_single_embedding_memoization _______________________
+
+    async def test_single_embedding_memoization():
+        """Valida que duas chamadas no mesmo turno reutilizam o mesmo embedding em RAM (0ms)."""
+        print("[1/6] Testando Single-Embedding por Turno via RequestContext...")
+        req_ctx = RequestContext(user_id="user_test_123")
+        query = "Como criar um servidor ASGI assíncrono?"
+
+        t0 = time.perf_counter()
+        blob1 = await req_ctx.get_embedding(query)
+        lat1 = (time.perf_counter() - t0) * 1000
+
+>       assert blob1 is not None, "Primeira inferência de embedding deve retornar bytes"
+E       AssertionError: Primeira inferência de embedding deve retornar bytes
+E       assert None is not None
+
+backend/tests/test_jev_fast_standalone.py:171: AssertionError
+----------------------------- Captured stdout call -----------------------------
+[1/6] Testando Single-Embedding por Turno via RequestContext...
+________________________ test_semantic_gate_follow_ups _________________________
+
+    async def test_semantic_gate_follow_ups():
+        """Valida que o gate multi-turno desativa a busca semântica em follow-ups."""
+        print("[3/6] Testando Semantic Gate em Multi-Turno...")
+        # Follow-up com len(user_messages) > 1
+        messages_followup = [
+            {"role": "user", "content": "Me conte uma piada."},
+            {"role": "assistant", "content": "Por que o livro de matemática se suicidou? Porque tinha muitos problemas."},
+            {"role": "user", "content": "Não entendi, explica?"},
+        ]
+
+>       hit = await cache_manager.get(
+            model_id="model-fast",
+            messages=messages_followup,
+            user_id="user_alpha",
+        )
+
+backend/tests/test_jev_fast_standalone.py:246:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+backend/cache/manager.py:169: in get
+    settings = await self.get_settings()
+               ^^^^^^^^^^^^^^^^^^^^^^^^^
+backend/cache/manager.py:110: in get_settings
+    async with db.execute("SELECT key, value FROM cache_settings") as cur:
+.venv/lib/python3.11/site-packages/aiosqlite/context.py:39: in __aenter__
+    self._obj = await self._coro
+                ^^^^^^^^^^^^^^^^
+.venv/lib/python3.11/site-packages/aiosqlite/core.py:193: in execute
+    cursor = await self._execute(self._conn.execute, sql, parameters)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.11/site-packages/aiosqlite/core.py:132: in _execute
+    return await future
+           ^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <Connection(Thread-178, stopped 140584903767744)>
+
+    def run(self) -> None:
+        """
+        Execute function calls on a separate thread.
+
+        :meta private:
+        """
+        while True:
+            # Continues running until all queue items are processed,
+            # even after connection is closed (so we can finalize all
+            # futures)
+
+            tx_item = self._tx.get()
+            if tx_item is _STOP_RUNNING_SENTINEL:
+                break
+
+            future, function = tx_item
+
+            try:
+                LOG.debug("executing %s", function)
+>               result = function()
+                         ^^^^^^^^^^
+E               sqlite3.OperationalError: no such table: cache_settings
+
+.venv/lib/python3.11/site-packages/aiosqlite/core.py:115: OperationalError
+----------------------------- Captured stdout call -----------------------------
+[3/6] Testando Semantic Gate em Multi-Turno...
+____________________ test_select_best_model_balanced_smart _____________________
+
+    @pytest.mark.asyncio
+    async def test_select_best_model_balanced_smart():
+        """Valida seleção de modelo com política balanced_smart."""
+        await init_db()
+        async with aiosqlite.connect(DB_PATH) as db:
+            res = classify_intent("def somar(a, b): return a + b")
+>           decision = await select_best_model(res, "balanced_smart", db)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+backend/tests/test_smart_router.py:163:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+backend/ranking/smart_router.py:1058: in select_best_model
+    models_data = await load_routing_catalog(db)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend/ranking/smart_router.py:872: in load_routing_catalog
+    async with db.execute(query) as cur:
+.venv/lib/python3.11/site-packages/aiosqlite/context.py:39: in __aenter__
+    self._obj = await self._coro
+                ^^^^^^^^^^^^^^^^
+.venv/lib/python3.11/site-packages/aiosqlite/core.py:193: in execute
+    cursor = await self._execute(self._conn.execute, sql, parameters)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.11/site-packages/aiosqlite/core.py:132: in _execute
+    return await future
+           ^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <Connection(Thread-668, stopped 140584815687360)>
+
+    def run(self) -> None:
+        """
+        Execute function calls on a separate thread.
+
+        :meta private:
+        """
+        while True:
+            # Continues running until all queue items are processed,
+            # even after connection is closed (so we can finalize all
+            # futures)
+
+            tx_item = self._tx.get()
+            if tx_item is _STOP_RUNNING_SENTINEL:
+                break
+
+            future, function = tx_item
+
+            try:
+                LOG.debug("executing %s", function)
+>               result = function()
+                         ^^^^^^^^^^
+E               sqlite3.OperationalError: no such table: models
+
+.venv/lib/python3.11/site-packages/aiosqlite/core.py:115: OperationalError
+----------------------------- Captured stderr call -----------------------------
+2026-10-14 14:05:29 [INFO] nexuslocal.backend.database: [OK] Ranking & Failover & Reasoning tables: initialized
+------------------------------ Captured log call -------------------------------
+INFO     nexuslocal.backend.database:database.py:1885 [OK] Ranking & Failover & Reasoning tables: initialized
+____________________ test_select_best_model_economical_free ____________________
+
+    @pytest.mark.asyncio
+    async def test_select_best_model_economical_free():
+        """Valida que a política econômica prioriza modelos com is_free == 1."""
+        await init_db()
+        async with aiosqlite.connect(DB_PATH) as db:
+            res = classify_intent("olá tudo bem?")
+>           decision = await select_best_model(res, "economical_free", db)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+backend/tests/test_smart_router.py:176:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+backend/ranking/smart_router.py:1058: in select_best_model
+    models_data = await load_routing_catalog(db)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend/ranking/smart_router.py:872: in load_routing_catalog
+    async with db.execute(query) as cur:
+.venv/lib/python3.11/site-packages/aiosqlite/context.py:39: in __aenter__
+    self._obj = await self._coro
+                ^^^^^^^^^^^^^^^^
+.venv/lib/python3.11/site-packages/aiosqlite/core.py:193: in execute
+    cursor = await self._execute(self._conn.execute, sql, parameters)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.11/site-packages/aiosqlite/core.py:132: in _execute
+    return await future
+           ^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <Connection(Thread-670, stopped 140584903767744)>
+
+    def run(self) -> None:
+        """
+        Execute function calls on a separate thread.
+
+        :meta private:
+        """
+        while True:
+            # Continues running until all queue items are processed,
+            # even after connection is closed (so we can finalize all
+            # futures)
+
+            tx_item = self._tx.get()
+            if tx_item is _STOP_RUNNING_SENTINEL:
+                break
+
+            future, function = tx_item
+
+            try:
+                LOG.debug("executing %s", function)
+>               result = function()
+                         ^^^^^^^^^^
+E               sqlite3.OperationalError: no such table: models
+
+.venv/lib/python3.11/site-packages/aiosqlite/core.py:115: OperationalError
+----------------------------- Captured stderr call -----------------------------
+2026-10-14 14:05:29 [INFO] nexuslocal.backend.database: [OK] Ranking & Failover & Reasoning tables: initialized
+------------------------------ Captured log call -------------------------------
+INFO     nexuslocal.backend.database:database.py:1885 [OK] Ranking & Failover & Reasoning tables: initialized
+____________________ test_select_best_model_sticky_routing _____________________
+
+    @pytest.mark.asyncio
+    async def test_select_best_model_sticky_routing():
+        """Valida que o Sticky Routing mantém o modelo do turno anterior se score próximo."""
+        await init_db()
+        async with aiosqlite.connect(DB_PATH) as db:
+            res1 = classify_intent("def calcula(): pass")
+>           decision1 = await select_best_model(res1, "balanced_smart", db)
+                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+backend/tests/test_smart_router.py:187:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+backend/ranking/smart_router.py:1058: in select_best_model
+    models_data = await load_routing_catalog(db)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend/ranking/smart_router.py:872: in load_routing_catalog
+    async with db.execute(query) as cur:
+.venv/lib/python3.11/site-packages/aiosqlite/context.py:39: in __aenter__
+    self._obj = await self._coro
+                ^^^^^^^^^^^^^^^^
+.venv/lib/python3.11/site-packages/aiosqlite/core.py:193: in execute
+    cursor = await self._execute(self._conn.execute, sql, parameters)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.11/site-packages/aiosqlite/core.py:132: in _execute
+    return await future
+           ^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <Connection(Thread-672, stopped 140584815687360)>
+
+    def run(self) -> None:
+        """
+        Execute function calls on a separate thread.
+
+        :meta private:
+        """
+        while True:
+            # Continues running until all queue items are processed,
+            # even after connection is closed (so we can finalize all
+            # futures)
+
+            tx_item = self._tx.get()
+            if tx_item is _STOP_RUNNING_SENTINEL:
+                break
+
+            future, function = tx_item
+
+            try:
+                LOG.debug("executing %s", function)
+>               result = function()
+                         ^^^^^^^^^^
+E               sqlite3.OperationalError: no such table: models
+
+.venv/lib/python3.11/site-packages/aiosqlite/core.py:115: OperationalError
+----------------------------- Captured stderr call -----------------------------
+2026-10-14 14:05:29 [INFO] nexuslocal.backend.database: [OK] Ranking & Failover & Reasoning tables: initialized
+------------------------------ Captured log call -------------------------------
+INFO     nexuslocal.backend.database:database.py:1885 [OK] Ranking & Failover & Reasoning tables: initialized
+=============================== warnings summary ===============================
+.venv/lib/python3.11/site-packages/passlib/utils/__init__.py:854
+  /home/user/nexus-local/.venv/lib/python3.11/site-packages/passlib/utils/__init__.py:854: DeprecationWarning: 'crypt' is deprecated and slated for removal in Python 3.13
+    from crypt import crypt as _crypt
+
+.venv/lib/python3.11/site-packages/pydantic/_internal/_fields.py:132
+  /home/user/nexus-local/.venv/lib/python3.11/site-packages/pydantic/_internal/_fields.py:132: UserWarning: Field "model_id" in FusionModelOut has conflict with protected namespace "model_".
+
+  You may be able to resolve this warning by setting `model_config['protected_namespaces'] = ()`.
+    warnings.warn(
+
+.venv/lib/python3.11/site-packages/pydantic/_internal/_fields.py:132
+  /home/user/nexus-local/.venv/lib/python3.11/site-packages/pydantic/_internal/_fields.py:132: UserWarning: Field "model_id" in FusionModelIn has conflict with protected namespace "model_".
+
+  You may be able to resolve this warning by setting `model_config['protected_namespaces'] = ()`.
+    warnings.warn(
+
+.venv/lib/python3.11/site-packages/pydantic/_internal/_fields.py:132
+  /home/user/nexus-local/.venv/lib/python3.11/site-packages/pydantic/_internal/_fields.py:132: UserWarning: Field "model_id" in Body_upload_attachment_api_attachments_upload_post has conflict with protected namespace "model_".
+
+  You may be able to resolve this warning by setting `model_config['protected_namespaces'] = ()`.
+    warnings.warn(
+
+.venv/lib/python3.11/site-packages/pydantic/_internal/_fields.py:132
+  /home/user/nexus-local/.venv/lib/python3.11/site-packages/pydantic/_internal/_fields.py:132: UserWarning: Field "model_id" in MemberCreate has conflict with protected namespace "model_".
+
+  You may be able to resolve this warning by setting `model_config['protected_namespaces'] = ()`.
+    warnings.warn(
+
+.venv/lib/python3.11/site-packages/pydantic/_internal/_fields.py:132
+  /home/user/nexus-local/.venv/lib/python3.11/site-packages/pydantic/_internal/_fields.py:132: UserWarning: Field "model_id" in DreamRunIn has conflict with protected namespace "model_".
+
+  You may be able to resolve this warning by setting `model_config['protected_namespaces'] = ()`.
+    warnings.warn(
+
+.venv/lib/python3.11/site-packages/pydantic/_internal/_fields.py:132
+  /home/user/nexus-local/.venv/lib/python3.11/site-packages/pydantic/_internal/_fields.py:132: UserWarning: Field "model_id" in ImageGenConfigUpdate has conflict with protected namespace "model_".
+
+  You may be able to resolve this warning by setting `model_config['protected_namespaces'] = ()`.
+    warnings.warn(
+
+backend/main.py:455
+  /home/user/nexus-local/backend/main.py:455: DeprecationWarning:
+          on_event is deprecated, use lifespan event handlers instead.
+
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+
+    @app.on_event("startup")
+
+.venv/lib/python3.11/site-packages/fastapi/applications.py:4495
+.venv/lib/python3.11/site-packages/fastapi/applications.py:4495
+  /home/user/nexus-local/.venv/lib/python3.11/site-packages/fastapi/applications.py:4495: DeprecationWarning:
+          on_event is deprecated, use lifespan event handlers instead.
+
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+
+    return self.router.on_event(event_type)
+
+backend/main.py:512
+  /home/user/nexus-local/backend/main.py:512: DeprecationWarning:
+          on_event is deprecated, use lifespan event handlers instead.
+
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+
+    @app.on_event("shutdown")
+
+tests/test_dream_edge_cases.py::test_dry_run_preview_zero_mutations
+  /home/user/nexus-local/.venv/lib/python3.11/site-packages/pydantic/main.py:1114: PydanticDeprecatedSince20: The `dict` method is deprecated; use `model_dump` instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.9/migration/
+    warnings.warn('The `dict` method is deprecated; use `model_dump` instead.', category=PydanticDeprecatedSince20)
+
+tests/test_family_access.py::test_register_is_closed
+  /home/user/nexus-local/.venv/lib/python3.11/site-packages/starlette/testclient.py:40: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.
+    _PortalFactoryType = typing.Callable[[], typing.ContextManager[anyio.abc.BlockingPortal]]
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED backend/tests/test_jev_fast_standalone.py::test_single_embedding_memoization
+FAILED backend/tests/test_jev_fast_standalone.py::test_semantic_gate_follow_ups
+FAILED backend/tests/test_smart_router.py::test_select_best_model_balanced_smart
+FAILED backend/tests/test_smart_router.py::test_select_best_model_economical_free
+FAILED backend/tests/test_smart_router.py::test_select_best_model_sticky_routing
+ERROR backend/tests/test_jev_fast_standalone.py::test_semantic_cache_user_isolation
+ERROR backend/tests/test_jev_fast_standalone.py::test_model_cache_and_reactive_invalidation
+ERROR backend/tests/test_jev_fast_standalone.py::test_vision_relay_l1_cache
+5 failed, 406 passed, 1 skipped, 13 warnings, 3 errors in 73.09s (0:01:13)

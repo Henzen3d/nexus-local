@@ -1,0 +1,9 @@
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+  File "/home/user/nexus-local/backend/main.py", line 15, in <module>
+    from backend.routers.chat import router as chat_router
+  File "/home/user/nexus-local/backend/routers/chat.py", line 9, in <module>
+    from backend.auth import resolve_token_user
+  File "/home/user/nexus-local/backend/auth.py", line 14, in <module>
+    raise RuntimeError(
+RuntimeError: JWT_SECRET não definido. Configure a variável de ambiente JWT_SECRET no arquivo .env antes de iniciar o backend.
