@@ -390,6 +390,11 @@ async def deliver(insight: dict, db: Any, *, wait_turn_timeout: float = WAIT_TUR
 
     channel = decide(insight)
     if channel == "pending":
+        try:
+            from backend.proactive.push import maybe_send_proactive_push
+            await maybe_send_proactive_push(db, insight)
+        except Exception as exc:
+            logger.debug("[Proactive] falha ao disparar push em delivery: %s", exc)
         return DeliveryOutcome(None, None, "absent")
 
     # Não interromper um turno em andamento na conversa de origem (F2.5.4)
@@ -399,6 +404,11 @@ async def deliver(insight: dict, db: Any, *, wait_turn_timeout: float = WAIT_TUR
             return DeliveryOutcome(None, None, "turn_busy")
         channel = decide(insight)
         if channel == "pending":
+            try:
+                from backend.proactive.push import maybe_send_proactive_push
+                await maybe_send_proactive_push(db, insight)
+            except Exception as exc:
+                logger.debug("[Proactive] falha ao disparar push em delivery: %s", exc)
             return DeliveryOutcome(None, None, "absent")
 
     message_id = await claim_and_persist(db, insight, channel=channel, mode="live")
@@ -499,6 +509,36 @@ async def pending_for_api(db: Any, user_id: str, *, max_pending: Optional[int] =
     pending = await load_pending(db, user_id, limit=limit)
     await attach_origin_titles(db, pending)
     return [insight_public_dict(i) for i in pending]
+
+
+async def history_for_api(
+    db: Any,
+    user_id: str,
+    *,
+    limit: int = 50,
+    status: Optional[str] = None,
+) -> list[dict]:
+    """``GET /api/proactive/history`` (F7.2.2): histórico de descobertas do usuário."""
+    from backend.proactive import service
+
+    await service.expire_overdue(db, user_id)
+    sql = f"""SELECT {', '.join(INSIGHT_COLUMNS)} FROM proactive_insights
+              WHERE user_id = ?"""
+    params: list[Any] = [user_id]
+    if status and status != "all":
+        sql += " AND status = ?"
+        params.append(status)
+    else:
+        sql += " AND status != 'failed'"
+    sql += " ORDER BY created_at DESC LIMIT ?"
+    params.append(max(1, min(int(limit), 100)))
+
+    async with db.execute(sql, tuple(params)) as cur:
+        rows = await cur.fetchall()
+
+    insights = [dict(zip(INSIGHT_COLUMNS, r)) for r in rows]
+    await attach_origin_titles(db, insights)
+    return [insight_public_dict(i) for i in insights]
 
 
 # ─────────────────────────────────────────────────────────────────────────────

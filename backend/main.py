@@ -34,6 +34,7 @@ from backend.routers.tts import router as tts_router
 from backend.routers.image_gen import router as image_gen_router
 from backend.routers.proactive import router as proactive_router
 from backend.routers.intelligent_ui import router as intelligent_ui_router
+from backend.routers.push import router as push_router
 
 app = FastAPI(title="NexusLocal", version="1.0.0")
 
@@ -78,6 +79,7 @@ app.include_router(tts_router)
 app.include_router(image_gen_router)
 app.include_router(proactive_router)
 app.include_router(intelligent_ui_router)
+app.include_router(push_router)
 
 
 

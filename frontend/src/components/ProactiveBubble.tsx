@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next'
 import type { Message, WebSearchSource } from '../types'
 import { useStore } from '../store/useStore'
 import { AssistantAvatar } from './Avatars'
+import { ProactiveMascot } from './ProactiveMascot'
 import { markdownComponents } from './markdownComponents'
 import { SourceShelf } from './SourceShelf'
 
@@ -47,6 +48,7 @@ export function ProactiveBubble({ message }: { message: Message }) {
   const setComposerPrefill = useStore((s) => s.setComposerPrefill)
   const loadConversation = useStore((s) => s.loadConversation)
   const activeConversationId = useStore((s) => s.activeConversationId)
+  const proactiveSettings = useStore((s) => s.proactiveSettings)
   const rootRef = useRef<HTMLDivElement>(null)
 
   const insight = message.insight || null
@@ -113,7 +115,9 @@ export function ProactiveBubble({ message }: { message: Message }) {
       data-insight-id={insightId || undefined}
       data-testid="proactive-bubble"
     >
-      <AssistantAvatar />
+      <div className="proactive-avatar-wrap">
+        <ProactiveMascot size={28} state="ready" style={proactiveSettings?.persona_style || 'lumi'} />
+      </div>
       <div className="message-body-wrapper">
         <div className="message-body proactive-body">
           <div className="proactive-badge" aria-label={t('proactive.bubbleBadge')}>
@@ -190,10 +194,13 @@ export function ProactiveBubble({ message }: { message: Message }) {
 // ─── ProactiveResearching — indicador discreto "✦ pesquisando…" (F2.7.4) ───────
 export function ProactiveResearching({ stage }: { stage?: string }) {
   const { t } = useTranslation()
+  const proactiveSettings = useStore((s) => s.proactiveSettings)
   const label = stage === 'synthesizing' ? t('proactive.synthesizing') : t('proactive.researching')
   return (
     <div className="message assistant proactive-researching" role="status" aria-live="polite">
-      <AssistantAvatar />
+      <div className="proactive-avatar-wrap">
+        <ProactiveMascot size={28} state="researching" style={proactiveSettings?.persona_style || 'lumi'} />
+      </div>
       <div className="message-body-wrapper">
         <div className="proactive-researching-pill">
           <Sparkles size={12} aria-hidden="true" />

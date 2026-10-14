@@ -260,38 +260,44 @@ Use este arquivo para marcar o progresso. Cada item tem o mesmo ID usado no docu
 
 ---
 
+| F6 Web Push (opcional) | `07-opcional-web-push-pwa.md` | 8 h | F3, F4 | ✅ Implementado com pywebpush e VAPID |
+| F7 Central, Hub e Persona | `08-central-de-notificacoes-hub-e-persona.md` | 10 h | F6 | ✅ Implementado com Mascote Lumi, Sininho e Hub na Sidebar |
+
+---
+
 ## 🔔 F6 — Web Push (opcional) (`07-opcional-web-push-pwa.md`)
 
-- [ ] **F6.1.1** VAPID + `pywebpush` + `.env.example`
-- [ ] **F6.1.2** `push_subscriptions`
-- [ ] **F6.1.3** Rotas `/api/push/*`
-- [ ] **F6.1.4** `send_push` com limpeza de subscriptions mortas
-- [ ] **F6.1.5** Integração em `decide()` (offline ≥ 10 min, quiet hours, agrupamento)
-- [ ] **F6.1.6** Regra de validade restante
-- [ ] **F6.2.1** `injectManifest`
-- [ ] **F6.2.2** `sw.ts` (`push`, `notificationclick`)
-- [ ] **F6.2.3** `usePushSubscription` (permissão por gesto)
-- [ ] **F6.2.4** Toggle + teste nas settings
-- [ ] **F6.2.5** Banner contextual (1 vez)
-- [ ] **F6.2.6** i18n
-- [ ] **F6.3.1** Testes backend (410, agrupamento, quiet hours, validade)
-- [ ] **F6.3.2** Autorização
-- [ ] **F6.3.3** Teste manual por plataforma
-- [ ] **F6.3.4** Aceite (≤ 30 s, abre a conversa certa, remove subscription ao desligar)
+- [x] **F6.1.1** VAPID + `pywebpush` + `.env.example`
+- [x] **F6.1.2** `push_subscriptions`
+- [x] **F6.1.3** Rotas `/api/push/*`
+- [x] **F6.1.4** `send_push` com limpeza de subscriptions mortas
+- [x] **F6.1.5** Integração em `decide()` (offline ≥ 10 min, quiet hours, agrupamento)
+- [x] **F6.1.6** Regra de validade restante
+- [x] **F6.2.1** `injectManifest`
+- [x] **F6.2.2** `sw.ts` (`push`, `notificationclick`)
+- [x] **F6.2.3** `usePushSubscription` (permissão por gesto)
+- [x] **F6.2.4** Toggle + teste nas settings
+- [x] **F6.2.5** Banner contextual (1 vez)
+- [x] **F6.2.6** i18n
+- [x] **F6.3.1** Testes backend (410, agrupamento, quiet hours, validade)
+- [x] **F6.3.2** Autorização
+- [x] **F6.3.3** Teste manual por plataforma
+- [x] **F6.3.4** Aceite (≤ 30 s, abre a conversa certa, remove subscription ao desligar)
 
 ---
 
 ## 🎨 F7 — Central de Notificações, Hub na Sidebar e Mascote (`08-central-de-notificacoes-hub-e-persona.md`)
 
-- [ ] **F7.1.1** Componente `NotificationBell.tsx` no cabeçalho com badge numérico de `pendingInsights`
-- [ ] **F7.1.2** Popover / Dropdown de notificações com cards de resumo, tempo relativo, fontes e ações
-- [ ] **F7.1.3** BottomSheet no mobile para o sininho
-- [ ] **F7.1.4** Link fixo `✦ Assistente Proativo` na `Sidebar.tsx` abaixo de *Artefatos* com contador
-- [ ] **F7.1.5** View dedicada `ProactiveHubPanel.tsx` (`view === 'proactive'`)
-- [ ] **F7.2.1** Feed de histórico de insights do usuário (`GET /api/proactive/history`)
-- [ ] **F7.2.2** Disparador de pesquisa proativa manual sob demanda
-- [ ] **F7.2.3** Gestão visual de tópicos bloqueados e sensibilidade no Hub
-- [ ] **F7.3.1** Mascote vetorial reativo SVG `ProactiveMascot.tsx` (estados: idle, researching, ready, sleep)
-- [ ] **F7.3.2** Toggle nas preferências: "Mascote Lumi" vs. "Orbe Minimalista"
-- [ ] **F7.3.3** Tradução completa em 8 locales e testes de regressão
+- [x] **F7.1.1** Componente `NotificationBell.tsx` no cabeçalho com badge numérico de `pendingInsights`
+- [x] **F7.1.2** Popover / Dropdown de notificações com cards de resumo, tempo relativo, fontes e ações
+- [x] **F7.1.3** BottomSheet no mobile para o sininho
+- [x] **F7.1.4** Link fixo `✦ Assistente Proativo` na `Sidebar.tsx` abaixo de *Artefatos* com contador
+- [x] **F7.1.5** View dedicada `ProactiveHubPanel.tsx` (`view === 'proactive'`)
+- [x] **F7.2.1** Feed de histórico de insights do usuário (`GET /api/proactive/history`)
+- [x] **F7.2.2** Disparador de pesquisa proativa manual sob demanda
+- [x] **F7.2.3** Gestão visual de tópicos bloqueados e sensibilidade no Hub
+- [x] **F7.3.1** Mascote vetorial reativo SVG `ProactiveMascot.tsx` (estados: idle, researching, ready, sleep)
+- [x] **F7.3.2** Toggle nas preferências: "Mascote Lumi" vs. "Orbe Minimalista"
+- [x] **F7.3.3** Tradução completa em 8 locales e testes de regressão
+
 

@@ -7,6 +7,7 @@ import { api } from '../api/client'
 import { MessageBubble, StreamingBubble } from './MessageBubble'
 import { ProactiveBubble, ProactiveResearching } from './ProactiveBubble'
 import { ProactiveWelcomeCard } from './ProactiveWelcomeCard'
+import { NotificationBell } from './NotificationBell'
 import { MessageInput } from './MessageInput'
 import { FusionStatusCard } from './FusionStatusCard'
 import { useChatContext } from '../context/ChatContext'
@@ -512,6 +513,7 @@ export function ChatWindow() {
 
         {/* Direita: ações secundárias */}
         <div className="chat-header-right">
+          <NotificationBell />
           {/* Chat ativo: Apoiar na lateral direita */}
           {!isEmpty && !isMobile && (
             <a

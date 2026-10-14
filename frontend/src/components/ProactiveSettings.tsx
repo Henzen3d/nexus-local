@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Sparkles, ToggleLeft, ToggleRight, Ban, Undo2, Moon, BarChart3, BookOpen } from 'lucide-react'
+import { Sparkles, ToggleLeft, ToggleRight, Ban, Undo2, Moon, BarChart3, BookOpen, Bell, BellRing } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useStore } from '../store/useStore'
-import type { ProactiveCategory, ProactiveSensitivity } from '../types'
+import { ProactiveMascot } from './ProactiveMascot'
+import { usePushSubscription } from '../hooks/usePushSubscription'
+import type { ProactiveCategory, ProactiveSensitivity, ProactivePersonaStyle } from '../types'
 
 // ─── ProactiveSettings — painel do usuário (F4.3) ────────────────────────────
 // Toggle principal, sensibilidade, categorias, horário silencioso (preparado
@@ -19,6 +21,7 @@ export function ProactiveSettings() {
   const updateProactiveSettings = useStore((s) => s.updateProactiveSettings)
   const unblockProactiveTopic = useStore((s) => s.unblockProactiveTopic)
   const [busy, setBusy] = useState<string | null>(null)
+  const { isSupported: pushSupported, isSubscribed: pushSubscribed, subscribe: subscribePush, unsubscribe: unsubscribePush, sendTest: sendTestPush, loading: pushLoading } = usePushSubscription()
 
   useEffect(() => {
     void loadProactiveSettings()
@@ -140,6 +143,67 @@ export function ProactiveSettings() {
         </div>
         <small className="proactive-field-help">{t('proactive.categoriesHelp')}</small>
       </div>
+
+      {/* Identidade Visual / Persona */}
+      <div className="enhancer-field">
+        <label>{t('proactive.personaStyleTitle', { defaultValue: 'Identidade Visual' })}</label>
+        <div className="proactive-radio-group">
+          {(['lumi', 'core'] as ProactivePersonaStyle[]).map((style) => {
+            const active = (settings.persona_style || 'lumi') === style
+            return (
+              <button
+                key={style}
+                type="button"
+                className={`proactive-radio ${active ? 'active' : ''}`}
+                onClick={() => void updateProactiveSettings({ persona_style: style }, { silent: true })}
+                disabled={!settings.enabled}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <ProactiveMascot size={24} state="idle" style={style} />
+                  <strong>{style === 'lumi' ? 'Nexus Lumi' : 'Nexus Core'}</strong>
+                </div>
+                <small>{style === 'lumi' ? t('proactive.personaLumiDesc', { defaultValue: 'Expressivo (Kawaii Tech)' }) : t('proactive.personaCoreDesc', { defaultValue: 'Minimalista Geométrico' })}</small>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Web Push */}
+      {pushSupported && (
+        <div className="enhancer-field">
+          <label>{t('proactive.pushNotificationsTitle', { defaultValue: 'Notificações Nativas (Web Push / PWA)' })}</label>
+          <div className="enhancer-toggle-row" style={{ marginTop: '4px' }}>
+            <div className="enhancer-toggle-info">
+              <span>{t('proactive.pushLabel', { defaultValue: 'Alertar quando app fechado' })}</span>
+              <small>{t('proactive.pushHint', { defaultValue: 'Respeita o horário silencioso configurado' })}</small>
+            </div>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <button
+                type="button"
+                className={`toggle-btn ${pushSubscribed ? 'on' : 'off'}`}
+                onClick={() => (pushSubscribed ? void unsubscribePush() : void subscribePush())}
+                disabled={pushLoading || !settings.enabled}
+              >
+                {pushSubscribed ? <ToggleRight size={24} /> : <ToggleLeft size={24} />}
+                {pushSubscribed ? t('common.active') : t('common.inactive')}
+              </button>
+              {pushSubscribed && (
+                <button
+                  type="button"
+                  className="proactive-action"
+                  onClick={() => void sendTestPush()}
+                  disabled={pushLoading}
+                  style={{ display: 'flex', alignItems: 'center', gap: '4px' }}
+                >
+                  <BellRing size={14} />
+                  <span>{t('proactive.sendTestPush', { defaultValue: 'Testar' })}</span>
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Horário silencioso — preparado para F6 */}
       <div className="enhancer-field">

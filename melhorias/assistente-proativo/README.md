@@ -41,8 +41,8 @@ Transformar o Nexus de chat reativo em assistente que percebe **interesse genuí
 | F3 Presença, fila e retorno | ✅ presença por socket (máx. entre abas), fila `pending`, cartão de retorno, "Me conta aqui" em chat novo, expiração/housekeeping | PR #6 |
 | F4 Controles e admin | ✅ opt-in + onboarding, settings, blocklist com desfazer, painel admin, logs anonimizados, kill-switch | PR #7 |
 | F5 Qualidade e rollout | ✅ código: fakes compartilhados, regressão de segurança, carga leve, recuperação no boot, logs estruturados, cards + alarme no dashboard, flag de onboarding, docs · ⏳ **semana de teste com a família** (F5.4.2–F5.4.4, F5.5.3) é operacional e fica com o admin | PR F5 |
-| F6 Web Push (opcional) | 🔮 pós-MVP | — |
-| F7 Central, Hub e Persona | 📐 Especificado / Em planejamento | [`08-central-de-notificacoes-hub-e-persona.md`](./08-central-de-notificacoes-hub-e-persona.md) |
+| F6 Web Push (opcional) | ✅ Implementado: VAPID, pywebpush, push_subscriptions, service worker customizado, toggle nativo nas preferências | PR F6/F7 |
+| F7 Central, Hub e Persona | ✅ Implementado: Sininho com badge dinâmico, Hub dedicado na Sidebar, pesquisa sob demanda e Mascote Lumi com microanimações | PR F6/F7 |
 
 
 ### Como operar (resumo)

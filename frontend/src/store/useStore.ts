@@ -213,7 +213,7 @@ interface AppState {
   getActiveReasoningEffort: () => string | null
 
   // View
-  view: 'chat' | 'admin' | 'conversations' | 'artifacts' | 'projects' | 'library'
+  view: 'chat' | 'admin' | 'conversations' | 'artifacts' | 'projects' | 'library' | 'proactive'
   theme: 'light' | 'dark' | 'system'
   chatFont: 'sans' | 'serif' | 'mono'
   locale: string
@@ -279,7 +279,7 @@ interface AppState {
   /** Troca de provedor: restaura o último modelo usado nele (ou o 1º por ranking). */
   selectProvider: (providerId: string) => void
   setSidebarOpen: (v: boolean) => void
-  setView: (v: 'chat' | 'admin' | 'conversations' | 'artifacts' | 'projects' | 'library') => void
+  setView: (v: 'chat' | 'admin' | 'conversations' | 'artifacts' | 'projects' | 'library' | 'proactive') => void
   setConversationProjectTag: (id: string, projectTag: string | null) => Promise<void>
   /** Assign conversation to a first-class Project workspace (project_id FK) */
   setConversationProjectId: (id: string, projectId: string | null) => Promise<void>
@@ -1429,7 +1429,7 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   setSidebarOpen: (v: boolean) => set({ sidebarOpen: v }),
-  setView: (v: 'chat' | 'admin' | 'conversations' | 'artifacts' | 'projects' | 'library') => set({ view: v }),
+  setView: (v: 'chat' | 'admin' | 'conversations' | 'artifacts' | 'projects' | 'library' | 'proactive') => set({ view: v }),
   setLibraryFilter: (filter) => {
     set({ libraryFilter: filter })
     get().loadLibrary(filter, get().librarySearch)

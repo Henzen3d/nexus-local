@@ -941,3 +941,139 @@ async def schedule_proactive_check(
         name=f"proactive:{conversation_id[:8]}",
         user_id=user_id,
     )
+
+
+async def manual_investigate(
+    user_id: str,
+    prompt: str,
+    *,
+    category: Optional[str] = "news",
+    conversation_id: Optional[str] = None,
+    db: Any = None,
+) -> tuple[str, str]:
+    """F7.2.4 — Disparo manual de investigação proativa (Hub).
+
+    Cria ou reutiliza a conversa, insere insight em 'researching',
+    executa pesquisa e síntese em background via track_task,
+    e entrega via WebSocket/delivery.
+    Devolve (insight_id, conversation_id).
+    """
+    own_db = db is None
+    if own_db:
+        from backend.database import get_db
+
+        db = await get_db()
+    try:
+        conv_id = conversation_id
+        if not conv_id:
+            conv_id = str(uuid.uuid4())
+            title = f"✦ {prompt[:40].strip()}"
+            await db.execute(
+                "INSERT INTO conversations (id, user_id, title, created_at, updated_at) VALUES (?, ?, ?, datetime('now'), datetime('now'))",
+                (conv_id, user_id, title),
+            )
+            await db.commit()
+
+        config = await load_config(db)
+        signal = InterestSignal(
+            interest=1.0,
+            topic=prompt[:80].strip(),
+            category=category or "news",
+            suggested_query=prompt.strip(),
+            reason="Investigação manual solicitada pelo usuário no Hub.",
+            entities=[],
+            language="pt-BR",
+        )
+        topic_hash = compute_topic_hash(signal.topic, signal.entities)
+        insight_id = await _insert_insight(
+            db,
+            user_id=user_id,
+            conversation_id=conv_id,
+            source_message_id=None,
+            signal=signal,
+            topic_hash=topic_hash,
+            detector_model="manual:hub",
+            latency_detect_ms=0,
+        )
+
+        async def _execute_manual_investigation():
+            from backend.database import get_db
+
+            task_db = await get_db()
+            try:
+                await _update_insight(task_db, insight_id, status="researching")
+                await _notify_status(user_id, conv_id, "researching")
+                research = await researcher.research(
+                    signal, task_db, topic_hash=topic_hash, timeout=config.research_timeout_s, now=datetime.now()
+                )
+                await _update_insight(
+                    task_db, insight_id, latency_research_ms=int(research.elapsed_ms), query=research.query or signal.suggested_query
+                )
+                if not research.ok:
+                    code = research.error or "no_results"
+                    await _fail_insight(task_db, insight_id, code)
+                    return
+
+                await _notify_status(user_id, conv_id, "synthesizing")
+                try:
+                    synth_provider, synth_model, synth_source = await synthesizer.resolve_synth_model(
+                        task_db, user_id, None, None, config
+                    )
+                except Exception as exc:
+                    await _fail_insight(task_db, insight_id, f"synth_model:{type(exc).__name__}")
+                    return
+
+                synthesis = await synthesizer.synthesize(
+                    signal, research.sources, provider=synth_provider, model_name=synth_model,
+                    user_message=prompt, timeout=config.synth_timeout_s, now=datetime.now(), model_source=synth_source,
+                )
+                synth_label = await synthesizer.model_label(task_db, synth_source, synth_model, None)
+                if not synthesis.ok:
+                    await _fail_insight(task_db, insight_id, synthesis.error or "synth_parse")
+                    return
+
+                expires_at = synthesizer.compute_expires_at(
+                    signal.category, event_date=synthesis.event_date,
+                    news_hours=config.expiry_news_hours, default_days=config.expiry_default_days,
+                )
+                sources_payload = research.sources
+                if synthesis.used_source_urls:
+                    used = set(synthesis.used_source_urls)
+                    sources_payload = [s for s in research.sources if s.url in used] + [
+                        s for s in research.sources if s.url not in used
+                    ]
+                await _update_insight(
+                    task_db, insight_id,
+                    status="ready",
+                    synthesized_text=synthesis.text,
+                    reason_line=synthesis.reason_line,
+                    sources_json=json.dumps([s.to_dict() for s in sources_payload], ensure_ascii=False),
+                    follow_ups_json=json.dumps(synthesis.follow_ups, ensure_ascii=False),
+                    synth_model=synth_label,
+                    latency_synth_ms=int(synthesis.latency_ms),
+                    expires_at=expires_at,
+                    ready_at=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+                )
+                await enforce_pending_limit(task_db, user_id, config.max_pending, keep_id=insight_id)
+
+                insight_row = await delivery.load_insight(task_db, insight_id)
+                if insight_row:
+                    await delivery.deliver(insight_row, task_db)
+            except Exception as exc:
+                logger.warning("[Proactive] erro na investigação manual %s: %s", insight_id, exc)
+                try:
+                    await _fail_insight(task_db, insight_id, f"error:{type(exc).__name__}")
+                except Exception:
+                    pass
+            finally:
+                await task_db.close()
+
+        track_task(
+            _execute_manual_investigation(),
+            name=f"manual:{insight_id[:8]}",
+            user_id=user_id,
+        )
+        return insight_id, conv_id
+    finally:
+        if own_db:
+            await db.close()

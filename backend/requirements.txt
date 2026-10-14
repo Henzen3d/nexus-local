@@ -19,6 +19,8 @@ pandas>=2.0.0
 ddgs>=9.14.4
 fastembed>=0.7.1
 edge-tts>=7.3.1
+pywebpush>=2.5.0
+
 # Importados diretamente pelo código, mas até aqui vinham só como dependências
 # transitivas (fastembed → loguru/numpy, python-docx → lxml). Pinar evita que um
 # bump de dependência indireta remova-os e quebre o boot.

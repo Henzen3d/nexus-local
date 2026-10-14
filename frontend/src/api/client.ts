@@ -585,7 +585,12 @@ export const api = {
   // Assistente proativo (F2)
   getProactiveSettings: () => fetchJSON<import('../types').ProactiveSettings>('/proactive/settings'),
   updateProactiveSettings: (
-    data: Partial<Pick<import('../types').ProactiveSettings, 'enabled' | 'sensitivity' | 'categories' | 'quiet_hours'>> & {
+    data: Partial<
+      Pick<
+        import('../types').ProactiveSettings,
+        'enabled' | 'sensitivity' | 'categories' | 'quiet_hours' | 'push_enabled' | 'persona_style'
+      >
+    > & {
       onboarding_seen?: boolean
       clear_quiet_hours?: boolean
     },
@@ -635,6 +640,34 @@ export const api = {
       `/proactive/insights/${encodeURIComponent(insightId)}/expand`,
       { method: 'POST', body: JSON.stringify({ mode }) },
     ),
+  // F6 — Web Push no PWA
+  getVapidPublicKey: () => fetchJSON<{ publicKey: string }>('/push/vapid-public-key'),
+  subscribePush: (data: { endpoint: string; keys: { p256dh: string; auth: string }; user_agent?: string }) =>
+    fetchJSON<{ ok: boolean; subscription_id: number }>('/push/subscribe', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  unsubscribePush: (endpoint: string) =>
+    fetchJSON<{ ok: boolean; removed: boolean }>(`/push/subscribe?endpoint=${encodeURIComponent(endpoint)}`, {
+      method: 'DELETE',
+    }),
+  testPushNotification: () =>
+    fetchJSON<{ ok: boolean; sent?: number; reason?: string }>('/push/test', {
+      method: 'POST',
+    }),
+  // F7 — Central Hub & Histórico
+  getProactiveHistory: (params: { limit?: number; status?: string } = {}) => {
+    const q = new URLSearchParams()
+    if (params.limit) q.set('limit', String(params.limit))
+    if (params.status) q.set('status', params.status)
+    const qs = q.toString()
+    return fetchJSON<{ insights: import('../types').ProactiveInsight[] }>(`/proactive/history${qs ? `?${qs}` : ''}`)
+  },
+  investigateProactive: (prompt: string, category?: string) =>
+    fetchJSON<{ ok: boolean; insight_id: string; conversation_id: string }>('/proactive/investigate', {
+      method: 'POST',
+      body: JSON.stringify({ prompt, category }),
+    }),
 }
 
 export interface MemoryStatsApi {

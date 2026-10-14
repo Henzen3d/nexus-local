@@ -60,7 +60,15 @@ class ProactiveSettingsUpdate(BaseModel):
     categories: Optional[list[str]] = None
     quiet_hours: Optional[dict[str, Any]] = None
     clear_quiet_hours: bool = False
+    push_enabled: Optional[bool] = None
+    persona_style: Optional[str] = None
     onboarding_seen: Optional[bool] = None
+
+
+class InvestigateBody(BaseModel):
+    prompt: str = Field(..., min_length=3, max_length=500)
+    category: Optional[str] = Field("news", description="event | news | product | place")
+    conversation_id: Optional[str] = None
 
 
 class AckBody(BaseModel):
@@ -153,6 +161,8 @@ async def write_settings(body: ProactiveSettingsUpdate, current_user: dict = Dep
             categories=body.categories,
             quiet_hours=quiet_hours,
             clear_quiet_hours=body.clear_quiet_hours,
+            push_enabled=body.push_enabled,
+            persona_style=body.persona_style,
             onboarding_seen=body.onboarding_seen,
         )
         extra: dict[str, Any] = {}
@@ -252,6 +262,41 @@ async def list_pending(current_user: dict = Depends(get_current_user)) -> dict:
     try:
         insights = await delivery.pending_for_api(db, current_user["id"])
         return {"insights": insights}
+    finally:
+        await db.close()
+
+
+@router.get("/history")
+async def list_history(
+    limit: int = Query(50, ge=1, le=100),
+    status: Optional[str] = Query(None),
+    current_user: dict = Depends(get_current_user),
+) -> dict:
+    """F7.2.2 — Feed de histórico de descobertas do usuário."""
+    db = await get_db()
+    try:
+        insights = await delivery.history_for_api(db, current_user["id"], limit=limit, status=status)
+        return {"insights": insights}
+    finally:
+        await db.close()
+
+
+@router.post("/investigate")
+async def investigate_manually(
+    body: InvestigateBody,
+    current_user: dict = Depends(get_current_user),
+) -> dict:
+    """F7.2.4 — Disparo manual de pesquisa proativa no Hub."""
+    db = await get_db()
+    try:
+        insight_id, conv_id = await proactive_service.manual_investigate(
+            user_id=current_user["id"],
+            prompt=body.prompt,
+            category=body.category,
+            conversation_id=body.conversation_id,
+            db=db,
+        )
+        return {"ok": True, "insight_id": insight_id, "conversation_id": conv_id}
     finally:
         await db.close()
 

@@ -2011,6 +2011,44 @@ async def _migrate_proactive_schema(db: aiosqlite.Connection) -> None:
         except Exception as e:
             logger.error("[database migration] erro ao criar proactive_user_settings:", exc_info=e)
 
+    # Colunas incrementais em proactive_user_settings (F6/F7)
+    for col_name, col_def in [
+        ("push_enabled", "INTEGER DEFAULT 0"),
+        ("persona_style", "TEXT DEFAULT 'lumi'"),
+    ]:
+        try:
+            await db.execute(f"SELECT {col_name} FROM proactive_user_settings LIMIT 1")
+        except (sqlite3.OperationalError, aiosqlite.OperationalError):
+            try:
+                await db.execute(f"ALTER TABLE proactive_user_settings ADD COLUMN {col_name} {col_def}")
+                await db.commit()
+            except Exception as e:
+                logger.error("[database migration] erro ao adicionar %s em proactive_user_settings: %s", col_name, e)
+
+    # F6.1.2 — push_subscriptions (Web Push no PWA)
+    try:
+        await db.execute("SELECT id FROM push_subscriptions LIMIT 1")
+    except aiosqlite.OperationalError:
+        try:
+            await db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS push_subscriptions (
+                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id         TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    endpoint        TEXT UNIQUE NOT NULL,
+                    p256dh          TEXT NOT NULL,
+                    auth            TEXT NOT NULL,
+                    user_agent      TEXT,
+                    created_at      TEXT DEFAULT (datetime('now')),
+                    last_success_at TEXT,
+                    failures        INTEGER DEFAULT 0
+                );
+                """
+            )
+            await db.commit()
+        except Exception as e:
+            logger.error("[database migration] erro ao criar push_subscriptions:", exc_info=e)
+
     # F2.1.3 — blocklist de tópicos
     try:
         await db.execute("SELECT user_id FROM proactive_topic_blocklist LIMIT 1")
@@ -2072,6 +2110,10 @@ async def _migrate_proactive_schema(db: aiosqlite.Connection) -> None:
         await db.execute(
             "CREATE INDEX IF NOT EXISTS idx_messages_kind_proactive "
             "ON messages(conversation_id) WHERE kind = 'proactive'"
+        )
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_push_subs_user "
+            "ON push_subscriptions(user_id)"
         )
         await db.commit()
     except Exception as e:

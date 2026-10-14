@@ -168,11 +168,15 @@ export interface ProactiveUserStats {
   blocked_30d: number
 }
 
+export type ProactivePersonaStyle = 'lumi' | 'core'
+
 export interface ProactiveSettings {
   enabled: boolean
   sensitivity: ProactiveSensitivity
   categories: ProactiveCategory[]
   quiet_hours?: ProactiveQuietHours | null
+  push_enabled?: boolean
+  persona_style?: ProactivePersonaStyle
   onboarding_seen_at?: string | null
   updated_at?: string | null
   allowed_categories?: ProactiveCategory[]

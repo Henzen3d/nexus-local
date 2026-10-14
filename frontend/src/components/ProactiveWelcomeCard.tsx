@@ -3,6 +3,7 @@ import { Sparkles, ArrowRight, MessageCircle, X, Loader2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useStore } from '../store/useStore'
 import { isFresh, relativeAge, toastPreview } from '../lib/proactivePending'
+import { ProactiveMascot } from './ProactiveMascot'
 import type { ProactiveInsight } from '../types'
 
 // ─── ProactiveWelcomeCard — "Enquanto você esteve fora…" (F3.5.3) ─────────────
@@ -18,6 +19,7 @@ export function ProactiveWelcomeCard() {
   const openPendingInsight = useStore((s) => s.openPendingInsight)
   const dismissPendingInsight = useStore((s) => s.dismissPendingInsight)
   const expandProactiveInsight = useStore((s) => s.expandProactiveInsight)
+  const proactiveSettings = useStore((s) => s.proactiveSettings)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [, setTick] = useState(0)
 

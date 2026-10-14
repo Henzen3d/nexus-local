@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import {
   MessageSquare, Trash2, Pencil, Check, X, ChevronRight,
   Sparkles, Globe, Image, Images, FileText, Atom, FileCode, Download, LogOut,
-  MoreVertical, Star, Sun, Moon, Folder, Search, PanelLeftClose, PanelLeftOpen, Plus,
+  MoreVertical, Star, Sun, Moon, Folder, Search, PanelLeftClose, PanelLeftOpen, Plus, Bot,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useStore } from '../store/useStore'
@@ -50,6 +50,7 @@ export function Sidebar() {
     theme,
     setTheme,
     conversationsWithInsight,
+    pendingInsights,
   } = useStore()
 
   const isMobile = useIsMobile()
@@ -845,6 +846,24 @@ export function Sidebar() {
           >
             <Sparkles size={20} />
             <span>{t('sidebar.artifacts')}</span>
+          </button>
+          <button
+            type="button"
+            className={`sidebar-fixed-nav-item custom-tooltip-trigger ${view === 'proactive' ? 'selected' : ''}`}
+            data-tooltip={t('proactive.hubTitle', { defaultValue: 'Assistente Proativo' })}
+            aria-label={t('proactive.hubTitle', { defaultValue: 'Assistente Proativo' })}
+            onClick={() => {
+              setView('proactive')
+              if (window.innerWidth <= MOBILE_BREAKPOINT) setSidebarOpen(false)
+            }}
+          >
+            <Bot size={20} />
+            <span>{t('proactive.hubTitle', { defaultValue: 'Assistente Proativo' })}</span>
+            {pendingInsights.length > 0 && (
+              <span className="nav-badge" aria-label={`${pendingInsights.length} novidades`}>
+                {pendingInsights.length}
+              </span>
+            )}
           </button>
         </div>
 

@@ -14,6 +14,7 @@ import { ConversationsPanel } from './components/ConversationsPanel'
 import { ArtifactsPanel } from './components/ArtifactsPanel'
 import { ProjectsPanel } from './components/ProjectsPanel'
 import { LibraryPanel } from './components/LibraryPanel'
+import { ProactiveHubPanel } from './components/ProactiveHubPanel'
 import { ChatProvider } from './context/ChatContext'
 import { Login } from './components/Login'
 import { MemoryOnboarding } from './components/MemoryOnboarding'
@@ -226,6 +227,7 @@ export default function App() {
         {view === 'artifacts' && <ArtifactsPanel />}
         {view === 'projects' && <ProjectsPanel />}
         {view === 'library' && <LibraryPanel />}
+        {view === 'proactive' && <ProactiveHubPanel />}
         {hasArtifact && <ArtifactPanel />}
       </div>
       {view === 'admin' && (
