@@ -446,7 +446,8 @@
     "lastDays": "Last {{count}} days"
   },
   "toast": {
-    "closeAlert": "Cerrar alerta"
+    "closeAlert": "Cerrar alerta",
+    "regionLabel": "Notificaciones"
   },
   "dashboard": {
     "loading": "Loading metrics...",
@@ -685,5 +686,30 @@
     "pinError": "Error al fijar.",
     "llmSummaries": "Resúmenes con LLM",
     "llmSummariesDesc": "Refina resúmenes con el modelo extractor."
+  },
+  "proactive": {
+    "bubbleBadge": "Asistente proactivo",
+    "unreadBadge": "Nuevo insight del asistente proactivo",
+    "reasonLine": "Lo investigué porque parecías {{emotion}} con {{topic}}.",
+    "knowMore": "Quiero saber más",
+    "knowMorePrompt": "Cuéntame más sobre {{topic}}.",
+    "notThisTopic": "No quiero sobre esto",
+    "pause": "Pausar",
+    "toastTitle": "✦ Investigué sobre {{topic}}",
+    "toastView": "Ver",
+    "researching": "Investigando algo que mencionaste…",
+    "synthesizing": "Organizando lo que encontré…",
+    "blockedNote": "De acuerdo — no volveré a investigar este tema.",
+    "dismissedNote": "Insight descartado.",
+    "blockedToast": "De acuerdo — no volveré a traer este tema.",
+    "pausedToast": "Asistente proactivo en pausa. Puedes reactivarlo en la configuración.",
+    "ackError": "No pude guardar tu elección. Inténtalo de nuevo.",
+    "category": {
+      "event": "Evento",
+      "news": "Noticia",
+      "product": "Producto",
+      "place": "Lugar",
+      "other": "Otro"
+    }
   }
 }

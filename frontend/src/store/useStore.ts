@@ -1,7 +1,7 @@
 import { create } from 'zustand'
-import type { Artifact, Conversation, ConversationDetail, Message, Model, CacheStats, CacheSettings, FusionStatusEntry, Attachment, LibraryItem, WebSearchSource, AutoRouteDecisionInfo, UiEnvelope, ProgressBlock, ProcessStep } from '../types'
+import type { Artifact, Conversation, ConversationDetail, Message, Model, CacheStats, CacheSettings, FusionStatusEntry, Attachment, LibraryItem, WebSearchSource, AutoRouteDecisionInfo, UiEnvelope, ProgressBlock, ProcessStep, ProactiveInsight, ProactiveAckAction, ProactiveChannelHint, ToastItem } from '../types'
 import { api } from '../api/client'
-import { detectInitialLocale } from '../i18n'
+import i18n, { detectInitialLocale } from '../i18n'
 import { effectivePreferredModel } from '../lib/modelSelection'
 
 // ── Persistência de provedor/modelo (por usuário quando possível) ───────────
@@ -321,13 +321,94 @@ interface AppState {
    * - Descarta se uma resposta mais recente já iniciou um novo fetch.
    */
   handleArtifactEvent: (event: { id: string; artifact_type: string; title: string; conv_id: string; msg_id: string }) => Promise<void>
-  toast: { message: string; type: 'success' | 'error' | 'info' } | null
-  showToast: (message: string, type?: 'success' | 'error' | 'info') => void
-  hideToast: () => void
+  // Toasts empilhados (máx. 3 visíveis) — ver App.tsx <Toast />
+  toasts: ToastItem[]
+  showToast: (message: string, type?: ToastItem['type'], options?: { title?: string; action?: ToastItem['action']; durationMs?: number; id?: string }) => void
+  hideToast: (id?: string) => void
+
+  // ── Assistente proativo (F2) ─────────────────────────────────────────────
+  /** Status transitório ("pesquisando…") da conversa em pesquisa. */
+  proactiveStatus: { conversation_id: string; stage: string } | null
+  /** Conversas com insight proativo não visto (badge ✦ na sidebar). */
+  conversationsWithInsight: Record<string, true>
+  /** Insights inline aguardando momento calmo (sem streaming/digitação). */
+  pendingInlineInsights: ProactiveInsight[]
+  /** Texto a ser pré-preenchido no composer (ex.: "Quero saber mais"). */
+  composerPrefill: string | null
+  setComposerPrefill: (text: string | null) => void
+  noteTyping: () => void
+  handleProactiveStatus: (evt: { conversation_id: string; stage: string }) => void
+  handleProactiveInsight: (evt: { insight: ProactiveInsight; channel_hint?: ProactiveChannelHint }) => void
+  flushPendingInlineInsights: () => void
+  ackProactiveInsight: (insightId: string, action: ProactiveAckAction, opts?: { silent?: boolean }) => Promise<void>
+  pauseProactive: () => Promise<void>
   addErrorMessage: (content: string) => void
   handleImagePending: (event: { conversation_id: string; message_id: string; task_id: string; prompt: string }) => void
   handleImageReady: (event: { conversation_id: string; message_id: string; task_id: string; attachment: Attachment }) => void
   handleImageFailed: (event: { conversation_id: string; message_id: string; task_id: string; error: string }) => void
+}
+
+// ── Assistente proativo: estado efêmero fora do store ──────────────────────
+const PROACTIVE_TYPING_GUARD_MS = 3000
+const PROACTIVE_STATUS_TTL_MS = 60_000
+let _proactiveLastTypingAt = 0
+let _proactiveFlushTimer: ReturnType<typeof setTimeout> | null = null
+let _proactiveStatusTimer: ReturnType<typeof setTimeout> | null = null
+const _proactiveAcked = new Set<string>()
+
+/** Prefixo "ao vivo" (§3.4 do contrato) no idioma do insight — espelha o backend. */
+const PROACTIVE_LIVE_PREFIX: Record<string, (topic: string) => string> = {
+  'pt-BR': (t) => `Fiquei curioso com **${t}** e fui pesquisar: `,
+  'en-US': (t) => `I got curious about **${t}** and looked it up: `,
+  'es-ES': (t) => `Me dio curiosidad **${t}** y fui a investigar: `,
+}
+
+function proactiveMessageFromInsight(insight: ProactiveInsight): Message {
+  const lang = (insight.language || 'pt-BR') as string
+  const prefix = (PROACTIVE_LIVE_PREFIX[lang] || PROACTIVE_LIVE_PREFIX['pt-BR'])(insight.topic)
+  const text = (insight.text || '').trim()
+  return {
+    id: insight.message_id || `proactive-${insight.id}`,
+    role: 'assistant',
+    kind: 'proactive',
+    content: prefix + text,
+    created_at: insight.created_at || new Date().toISOString(),
+    proactive_insight_id: insight.id,
+    insight: { ...insight, status: insight.status || 'delivered' },
+    web_search_sources: (insight.sources || []).map((src) => ({ title: src.title, url: src.url })),
+  }
+}
+
+function _proactiveAppendMessage(insight: ProactiveInsight) {
+  const state = useStore.getState()
+  const exists = state.messages.some(
+    (m) => m.proactive_insight_id === insight.id || (insight.message_id && m.id === insight.message_id)
+  )
+  if (exists) return
+  useStore.setState((s) => ({ messages: [...s.messages, proactiveMessageFromInsight(insight)] }))
+}
+
+function _proactiveNotifyElsewhere(insight: ProactiveInsight) {
+  const store = useStore.getState()
+  useStore.setState((s) => ({
+    conversationsWithInsight: { ...s.conversationsWithInsight, [insight.conversation_id]: true },
+  }))
+  const preview = (insight.text || '').replace(/\*\*/g, '').trim()
+  const message = preview.length > 140 ? preview.slice(0, 139).trimEnd() + '…' : preview
+  store.showToast(message, 'proactive', {
+    id: `proactive-${insight.id}`,
+    title: i18n.t('proactive.toastTitle', { topic: insight.topic }),
+    durationMs: 8000,
+    action: {
+      label: i18n.t('proactive.toastView'),
+      onClick: () => {
+        const st = useStore.getState()
+        st.hideToast(`proactive-${insight.id}`)
+        if (st.view !== 'chat') st.setView('chat')
+        void st.loadConversation(insight.conversation_id)
+      },
+    },
+  })
 }
 
 export const useStore = create<AppState>((set, get) => ({
@@ -438,7 +519,11 @@ export const useStore = create<AppState>((set, get) => ({
   processSteps: [],
   processStartedAt: null,
   lastCacheHit: null,
-  toast: null,
+  toasts: [],
+  proactiveStatus: null,
+  conversationsWithInsight: {},
+  pendingInlineInsights: [],
+  composerPrefill: null,
   models: [],
   selectedModelId: typeof window !== 'undefined' ? readPersistedModelSelection().modelId : null,
   selectedProviderId: typeof window !== 'undefined' ? readPersistedModelSelection().providerId : null,
@@ -517,21 +602,29 @@ export const useStore = create<AppState>((set, get) => ({
 
   loadConversation: async (id: string) => {
     const conv = await api.getConversation(id)
-    set({
-      activeConversationId: id,
-      activeConversation: conv,
-      messages: conv.messages,
-      streamingContent: '',
-      processSteps: [],
-      processStartedAt: null,
-      activeArtifact: null,
-      artifactPanelOpen: false,
-      artifactHistory: [],
-      activeConversationArtifacts: [],
-      _pendingArtifactId: null,
-      view: 'chat',
-      // Keep RAG context when opening a chat that belongs to a project
-      activeProjectId: conv.project_id || null,
+    set((s) => {
+      // Abrir a conversa limpa o badge ✦ de insight não visto
+      const { [id]: _seen, ...restBadges } = s.conversationsWithInsight
+      void _seen
+      return {
+        activeConversationId: id,
+        activeConversation: conv,
+        messages: conv.messages,
+        streamingContent: '',
+        processSteps: [],
+        processStartedAt: null,
+        activeArtifact: null,
+        artifactPanelOpen: false,
+        artifactHistory: [],
+        activeConversationArtifacts: [],
+        _pendingArtifactId: null,
+        view: 'chat',
+        // Keep RAG context when opening a chat that belongs to a project
+        activeProjectId: conv.project_id || null,
+        conversationsWithInsight: restBadges,
+        proactiveStatus: s.proactiveStatus && s.proactiveStatus.conversation_id === id ? s.proactiveStatus : null,
+        composerPrefill: null,
+      }
     })
     // Puxa a lista de artifacts da conversa em segundo plano
     get().loadActiveConversationArtifacts()
@@ -554,6 +647,8 @@ export const useStore = create<AppState>((set, get) => ({
       view: 'chat',
       // Leaving explicit project context unless user opens a project chat again
       activeProjectId: null,
+      proactiveStatus: null,
+      composerPrefill: null,
     })
   },
 
@@ -587,12 +682,108 @@ export const useStore = create<AppState>((set, get) => ({
     }))
   },
 
-  showToast: (message: string, type: 'success' | 'error' | 'info' = 'info') => {
-    set({ toast: { message, type } })
+  showToast: (message, type = 'info', options) => {
+    const id = options?.id || `toast-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+    const durationMs = options?.durationMs ?? (type === 'proactive' ? 8000 : 5000)
+    const item: ToastItem = { id, message, type, title: options?.title, action: options?.action }
+    set((s) => {
+      const next = [...s.toasts.filter((t) => t.id !== id), item]
+      // Mantém no máximo 3 toasts visíveis (descarta os mais antigos)
+      return { toasts: next.slice(-3) }
+    })
+    setTimeout(() => get().hideToast(id), durationMs)
   },
 
-  hideToast: () => {
-    set({ toast: null })
+  hideToast: (id) => set((s) => ({ toasts: id ? s.toasts.filter((t) => t.id !== id) : [] })),
+
+  // ── Assistente proativo (F2) ─────────────────────────────────────────────
+  setComposerPrefill: (text) => set({ composerPrefill: text }),
+  noteTyping: () => {
+    _proactiveLastTypingAt = Date.now()
+  },
+  handleProactiveStatus: ({ conversation_id, stage }) => {
+    set({ proactiveStatus: { conversation_id, stage } })
+    // Falha silenciosa no backend não pode deixar o indicador preso
+    if (_proactiveStatusTimer) clearTimeout(_proactiveStatusTimer)
+    _proactiveStatusTimer = setTimeout(() => {
+      _proactiveStatusTimer = null
+      const cur = get().proactiveStatus
+      if (cur && cur.conversation_id === conversation_id) set({ proactiveStatus: null })
+    }, PROACTIVE_STATUS_TTL_MS)
+  },
+  handleProactiveInsight: ({ insight, channel_hint }) => {
+    if (!insight || !insight.id) return
+    const { activeConversationId, view, proactiveStatus } = get()
+    if (proactiveStatus && proactiveStatus.conversation_id === insight.conversation_id) {
+      set({ proactiveStatus: null })
+    }
+    const isOpenHere = view === 'chat' && !!activeConversationId && activeConversationId === insight.conversation_id
+    if (isOpenHere && channel_hint !== 'pending') {
+      // Inline — mas só em momento calmo (sem streaming / digitação recente)
+      set((s) => ({
+        pendingInlineInsights: s.pendingInlineInsights.some((p) => p.id === insight.id)
+          ? s.pendingInlineInsights
+          : [...s.pendingInlineInsights, insight],
+      }))
+      get().flushPendingInlineInsights()
+      return
+    }
+    _proactiveNotifyElsewhere(insight)
+  },
+  flushPendingInlineInsights: () => {
+    const { pendingInlineInsights, isStreaming, fusionActive, activeConversationId, view } = get()
+    if (pendingInlineInsights.length === 0) return
+    const sinceTyping = Date.now() - _proactiveLastTypingAt
+    const busy = isStreaming || fusionActive
+    if (busy || sinceTyping < PROACTIVE_TYPING_GUARD_MS) {
+      if (_proactiveFlushTimer) clearTimeout(_proactiveFlushTimer)
+      const delay = busy ? 1000 : Math.max(250, PROACTIVE_TYPING_GUARD_MS - sinceTyping + 50)
+      _proactiveFlushTimer = setTimeout(() => {
+        _proactiveFlushTimer = null
+        get().flushPendingInlineInsights()
+      }, delay)
+      return
+    }
+    set({ pendingInlineInsights: [] })
+    for (const insight of pendingInlineInsights) {
+      const stillHere = view === 'chat' && activeConversationId === insight.conversation_id
+      if (stillHere) {
+        _proactiveAppendMessage(insight)
+      } else {
+        // Usuário trocou de conversa enquanto esperávamos → toast + badge
+        _proactiveNotifyElsewhere(insight)
+      }
+    }
+  },
+  ackProactiveInsight: async (insightId, action, opts) => {
+    const key = `${insightId}:${action}`
+    if (_proactiveAcked.has(key)) return
+    _proactiveAcked.add(key)
+    try {
+      await api.ackProactiveInsight(insightId, action)
+    } catch (e) {
+      _proactiveAcked.delete(key)
+      if (!opts?.silent) console.warn('[proactive] ack falhou:', e)
+      if (action !== 'seen') get().showToast(i18n.t('proactive.ackError'), 'error')
+      return
+    }
+    set((s) => ({
+      messages: s.messages.map((m) =>
+        m.proactive_insight_id === insightId || m.insight?.id === insightId
+          ? { ...m, insight: m.insight ? { ...m.insight, status: action } : m.insight }
+          : m
+      ),
+    }))
+    if (action === 'blocked' && !opts?.silent) get().showToast(i18n.t('proactive.blockedToast'), 'info')
+  },
+  pauseProactive: async () => {
+    try {
+      await api.updateProactiveSettings({ enabled: false })
+      get().showToast(i18n.t('proactive.pausedToast'), 'info', { durationMs: 6000 })
+    } catch (e) {
+      console.warn('[proactive] pausar falhou:', e)
+      get().showToast(i18n.t('proactive.ackError'), 'error')
+    }
   },
 
   handleImagePending: (event) => {

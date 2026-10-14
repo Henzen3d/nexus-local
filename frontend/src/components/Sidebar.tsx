@@ -48,7 +48,8 @@ export function Sidebar() {
     displayName,
     logout,
     theme,
-    setTheme
+    setTheme,
+    conversationsWithInsight,
   } = useStore()
 
   const isMobile = useIsMobile()
@@ -409,6 +410,15 @@ export function Sidebar() {
               }}
             >
               <span>{c.title}</span>
+              {conversationsWithInsight[c.id] && (
+                <span
+                  className="conv-proactive-badge"
+                  title={t('proactive.unreadBadge')}
+                  aria-label={t('proactive.unreadBadge')}
+                >
+                  <Sparkles size={12} />
+                </span>
+              )}
             </button>
             <div className="conv-actions-dropdown-container">
               <button

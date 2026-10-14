@@ -46,7 +46,23 @@ export function MessageInput({ onSend, onStop, isEmpty = false }: Props) {
     selectedModelId,
     showToast,
     activeConversationId,
+    composerPrefill,
+    setComposerPrefill,
+    noteTyping,
   } = useStore()
+
+  // Pré-preenchimento vindo do assistente proativo ("Quero saber mais")
+  useEffect(() => {
+    if (!composerPrefill) return
+    setText(composerPrefill)
+    setComposerPrefill(null)
+    requestAnimationFrame(() => {
+      const ta = textareaRef.current
+      if (!ta) return
+      ta.focus()
+      ta.setSelectionRange(ta.value.length, ta.value.length)
+    })
+  }, [composerPrefill, setComposerPrefill])
 
   const isMobile = useIsMobile()
   const keyboardOffset = useVisualViewportOffset()
@@ -413,7 +429,10 @@ export function MessageInput({ onSend, onStop, isEmpty = false }: Props) {
             ref={textareaRef}
             className={`composer-textarea ${isCompact ? 'composer-textarea-inline' : ''} ${isMultiline ? 'is-multiline' : ''}`}
             value={text}
-            onChange={(e) => setText(e.target.value)}
+            onChange={(e) => {
+              setText(e.target.value)
+              noteTyping()
+            }}
             onKeyDown={handleKey}
             placeholder={
               talk.phase === 'listening'

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { MessageSquare, Plus, Search, Trash2, Star, CheckSquare, Square, X, Sliders, ListChecks, Pencil, Menu } from 'lucide-react'
+import { MessageSquare, Plus, Search, Trash2, Star, CheckSquare, Square, X, Sliders, ListChecks, Pencil, Menu, Sparkles } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useStore } from '../store/useStore'
 import { useHaptic } from '../hooks/useHaptic'
@@ -17,6 +17,7 @@ export function ConversationsPanel() {
   const setSidebarOpen = useStore((s) => s.setSidebarOpen)
   const renameConversation = useStore((s) => s.renameConversation)
   const sidebarOpen = useStore((s) => s.sidebarOpen)
+  const conversationsWithInsight = useStore((s) => s.conversationsWithInsight)
 
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<'all' | 'favorites'>('all')
@@ -377,6 +378,11 @@ export function ConversationsPanel() {
                         </span>
                         {c.is_favorite && (
                           <Star size={11} className="fill-amber-500 text-amber-500" />
+                        )}
+                        {conversationsWithInsight[c.id] && (
+                          <span className="conv-proactive-badge" title={t('proactive.unreadBadge')} aria-label={t('proactive.unreadBadge')}>
+                            <Sparkles size={11} />
+                          </span>
                         )}
                       </div>
                       <span className="row-conversation-meta">

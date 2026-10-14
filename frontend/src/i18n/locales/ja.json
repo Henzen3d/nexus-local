@@ -446,7 +446,8 @@
     "lastDays": "Last {{count}} days"
   },
   "toast": {
-    "closeAlert": "アラートを閉じる"
+    "closeAlert": "アラートを閉じる",
+    "regionLabel": "通知"
   },
   "dashboard": {
     "loading": "Loading metrics...",
@@ -685,5 +686,30 @@
     "pinError": "ピン操作に失敗",
     "llmSummaries": "LLM 要約",
     "llmSummariesDesc": "抽出モデルで要約を洗練"
+  },
+  "proactive": {
+    "bubbleBadge": "プロアクティブアシスタント",
+    "unreadBadge": "プロアクティブアシスタントの新しいインサイト",
+    "reasonLine": "{{topic}}について{{emotion}}なご様子だったので調べてみました。",
+    "knowMore": "もっと知りたい",
+    "knowMorePrompt": "{{topic}}についてもっと教えて。",
+    "notThisTopic": "この話題は不要",
+    "pause": "一時停止",
+    "toastTitle": "✦ {{topic}}について調べました",
+    "toastView": "見る",
+    "researching": "言及された内容を調べています…",
+    "synthesizing": "見つけた情報をまとめています…",
+    "blockedNote": "了解しました。この話題はもう調べません。",
+    "dismissedNote": "インサイトを閉じました。",
+    "blockedToast": "了解しました。この話題はもう取り上げません。",
+    "pausedToast": "プロアクティブアシスタントを一時停止しました。設定から再開できます。",
+    "ackError": "選択を保存できませんでした。もう一度お試しください。",
+    "category": {
+      "event": "イベント",
+      "news": "ニュース",
+      "product": "製品",
+      "place": "場所",
+      "other": "その他"
+    }
   }
 }
