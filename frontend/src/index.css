@@ -11980,13 +11980,775 @@ html[data-theme="light"] .model-option-provider-tag {
 }
 
 /* ── Intelligent UI (blocos nexus-ui/1 na bolha) ─────────────────────────────
+   Plano 11 (camada visual). Casca comum `nexus-ui-card` + peças (métrica, passos,
+   gráfico, facts, campos, sandbox). Só tokens do Multi+; nada de cor nova (spec §7).
    Spec §7: prefers-reduced-motion = barra sem animação, step com corte seco. */
+.nexus-ui-container {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 12px;
+  min-width: 0;
+}
+
+/* Casca ------------------------------------------------------------------ */
+.nexus-ui-card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  background: var(--surface-card);
+  border: 1px solid var(--hairline);
+  border-radius: 14px;
+  color: var(--ink);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  overflow: hidden;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.nexus-ui-card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 12px 0 16px;
+}
+
+.nexus-ui-card__heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+
+.nexus-ui-card__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 20px;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.nexus-ui-card__titles {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.nexus-ui-card__title {
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 20px;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.nexus-ui-card__subtitle {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.nexus-ui-card__actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  margin-top: -4px;
+}
+
+.nexus-ui-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px 16px 14px;
+}
+
+.nexus-ui-card[data-variant="flush"] .nexus-ui-card__header {
+  padding: 6px 8px 6px 14px;
+  align-items: center;
+  min-height: 44px;
+  background: var(--surface-soft);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.nexus-ui-card[data-variant="flush"] .nexus-ui-card__actions {
+  margin-top: 0;
+}
+
+.nexus-ui-card[data-variant="flush"] .nexus-ui-card__body {
+  padding: 0;
+  gap: 0;
+}
+
+.nexus-ui-card__footer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 16px 14px;
+}
+
+/* Botão de ação do cabeçalho ---------------------------------------------- */
+.nexus-ui-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 32px;
+  min-width: 32px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.nexus-ui-action[data-icon-only] {
+  padding: 0;
+}
+
+.nexus-ui-action:hover:not(:disabled) {
+  background: var(--surface-soft);
+  color: var(--ink);
+  border-color: var(--hairline);
+}
+
+.nexus-ui-action:focus-visible,
+.nexus-ui-button:focus-visible,
+.nexus-ui-input:focus-visible,
+.nexus-ui-select:focus-visible,
+.nexus-ui-range:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.nexus-ui-action:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.nexus-ui-action[aria-pressed="true"] {
+  color: var(--success);
+}
+
+.nexus-ui-action__icon {
+  display: inline-flex;
+  align-items: center;
+}
+
+@media (pointer: coarse) {
+  .nexus-ui-action {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
+/* Métrica (número grande) e chips ----------------------------------------- */
+.nexus-ui-metric {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.nexus-ui-metric__value {
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 20px;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+.nexus-ui-metric__value--small {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.nexus-ui-metric[data-state="done"] .nexus-ui-metric__value {
+  color: var(--success);
+}
+
+.nexus-ui-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 24px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--hairline);
+  background: var(--surface-soft);
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.nexus-ui-chip--accent {
+  color: var(--primary);
+  border-color: color-mix(in srgb, var(--primary) 35%, transparent);
+  background: var(--accent-dim, rgba(204, 120, 92, 0.1));
+}
+
+.nexus-ui-chip[data-empty="true"] {
+  visibility: hidden;
+}
+
+/* Progresso --------------------------------------------------------------- */
+.nexus-ui-progress {
+  position: relative;
+  width: 100%;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--hairline);
+  overflow: hidden;
+}
+
+.nexus-ui-progress__fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--primary);
+}
+
+.nexus-ui-progress[data-state="done"] .nexus-ui-progress__fill {
+  background: var(--success);
+}
+
 .nexus-ui-progress-fill {
   transition: width 0.4s ease;
 }
 
+.nexus-ui-progress__caption {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Passos (linha do tempo) ------------------------------------------------- */
+.nexus-ui-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.nexus-ui-step {
+  display: flex;
+  gap: 12px;
+  position: relative;
+}
+
+.nexus-ui-step__rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex-shrink: 0;
+  width: 24px;
+}
+
+.nexus-ui-step__marker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 1px solid var(--hairline);
+  background: var(--surface-soft);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  box-sizing: border-box;
+  z-index: 1;
+}
+
+.nexus-ui-step__line {
+  flex: 1;
+  width: 1px;
+  min-height: 8px;
+  background: var(--hairline);
+}
+
+.nexus-ui-step:last-child .nexus-ui-step__line {
+  display: none;
+}
+
+.nexus-ui-step__content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 3px 0 12px;
+}
+
+.nexus-ui-step:last-child .nexus-ui-step__content {
+  padding-bottom: 0;
+}
+
+.nexus-ui-step__label {
+  font-size: 13px;
+  color: var(--body);
+  overflow-wrap: anywhere;
+}
+
+.nexus-ui-step[data-state="done"] .nexus-ui-step__marker {
+  background: var(--success);
+  border-color: var(--success);
+  color: #fff;
+}
+
+.nexus-ui-step[data-state="done"] .nexus-ui-step__line {
+  background: color-mix(in srgb, var(--success) 45%, var(--hairline));
+}
+
+.nexus-ui-step[data-state="active"] .nexus-ui-step__marker {
+  border-color: var(--primary);
+  background: var(--accent-dim, rgba(204, 120, 92, 0.1));
+  color: var(--primary);
+}
+
+.nexus-ui-step[data-state="active"] .nexus-ui-step__label {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.nexus-ui-step__pulse {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--primary);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--primary) 45%, transparent);
+  animation: nexus-ui-step-pulse 1.6s ease-out infinite;
+}
+
+@keyframes nexus-ui-step-pulse {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--primary) 45%, transparent); }
+  70% { box-shadow: 0 0 0 7px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+
+.nexus-ui-step[data-state="error"] .nexus-ui-step__marker {
+  background: var(--error);
+  border-color: var(--error);
+  color: #fff;
+}
+
+.nexus-ui-step[data-state="error"] .nexus-ui-step__label {
+  color: var(--error);
+}
+
+/* Gráfico ------------------------------------------------------------------ */
+.nexus-ui-chart {
+  width: 100%;
+  min-width: 0;
+}
+
+.nexus-ui-chart .recharts-wrapper,
+.nexus-ui-chart .recharts-surface {
+  outline: none;
+}
+
+.nexus-ui-chart .recharts-cartesian-axis-tick-value {
+  fill: var(--muted);
+}
+
+.nexus-ui-chart-tooltip {
+  min-width: 128px;
+  max-width: 240px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--hairline);
+  background: var(--surface-card);
+  color: var(--ink);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+
+.nexus-ui-chart-tooltip__label {
+  font-weight: 600;
+  margin-bottom: 4px;
+  overflow-wrap: anywhere;
+}
+
+.nexus-ui-chart-tooltip__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.nexus-ui-chart-tooltip__item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.nexus-ui-chart-tooltip__dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.nexus-ui-chart-tooltip__name {
+  flex: 1;
+  color: var(--body);
+  overflow-wrap: anywhere;
+}
+
+.nexus-ui-chart-tooltip__value {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.nexus-ui-chart-legend {
+  list-style: none;
+  margin: 0;
+  padding: 8px 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px 14px;
+  font-size: 11.5px;
+  color: var(--body);
+}
+
+.nexus-ui-chart-legend__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.nexus-ui-chart-legend__swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+/* Cartão com imagem e facts ------------------------------------------------ */
+.nexus-ui-infocard__main {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  min-width: 0;
+}
+
+.nexus-ui-infocard__media {
+  flex-shrink: 0;
+  width: 96px;
+  height: 96px;
+  margin: 0;
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--surface-soft);
+  border: 1px solid var(--hairline);
+}
+
+.nexus-ui-infocard__media img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.nexus-ui-infocard__text {
+  flex: 1;
+  min-width: 0;
+}
+
+.nexus-ui-infocard__title {
+  margin: 0 0 4px;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.nexus-ui-infocard__body {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--body);
+  overflow-wrap: anywhere;
+}
+
+.nexus-ui-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 8px;
+  margin: 2px 0 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--hairline);
+}
+
+.nexus-ui-fact {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--surface-soft);
+}
+
+.nexus-ui-fact__label {
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  overflow-wrap: anywhere;
+}
+
+.nexus-ui-fact__value {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.nexus-ui-fact[data-numeric] .nexus-ui-fact__value {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 420px) {
+  .nexus-ui-infocard__main {
+    flex-direction: column;
+  }
+
+  .nexus-ui-infocard__media {
+    width: 100%;
+    height: 140px;
+  }
+}
+
+/* Controles ---------------------------------------------------------------- */
+.nexus-ui-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 12px;
+}
+
+.nexus-ui-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.nexus-ui-field[data-kind="text"],
+.nexus-ui-field[data-kind="range"] {
+  grid-column: 1 / -1;
+}
+
+.nexus-ui-field__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.nexus-ui-field__label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--body);
+}
+
+.nexus-ui-field__bounds {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.nexus-ui-input,
+.nexus-ui-select {
+  width: 100%;
+  height: 38px;
+  padding: 6px 10px;
+  box-sizing: border-box;
+  font: inherit;
+  font-size: 13px;
+  border-radius: 8px;
+  border: 1px solid var(--hairline);
+  background: var(--canvas);
+  color: var(--ink);
+  transition: border-color 0.15s ease;
+}
+
+.nexus-ui-input::placeholder {
+  color: var(--muted-soft);
+}
+
+.nexus-ui-input:hover:not(:disabled),
+.nexus-ui-select:hover:not(:disabled) {
+  border-color: var(--muted-soft);
+}
+
+.nexus-ui-input:disabled,
+.nexus-ui-select:disabled,
+.nexus-ui-range:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.nexus-ui-select {
+  cursor: pointer;
+}
+
+.nexus-ui-range {
+  width: 100%;
+  height: 24px;
+  margin: 0;
+  accent-color: var(--primary);
+  cursor: pointer;
+  background: transparent;
+}
+
+.nexus-ui-error {
+  margin: 0;
+  font-size: 12px;
+  color: var(--error);
+}
+
+.nexus-ui-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 8px 16px;
+  border-radius: 10px;
+  border: 1px solid var(--hairline);
+  background: var(--surface-soft);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, opacity 0.15s ease;
+}
+
+.nexus-ui-button--primary {
+  width: 100%;
+  min-height: 44px;
+  border-color: transparent;
+  background: var(--primary);
+  color: #fff;
+}
+
+.nexus-ui-button--primary:hover:not(:disabled) {
+  background: var(--primary-active);
+}
+
+.nexus-ui-button:disabled {
+  cursor: not-allowed;
+}
+
+.nexus-ui-button--primary[data-done] {
+  background: var(--surface-soft);
+  border-color: var(--hairline);
+  color: var(--success);
+  opacity: 1;
+}
+
+/* Sandbox ------------------------------------------------------------------ */
+.nexus-ui-sandbox__stage {
+  position: relative;
+  width: 100%;
+  transition: height 0.2s ease;
+}
+
+.nexus-ui-sandbox__stage iframe {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: transparent;
+}
+
+.nexus-ui-sandbox__placeholder {
+  width: 100%;
+  height: 100%;
+  background:
+    linear-gradient(90deg, transparent, color-mix(in srgb, var(--ink) 4%, transparent), transparent)
+    var(--surface-card);
+}
+
+.nexus-ui-sandbox__notice {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  height: 100%;
+  padding: 16px;
+  text-align: center;
+  color: var(--body);
+}
+
+.nexus-ui-sandbox__notice p {
+  margin: 0;
+}
+
+.nexus-ui-card:fullscreen {
+  border-radius: 0;
+  background: var(--canvas);
+}
+
+.nexus-ui-card:fullscreen .nexus-ui-card__body {
+  flex: 1;
+  min-height: 0;
+}
+
+.nexus-ui-card:fullscreen .nexus-ui-sandbox__stage {
+  height: 100% !important;
+}
+
+/* Utilidades --------------------------------------------------------------- */
+.nexus-ui-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .nexus-ui-skeleton {
   animation: nexus-ui-skeleton-pulse 1.2s ease-in-out infinite;
+  opacity: 0.6;
 }
 
 @keyframes nexus-ui-skeleton-pulse {
@@ -12000,7 +12762,8 @@ html[data-theme="light"] .model-option-provider-tag {
     transition: none !important;
   }
 
-  .nexus-ui-skeleton {
+  .nexus-ui-skeleton,
+  .nexus-ui-step__pulse {
     animation: none;
   }
 }

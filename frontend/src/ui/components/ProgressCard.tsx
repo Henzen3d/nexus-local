@@ -1,68 +1,51 @@
 import React from 'react'
 import { useTranslation } from 'react-i18next'
 import type { ProgressBlock } from '../../types'
+import { formatNumber } from '../lib/chartFormat'
+import { UiCard } from './UiCard'
 
 interface Props {
   block: ProgressBlock
 }
 
 export function ProgressCard({ block }: Props) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const { label, value, max } = block
 
   if (value === undefined || max === undefined || max <= 0) {
     return null
   }
 
+  const locale = i18n.resolvedLanguage || i18n.language || 'pt-BR'
   const percent = Math.min(100, Math.max(0, Math.round((value / max) * 100)))
+  const ofText =
+    t('intelligentUi.progressOf', { current: formatNumber(value, locale), max: formatNumber(max, locale) }) ||
+    `${value} de ${max}`
+  const state = percent >= 100 ? 'done' : percent === 0 ? 'empty' : 'active'
 
   return (
-    <div
-      style={{
-        marginTop: '12px',
-        padding: '12px 16px',
-        backgroundColor: 'var(--surface-card)',
-        border: '1px solid var(--hairline)',
-        borderRadius: '10px',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '8px',
-        boxShadow: '0 2px 8px rgba(0, 0, 0, 0.05)',
-      }}
-    >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--ink)' }}>{label}</span>
-        <span style={{ fontSize: '12px', color: 'var(--body)' }}>
-          {t('intelligentUi.progressOf', { current: value, max }) || `${value} de ${max}`} ({percent}%)
+    <UiCard
+      title={label}
+      actions={
+        <span className="nexus-ui-metric" data-state={state}>
+          <span className="nexus-ui-metric__value">{percent}%</span>
         </span>
-      </div>
-
+      }
+    >
       <div
         role="progressbar"
+        className="nexus-ui-progress"
+        data-state={state}
         aria-valuenow={value}
         aria-valuemin={0}
         aria-valuemax={max}
+        aria-valuetext={`${ofText} (${percent}%)`}
         aria-label={label}
-        style={{
-          width: '100%',
-          height: '6px',
-          backgroundColor: 'var(--hairline)',
-          borderRadius: '3px',
-          overflow: 'hidden',
-          position: 'relative',
-        }}
       >
-        <div
-          className="nexus-ui-progress-fill"
-          style={{
-            width: `${percent}%`,
-            height: '100%',
-            backgroundColor: 'var(--primary)',
-            borderRadius: '3px',
-          }}
-        />
+        <div className="nexus-ui-progress__fill nexus-ui-progress-fill" style={{ width: `${percent}%` }} />
       </div>
-    </div>
+      <p className="nexus-ui-progress__caption">{ofText}</p>
+    </UiCard>
   )
 }
 

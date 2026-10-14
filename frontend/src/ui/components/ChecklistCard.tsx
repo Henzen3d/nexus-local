@@ -1,136 +1,87 @@
 import React from 'react'
-import type { ProgressBlock } from '../../types'
+import { Check, X } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+import type { ProgressBlock, ProgressStep } from '../../types'
+import { UiCard } from './UiCard'
 
 interface Props {
   block: ProgressBlock
 }
 
+/**
+ * Lista de passos como linha do tempo: círculo com estado + conector vertical + rótulo.
+ * Modelo visual: `Steps`/`StepsItem` do OpenUI (Thesys, MIT), reescrito em CSS puro
+ * com os tokens do Multi+. Estados da spec §4.1: pending | active | done | error.
+ */
 export function ChecklistCard({ block }: Props) {
+  const { t } = useTranslation()
   const { label, steps } = block
 
   if (!steps || steps.length === 0) {
     return null
   }
 
-  const getStateIcon = (state: string) => {
-    switch (state) {
-      case 'done':
-        return (
-          <span
-            style={{
-              color: 'var(--success)',
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              width: '16px',
-              height: '16px',
-            }}
-          >
-            ✓
-          </span>
-        )
-      case 'active':
-        return (
-          <span
-            style={{
-              display: 'inline-block',
-              width: '10px',
-              height: '10px',
-              borderRadius: '50%',
-              backgroundColor: 'var(--primary)',
-              boxShadow: '0 0 6px var(--primary)',
-            }}
-          />
-        )
-      case 'error':
-        return (
-          <span
-            style={{
-              color: 'var(--error)',
-              fontWeight: 'bold',
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              width: '16px',
-              height: '16px',
-            }}
-          >
-            ✕
-          </span>
-        )
-      default: // pending
-        return (
-          <span
-            style={{
-              display: 'inline-block',
-              width: '8px',
-              height: '8px',
-              borderRadius: '50%',
-              backgroundColor: 'var(--hairline)',
-              border: '1px solid var(--body)',
-            }}
-          />
-        )
-    }
-  }
+  const done = steps.filter((s) => s.state === 'done').length
+  const summary = t('intelligentUi.stepsSummary', { done, total: steps.length }) || `${done}/${steps.length}`
 
   return (
-    <div
-      style={{
-        marginTop: '12px',
-        padding: '12px 16px',
-        backgroundColor: 'var(--surface-card)',
-        border: '1px solid var(--hairline)',
-        borderRadius: '10px',
-        boxShadow: '0 2px 8px rgba(0, 0, 0, 0.05)',
-      }}
+    <UiCard
+      title={label}
+      actions={
+        <span className="nexus-ui-metric" data-state={done === steps.length ? 'done' : 'active'}>
+          <span className="nexus-ui-metric__value nexus-ui-metric__value--small">{summary}</span>
+        </span>
+      }
     >
-      {label && (
-        <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--ink)', marginBottom: '8px' }}>
-          {label}
-        </div>
-      )}
-
-      <ul
-        role="list"
-        style={{
-          listStyle: 'none',
-          padding: 0,
-          margin: 0,
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '6px',
-        }}
-      >
-        {steps.map((step) => (
+      <ol className="nexus-ui-steps" role="list">
+        {steps.map((step, index) => (
           <li
             key={step.id}
-            role="listitem"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '10px',
-              fontSize: '13px',
-              color: step.state === 'done' ? 'var(--body)' : 'var(--ink)',
-              textDecoration: step.state === 'done' ? 'none' : 'none',
-            }}
+            className="nexus-ui-step"
+            data-state={step.state}
+            aria-current={step.state === 'active' ? 'step' : undefined}
           >
-            <div style={{ width: '16px', display: 'flex', justifyContent: 'center' }}>
-              {getStateIcon(step.state)}
+            <div className="nexus-ui-step__rail">
+              <span className="nexus-ui-step__marker">
+                <StepGlyph step={step} index={index} />
+              </span>
+              <span className="nexus-ui-step__line" aria-hidden="true" />
             </div>
-            <span
-              style={{
-                fontWeight: step.state === 'active' ? 600 : 400,
-                color: step.state === 'active' ? 'var(--primary)' : undefined,
-              }}
-            >
-              {step.label}
-            </span>
+            <div className="nexus-ui-step__content">
+              <span className="nexus-ui-step__label">{step.label}</span>
+              <span className="nexus-ui-sr-only">{stateLabel(step.state, t)}</span>
+            </div>
           </li>
         ))}
-      </ul>
-    </div>
+      </ol>
+    </UiCard>
   )
+}
+
+function StepGlyph({ step, index }: { step: ProgressStep; index: number }) {
+  switch (step.state) {
+    case 'done':
+      return <Check size={13} strokeWidth={3} aria-hidden="true" />
+    case 'error':
+      return <X size={13} strokeWidth={3} aria-hidden="true" />
+    case 'active':
+      return <span className="nexus-ui-step__pulse" aria-hidden="true" />
+    default:
+      return <span aria-hidden="true">{index + 1}</span>
+  }
+}
+
+function stateLabel(state: ProgressStep['state'], t: (key: string) => string): string {
+  switch (state) {
+    case 'done':
+      return t('intelligentUi.stepDone') || 'concluído'
+    case 'active':
+      return t('intelligentUi.stepActive') || 'em andamento'
+    case 'error':
+      return t('intelligentUi.stepError') || 'com erro'
+    default:
+      return t('intelligentUi.stepPending') || 'pendente'
+  }
 }
 
 export default ChecklistCard

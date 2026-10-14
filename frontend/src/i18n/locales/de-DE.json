@@ -663,7 +663,17 @@
     "exportTooltip": "Interaktives Tool als eigenständige Datei herunterladen",
     "computedResult": "Ergebnis",
     "modelNotInList": "Dieses Modell ist nicht in deiner Liste.",
-    "controlsDone": "Gesendet"
+    "controlsDone": "Gesendet",
+    "copyData": "Daten kopieren",
+    "copied": "Kopiert",
+    "restart": "Neu starten",
+    "fullscreen": "Vollbild",
+    "sandboxEscaped": "Der Inhalt hat versucht, die Sandbox zu verlassen, und wurde gestoppt.",
+    "stepsSummary": "{{done}} von {{total}}",
+    "stepDone": "erledigt",
+    "stepActive": "in Arbeit",
+    "stepPending": "ausstehend",
+    "stepError": "fehlgeschlagen"
   },
   "memory": {
     "useMemoryGlobal": "Gedächtnis in Gesprächen (Standard: an)",

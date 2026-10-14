@@ -906,7 +906,17 @@
     "exportTooltip": "Descargar herramienta interactiva independiente",
     "computedResult": "Resultado",
     "modelNotInList": "Ese modelo no está en tu lista.",
-    "controlsDone": "Enviado"
+    "controlsDone": "Enviado",
+    "copyData": "Copiar datos",
+    "copied": "Copiado",
+    "restart": "Reiniciar",
+    "fullscreen": "Pantalla completa",
+    "sandboxEscaped": "El contenido intentó salir del sandbox y fue detenido.",
+    "stepsSummary": "{{done}} de {{total}}",
+    "stepDone": "completado",
+    "stepActive": "en curso",
+    "stepPending": "pendiente",
+    "stepError": "con error"
   },
   "proactive": {
     "bubbleBadge": "Asistente proactivo",

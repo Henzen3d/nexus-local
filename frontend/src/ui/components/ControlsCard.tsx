@@ -1,9 +1,12 @@
 import React, { useId, useMemo, useState } from 'react'
+import { Check } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useChatContext } from '../../context/ChatContext'
 import { useStore } from '../../store/useStore'
 import type { ControlsBlock } from '../../types'
+import { formatNumber } from '../lib/chartFormat'
 import { evaluateSafeFormula } from '../lib/safeMath'
+import { UiCard } from './UiCard'
 
 interface Props {
   block: ControlsBlock
@@ -24,21 +27,8 @@ function clampNumber(raw: number, min?: number, max?: number): number {
   return n
 }
 
-const inputStyle: React.CSSProperties = {
-  height: '36px',
-  padding: '6px 10px',
-  fontSize: '13px',
-  borderRadius: '6px',
-  border: '1px solid var(--hairline)',
-  backgroundColor: 'var(--canvas, #1f1f1e)',
-  color: 'var(--ink)',
-  outline: 'none',
-}
-
-const labelStyle: React.CSSProperties = { fontSize: '12px', color: 'var(--body)' }
-
 export function ControlsCard({ block }: Props) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const { sendMessage } = useChatContext()
   // Seletores pontuais: a bolha não pode re-renderizar a cada token do store
   const models = useStore((s) => s.models)
@@ -48,6 +38,7 @@ export function ControlsCard({ block }: Props) {
   const { title, submit_label, fields, action, computed } = block
   const uid = useId()
   const fieldDomId = (fieldId: string) => `${uid}-${fieldId}`
+  const locale = i18n.resolvedLanguage || i18n.language || 'pt-BR'
 
   const isSetModel = action.name === 'set_model'
   const modelField = isSetModel ? action.field : undefined
@@ -139,69 +130,77 @@ export function ControlsCard({ block }: Props) {
   }
 
   const errorId = `${uid}-error`
+  const titleId = `${uid}-title`
+  const doneLabel = t('intelligentUi.controlsDone') || 'Enviado'
 
   return (
-    <form
+    <UiCard
+      as="form"
+      className="nexus-ui-controls"
+      title={title}
+      titleId={titleId}
       onSubmit={handleSubmit}
-      aria-labelledby={`${uid}-title`}
+      aria-labelledby={titleId}
       aria-describedby={error ? errorId : undefined}
-      style={{
-        marginTop: '12px',
-        padding: '14px 16px',
-        backgroundColor: 'var(--surface-card)',
-        border: '1px solid var(--hairline)',
-        borderRadius: '10px',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '12px',
-        boxShadow: '0 2px 8px rgba(0, 0, 0, 0.05)',
-      }}
-    >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
-        <h4 id={`${uid}-title`} style={{ margin: 0, fontSize: '13px', fontWeight: 600, color: 'var(--ink)' }}>
-          {title}
-        </h4>
-        {computed && (
+      data-submitted={submitted || undefined}
+      actions={
+        computed ? (
           <span
+            className="nexus-ui-chip nexus-ui-chip--accent"
             aria-live="polite"
             aria-atomic="true"
-            style={{
-              fontSize: '12px',
-              fontWeight: 600,
-              padding: '3px 8px',
-              borderRadius: '6px',
-              backgroundColor: 'var(--surface-soft)',
-              color: 'var(--primary)',
-              border: '1px solid var(--hairline)',
-              visibility: computedBadgeText ? 'visible' : 'hidden',
-            }}
+            data-empty={computedBadgeText ? undefined : 'true'}
           >
             {computedBadgeText ?? ' '}
           </span>
-        )}
-      </div>
-
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        ) : undefined
+      }
+      footer={
+        <>
+          {error && (
+            <p id={errorId} role="alert" className="nexus-ui-error">
+              {error}
+            </p>
+          )}
+          <button
+            type="submit"
+            disabled={submitted}
+            className="nexus-ui-button nexus-ui-button--primary"
+            data-done={submitted || undefined}
+            aria-label={submitted ? doneLabel : undefined}
+          >
+            {submitted ? (
+              <>
+                <Check size={16} aria-hidden="true" /> {doneLabel}
+              </>
+            ) : (
+              submit_label || t('intelligentUi.controlsSubmitDefault') || 'Executar'
+            )}
+          </button>
+        </>
+      }
+    >
+      <div className="nexus-ui-fields">
         {fields.map((field) => {
           const val = formValues[field.id]
           const domId = fieldDomId(field.id)
 
           if (field.kind === 'text') {
             return (
-              <div key={field.id} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                <label htmlFor={domId} style={labelStyle}>
+              <div key={field.id} className="nexus-ui-field" data-kind="text">
+                <label htmlFor={domId} className="nexus-ui-field__label">
                   {field.label}
                 </label>
                 <input
                   id={domId}
                   name={field.id}
                   type="text"
+                  className="nexus-ui-input"
                   value={String(val || '')}
                   placeholder={field.placeholder}
                   maxLength={TEXT_MAX_LENGTH}
                   disabled={submitted}
                   onChange={(e) => handleFieldChange(field.id, e.target.value.slice(0, TEXT_MAX_LENGTH))}
-                  style={inputStyle}
                 />
               </div>
             )
@@ -209,8 +208,8 @@ export function ControlsCard({ block }: Props) {
 
           if (field.kind === 'number') {
             return (
-              <div key={field.id} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                <label htmlFor={domId} style={labelStyle}>
+              <div key={field.id} className="nexus-ui-field" data-kind="number">
+                <label htmlFor={domId} className="nexus-ui-field__label">
                   {field.label}
                 </label>
                 <input
@@ -218,6 +217,7 @@ export function ControlsCard({ block }: Props) {
                   name={field.id}
                   type="number"
                   inputMode="decimal"
+                  className="nexus-ui-input"
                   min={field.min}
                   max={field.max}
                   step={field.step ?? 1}
@@ -227,7 +227,6 @@ export function ControlsCard({ block }: Props) {
                   onBlur={(e) =>
                     handleFieldChange(field.id, clampNumber(parseFloat(e.target.value), field.min, field.max))
                   }
-                  style={inputStyle}
                 />
               </div>
             )
@@ -235,18 +234,24 @@ export function ControlsCard({ block }: Props) {
 
           if (field.kind === 'range') {
             const rangeVal = typeof val === 'number' ? val : (field.min ?? 0)
+            const min = field.min ?? 0
+            const max = field.max ?? 100
+            const pct = max > min ? Math.min(100, Math.max(0, ((rangeVal - min) / (max - min)) * 100)) : 0
             return (
-              <div key={field.id} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', ...labelStyle }}>
-                  <label htmlFor={domId}>{field.label}</label>
-                  <output htmlFor={domId} aria-live="off">
-                    <strong>{rangeVal}</strong>
+              <div key={field.id} className="nexus-ui-field" data-kind="range">
+                <div className="nexus-ui-field__row">
+                  <label htmlFor={domId} className="nexus-ui-field__label">
+                    {field.label}
+                  </label>
+                  <output htmlFor={domId} aria-live="off" className="nexus-ui-chip">
+                    {formatNumber(rangeVal, locale, false)}
                   </output>
                 </div>
                 <input
                   id={domId}
                   name={field.id}
                   type="range"
+                  className="nexus-ui-range"
                   min={field.min}
                   max={field.max}
                   step={field.step ?? 1}
@@ -255,15 +260,15 @@ export function ControlsCard({ block }: Props) {
                   aria-valuemax={field.max}
                   aria-valuenow={rangeVal}
                   disabled={submitted}
+                  style={{ ['--nexus-ui-range-pct' as string]: `${pct}%` }}
                   onChange={(e) =>
                     handleFieldChange(field.id, clampNumber(parseFloat(e.target.value), field.min, field.max))
                   }
-                  style={{
-                    width: '100%',
-                    accentColor: 'var(--primary)',
-                    cursor: submitted ? 'default' : 'pointer',
-                  }}
                 />
+                <div className="nexus-ui-field__bounds" aria-hidden="true">
+                  <span>{formatNumber(min, locale)}</span>
+                  <span>{formatNumber(max, locale)}</span>
+                </div>
               </div>
             )
           }
@@ -271,18 +276,18 @@ export function ControlsCard({ block }: Props) {
           if (field.kind === 'select') {
             const isModelPicker = isSetModel && field.id === modelField
             return (
-              <div key={field.id} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                <label htmlFor={domId} style={labelStyle}>
+              <div key={field.id} className="nexus-ui-field" data-kind="select">
+                <label htmlFor={domId} className="nexus-ui-field__label">
                   {field.label}
                 </label>
                 <select
                   id={domId}
                   name={field.id}
+                  className="nexus-ui-select"
                   value={String(val || '')}
                   disabled={submitted}
                   aria-invalid={isModelPicker && error ? true : undefined}
                   onChange={(e) => handleFieldChange(field.id, e.target.value)}
-                  style={{ ...inputStyle, cursor: submitted ? 'default' : 'pointer' }}
                 >
                   {isModelPicker
                     ? // Opções do modelo são ignoradas: a lista é a do usuário (store)
@@ -305,36 +310,7 @@ export function ControlsCard({ block }: Props) {
           return null
         })}
       </div>
-
-      {error && (
-        <p id={errorId} role="alert" style={{ margin: 0, fontSize: '12px', color: 'var(--error, #e5484d)' }}>
-          {error}
-        </p>
-      )}
-
-      <button
-        type="submit"
-        disabled={submitted}
-        aria-label={submitted ? t('intelligentUi.controlsDone') : undefined}
-        style={{
-          minHeight: '44px',
-          padding: '8px 16px',
-          fontSize: '13px',
-          fontWeight: 600,
-          borderRadius: '8px',
-          border: 'none',
-          backgroundColor: submitted ? 'var(--hairline)' : 'var(--primary)',
-          color: submitted ? 'var(--body)' : '#ffffff',
-          cursor: submitted ? 'not-allowed' : 'pointer',
-          transition: 'all 0.15s ease',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
-        {submitted ? '✓' : submit_label || t('intelligentUi.controlsSubmitDefault') || 'Executar'}
-      </button>
-    </form>
+    </UiCard>
   )
 }
 

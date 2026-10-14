@@ -663,7 +663,17 @@
     "exportTooltip": "インタラクティブツールを単体ファイルとしてダウンロード",
     "computedResult": "結果",
     "modelNotInList": "そのモデルはリストにありません。",
-    "controlsDone": "送信済み"
+    "controlsDone": "送信済み",
+    "copyData": "データをコピー",
+    "copied": "コピーしました",
+    "restart": "再起動",
+    "fullscreen": "全画面",
+    "sandboxEscaped": "コンテンツがサンドボックスの外に出ようとしたため停止しました。",
+    "stepsSummary": "{{total}} 件中 {{done}} 件",
+    "stepDone": "完了",
+    "stepActive": "進行中",
+    "stepPending": "保留中",
+    "stepError": "エラー"
   },
   "memory": {
     "useMemoryGlobal": "会話のメモリ（デフォルト: オン）",

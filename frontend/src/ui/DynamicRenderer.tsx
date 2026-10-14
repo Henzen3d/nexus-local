@@ -17,23 +17,26 @@ interface Props {
 /**
  * Altura mínima reservada por bloco enquanto o chunk do cartão carrega
  * (spec §7, "Zero CLS"): a bolha não salta quando o lazy resolve.
- * Valores batem com o tamanho real dos cartões (chart = 220 de gráfico + cabeçalho).
+ * Valores batem com o tamanho real dos cartões do plano 11 (casca `UiCard`:
+ * cabeçalho ≈ 34 px, corpo com 12/14 px de respiro; gráfico = 220 px de desenho).
  */
 function reservedHeight(block: UiBlock): number {
   switch (block.type) {
     case 'progress': {
       const hasValue = block.value !== undefined && block.max !== undefined
       const steps = Array.isArray(block.steps) ? block.steps.length : 0
-      return (hasValue ? 56 : 0) + (steps > 0 ? 40 + steps * 28 : 0)
+      return (hasValue ? 88 : 0) + (steps > 0 ? 60 + steps * 32 : 0)
     }
-    case 'card':
-      return block.image ? 220 : 72
+    case 'card': {
+      const facts = Array.isArray(block.facts) && block.facts.length > 0 ? 64 : 0
+      return (block.image ? 124 : 72) + facts
+    }
     case 'chart':
       return 280
     case 'controls':
-      return 72 + block.fields.length * 58 + 44
+      return 128 + block.fields.length * 62
     case 'sandbox':
-      return (block.initial_height || 300) + 48
+      return (block.initial_height || 300) + 44
     default:
       return 0
   }
@@ -46,15 +49,8 @@ function BlockSkeleton({ blocks }: { blocks: UiBlock[] }) {
         <div
           key={block.id}
           aria-hidden="true"
-          className="nexus-ui-skeleton"
-          style={{
-            minHeight: reservedHeight(block),
-            marginTop: '12px',
-            borderRadius: '10px',
-            border: '1px solid var(--hairline)',
-            backgroundColor: 'var(--surface-card)',
-            opacity: 0.6,
-          }}
+          className="nexus-ui-card nexus-ui-skeleton"
+          style={{ minHeight: reservedHeight(block) }}
         />
       ))}
     </>
@@ -72,7 +68,7 @@ export function DynamicRenderer({ envelope }: Props) {
   }
 
   return (
-    <div className="nexus-ui-container" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+    <div className="nexus-ui-container">
       <Suspense fallback={<BlockSkeleton blocks={validEnvelope.blocks} />}>
         {validEnvelope.blocks.map((block) => {
           if (block.type === 'progress') {

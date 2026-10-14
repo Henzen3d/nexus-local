@@ -663,7 +663,17 @@
     "exportTooltip": "Télécharger l'outil interactif en fichier autonome",
     "computedResult": "Résultat",
     "modelNotInList": "Ce modèle n'est pas dans votre liste.",
-    "controlsDone": "Envoyé"
+    "controlsDone": "Envoyé",
+    "copyData": "Copier les données",
+    "copied": "Copié",
+    "restart": "Redémarrer",
+    "fullscreen": "Plein écran",
+    "sandboxEscaped": "Le contenu a tenté de quitter le bac à sable et a été arrêté.",
+    "stepsSummary": "{{done}} sur {{total}}",
+    "stepDone": "terminé",
+    "stepActive": "en cours",
+    "stepPending": "en attente",
+    "stepError": "en erreur"
   },
   "memory": {
     "useMemoryGlobal": "Mémoire dans les conversations (par défaut : activée)",
