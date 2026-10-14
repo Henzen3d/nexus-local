@@ -135,6 +135,21 @@ Limites valem nos dois validadores. Texto é sempre nó de texto React (spec §7
 
 ## 3. Catálogo modular (12.4)
 
+**Passo 3 implementado (2026-10-14):** `catalog.txt` é a base e
+`catalog_modules/*.txt` contém os oito contratos atuais. `catalog.py` compõe
+apenas os módulos selecionados, com teto de 450 tokens estimados (`len/4`,
+mesmo critério anterior), inclusive para a pior combinação de três módulos.
+Prioridade estável: chart → metric → progress → controls → callout → card →
+sandbox. Duas vagas de conteúdo + uma reservada a follow_up (três no total).
+O gatilho numérico anterior mantém chart como fallback; falsos positivos por
+radical continuam excluídos. Flag desligada e modo voz não carregam catálogo.
+`modules_offered` e `modules_produced` contam turnos por módulo (produzido =
+tipo sobrevivente à validação, mesmo sem oferta); `block_types` segue contando
+blocos. O log inclui `modules=` sem texto do usuário. Tipos futuros `table`,
+`options`, `scene`, `pie` e funções de cálculo futuras não são anunciados.
+A proposta abaixo descreve também a expansão futura, não contratos presentes.
+
+
 Hoje `catalog.txt` tem ~277 tokens e teto de 400. Com dez tipos e as regras de cálculo ele passaria de 600. Em vez de subir o teto para todo turno, o catálogo vira **base + módulos**:
 
 - **Base** (sempre que o heurístico liga; ≈ 170 tokens): o parágrafo "se um visual ajudar…", o exemplo mínimo de fence, o teto de blocos, as regras gerais (nome do fence, sem HTML na bolha, prosa completa) e a lista dos tipos **em uma linha** (`progress, card, chart, metric, table, callout, options, follow_up, controls, sandbox`).

@@ -1,0 +1,1 @@
+callout: kind info|success|warning|danger, title opcional, body: um aviso curto que merece destaque.

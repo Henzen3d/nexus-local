@@ -1,26 +1,56 @@
 """
 backend/tests/test_jev_fast_standalone.py
 Validação automatizada das melhorias ativas do JEV-Fast (Planos 02, 03, 05, 10, 11, 16 e 09).
-Regra de ouro (AGENTS.md): Roda estritamente em banco SQLite temporário descartável (tempfile).
+Regra de ouro (AGENTS.md): banco SQLite descartável via tmp_path, sem rede.
+Execução: .venv/bin/python -m pytest backend/tests/test_jev_fast_standalone.py -q
 """
 
-import os
-import sys
-sys.path.insert(0, os.path.abspath("."))
+from pathlib import Path
+import struct
 import time
-import uuid
-import asyncio
-import tempfile
 import aiosqlite
+import pytest
+import pytest_asyncio
 
-# 1. Criação do banco temporário isolado ANTES de qualquer importação de DB
-temp_db_fd, temp_db_path = tempfile.mkstemp(suffix="_jev_test.db")
-os.close(temp_db_fd)
+# Carrega conftest (DB_PATH temporário) antes dos módulos do aplicativo.
+if __name__ == "__main__":
+    raise SystemExit(pytest.main([str(Path(__file__).resolve()), "-q"]))
 
 import backend.database as db_mod
 import backend.cache.manager as cache_mgr_mod
-db_mod.DB_PATH = temp_db_path
-cache_mgr_mod.DB_PATH = temp_db_path
+from backend.projects import embedder
+
+pytestmark = pytest.mark.asyncio
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def db(tmp_path, monkeypatch):
+    """Banco e estado por teste; nenhum efeito colateral durante collection."""
+    path = tmp_path / "jev.db"
+    monkeypatch.setattr(db_mod, "DB_PATH", path)
+    monkeypatch.setattr(cache_mgr_mod, "DB_PATH", path)
+    invalidate_model_cache()
+    invalidate_vision_l1_cache()
+    async with aiosqlite.connect(path) as connection:
+        await setup_test_schema(connection)
+        yield connection
+    invalidate_model_cache()
+    invalidate_vision_l1_cache()
+
+
+@pytest.fixture(autouse=True)
+def fake_embeddings(monkeypatch):
+    """Teste de cache, não de inferência: vetor local sem rede ou modelo pesado."""
+    calls = []
+
+    def embed(text):
+        calls.append(text)
+        return struct.pack("3f", 1.0, 0.0, 0.0)
+
+    monkeypatch.setattr(embedder, "embed_text", embed)
+    monkeypatch.setattr(embedder, "init_embedder", lambda: object())
+    return calls
+
 
 from backend.context.request_context import RequestContext
 from backend.cache.manager import cache_manager
@@ -30,7 +60,6 @@ from backend.ranking.smart_router import (
     IntentClassificationResult,
     select_best_model,
     invalidate_model_cache,
-    _MODEL_CACHE,
 )
 from backend.ranking.quota import mark_model_exhausted, release_expired_quotas
 from backend.ranking.token_bucket import TokenBucket, TokenBucketManager, RateLimitConfig
@@ -39,7 +68,6 @@ from backend.vision_relay.relay import (
     get_cached_description,
     save_description_cache,
     invalidate_vision_l1_cache,
-    _VISION_L1_MAX_ENTRIES,
 )
 from backend.metrics.task_benchmark import task_benchmark_manager
 
@@ -51,7 +79,8 @@ async def setup_test_schema(db: aiosqlite.Connection):
             id TEXT PRIMARY KEY,
             name TEXT NOT NULL,
             enabled INTEGER DEFAULT 1,
-            is_free INTEGER DEFAULT 0
+            is_free INTEGER DEFAULT 0,
+            is_local INTEGER DEFAULT 0
         );
 
         CREATE TABLE IF NOT EXISTS models (
@@ -62,7 +91,9 @@ async def setup_test_schema(db: aiosqlite.Connection):
             context_length INTEGER DEFAULT 8192,
             enabled INTEGER DEFAULT 1,
             confirmed_free INTEGER DEFAULT 0,
-            supports_vision INTEGER DEFAULT 0
+            supports_vision INTEGER DEFAULT 0,
+            reasoning_control TEXT DEFAULT 'none',
+            reasoning_levels TEXT
         );
 
         CREATE TABLE IF NOT EXISTS model_rankings (
@@ -158,7 +189,7 @@ async def setup_test_schema(db: aiosqlite.Connection):
     await db.commit()
 
 
-async def test_single_embedding_memoization():
+async def test_single_embedding_memoization(fake_embeddings):
     """Valida que duas chamadas no mesmo turno reutilizam o mesmo embedding em RAM (0ms)."""
     print("[1/6] Testando Single-Embedding por Turno via RequestContext...")
     req_ctx = RequestContext(user_id="user_test_123")
@@ -176,7 +207,7 @@ async def test_single_embedding_memoization():
     lat2 = (time.perf_counter() - t1) * 1000
 
     assert blob1 == blob2, "Embeddings devem ser idênticos"
-    assert lat2 < 1.0, f"Reutilização de embedding deve levar < 1ms (levou {lat2:.4f}ms)"
+    assert fake_embeddings == [query], "Memoização não deve recalcular o vetor"
     assert query.strip() in req_ctx._embedding_cache
     print(f"  [OK] Passou! Latência 1: {lat1:.2f}ms | Latência 2 (hit RAM): {lat2:.4f}ms")
 
@@ -223,6 +254,15 @@ async def test_semantic_cache_user_isolation(db: aiosqlite.Connection):
 
     # Fase B: Testar isolamento no Cache Exato
     await cache_manager.update_settings({"exact_enabled": True, "semantic_enabled": True})
+    await cache_manager.set(
+        model_id=model_id, messages=[{"role": "user", "content": prompt}],
+        response=response, user_id="user_alpha",
+    )
+    hit_alpha_exact = await cache_manager.get(
+        model_id=model_id, messages=[{"role": "user", "content": prompt}],
+        user_id="user_alpha",
+    )
+    assert hit_alpha_exact is not None and hit_alpha_exact.cache_type == "exact"
     hit_beta_exact = await cache_manager.get(
         model_id=model_id,
         messages=[{"role": "user", "content": prompt}],
@@ -233,7 +273,7 @@ async def test_semantic_cache_user_isolation(db: aiosqlite.Connection):
     print("  [OK] Passou! user_beta teve MISS e user_alpha teve HIT com 100% de isolamento.")
 
 
-async def test_semantic_gate_follow_ups():
+async def test_semantic_gate_follow_ups(monkeypatch):
     """Valida que o gate multi-turno desativa a busca semântica em follow-ups."""
     print("[3/6] Testando Semantic Gate em Multi-Turno...")
     # Follow-up com len(user_messages) > 1
@@ -243,6 +283,10 @@ async def test_semantic_gate_follow_ups():
         {"role": "user", "content": "Não entendi, explica?"},
     ]
 
+    async def forbidden_search(*args, **kwargs):
+        pytest.fail("Follow-up não deve consultar o cache semântico")
+
+    monkeypatch.setattr(cache_manager, "_get_semantic", forbidden_search)
     hit = await cache_manager.get(
         model_id="model-fast",
         messages=messages_followup,
@@ -308,7 +352,11 @@ async def test_vision_relay_l1_cache(db: aiosqlite.Connection):
     lat = (time.perf_counter() - t0) * 1000
 
     assert retrieved == desc
-    assert lat < 1.0, f"Leitura em L1 deve ser < 1ms (levou {lat:.4f}ms)"
+    async with db.execute("DELETE FROM vision_descriptions_cache"):
+        await db.commit()
+    assert await get_cached_description(file_hash, db) == desc
+    # Restaura a linha para conferir o caminho de repopulação após invalidar.
+    await save_description_cache(file_hash, desc, "gemini-2.0-flash", db)
 
     # Invalidação
     invalidate_vision_l1_cache()
@@ -360,7 +408,7 @@ async def test_token_bucket_hysteresis():
     assert bucket._throttled is True
 
     # 6. Teste de Benchmarking não-bloqueante
-    bench = await task_benchmark_manager.record_task_async(
+    await task_benchmark_manager.record_task_async(
         task_type="chat",
         latency_ms=45.2,
         model_id="model-fast",
@@ -373,45 +421,3 @@ async def test_token_bucket_hysteresis():
     assert stats["chat"]["count"] >= 1
     assert "llm_ttfb" in stats["chat"]["avg_phase_latencies_ms"]
     print("  [OK] Passou! Histerese de Sticky Routing e métricas não-bloqueantes validadas.")
-
-
-async def run_all():
-    print("==================================================================")
-    print("INICIANDO SUÍTE DE TESTES JEV-FAST EM BANCO TEMPORÁRIO ISOLADO")
-    print(f"Banco Temporário: {temp_db_path}")
-    print("==================================================================")
-
-    async with aiosqlite.connect(temp_db_path) as db:
-        await setup_test_schema(db)
-        await test_single_embedding_memoization()
-        await test_semantic_cache_user_isolation(db)
-        await test_semantic_gate_follow_ups()
-        await test_model_cache_and_reactive_invalidation(db)
-        await test_vision_relay_l1_cache(db)
-        await test_token_bucket_hysteresis()
-
-    print("==================================================================")
-    print("TODOS OS TESTES PASSARAM COM 100% DE SUCESSO!")
-    print("==================================================================")
-
-
-if __name__ == "__main__":
-    try:
-        asyncio.run(run_all())
-    finally:
-        # Limpeza obrigatória do arquivo descartável
-        import gc
-        import time
-        gc.collect()
-        time.sleep(0.2)
-        if os.path.exists(temp_db_path):
-            for _ in range(5):
-                try:
-                    os.remove(temp_db_path)
-                    print(f"[CLEANUP] Banco temporário {temp_db_path} removido com sucesso.")
-                    break
-                except Exception as e:
-                    time.sleep(0.3)
-                    gc.collect()
-            else:
-                print(f"[CLEANUP WARNING] Falha ao remover banco temporário.")
