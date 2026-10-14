@@ -41,7 +41,7 @@ def tmp_db():
     dbmod.DB_PATH = Path(path)
 
     import asyncio
-    asyncio.get_event_loop().run_until_complete(dbmod.init_db())
+    asyncio.run(dbmod.init_db())
 
     yield dbmod, path
 

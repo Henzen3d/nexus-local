@@ -93,13 +93,21 @@ _RE_CODE_SYNTAX = re.compile(
     r"DELETE\s+FROM|console\.log|print\(|Traceback|NullPointerException|TypeError|ValueError|"
     r"IndexError|KeyError|AttributeError|Exception|dockerfile|kubernetes|terraform|regex|"
     r"fastapi|express|react|vue|angular|svelte|django|flask|spring|sql|graphql|typescript|"
-    r"javascript|python|golang|rust|c\+\+|csharp|swift|kotlin|php|html|css|json|yaml)\b",
+    r"javascript|python|golang|rust|c\+\+|csharp|swift|kotlin|php|html|css|json|yaml|"
+    r"pandas|numpy|scikit-learn|sklearn|tensorflow|keras|pytorch|torch|transformers|huggingface|"
+    r"nltk|spacy|opencv|matplotlib|seaborn|jupyter)\b",
     re.IGNORECASE,
 )
 _RE_CODE_KEYWORDS = re.compile(
     r"\b(código|função|script|bug|debug|erro|stacktrace|refatore|refatorar|compilar|"
     r"api|endpoint|backend|frontend|query|banco\s+de\s+dados|repositório|git\s+commit|"
-    r"pull\s+request|npm\s+run|pip\s+install|classe|variável|parâmetro)\b",
+    r"pull\s+request|npm\s+run|pip\s+install|classe|variável|parâmetro|"
+    r"algoritmo|algoritmos|aprendizado\s+de\s+máquina|machine\s+learning|deep\s+learning|"
+    r"processamento\s+de\s+linguagem\s+natural|nlp|rede\s+neural|redes\s+neurais|"
+    r"dataset|conjunto\s+de\s+dados|pipeline|sistema\s+de\s+recomendação|classificador|"
+    r"treinamento\s+de\s+modelo|engenharia\s+de\s+software|arquitetura\s+de\s+software|"
+    r"desenvolva\s+um\s+algoritmo|desenvolva\s+um\s+modelo|desenvolva\s+um\s+sistema|"
+    r"implemente\s+um\s+algoritmo|implemente\s+um\s+modelo|implementar\s+em\s+código)\b",
     re.IGNORECASE,
 )
 
@@ -140,15 +148,16 @@ INTENT_FAMILY_MAPPING: Dict[IntentKey, List[str]] = {
     ],
     IntentKey.CODE_ENGINEERING: [
         "qwen-2.5-coder-32b",
-        "deepseek-coder",
-        "llama-3.3-70b",
-        "claude-3.5-sonnet",
         "qwen-2.5-coder",
+        "deepseek-coder",
+        "codestral",
+        "claude-3.5-sonnet",
     ],
     IntentKey.DEEP_REASONING: [
         "deepseek-r1",
         "gemini-2.0-flash-thinking",
         "qwq-32b",
+        "deepseek-r1-distill",
     ],
     IntentKey.CREATIVE_LONGFORM: [
         "llama-3.3-70b",
@@ -463,6 +472,34 @@ def is_trivial_greeting(prompt: str) -> bool:
     return len(p) <= 35 and bool(_RE_TRIVIAL_SHORT.match(p))
 
 
+def get_default_quality_score(model_id: str, model_name: str) -> float:
+    """Retorna pontuação de qualidade estimada por benchmark para modelos sem rating manual."""
+    m = f"{model_id} {model_name}".lower()
+    if any(k in m for k in ("deepseek-r1", "r1-distill")):
+        return 96.0
+    if any(k in m for k in ("qwen-2.5-coder-32b", "qwen2.5-coder-32b")):
+        return 94.0
+    if any(k in m for k in ("qwq-32b", "qwq")):
+        return 93.0
+    if any(k in m for k in ("coder", "codestral")):
+        return 90.0
+    if "deepseek-v3" in m:
+        return 92.0
+    if "llama-3.3-70b" in m:
+        return 86.0
+    if "gemini-2.0-flash" in m:
+        return 88.0
+    if "mistral-large" in m:
+        return 84.0
+    if any(k in m for k in ("vision", "llama-3.2-11b")):
+        return 83.0
+    if any(k in m for k in ("llama-3.1-8b", "llama-3-8b")):
+        return 75.0
+    if any(k in m for k in ("llama-3.2-3b", "llama-3.2-1b")):
+        return 72.0
+    return 60.0
+
+
 # ── Seleção de Modelo com Blindagem de 2ª Escala ─────────────────────────────
 
 async def select_best_model(
@@ -516,6 +553,13 @@ async def select_best_model(
 
         models_data = []
         for r in rows:
+            raw_q = float(r[8]) if r[8] is not None else 50.0
+            raw_n = float(r[7]) if r[7] is not None else 50.0
+            if raw_q <= 50.0:
+                raw_q = get_default_quality_score(r[0], r[2])
+            if raw_n <= 50.0:
+                raw_n = raw_q
+
             models_data.append({
                 "id": r[0],
                 "provider_id": r[1],
@@ -525,8 +569,8 @@ async def select_best_model(
                 "confirmed_free": r[5],
                 "prov_is_free": r[6],
                 "is_free": 1 if (r[5] == 1 or r[6] == 1) else 0,
-                "nexuslocal_score": float(r[7]),
-                "quality_score": float(r[8]),
+                "nexuslocal_score": raw_n,
+                "quality_score": raw_q,
                 "quota_status": r[9],
                 "supports_vision": r[10],
             })
@@ -621,7 +665,10 @@ async def select_best_model(
             prev_m = prev_matches[0]
             best_score = max(m["nexuslocal_score"] for m in candidate_pool)
             delta = best_score - prev_m["nexuslocal_score"]
-            if delta <= (best_score * 0.15):
+            # Para tarefas especializadas (Código ou Raciocínio Profundo), só mantém se o modelo anterior for especialista de topo
+            is_specialist_task = intent_result.intent in (IntentKey.CODE_ENGINEERING, IntentKey.DEEP_REASONING, IntentKey.MULTIMODAL_VISION)
+            max_allowed_delta = (best_score * 0.05) if is_specialist_task else (best_score * 0.15)
+            if delta <= max_allowed_delta:
                 t_end = time.perf_counter()
                 latency_ms = round((t_end - t_start) * 1000 + intent_result.processing_time_ms, 3)
                 return AutoRouteDecision(
