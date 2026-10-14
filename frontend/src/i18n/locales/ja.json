@@ -673,7 +673,16 @@
     "stepDone": "完了",
     "stepActive": "進行中",
     "stepPending": "保留中",
-    "stepError": "エラー"
+    "stepError": "エラー",
+    "metricUp": "上昇",
+    "metricDown": "下降",
+    "metricFlat": "横ばい",
+    "calloutInfo": "情報",
+    "calloutSuccess": "成功",
+    "calloutWarning": "注意",
+    "calloutDanger": "警告",
+    "followUpTitle": "次に続ける",
+    "followUpHint": "提案: {{text}}"
   },
   "memory": {
     "useMemoryGlobal": "会話のメモリ（デフォルト: オン）",

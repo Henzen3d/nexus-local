@@ -15,6 +15,7 @@ Famílias de blocos nativos (Nível 1) e ferramentas sob demanda (Nível 2):
 3. Gráficos nativos com Recharts (`chart`)
 4. Botões, formulários e calculadoras reativas com controle local (`controls`)
 5. Extensão de ferramentas interativas em sandbox seguro com bridge bidirecional (`sandbox`)
+6. Indicadores KPI, avisos e sugestões de continuação (`metric`, `callout`, `follow_up` — plano 12)
 
 Fora desta pasta: reescrever o Multi+, substituir o painel de artefatos lateral, Thesys, instalar SDKs pesados de terceiros, SSE paralelo ou executar scripts desprotegidos na bolha principal.
 
@@ -54,7 +55,9 @@ Ordem de execução: 01, depois 02, 03, 04, 05. O 06 acompanha cada fase, não e
 | 6 | 06-criterios-aceite | 37 de 44 itens atendidos | Bloqueadores para ligar em produção listados no topo do arquivo. |
 | 7 | 09-plano-sandbox-e-exportacao | Implementada | `SandboxCard.tsx`, `themeBridge.ts`, `hooks/useResolvedTheme.ts`, `lib/exportStandalone.ts` + testes de função pura. Tema reativo por `postMessage`, CSP `default-src 'none'` (esm.sh só para módulos), `lang` do i18n. |
 
-Testes que passam: `backend/tests/test_ui_blocks.py` (15), `frontend/src/lib/nexusUi.test.ts` (7), `frontend/src/ui/lib/safeMath.test.ts` (4), `frontend/src/ui/lib/chartFormat.test.ts` (14). `tsc` e `vite build` limpos. Não há testes de render dos componentes (só smoke de SSR manual; o `test:dom` com jsdom está previsto no plano 11 §4.5).
+Testes que passam: `backend/tests/test_ui_blocks.py` (32), `backend/tests/test_ws_origin.py` (7), `frontend/src/lib/nexusUi.test.ts` (17), `frontend/src/ui/lib/safeMath.test.ts` (4), `frontend/src/ui/lib/chartFormat.test.ts` (14). `tsc` e `vite build` limpos. Não há testes de render dos componentes (só smoke de SSR manual; o `test:dom` com jsdom está previsto no plano 11 §4.5).
+
+**Plano 12, passos 1 e 2 (2026-10-14):** checagem de `Origin` no handshake do WebSocket (`backend/ws_origin.py`, mesma lista do CORS) e três blocos novos, aditivos ao `nexus-ui/1`: `metric` (KPIs com delta e tendência), `callout` (aviso com tipo) e `follow_up` (sugestões clicáveis, sempre o último). Teto de blocos passou de 4 para 6 com subtetos (1 `sandbox`, 2 `chart`, 1 `follow_up`). Validadores espelhados com testes de paridade; cartões `MetricCard`, `CalloutCard`, `FollowUpCard`; catálogo com os três tipos (≈ 389 tokens). Próximo passo: catálogo modular (12.4), pré-requisito de `table`, `options` e `pie`.
 
 **Camada visual (plano 11, primeira fatia em 2026-10-14):** os seis cartões (`ProgressCard`, `ChecklistCard`, `ImageCard`, `ChartCard`, `ControlsCard`, `SandboxCard`) passaram a compartilhar `ui/components/UiCard.tsx` (cabeçalho, ícone, ações, rodapé, erro) e as classes `nexus-ui-*` do `index.css`, só com tokens do Nexus; números formatados por locale (`ui/lib/chartFormat.ts`), ticks por altura, paleta derivada de `--primary`, tooltip e legenda próprios, `prefers-reduced-motion` respeitado (`ui/hooks/useMotionAndViewport.ts`), sandbox monta só perto da vista e nunca desmonta, alvos de 44 px em toque. Dez chaves novas de i18n (`intelligentUi.*`) nos oito idiomas.
 

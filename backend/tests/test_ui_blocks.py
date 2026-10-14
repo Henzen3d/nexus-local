@@ -224,7 +224,10 @@ def test_catalogo_cabe_no_teto_e_tem_as_regras_da_spec():
     text = (Path(__file__).resolve().parent.parent / "ui_blocks" / "catalog.txt").read_text(encoding="utf-8")
     assert len(text) / 4 <= 400, "catálogo estourou os 400 tokens estimados (spec §8)"
     for frase in (
-        "Máximo 4 blocos",
+        "Máximo 6 blocos",
+        "info|success|warning|danger",
+        "up|down|flat",
+        "sem repetir o que a prosa já respondeu",
         "Sem cor",
         "{id_do_campo}",
         "não invente id de modelo",
@@ -499,3 +502,95 @@ def test_telemetria_motivos_de_descarte():
 
     assert inspect_fence("sem nada")["found"] is False
     assert inspect_fence('```chart\n{"kind":"bar","series":[]}\n```')["alt_fence"] is True
+
+
+# ─── Plano 12 — blocos metric, callout, follow_up; teto 6 e subtetos ──────────
+
+def test_metric_valido_e_limites():
+    raw = {
+        "v": 1,
+        "blocks": [
+            {
+                "id": "kpis",
+                "type": "metric",
+                "title": "Este mês",
+                "items": [
+                    {"label": "Receita", "value": 48200, "unit": "R$", "delta": "+8,1%", "trend": "up", "hint": "vs. mês anterior"},
+                    {"label": "Churn", "value": "1,8%", "delta": "-0,3 p.p.", "trend": "down", "good": "down"},
+                    {"label": "Texto com unidade", "value": "alto", "unit": "%"},
+                    {"label": "Sem valor"},
+                    {"label": "NaN", "value": float("nan")},
+                    {"label": "Quinto", "value": 5},
+                    {"label": "Sexto", "value": 6},
+                ],
+            }
+        ],
+    }
+    out = validate_envelope(raw)
+    assert out is not None
+    block = out["blocks"][0]
+    assert block["type"] == "metric" and block["title"] == "Este mês"
+    labels = [i["label"] for i in block["items"]]
+    # "Sem valor" e NaN caem; o teto de 4 corta o sexto
+    assert labels == ["Receita", "Churn", "Texto com unidade", "Quinto"]
+    assert block["items"][0] == {
+        "label": "Receita", "value": 48200, "unit": "R$", "delta": "+8,1%", "trend": "up", "hint": "vs. mês anterior",
+    }
+    assert block["items"][1]["good"] == "down"
+    assert "unit" not in block["items"][2], "unit só acompanha valor numérico"
+
+    assert validate_envelope({"v": 1, "blocks": [{"type": "metric", "items": []}]}) is None
+    assert validate_envelope({"v": 1, "blocks": [{"type": "metric", "items": [{"label": "x", "value": True}]}]}) is None
+
+
+def test_callout_kind_tolerante_e_body_obrigatorio():
+    out = validate_envelope({"v": 1, "blocks": [
+        {"type": "callout", "kind": "warn", "title": "Atenção", "body": "A Selic usada é a de outubro."},
+        {"type": "callout", "kind": "pizza", "body": "Vira info."},
+        {"type": "callout", "kind": "error", "body": "Vira danger."},
+        {"type": "callout", "kind": "danger", "title": "Sem corpo"},
+    ]})
+    assert out is not None
+    kinds = [(b["kind"], b.get("title")) for b in out["blocks"]]
+    assert kinds == [("warning", "Atenção"), ("info", None), ("danger", None)]
+    assert len(out["blocks"][0]["body"]) <= 400
+
+
+def test_follow_up_vai_para_o_fim_e_so_um_por_envelope():
+    out = validate_envelope({"v": 1, "blocks": [
+        {"type": "follow_up", "items": ["Comparar com 2025", "Mostrar por região", "x", "comparar com 2025", {"label": "Exportar"}, "Quinto item"]},
+        {"type": "progress", "label": "A", "value": 1, "max": 2},
+        {"type": "follow_up", "items": ["Segundo bloco cai"]},
+    ]})
+    assert out is not None
+    assert [b["type"] for b in out["blocks"]] == ["progress", "follow_up"]
+    # "x" é curto demais, a repetição (sem caixa) cai, o objeto com label entra, teto 4
+    assert out["blocks"][1]["items"] == ["Comparar com 2025", "Mostrar por região", "Exportar", "Quinto item"]
+    assert validate_envelope({"v": 1, "blocks": [{"type": "follow_up", "items": ["ab"]}]}) is None
+
+
+def test_teto_seis_blocos_com_subtetos():
+    chart = {"type": "chart", "kind": "bar", "x_key": "x", "series": [{"key": "y", "label": "Y"}], "rows": [{"x": "a", "y": 1}]}
+    sandbox = {"type": "sandbox", "title": "S", "html": "<div></div>"}
+    out = validate_envelope({"v": 1, "blocks": [
+        dict(chart, id="c1"), dict(chart, id="c2"), dict(chart, id="c3"),
+        dict(sandbox, id="s1"), dict(sandbox, id="s2"),
+        {"id": "m", "type": "metric", "items": [{"label": "a", "value": 1}]},
+        {"id": "setimo", "type": "callout", "body": "fora da janela de 6"},
+    ]})
+    assert out is not None
+    # c3 e s2 passam do subteto; o sétimo bloco nem é olhado
+    assert [b["id"] for b in out["blocks"]] == ["c1", "c2", "s1", "m"]
+
+
+def test_inferencia_de_tipo_dos_blocos_novos():
+    out = validate_envelope({"v": 1, "blocks": [
+        {"items": ["Primeira sugestão", "Segunda sugestão"]},
+        {"items": [{"label": "Receita", "value": 10}]},
+        {"kind": "danger", "body": "Cuidado."},
+        {"title": "Só título"},
+    ]})
+    assert out is not None
+    assert [b["type"] for b in out["blocks"]] == ["metric", "callout", "card", "follow_up"]
+    # Bloco solto (sem envelope) também infere
+    assert validate_envelope({"items": ["Uma sugestão válida"]})["blocks"][0]["type"] == "follow_up"

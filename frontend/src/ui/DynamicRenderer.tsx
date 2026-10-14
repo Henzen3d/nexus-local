@@ -9,6 +9,9 @@ const ImageCard = React.lazy(() => import('./components/ImageCard'))
 const ChartCard = React.lazy(() => import('./components/ChartCard'))
 const ControlsCard = React.lazy(() => import('./components/ControlsCard'))
 const SandboxCard = React.lazy(() => import('./components/SandboxCard'))
+const MetricCard = React.lazy(() => import('./components/MetricCard'))
+const CalloutCard = React.lazy(() => import('./components/CalloutCard'))
+const FollowUpCard = React.lazy(() => import('./components/FollowUpCard'))
 
 interface Props {
   envelope?: UiEnvelope | null
@@ -37,6 +40,13 @@ function reservedHeight(block: UiBlock): number {
       return 128 + block.fields.length * 62
     case 'sandbox':
       return (block.initial_height || 300) + 44
+    case 'metric':
+      // Plano 12 §2.1: cabeçalho + uma linha de tiles (duas quando há mais de 2 itens em bolha estreita)
+      return (block.title ? 34 : 0) + 14 + 70 * (block.items.length > 2 ? 2 : 1)
+    case 'callout':
+      return 56 + 20 * Math.ceil(block.body.length / 80)
+    case 'follow_up':
+      return 28 + block.items.length * 40
     default:
       return 0
   }
@@ -97,6 +107,18 @@ export function DynamicRenderer({ envelope }: Props) {
 
           if (block.type === 'sandbox') {
             return <SandboxCard key={block.id} block={block} />
+          }
+
+          if (block.type === 'metric') {
+            return <MetricCard key={block.id} block={block} />
+          }
+
+          if (block.type === 'callout') {
+            return <CalloutCard key={block.id} block={block} />
+          }
+
+          if (block.type === 'follow_up') {
+            return <FollowUpCard key={block.id} block={block} />
           }
 
           return null

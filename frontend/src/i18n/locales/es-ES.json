@@ -916,7 +916,16 @@
     "stepDone": "completado",
     "stepActive": "en curso",
     "stepPending": "pendiente",
-    "stepError": "con error"
+    "stepError": "con error",
+    "metricUp": "en alza",
+    "metricDown": "en baja",
+    "metricFlat": "estable",
+    "calloutInfo": "Información",
+    "calloutSuccess": "Éxito",
+    "calloutWarning": "Atención",
+    "calloutDanger": "Alerta",
+    "followUpTitle": "Continuar con",
+    "followUpHint": "Sugerencia: {{text}}"
   },
   "proactive": {
     "bubbleBadge": "Asistente proactivo",

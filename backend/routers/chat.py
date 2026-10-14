@@ -7,6 +7,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from backend.attachments import move_attachments_to_conversation
 from backend.auth import resolve_token_user
+from backend.ws_origin import is_origin_allowed
 from backend.database import get_db
 from backend.fusion.orchestrator import executar_fusion
 from backend.logging_config import configure_logging, get_logger
@@ -111,6 +112,14 @@ def _presence_transition(user_id: str, ws: WebSocket, transition) -> None:
 @router.websocket("/ws/chat")
 async def websocket_chat(ws: WebSocket):
     """Controller WebSocket fino: autentica, lê mensagens e delega para orquestração."""
+    # Origin de outro site não passa do handshake (plano 12 §6): fechar antes do
+    # accept vira resposta HTTP 403 para o navegador.
+    origin = ws.headers.get("origin")
+    if not is_origin_allowed(origin, ws.headers.get("host")):
+        logger.warning("[WS] Origin recusada no handshake: %s", origin)
+        await ws.close(code=4003)
+        return
+
     token = ws.query_params.get("token")
     user = None
     if token:

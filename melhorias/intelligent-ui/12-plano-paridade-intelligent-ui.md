@@ -1,7 +1,7 @@
 # Plano 12 — Paridade com o Intelligent UI do ChatGPT
 
 **Data:** 2026-10-14
-**Estado:** plano. Nada desta página está implementado, exceto o que o plano 11 já entregou na camada visual.
+**Estado:** em andamento. Passos 1 e 2 da seção 8 entregues em 2026-10-14 (`Origin` no WebSocket; blocos `metric`, `callout`, `follow_up`; teto 6 com subtetos; catálogo com os três tipos). Os demais passos continuam planejados; a ordem da seção 8 vale.
 **Depende de:** Fases 1–7 e plano 11. A cena 2D/3D tem plano próprio (13).
 **Referências:** [10-referencias-answerui-openui-openwebui.md](10-referencias-answerui-openui-openwebui.md) (tabela de paridade na seção 1; mecanismos do OpenUI na seção 3; padrões do Open WebUI na seção 4).
 
@@ -190,9 +190,9 @@ Hoje um bloco inválido some e só a telemetria sabe. O OpenUI devolve um objeto
 
 Do `e2e/security.spec.ts` do AnswerUI:
 
-- [ ] `websocket_chat` confere o cabeçalho `Origin`: aceita se o host do `Origin` bate com o `Host` da requisição ou está em `ALLOWED_ORIGINS` (`.env`, vazio = só mesmo host). Caso contrário `ws.close(code=4003)` antes de ler mensagem. Teste em `tests/test_ws_origin.py`.
-- [ ] Resposta do `index.html` com `Content-Security-Policy: frame-ancestors 'none'` e `X-Frame-Options: DENY` (middleware em `backend/main.py`, só para HTML). Os iframes do sandbox são `srcdoc` e não dependem disso.
-- [ ] `GET /api/intelligent-ui/config` e `POST` já exigem JWT; conferir que o `POST` recusa `Content-Type` fora de JSON (anti CSRF simples).
+- [x] `websocket_chat` confere o cabeçalho `Origin` (`backend/ws_origin.py`): aceita se `host[:porta]` do `Origin` é o mesmo do `Host` da requisição ou se o `Origin` está em `ALLOWED_ORIGINS` (a mesma lista do CORS; vazio = padrões de dev `localhost:5173`/`127.0.0.1:5173`). Sem `Origin` passa (cliente que não é navegador); `Origin: null` não. Caso contrário `ws.close(code=4003)` antes do `accept` (HTTP 403). Teste em `tests/test_ws_origin.py`.
+- [x] Clickjacking: o `index.html` é servido pelo nginx, que já manda `Content-Security-Policy: frame-ancestors 'self'` e `X-Frame-Options: SAMEORIGIN` (`frontend/nginx-security-headers.conf`). Fica em `'self'`, não `'none'`: os iframes `srcdoc` dos artefatos e do sandbox herdam a CSP do documento pai, e `'none'` os bloquearia. Nada a fazer no backend.
+- [x] `POST /api/intelligent-ui/config` só aceita corpo JSON (modelo Pydantic) e o JWT vai por cabeçalho `Authorization`, não por cookie: formulário cross-site não consegue nem autenticar nem passar no parser. Sem mudança.
 
 ## 7. Estado compartilhado entre blocos (12.7)
 
@@ -217,16 +217,16 @@ O que torna a calculadora do ChatGPT "viva": mexer no campo recalcula tudo. O Op
 
 ## 8. Ordem de implementação e testes
 
-| Passo | Entrega | Testes obrigatórios |
-|---|---|---|
-| 1 | 12.9 (Origin, headers) | `test_ws_origin.py`; header no `index.html` |
-| 2 | 12.1 `metric`, `callout`, `follow_up` + teto 6 | paridade Python/TS por tipo; `mergeUiEnvelopes` com teto 6; render SSR dos três cartões |
-| 3 | 12.4 catálogo modular | teto por combinação; gatilhos com casos positivos e negativos (falsos positivos do `should_offer` de hoje continuam cobertos) |
-| 4 | 12.6 laço de correção | códigos de erro iguais nos dois lados; `stream_end.ui_errors`; botão só com flag ligada; um pedido por mensagem |
-| 5 | 12.2 `table`, 12.8 `pie`/`unit`/`stacked` | validação de célula; CSV; `pie` com "Outros" |
-| 6 | 12.5 render progressivo | propriedade "prefixo ⊆ final"; fixtures de corte; bloco interativo desabilitado no stream |
-| 7 | 12.3 `options` | um clique envia só em `single`; trava após envio; `{choice}` em `multiple` |
-| 8 | 12.7 estado compartilhado | expressões (paridade), ciclo, ids desconhecidos, recalculo de `metric`/`chart` |
+| Passo | Entrega | Testes obrigatórios | Situação |
+|---|---|---|---|
+| 1 | 12.9 (Origin, headers) | `test_ws_origin.py`; header no `index.html` | **Entregue** (2026-10-14): `backend/ws_origin.py`, checagem em `websocket_chat`, CORS e WS com a mesma lista; `test_ws_origin.py` (7 testes). Headers de clickjacking já existiam no nginx (`frame-ancestors 'self'`, `X-Frame-Options: SAMEORIGIN`) — mantidos em `'self'` porque os iframes `srcdoc` herdam a CSP do pai. O `POST /config` só aceita corpo JSON (Pydantic) e JWT por cabeçalho: sem CSRF por formulário. |
+| 2 | 12.1 `metric`, `callout`, `follow_up` + teto 6 | paridade Python/TS por tipo; `mergeUiEnvelopes` com teto 6; render SSR dos três cartões | **Entregue** (2026-10-14): validadores espelhados (`validate.py` / `nexusUi.ts`) com `MAX_BLOCKS = 6` e `MAX_BLOCKS_PER_TYPE`; `MetricCard`, `CalloutCard`, `FollowUpCard`; `DynamicRenderer` com alturas reservadas; 9 chaves i18n ×8; catálogo com os três tipos (≈ 389 tokens, ainda sob o teto de 400); testes em `test_ui_blocks.py` (+5) e `nexusUi.test.ts` (+5). |
+| 3 | 12.4 catálogo modular | teto por combinação; gatilhos com casos positivos e negativos (falsos positivos do `should_offer` de hoje continuam cobertos) | Próximo: o catálogo está a 11 tokens do teto; `table`/`options`/`pie` não cabem sem os módulos. |
+| 4 | 12.6 laço de correção | códigos de erro iguais nos dois lados; `stream_end.ui_errors`; botão só com flag ligada; um pedido por mensagem | Planejado |
+| 5 | 12.2 `table`, 12.8 `pie`/`unit`/`stacked` | validação de célula; CSV; `pie` com "Outros" | Planejado |
+| 6 | 12.5 render progressivo | propriedade "prefixo ⊆ final"; fixtures de corte; bloco interativo desabilitado no stream | Planejado (`referencias-codigo/partial-json.ts` pronto) |
+| 7 | 12.3 `options` | um clique envia só em `single`; trava após envio; `{choice}` em `multiple` | Planejado |
+| 8 | 12.7 estado compartilhado | expressões (paridade), ciclo, ids desconhecidos, recalculo de `metric`/`chart` | Planejado |
 
 Cada passo é um PR com a flag desligada por padrão; o `06-criterios-aceite.md` ganha uma seção por passo.
 

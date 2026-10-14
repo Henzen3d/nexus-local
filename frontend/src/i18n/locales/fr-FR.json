@@ -673,7 +673,16 @@
     "stepDone": "terminé",
     "stepActive": "en cours",
     "stepPending": "en attente",
-    "stepError": "en erreur"
+    "stepError": "en erreur",
+    "metricUp": "en hausse",
+    "metricDown": "en baisse",
+    "metricFlat": "stable",
+    "calloutInfo": "Information",
+    "calloutSuccess": "Succès",
+    "calloutWarning": "Attention",
+    "calloutDanger": "Alerte",
+    "followUpTitle": "Continuer avec",
+    "followUpHint": "Suggestion : {{text}}"
   },
   "memory": {
     "useMemoryGlobal": "Mémoire dans les conversations (par défaut : activée)",
