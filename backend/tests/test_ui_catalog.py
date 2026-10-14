@@ -29,7 +29,11 @@ def test_priority_and_supported_contracts():
     text, modules = build_catalog('foto gráfico indicador cálculo aviso animação etapas')
     assert modules == ('chart', 'metric', 'follow_up')
     assert 'controls:' not in text
-    assert 'table' not in text and 'options' not in text and 'round(' not in text
+    assert 'table:' not in text and 'options' not in text and 'round(' not in text
+    # Quando pedido tabela, o módulo table: entra no catálogo
+    t_text, t_mods = build_catalog('tabela comparativa de vendas')
+    assert 'table' in t_mods
+    assert 'table:' in t_text
     with pytest.raises(ValueError):
         compose_catalog(('unknown',))
 

@@ -2,11 +2,14 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
   CHART_RAMP,
+  PIE_RAMP,
   chartToCsv,
   distributeColors,
   formatNumber,
   looksNumeric,
+  pieColors,
   seriesColors,
+  tableToCsv,
   tickCountFor,
   truncateLabel,
   yAxisWidthFor,
@@ -123,5 +126,34 @@ describe('chartToCsv', () => {
       ]
     )
     assert.equal(csv, 'mes,"Vendas, R$",c\nJan,10,2\n"Fev ""x""",20,')
+  })
+})
+
+describe('pieColors', () => {
+  it('retorna paleta coerente para fatias de pizza', () => {
+    assert.deepEqual(pieColors(0), [])
+    assert.deepEqual(pieColors(1), [PIE_RAMP[0]])
+    assert.equal(pieColors(4).length, 4)
+    assert.equal(pieColors(8).length, 8)
+  })
+})
+
+describe('tableToCsv', () => {
+  it('gera CSV com cabeçalhos de colunas e células escapadas', () => {
+    const csv = tableToCsv(
+      [
+        { key: 'item', label: 'Item / Nome' },
+        { key: 'qtd', label: 'Quantidade' },
+        { key: 'preco', label: 'Preço, R$' },
+      ],
+      [
+        { item: 'Produto "A"', qtd: 10, preco: 99.5 },
+        { item: 'Produto B', qtd: null, preco: 15.0 },
+      ]
+    )
+    assert.equal(
+      csv,
+      'Item / Nome,Quantidade,"Preço, R$"\n"Produto ""A""",10,99.5\nProduto B,,15'
+    )
   })
 })

@@ -4,4 +4,4 @@ Se um visual ajudar, anexe UM fence ```nexus-ui ao final. A prosa deve bastar so
 {"v":1,"blocks":[{"type":"progress","label":"Etapa","value":1,"max":2}]}
 ```
 
-Máximo 6 blocos (2 chart, 1 sandbox, 1 follow_up sempre por último). Tipos disponíveis: progress, card, chart, metric, callout, follow_up, controls, sandbox. Só use tipos detalhados abaixo. use SEMPRE o nome de fence ```nexus-ui. Não escreva HTML na bolha principal.
+Máximo 6 blocos (2 chart, 1 sandbox, 1 follow_up sempre por último). Tipos disponíveis: progress, card, chart, metric, table, callout, follow_up, controls, sandbox. Só use tipos detalhados abaixo. use SEMPRE o nome de fence ```nexus-ui. Não escreva HTML na bolha principal.

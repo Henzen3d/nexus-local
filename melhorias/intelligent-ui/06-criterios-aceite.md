@@ -104,3 +104,15 @@ Pizza, vídeo, proxy de imagem, widget dentro do cache semântico e Thesys não 
 - [x] Telemetria guarda só contagens/códigos e IDs de correlação limitados a 2048; nunca texto/payload. Admin mostra taxas por modelo e aviso abaixo de 50%. *(`test_ui_diagnostics.py`; aviso no `IntelligentUiSettings`.)*
 - [x] Oito chaves novas traduzidas em oito locales. Checker global não modificado; pendência preexistente de seis locales registrada separadamente na [issue #17](https://github.com/Henzen3d/nexus-local/issues/17).
 - [ ] Smoke E2E em navegador real da aparência e do erro de iframe; os testes de componente/VM não substituem essa inspeção.
+
+## Plano 12 — passo 5, tabela (`table`) e melhorias de gráfico (`pie`, `unit`, `stacked`) (2026-10-14)
+
+- [x] Contrato `table`: 2 a 8 colunas tipadas (`text`, `number` com unit opcional, `date` ISO `YYYY-MM-DD`), até 50 linhas, ordenação opcional `sort: { key, dir: "asc"|"desc" }`.
+- [x] Validação e auto-healing espelhados Python/TS: células de tipo incorreto viram `None`/`null` e renderizam `—` (sem descartar a linha inteira); colunas sem label usam a key; subteto de 1 `table` por envelope.
+- [x] Inferência automática de bloco sem `type`: objeto com `columns` e `rows` é inferido como `table` nos dois validadores.
+- [x] Catálogo modular: módulo `backend/ui_blocks/catalog_modules/table.txt` integrado, gatilhos de `should_offer` (`tabela`, `planilha`, etc.) e orçamento de tokens <= 450 respeitado em todas as combinações.
+- [x] Gráficos de pizza (`kind: "pie"`): suportado com 1 série e de 2 a 8 linhas; agregação automática da 8ª linha em diante em fatia única nomeada `"Outros"`. Paleta harmônica `PIE_RAMP` / `pieColors` sem tokens inventados.
+- [x] Melhorias de gráfico: suporte a `stacked: true` em `compare` com cálculo do domínio Y acumulado (`yDomainThroughZero`); suporte a `unit`, `x_label` e `y_label` em eixos e tooltips.
+- [x] Exportação CSV: `tableToCsv` e `chartToCsv` para ação "Copiar dados" com escape correto de vírgulas, aspas e quebras de linha.
+- [x] Componentes React: `TableCard` com `UiCard`, ordenação interativa por cabeçalho (`aria-sort`), números alinhados à direita com `tabular-nums`, colapso acima de 10 linhas ("Mostrar todas" / "Mostrar menos"); `ChartCard` com `PieChart`/`Pie`/`Cell` do Recharts, tooltip com porcentagem relativa e tabela acessível `nexus-ui-sr-only`.
+- [x] i18n nos 8 idiomas: strings novas (`tableTitle`, `tableShowAll`, `tableShowLess`, `tableOthers`, `pieTotal`) traduzidas em `pt-BR`, `en-US`, `es-ES`, `es-419`, `fr-FR`, `de-DE`, `ja`, `ko`.

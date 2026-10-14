@@ -20,8 +20,9 @@ _WORDS_WITH_NUMBERS_REGEX = re.compile(
 # Prioridade estável, independente da ordem das palavras. Reserva uma vaga para
 # follow_up: no máximo dois módulos de conteúdo e um de continuação por turno.
 MODULE_TRIGGERS = (
-    ("chart", r"\bgr[aá]fic[oa]s?\b|\bcompar(?!tilh|ec)|\bversus\b|\bvs\b|\bevolu|\btend[eê]n|\bdistribui|\bparticipa|\bbarras?\b"),
+    ("chart", r"\bgr[aá]fic[oa]s?\b|\bcompar(?!tilh|ec)|\bversus\b|\bvs\b|\bevolu|\btend[eê]n|\bdistribui|\bparticipa|\bbarras?\b|\bpizza\b|\brosca\b"),
     ("metric", r"\bindicador|\bkpis?\b|\bm[eé]trica|\bresumo\b|\btotal\b|\btaxas?\b|%"),
+    ("table", r"\btabelas?\b|\bplanilhas?\b|\blista de\b|\brankings?\b|\btop\s*\d+\b"),
     ("progress", r"\betapas?\b|\bprogress|\bchecklist\b|\bpasso a passo\b|\broteiro\b"),
     ("controls", r"\bcalcul|\bc[aá]lculos?\b|\bsimul(?!t)|\bestim|\bparcel|\bdivid|\bescolh|\bselecion|\bprefer|\bqual (?:dos|das)\b"),
     ("callout", r"\baten[çc][aã]o\b|\bcuidado\b|\bimportante\b|\baviso\b|\brisco\b"),

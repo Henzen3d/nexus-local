@@ -4,9 +4,12 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
+  Cell,
   Legend,
   Line,
   LineChart,
+  Pie,
+  PieChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -19,6 +22,7 @@ import {
   CHART_HEIGHT,
   chartToCsv,
   formatNumber,
+  pieColors,
   seriesColors,
   tickCountFor,
   truncateLabel,
@@ -43,25 +47,64 @@ function ChartTooltipContent({
   label,
   payload,
   locale,
+  unit,
 }: {
   active?: boolean
   label?: unknown
   payload?: TooltipEntry[]
   locale: string
+  unit?: string
 }) {
   if (!active || !payload || payload.length === 0) return null
   return (
     <div className="nexus-ui-chart-tooltip" role="status">
       <div className="nexus-ui-chart-tooltip__label">{String(label ?? '')}</div>
       <ul className="nexus-ui-chart-tooltip__list">
-        {payload.map((entry, idx) => (
-          <li key={`${String(entry.dataKey ?? idx)}`} className="nexus-ui-chart-tooltip__item">
-            <span className="nexus-ui-chart-tooltip__dot" style={{ background: entry.color }} aria-hidden="true" />
-            <span className="nexus-ui-chart-tooltip__name">{entry.name}</span>
-            <span className="nexus-ui-chart-tooltip__value">{formatNumber(entry.value, locale, false)}</span>
-          </li>
-        ))}
+        {payload.map((entry, idx) => {
+          const formatted = formatNumber(entry.value, locale, false)
+          const valWithUnit = unit ? `${formatted} ${unit}` : formatted
+          return (
+            <li key={`${String(entry.dataKey ?? idx)}`} className="nexus-ui-chart-tooltip__item">
+              <span className="nexus-ui-chart-tooltip__dot" style={{ background: entry.color }} aria-hidden="true" />
+              <span className="nexus-ui-chart-tooltip__name">{entry.name}</span>
+              <span className="nexus-ui-chart-tooltip__value">{valWithUnit}</span>
+            </li>
+          )
+        })}
       </ul>
+    </div>
+  )
+}
+
+function PieTooltipContent({
+  active,
+  payload,
+  locale,
+  unit,
+  total,
+}: {
+  active?: boolean
+  payload?: TooltipEntry[]
+  locale: string
+  unit?: string
+  total: number
+}) {
+  if (!active || !payload || payload.length === 0) return null
+  const entry = payload[0]
+  const val = typeof entry.value === 'number' ? entry.value : Number(entry.value || 0)
+  const pct = total > 0 ? ((val / total) * 100).toFixed(1) : '0'
+  const formatted = formatNumber(val, locale, false)
+  const valWithUnit = unit ? `${formatted} ${unit}` : formatted
+
+  return (
+    <div className="nexus-ui-chart-tooltip" role="status">
+      <div className="nexus-ui-chart-tooltip__label">{String(entry.name ?? '')}</div>
+      <div className="nexus-ui-chart-tooltip__item">
+        <span className="nexus-ui-chart-tooltip__dot" style={{ background: entry.color }} aria-hidden="true" />
+        <span className="nexus-ui-chart-tooltip__value">
+          {valWithUnit} ({pct}%)
+        </span>
+      </div>
     </div>
   )
 }
@@ -82,19 +125,25 @@ function ChartLegendContent({ payload }: { payload?: { value?: string; color?: s
 
 export function ChartCard({ block }: Props) {
   const { t, i18n } = useTranslation()
-  const { title, kind, x_key, series, rows } = block
+  const { title, kind, x_key, series, rows, unit, x_label, y_label, stacked } = block
   const reducedMotion = useReducedMotion()
   const [copied, setCopied] = useState(false)
   const locale = i18n.resolvedLanguage || i18n.language || 'pt-BR'
 
   const keys = useMemo(() => (series || []).map((s) => s.key), [series])
+  const isStacked = Boolean(kind === 'compare' && stacked)
   const colors = useMemo(() => seriesColors(keys.length), [keys.length])
-  const extent = useMemo(() => yDomainThroughZero(rows || [], keys), [rows, keys])
+  const piePalette = useMemo(() => pieColors((rows || []).length), [(rows || []).length])
+  const extent = useMemo(() => yDomainThroughZero(rows || [], keys, isStacked), [rows, keys, isStacked])
   const yWidth = useMemo(() => yAxisWidthFor(extent, locale), [extent, locale])
   const ticks = tickCountFor(CHART_HEIGHT)
-  // Eixo ancorado em zero: com dados só positivos o piso é 0; com negativos o Recharts
-  // escolhe os ticks "redondos" sozinho (e o zero entra no meio). Domínio fixo nos dois
-  // extremos daria ticks feios (6 250, 12 500…), por isso o teto fica em 'auto'.
+
+  const pieTotal = useMemo(() => {
+    if (kind !== 'pie' || !rows || !series || series.length === 0) return 0
+    const sKey = series[0].key
+    return rows.reduce((acc, r) => acc + (Number(r[sKey]) || 0), 0)
+  }, [kind, rows, series])
+
   const yDomain: [number | 'auto', 'auto'] = [extent[0] < 0 ? 'auto' : 0, 'auto']
 
   if (!rows || rows.length === 0 || !series || series.length === 0) {
@@ -112,7 +161,7 @@ export function ChartCard({ block }: Props) {
       setCopied(true)
       window.setTimeout(() => setCopied(false), 1600)
     } catch {
-      /* clipboard indisponível (http sem contexto seguro): nada a fazer */
+      /* clipboard indisponível */
     }
   }
 
@@ -127,6 +176,17 @@ export function ChartCard({ block }: Props) {
         interval="preserveStartEnd"
         minTickGap={12}
         tickFormatter={(v) => truncateLabel(v)}
+        label={
+          x_label
+            ? {
+                value: x_label,
+                position: 'insideBottom',
+                offset: -4,
+                fill: 'var(--muted)',
+                fontSize: 11,
+              }
+            : undefined
+        }
       />
       <YAxis
         tick={AXIS_STYLE}
@@ -137,19 +197,58 @@ export function ChartCard({ block }: Props) {
         domain={yDomain}
         allowDecimals
         tickFormatter={fmt}
+        label={
+          y_label || unit
+            ? {
+                value: y_label || unit,
+                angle: -90,
+                position: 'insideLeft',
+                fill: 'var(--muted)',
+                fontSize: 11,
+              }
+            : undefined
+        }
       />
       <Tooltip
         cursor={kind === 'line' ? { stroke: GRID_STROKE } : { fill: CURSOR_FILL }}
-        content={<ChartTooltipContent locale={locale} />}
+        content={<ChartTooltipContent locale={locale} unit={unit} />}
         isAnimationActive={false}
       />
       {multi && <Legend content={<ChartLegendContent />} />}
     </>
   )
 
-  const margin = { top: 8, right: 8, left: 0, bottom: 0 }
+  const margin = { top: 8, right: 8, left: 0, bottom: x_label ? 16 : 0 }
 
   const renderChart = () => {
+    if (kind === 'pie') {
+      const sKey = series[0].key
+      return (
+        <PieChart margin={{ top: 8, right: 8, bottom: 8, left: 8 }}>
+          <Pie
+            data={rows}
+            dataKey={sKey}
+            nameKey={x_key}
+            cx="50%"
+            cy="50%"
+            innerRadius="50%"
+            outerRadius="75%"
+            paddingAngle={2}
+            isAnimationActive={animate}
+          >
+            {rows.map((_, index) => (
+              <Cell key={`cell-${index}`} fill={piePalette[index % piePalette.length]} />
+            ))}
+          </Pie>
+          <Tooltip
+            content={<PieTooltipContent locale={locale} unit={unit} total={pieTotal} />}
+            isAnimationActive={false}
+          />
+          <Legend content={<ChartLegendContent />} />
+        </PieChart>
+      )
+    }
+
     if (kind === 'line') {
       return (
         <LineChart data={rows} margin={margin}>
@@ -171,7 +270,7 @@ export function ChartCard({ block }: Props) {
       )
     }
 
-    // bar (1 série) e compare (barras agrupadas)
+    // bar (1 série) e compare (barras agrupadas ou empilhadas)
     const drawn = kind === 'bar' ? series.slice(0, 1) : series
     return (
       <BarChart data={rows} margin={margin} barCategoryGap="22%" barGap={3} maxBarSize={48}>
@@ -182,7 +281,8 @@ export function ChartCard({ block }: Props) {
             dataKey={s.key}
             name={s.label || s.key}
             fill={colors[idx]}
-            radius={[4, 4, 0, 0]}
+            radius={isStacked ? [0, 0, 0, 0] : [4, 4, 0, 0]}
+            stackId={isStacked ? 'nexus-ui-stack' : undefined}
             isAnimationActive={animate}
           />
         ))}
@@ -228,7 +328,10 @@ export function ChartCard({ block }: Props) {
             <tr key={rIdx}>
               <td>{String(row[x_key])}</td>
               {series.map((s) => (
-                <td key={s.key}>{formatNumber(row[s.key], locale, false)}</td>
+                <td key={s.key}>
+                  {formatNumber(row[s.key], locale, false)}
+                  {unit ? ` ${unit}` : ''}
+                </td>
               ))}
             </tr>
           ))}

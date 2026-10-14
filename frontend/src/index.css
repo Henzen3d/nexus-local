@@ -12956,6 +12956,145 @@ html[data-theme="light"] .model-option-provider-tag {
   }
 }
 
+/* Tabelas (`table`, plano 12 §8) ------------------------------------------ */
+.nexus-ui-table-container {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.nexus-ui-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--ink);
+  text-align: left;
+}
+
+.nexus-ui-table th,
+.nexus-ui-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--hairline);
+  white-space: nowrap;
+}
+
+.nexus-ui-table th {
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--muted);
+  background: var(--surface-soft);
+  user-select: none;
+}
+
+.nexus-ui-table-header-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  cursor: pointer;
+  width: 100%;
+  justify-content: flex-start;
+}
+
+.nexus-ui-table__cell--number .nexus-ui-table-header-btn {
+  justify-content: flex-end;
+}
+
+.nexus-ui-table-header-btn:hover {
+  color: var(--primary);
+}
+
+.nexus-ui-table-header-btn:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.nexus-ui-table-sort-icon {
+  display: inline-flex;
+  align-items: center;
+  color: var(--muted-soft);
+  opacity: 0.7;
+}
+
+.nexus-ui-table-header-btn:hover .nexus-ui-table-sort-icon,
+.nexus-ui-table th[aria-sort] .nexus-ui-table-sort-icon {
+  color: var(--primary);
+  opacity: 1;
+}
+
+.nexus-ui-table tbody tr {
+  transition: background 0.1s ease;
+}
+
+.nexus-ui-table tbody tr:nth-child(even) {
+  background: color-mix(in srgb, var(--surface-soft) 40%, transparent);
+}
+
+.nexus-ui-table tbody tr:hover {
+  background: color-mix(in srgb, var(--primary) 6%, transparent);
+}
+
+.nexus-ui-table__cell--number {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.nexus-ui-table__num-wrap {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.nexus-ui-table__unit {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.nexus-ui-table__empty {
+  color: var(--muted-soft);
+}
+
+.nexus-ui-table-footer {
+  display: flex;
+  justify-content: center;
+  padding-top: 8px;
+}
+
+.nexus-ui-table-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 14px;
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  background: var(--surface-soft);
+  color: var(--body);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.nexus-ui-table-toggle-btn:hover {
+  background: var(--surface-card);
+  color: var(--primary);
+  border-color: var(--muted-soft);
+}
+
+.nexus-ui-table-toggle-btn:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
 /* Utilidades --------------------------------------------------------------- */
 .nexus-ui-sr-only {
   position: absolute;

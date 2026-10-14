@@ -8,11 +8,12 @@ const dir = await mkdtemp(resolve('node_modules/.correction-tests-'))
 try {
   const outfile = resolve(dir, 'tests.mjs')
   await build({
-    entryPoints: ['scripts/tests/correction.ui.tsx'], outfile,
+    entryPoints: ['scripts/tests/all.ui.tsx'], outfile,
     bundle: true, platform: 'node', format: 'esm', jsx: 'automatic',
     external: ['react', 'react/jsx-runtime', 'react-test-renderer', 'lucide-react', 'node:*'],
     plugins: [{ name: 'deterministic-ui-hooks', setup(build) {
       build.onResolve({ filter: /useStore$|useIntelligentUi$|ChatContext$|api\/client$|useMotionAndViewport$|useResolvedTheme$|themeBridge$|^react-i18next$/ }, () => ({ path: resolve('scripts/tests/uiStubs.ts') }))
+      build.onResolve({ filter: /^recharts$/ }, () => ({ path: resolve('scripts/tests/rechartsStub.ts') }))
     } }],
   })
   const result = spawnSync(process.execPath, ['--test', outfile], { stdio: 'inherit' })

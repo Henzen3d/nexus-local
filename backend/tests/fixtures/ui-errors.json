@@ -168,7 +168,7 @@
       "blocks": [
         {
           "type": "chart",
-          "kind": "pie",
+          "kind": "radar",
           "series": [
             {
               "key": "v"

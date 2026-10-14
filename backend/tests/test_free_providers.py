@@ -94,8 +94,10 @@ async def test_orcarouter_and_bynara_registration(fresh_db):
 
 
 @pytest.mark.asyncio
-async def test_provider_resolution_fallback(fresh_db):
+async def test_provider_resolution_fallback(fresh_db, monkeypatch):
     """Verifica que chamadas sem chave pessoal usam a chave compartilhada de env."""
+    monkeypatch.setenv("ORCAROUTER_API_KEY", "sk-orca-test-key")
+    monkeypatch.setenv("BYNARA_API_KEY", "sk-bynara-test-key")
     from backend.providers.registry import get_provider
 
     db = await fresh_db.get_db()

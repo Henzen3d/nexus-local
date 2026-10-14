@@ -17,14 +17,15 @@ ERROR_CODES = (
 SIGNATURES = {
     'progress': 'progress: value, max or steps[{label,state}]',
     'card': 'card: title, body?, facts?, image?',
-    'chart': 'chart: kind bar|line|compare, x_key, series[{key,label}], rows[]',
+    'chart': 'chart: kind bar|line|compare|pie, x_key, series[{key,label}], rows[]',
+    'table': 'table: columns[{key,label,kind?,unit?}], rows[]',
     'controls': 'controls: fields[], action{name:send_message|set_model,template?|field?}',
     'sandbox': 'sandbox: title, html, css?, js?',
     'metric': 'metric: items[{label,value}]',
     'callout': 'callout: body, kind info|success|warning|danger',
     'follow_up': 'follow_up: items[string]',
 }
-REQUIRED = {'chart': 'series', 'controls': 'fields', 'sandbox': 'html',
+REQUIRED = {'chart': 'series', 'table': 'columns', 'controls': 'fields', 'sandbox': 'html',
             'metric': 'items', 'callout': 'body', 'follow_up': 'items'}
 
 
@@ -105,9 +106,11 @@ def validate_with_diagnostics(raw: Any, **kwargs) -> dict:
                 code, path = 'limit_exceeded', 'html'
             elif kind == 'chart' and (not block.get('rows')) and not (isinstance(block.get('series'), list) and block['series'] and isinstance(block['series'][0], dict) and 'rows' in block['series'][0]):
                 code, path = 'missing_required', 'rows'
+            elif kind == 'table' and (not block.get('rows')):
+                code, path = 'missing_required', 'rows'
             else:
                 code = 'type_mismatch'
-                path = 'kind' if kind == 'chart' and str(block.get('kind') or 'bar').strip().lower() not in ('bar', 'line', 'compare') else required or 'value'
+                path = 'kind' if kind == 'chart' and str(block.get('kind') or 'bar').strip().lower() not in ('bar', 'line', 'compare', 'pie') else required or 'value'
         result['dropped'] += 1
         error(code, block_id, path, hint)
     if len(blocks) > MAX_BLOCKS:

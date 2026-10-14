@@ -226,8 +226,8 @@ def test_catalogo_cabe_no_teto_e_tem_as_regras_da_spec():
 
     for combination in combinations(MODULE_NAMES, 3):
         assert len(compose_catalog(combination)) / 4 <= 450
-    text = (Path(__file__).resolve().parent.parent / "ui_blocks" / "catalog.txt").read_text()
-    text += "\n".join((Path(__file__).resolve().parent.parent / "ui_blocks" / "catalog_modules" / f"{name}.txt").read_text() for name in MODULE_NAMES)
+    text = (Path(__file__).resolve().parent.parent / "ui_blocks" / "catalog.txt").read_text(encoding="utf-8")
+    text += "\n".join((Path(__file__).resolve().parent.parent / "ui_blocks" / "catalog_modules" / f"{name}.txt").read_text(encoding="utf-8") for name in MODULE_NAMES)
     for frase in (
         "Máximo 6 blocos",
         "info|success|warning|danger",
@@ -482,7 +482,7 @@ def test_telemetria_motivos_de_descarte():
     from backend.ui_blocks.telemetry import IntelligentUiTelemetry, inspect_fence
 
     t = IntelligentUiTelemetry()
-    ok = '```nexus-ui\n{"v":1,"blocks":[{"id":"p","type":"progress","label":"A","value":1,"max":2},{"id":"x","type":"chart","kind":"pie"}]}\n```'
+    ok = '```nexus-ui\n{"v":1,"blocks":[{"id":"p","type":"progress","label":"A","value":1,"max":2},{"id":"x","type":"chart","kind":"radar"}]}\n```'
     # Oferecido, produzido, válido, 1 bloco caiu
     s = t.record_turn(offered=True, text="Oi.\n\n" + ok, envelope=validate_envelope('{"v":1,"blocks":[{"id":"p","type":"progress","label":"A","value":1,"max":2}]}'))
     assert s["produced"] and s["valid"] and s["blocks_in"] == 2 and s["blocks_out"] == 1 and s["blocks_dropped"] == 1
@@ -599,3 +599,175 @@ def test_inferencia_de_tipo_dos_blocos_novos():
     assert [b["type"] for b in out["blocks"]] == ["metric", "callout", "card", "follow_up"]
     # Bloco solto (sem envelope) também infere
     assert validate_envelope({"items": ["Uma sugestão válida"]})["blocks"][0]["type"] == "follow_up"
+
+
+def test_table_valida():
+    raw = {
+        "v": 1,
+        "blocks": [
+            {
+                "id": "t1",
+                "type": "table",
+                "title": "Custo por 1M tokens",
+                "columns": [
+                    {"key": "modelo", "label": "Modelo"},
+                    {"key": "entrada", "label": "Entrada (US$)", "kind": "number", "unit": "US$"},
+                    {"key": "data", "label": "Data", "kind": "date"},
+                ],
+                "rows": [
+                    {"modelo": "GPT-4o mini", "entrada": 0.15, "data": "2026-10-14"},
+                    {"modelo": "Gemini Flash", "entrada": 0.1, "data": "2026-10-13"},
+                ],
+                "sort": {"key": "entrada", "dir": "asc"},
+            }
+        ],
+    }
+    out = validate_envelope(raw)
+    assert out is not None
+    block = out["blocks"][0]
+    assert block["type"] == "table"
+    assert block["title"] == "Custo por 1M tokens"
+    assert len(block["columns"]) == 3
+    assert block["columns"][1]["unit"] == "US$"
+    assert len(block["rows"]) == 2
+    assert block["rows"][0]["entrada"] == 0.15
+    assert block["rows"][0]["data"] == "2026-10-14"
+    assert block["sort"] == {"key": "entrada", "dir": "asc"}
+
+
+def test_table_infere_tipo():
+    raw = {
+        "columns": [
+            {"key": "a", "label": "A"},
+            {"key": "b", "label": "B"},
+        ],
+        "rows": [{"a": "1", "b": "2"}],
+    }
+    out = validate_envelope(raw)
+    assert out is not None
+    assert out["blocks"][0]["type"] == "table"
+
+
+def test_table_limites_e_tolerancias():
+    # Menos de 2 colunas válidas -> descartado
+    assert validate_envelope({"type": "table", "columns": [{"key": "a"}], "rows": [{"a": 1}]}) is None
+    # Rows vazio -> descartado
+    assert validate_envelope({"type": "table", "columns": [{"key": "a"}, {"key": "b"}], "rows": []}) is None
+    # Trunca em 8 colunas e 50 rows
+    cols = [{"key": f"c_{i}", "label": f"Col {i}"} for i in range(12)]
+    rows = [{f"c_{i}": f"v_{r}_{i}" for i in range(12)} for r in range(60)]
+    out = validate_envelope({"type": "table", "columns": cols, "rows": rows})
+    assert out is not None
+    assert len(out["blocks"][0]["columns"]) == 8
+    assert len(out["blocks"][0]["rows"]) == 50
+    # Célula number inválida vira None; date inválida vira None; text vazio vira ""
+    raw_types = {
+        "type": "table",
+        "columns": [
+            {"key": "num", "kind": "number"},
+            {"key": "dt", "kind": "date"},
+            {"key": "txt", "kind": "text"},
+        ],
+        "rows": [
+            {"num": "não é número", "dt": "data-errada", "txt": None},
+            {"num": 42, "dt": "2026-10-14", "txt": "olá"},
+        ],
+        "sort": {"key": "inexistente", "dir": "qualquer"},
+    }
+    out2 = validate_envelope(raw_types)
+    assert out2 is not None
+    b = out2["blocks"][0]
+    assert b["rows"][0]["num"] is None
+    assert b["rows"][0]["dt"] is None
+    assert b["rows"][0]["txt"] == ""
+    assert b["rows"][1]["num"] == 42
+    assert b["rows"][1]["dt"] == "2026-10-14"
+    assert "sort" not in b  # sort com chave inexistente é ignorado
+
+
+def test_chart_pie_valido_e_agrupamento():
+    # Pie válido: 1 série, 4 rows
+    pie = {
+        "type": "chart",
+        "kind": "pie",
+        "x_key": "categoria",
+        "series": [{"key": "valor", "label": "Participação"}],
+        "rows": [
+            {"categoria": "A", "valor": 40},
+            {"categoria": "B", "valor": 30},
+            {"categoria": "C", "valor": 20},
+            {"categoria": "D", "valor": 10},
+        ],
+    }
+    out = validate_envelope(pie)
+    assert out is not None
+    assert out["blocks"][0]["kind"] == "pie"
+    assert len(out["blocks"][0]["rows"]) == 4
+
+    # Pie com 2+ séries: trunca para a primeira
+    pie_multi = dict(pie, series=[{"key": "valor", "label": "V1"}, {"key": "extra", "label": "V2"}])
+    out_multi = validate_envelope(pie_multi)
+    assert out_multi is not None
+    assert len(out_multi["blocks"][0]["series"]) == 1
+    assert out_multi["blocks"][0]["series"][0]["key"] == "valor"
+
+    # Pie com menos de 2 rows: descartado
+    pie_few = dict(pie, rows=[{"categoria": "A", "valor": 40}])
+    assert validate_envelope(pie_few) is None
+
+    # Pie com mais de 8 rows: agrupa no 8º como "Outros"
+    ten_rows = [{"categoria": f"Item {i}", "valor": 10} for i in range(10)]
+    pie_ten = dict(pie, rows=ten_rows)
+    out_ten = validate_envelope(pie_ten)
+    assert out_ten is not None
+    rows_res = out_ten["blocks"][0]["rows"]
+    assert len(rows_res) == 8
+    assert rows_res[-1]["categoria"] == "Outros"
+    # 3 itens restantes (índices 7, 8, 9) com valor 10 cada -> soma 30
+    assert rows_res[-1]["valor"] == 30.0
+
+
+def test_chart_stacked_unit_e_labels():
+    # Compare com stacked: true é mantido
+    compare = {
+        "type": "chart",
+        "kind": "compare",
+        "x_key": "mes",
+        "stacked": True,
+        "unit": "k",
+        "x_label": "Mês",
+        "y_label": "Usuários",
+        "series": [{"key": "s1", "label": "Ativos"}, {"key": "s2", "label": "Novos"}],
+        "rows": [{"mes": "Jan", "s1": 10, "s2": 5}],
+    }
+    out = validate_envelope(compare)
+    assert out is not None
+    b = out["blocks"][0]
+    assert b["stacked"] is True
+    assert b["unit"] == "k"
+    assert b["x_label"] == "Mês"
+    assert b["y_label"] == "Usuários"
+
+    # Bar com stacked: true é ignorado (só compare aceita stacked)
+    bar = {
+        "type": "chart",
+        "kind": "bar",
+        "stacked": True,
+        "x_key": "x",
+        "series": [{"key": "y", "label": "Y"}],
+        "rows": [{"x": "a", "y": 1}],
+    }
+    out_bar = validate_envelope(bar)
+    assert out_bar is not None
+    assert "stacked" not in out_bar["blocks"][0]
+
+
+def test_table_gatilhos_should_offer():
+    from backend.ui_blocks.should_offer import select_modules, should_offer_ui
+
+    assert should_offer_ui("Mostre uma tabela comparando os modelos")
+    assert "table" in select_modules("Mostre uma tabela comparando os modelos")
+    assert "table" in select_modules("Veja o ranking dos melhores processadores")
+    assert "table" in select_modules("Confira a planilha de gastos")
+    assert "chart" in select_modules("Desenhe um gráfico de pizza da distribuição")
+    assert "chart" in select_modules("Gráfico de rosca dos custos")

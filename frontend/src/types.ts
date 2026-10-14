@@ -391,10 +391,35 @@ export interface ChartBlock {
   id: string
   type: 'chart'
   title: string
-  kind: 'bar' | 'line' | 'compare'
+  kind: 'bar' | 'line' | 'compare' | 'pie'
   x_key: string
   series: ChartSeries[]
   rows: Record<string, string | number>[]
+  unit?: string
+  x_label?: string
+  y_label?: string
+  stacked?: boolean
+}
+
+export interface TableColumn {
+  key: string
+  label: string
+  kind?: 'text' | 'number' | 'date'
+  unit?: string
+}
+
+export interface TableSort {
+  key: string
+  dir: 'asc' | 'desc'
+}
+
+export interface TableBlock {
+  id: string
+  type: 'table'
+  title?: string
+  columns: TableColumn[]
+  rows: Record<string, string | number | null>[]
+  sort?: TableSort
 }
 
 export interface ControlField {
@@ -476,6 +501,7 @@ export type UiBlock =
   | ProgressBlock
   | CardBlock
   | ChartBlock
+  | TableBlock
   | ControlsBlock
   | SandboxBlock
   | MetricBlock

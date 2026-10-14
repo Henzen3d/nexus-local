@@ -10,6 +10,7 @@ const ChartCard = React.lazy(() => import('./components/ChartCard'))
 const ControlsCard = React.lazy(() => import('./components/ControlsCard'))
 const SandboxCard = React.lazy(() => import('./components/SandboxCard'))
 const MetricCard = React.lazy(() => import('./components/MetricCard'))
+const TableCard = React.lazy(() => import('./components/TableCard'))
 const CalloutCard = React.lazy(() => import('./components/CalloutCard'))
 const FollowUpCard = React.lazy(() => import('./components/FollowUpCard'))
 
@@ -44,6 +45,8 @@ function reservedHeight(block: UiBlock): number {
     case 'metric':
       // Plano 12 §2.1: cabeçalho + uma linha de tiles (duas quando há mais de 2 itens em bolha estreita)
       return (block.title ? 34 : 0) + 14 + 70 * (block.items.length > 2 ? 2 : 1)
+    case 'table':
+      return 56 + 36 * Math.min(block.rows?.length || 1, 11)
     case 'callout':
       return 56 + 20 * Math.ceil(block.body.length / 80)
     case 'follow_up':
@@ -112,6 +115,10 @@ export function DynamicRenderer({ envelope, onRuntimeError }: Props) {
 
           if (block.type === 'metric') {
             return <MetricCard key={block.id} block={block} />
+          }
+
+          if (block.type === 'table') {
+            return <TableCard key={block.id} block={block} />
           }
 
           if (block.type === 'callout') {

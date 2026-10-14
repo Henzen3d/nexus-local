@@ -130,8 +130,11 @@ test('chart: kind ausente vira bar, kind invalido descarta o bloco', () => {
   const semKind = parseUiEnvelope({ v: 1, blocks: [{ id: 'c', type: 'chart', title: 'T', x_key: 'x', series, rows }] })
   assert.equal(semKind?.blocks[0]?.type, 'chart')
   if (semKind?.blocks[0]?.type === 'chart') assert.equal(semKind.blocks[0].kind, 'bar')
+  const radar = parseUiEnvelope({ v: 1, blocks: [{ id: 'c', type: 'chart', kind: 'radar', title: 'T', x_key: 'x', series, rows }] })
+  assert.equal(radar, null)
   const pizza = parseUiEnvelope({ v: 1, blocks: [{ id: 'c', type: 'chart', kind: 'pie', title: 'T', x_key: 'x', series, rows }] })
-  assert.equal(pizza, null)
+  assert.equal(pizza?.blocks[0]?.type, 'chart')
+  if (pizza?.blocks[0]?.type === 'chart') assert.equal(pizza.blocks[0].kind, 'pie')
 })
 
 test('controls: action obrigatoria, nomes estritos, sem template inventado, maximo 4 campos', () => {
@@ -290,4 +293,121 @@ test('inferencia de tipo dos blocos novos', () => {
   })
   assert.deepEqual(out?.blocks.map((b) => b.type), ['metric', 'callout', 'card', 'follow_up'])
   assert.equal(parseUiEnvelope({ items: ['Uma sugestão válida'] })?.blocks[0]?.type, 'follow_up')
+  assert.equal(
+    parseUiEnvelope({
+      columns: [{ key: 'a' }, { key: 'b' }],
+      rows: [{ a: '1', b: '2' }],
+    })?.blocks[0]?.type,
+    'table'
+  )
+})
+
+test('table: valida colunas tipadas, limites e ordenacao', () => {
+  const envelope = {
+    v: 1,
+    blocks: [
+      {
+        id: 't1',
+        type: 'table',
+        title: 'Tabela Financeira',
+        columns: [
+          { key: 'produto', label: 'Produto', kind: 'text' },
+          { key: 'valor', label: 'Valor', kind: 'number', unit: 'R$' },
+          { key: 'data', label: 'Data', kind: 'date' },
+        ],
+        rows: [
+          { produto: 'Nexus Pro', valor: 1500, data: '2026-10-14' },
+          { produto: 'Nexus Lite', valor: 'invalido', data: 'data-errada' },
+        ],
+        sort: { key: 'valor', dir: 'desc' },
+      },
+    ],
+  }
+  const parsed = parseUiEnvelope(envelope)
+  assert.notEqual(parsed, null)
+  assert.equal(parsed?.blocks[0]?.type, 'table')
+  if (parsed?.blocks[0]?.type === 'table') {
+    assert.equal(parsed.blocks[0].columns.length, 3)
+    assert.equal(parsed.blocks[0].columns[1].unit, 'R$')
+    assert.equal(parsed.blocks[0].rows.length, 2)
+    assert.equal(parsed.blocks[0].rows[0].valor, 1500)
+    assert.equal(parsed.blocks[0].rows[0].data, '2026-10-14')
+    // Célula inválida tratada como null (tolerância)
+    assert.equal(parsed.blocks[0].rows[1].valor, null)
+    assert.equal(parsed.blocks[0].rows[1].data, null)
+    assert.deepEqual(parsed.blocks[0].sort, { key: 'valor', dir: 'desc' })
+  }
+
+  // Menos de 2 colunas válidas deve descartar
+  assert.equal(
+    parseUiEnvelope({
+      v: 1,
+      blocks: [
+        {
+          type: 'table',
+          columns: [{ key: 'apenas_uma' }],
+          rows: [{ apenas_uma: 'x' }],
+        },
+      ],
+    }),
+    null
+  )
+})
+
+test('chart: pie agrupa excedente em Outros e suporta stacked, unit e labels', () => {
+  const pieData = {
+    v: 1,
+    blocks: [
+      {
+        id: 'p1',
+        type: 'chart',
+        kind: 'pie',
+        title: 'Participação',
+        unit: '%',
+        x_key: 'item',
+        series: [{ key: 'share', label: 'Fatia' }, { key: 'descartada' }],
+        rows: Array.from({ length: 10 }, (_, i) => ({
+          item: `Item ${i + 1}`,
+          share: 10,
+        })),
+      },
+    ],
+  }
+  const parsedPie = parseUiEnvelope(pieData)
+  assert.notEqual(parsedPie, null)
+  if (parsedPie?.blocks[0]?.type === 'chart') {
+    assert.equal(parsedPie.blocks[0].kind, 'pie')
+    assert.equal(parsedPie.blocks[0].unit, '%')
+    assert.equal(parsedPie.blocks[0].series.length, 1) // pie só tem 1 série
+    assert.equal(parsedPie.blocks[0].rows.length, 8) // max 8 rows
+    assert.equal(parsedPie.blocks[0].rows[7].item, 'Outros')
+    assert.equal(parsedPie.blocks[0].rows[7].share, 30) // soma dos itens 8, 9, 10 (10+10+10)
+  }
+
+  const stackedData = {
+    v: 1,
+    blocks: [
+      {
+        id: 'c1',
+        type: 'chart',
+        kind: 'compare',
+        title: 'Comparativo Empilhado',
+        stacked: true,
+        unit: 'kg',
+        x_label: 'Meses',
+        y_label: 'Peso',
+        x_key: 'mes',
+        series: [{ key: 'a' }, { key: 'b' }],
+        rows: [{ mes: 'Jan', a: 10, b: 20 }],
+      },
+    ],
+  }
+  const parsedStacked = parseUiEnvelope(stackedData)
+  assert.notEqual(parsedStacked, null)
+  if (parsedStacked?.blocks[0]?.type === 'chart') {
+    assert.equal(parsedStacked.blocks[0].stacked, true)
+    assert.equal(parsedStacked.blocks[0].unit, 'kg')
+    assert.equal(parsedStacked.blocks[0].x_label, 'Meses')
+    assert.equal(parsedStacked.blocks[0].y_label, 'Peso')
+  }
 })

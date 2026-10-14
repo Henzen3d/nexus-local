@@ -18,6 +18,7 @@ ID_REGEX = re.compile(r"^[a-z0-9_-]{1,32}$")
 SELECT_VALUE_REGEX = re.compile(r"^[a-zA-Z0-9._-]{1,64}$")
 FIELD_ID_REGEX = re.compile(r"^[a-z0-9_]{1,32}$")
 PLACEHOLDER_REGEX = re.compile(r"\{([a-zA-Z0-9_]+)\}")
+DATE_REGEX = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 MAX_RAW_JSON_LENGTH = 16000
 # Plano 12 §0: teto 6 com subtetos por tipo (iframe pesado, gráfico caro, follow_up único).
@@ -258,10 +259,9 @@ def _validate_chart(block: dict[str, Any]) -> dict[str, Any] | None:
     else:
         title = title.strip()[:80]
 
-    # `kind` ausente vira `bar` (tolerância); `kind` escrito e fora da união é
-    # descartado — desenhar "pizza" como barra seria um visual errado, pior que nenhum.
+    # `kind` ausente vira `bar` (tolerância); `kind` escrito e fora da união é descartado
     kind = str(block.get("kind") or "bar").lower().strip()
-    if kind not in ("bar", "line", "compare"):
+    if kind not in ("bar", "line", "compare", "pie"):
         return None
 
     x_key = block.get("x_key") or "x"
@@ -303,7 +303,18 @@ def _validate_chart(block: dict[str, Any]) -> dict[str, Any] | None:
         clean_rows = list(rows_by_x.values())[:24]
         if len(clean_series) > 1 and kind == "bar":
             kind = "compare"
-        return {
+        elif kind == "pie" and len(clean_series) > 1:
+            clean_series = clean_series[:1]
+        if kind == "pie":
+            if len(clean_rows) < 2:
+                return None
+            if len(clean_rows) > 8:
+                s_k = clean_series[0]["key"]
+                top7 = clean_rows[:7]
+                others_sum = sum(float(r.get(s_k, 0.0)) for r in clean_rows[7:])
+                top7.append({x_key: "Outros", s_k: others_sum})
+                clean_rows = top7
+        out: dict[str, Any] = {
             "id": block.get("id") or "chart_1",
             "type": "chart",
             "title": title,
@@ -312,6 +323,18 @@ def _validate_chart(block: dict[str, Any]) -> dict[str, Any] | None:
             "series": clean_series,
             "rows": clean_rows,
         }
+        unit = _clean_text(block.get("unit"), 1, 8)
+        if unit is not None:
+            out["unit"] = unit
+        x_label = _clean_text(block.get("x_label"), 1, 40)
+        if x_label is not None:
+            out["x_label"] = x_label
+        y_label = _clean_text(block.get("y_label"), 1, 40)
+        if y_label is not None:
+            out["y_label"] = y_label
+        if kind == "compare" and block.get("stacked") is True:
+            out["stacked"] = True
+        return out
 
     # Formato padrão plano
     clean_series = []
@@ -335,6 +358,11 @@ def _validate_chart(block: dict[str, Any]) -> dict[str, Any] | None:
         return None
     elif kind == "compare" and not (2 <= len(clean_series) <= 4):
         return None
+    elif kind == "pie":
+        # Tolerância: pie com 2+ séries → usa a primeira
+        if len(clean_series) > 1:
+            clean_series = clean_series[:1]
+            seen_series_keys = {clean_series[0]["key"]}
 
     rows = block.get("rows")
     if not isinstance(rows, list) or not rows:
@@ -373,7 +401,18 @@ def _validate_chart(block: dict[str, Any]) -> dict[str, Any] | None:
     if not clean_rows:
         return None
 
-    return {
+    if kind == "pie":
+        # rows: 2 a 8; Tolerância: mais de 8 linhas → agrupa o resto em "Outros"
+        if len(clean_rows) < 2:
+            return None
+        if len(clean_rows) > 8:
+            s_k = clean_series[0]["key"]
+            top7 = clean_rows[:7]
+            others_sum = sum(float(r.get(s_k, 0.0)) for r in clean_rows[7:])
+            top7.append({x_key: "Outros", s_k: others_sum})
+            clean_rows = top7
+
+    out: dict[str, Any] = {
         "id": block.get("id") or "chart_1",
         "type": "chart",
         "title": title,
@@ -382,6 +421,99 @@ def _validate_chart(block: dict[str, Any]) -> dict[str, Any] | None:
         "series": clean_series,
         "rows": clean_rows,
     }
+    unit = _clean_text(block.get("unit"), 1, 8)
+    if unit is not None:
+        out["unit"] = unit
+    x_label = _clean_text(block.get("x_label"), 1, 40)
+    if x_label is not None:
+        out["x_label"] = x_label
+    y_label = _clean_text(block.get("y_label"), 1, 40)
+    if y_label is not None:
+        out["y_label"] = y_label
+    if kind == "compare" and block.get("stacked") is True:
+        out["stacked"] = True
+    return out
+
+
+def _validate_table(block: dict[str, Any]) -> dict[str, Any] | None:
+    """`table` (plano 12 §2.4): dados tabulares com colunas tipadas e ordenação."""
+    raw_columns = block.get("columns")
+    if not isinstance(raw_columns, list) or not raw_columns:
+        return None
+
+    clean_columns: list[dict[str, Any]] = []
+    seen_keys: set[str] = set()
+    for col in raw_columns[:8]:
+        if not isinstance(col, dict):
+            continue
+        key = col.get("key")
+        if not isinstance(key, str) or not FIELD_ID_REGEX.match(key) or key in seen_keys:
+            continue
+        seen_keys.add(key)
+        label = _clean_text(col.get("label"), 1, 40) or key
+        raw_kind = str(col.get("kind") or "text").strip().lower()
+        kind = raw_kind if raw_kind in ("text", "number", "date") else "text"
+        clean_col: dict[str, Any] = {"key": key, "label": label, "kind": kind}
+        if kind == "number":
+            unit = _clean_text(col.get("unit"), 1, 8)
+            if unit is not None:
+                clean_col["unit"] = unit
+        clean_columns.append(clean_col)
+
+    if len(clean_columns) < 2:
+        return None
+
+    raw_rows = block.get("rows")
+    if not isinstance(raw_rows, list) or not raw_rows:
+        return None
+
+    clean_rows: list[dict[str, Any]] = []
+    for r in raw_rows[:50]:
+        if not isinstance(r, dict):
+            continue
+        row_obj: dict[str, Any] = {}
+        for col in clean_columns:
+            k = col["key"]
+            kind = col["kind"]
+            val = r.get(k)
+            if kind == "number":
+                num = _finite_number(val)
+                row_obj[k] = num
+            elif kind == "date":
+                if isinstance(val, str) and DATE_REGEX.match(val.strip()):
+                    row_obj[k] = val.strip()
+                else:
+                    row_obj[k] = None
+            else:
+                if val is not None and not isinstance(val, (dict, list)):
+                    row_obj[k] = str(val)[:120]
+                else:
+                    row_obj[k] = ""
+        clean_rows.append(row_obj)
+
+    if not clean_rows:
+        return None
+
+    out: dict[str, Any] = {
+        "id": block.get("id") or "table_1",
+        "type": "table",
+        "columns": clean_columns,
+        "rows": clean_rows,
+    }
+    title = _clean_text(block.get("title"), 1, 80)
+    if title is not None:
+        out["title"] = title
+
+    raw_sort = block.get("sort")
+    if isinstance(raw_sort, dict):
+        s_key = raw_sort.get("key")
+        if isinstance(s_key, str) and s_key in seen_keys:
+            s_dir = str(raw_sort.get("dir") or "asc").strip().lower()
+            if s_dir not in ("asc", "desc"):
+                s_dir = "asc"
+            out["sort"] = {"key": s_key, "dir": s_dir}
+
+    return out
 
 
 def _validate_controls(block: dict[str, Any]) -> dict[str, Any] | None:
@@ -681,6 +813,8 @@ def _infer_type(item: dict[str, Any]) -> str | None:
     """
     if "kind" in item and "series" in item:
         return "chart"
+    if "columns" in item and "rows" in item:
+        return "table"
     if "steps" in item or ("value" in item and "max" in item):
         return "progress"
     if "fields" in item:
@@ -795,6 +929,8 @@ def validate_envelope(
             validated = _validate_card(item, image_hosts, allow_private_http)
         elif b_type == "chart":
             validated = _validate_chart(item)
+        elif b_type == "table":
+            validated = _validate_table(item)
         elif b_type == "controls":
             validated = _validate_controls(item)
         elif b_type == "sandbox":

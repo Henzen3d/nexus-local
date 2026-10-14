@@ -143,6 +143,45 @@ export function looksNumeric(value: unknown): boolean {
 }
 
 /**
+ * Rampa de cores para gráficos de pizza/rosca (pie).
+ * Usa tons harmoniosos dos tokens existentes (primary, cyan, warning, success, e misturas com ink/surface).
+ */
+export const PIE_RAMP: readonly string[] = [
+  'var(--primary, #cc785c)',
+  'var(--cyan, #5db8a6)',
+  'var(--warning, #d4a017)',
+  'var(--success, #5db872)',
+  'color-mix(in srgb, var(--primary, #cc785c) 70%, var(--surface-soft, #2a2a2a))',
+  'color-mix(in srgb, var(--cyan, #5db8a6) 70%, var(--surface-soft, #2a2a2a))',
+  'color-mix(in srgb, var(--warning, #d4a017) 70%, var(--surface-soft, #2a2a2a))',
+  'var(--ink-muted, #888888)',
+]
+
+export function pieColors(count: number): string[] {
+  if (count <= 0) return []
+  if (count === 1) return [PIE_RAMP[0]]
+  const out: string[] = []
+  for (let i = 0; i < count; i++) {
+    out.push(PIE_RAMP[i % PIE_RAMP.length])
+  }
+  return out
+}
+
+/**
+ * CSV dos dados da tabela (ação "Copiar dados"): cabeçalho com rótulos das colunas,
+ * uma linha por `row`. Células nulas ou indefinidas viram vazio. Células com vírgula,
+ * aspas ou quebra de linha vão entre aspas.
+ */
+export function tableToCsv(
+  columns: { key: string; label?: string }[],
+  rows: Record<string, unknown>[]
+): string {
+  const header = columns.map((c) => c.label || c.key)
+  const lines = [header, ...rows.map((row) => columns.map((c) => row[c.key]))]
+  return lines.map((cells) => cells.map(csvCell).join(',')).join('\n')
+}
+
+/**
  * CSV dos dados do gráfico (ação "Copiar dados"): cabeçalho com x_key e rótulos das
  * séries, uma linha por `row`. Células com vírgula, aspas ou quebra de linha vão entre aspas.
  */

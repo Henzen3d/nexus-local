@@ -14,6 +14,9 @@ import type {
   MetricItem,
   ProgressBlock,
   SandboxBlock,
+  TableBlock,
+  TableColumn,
+  TableSort,
   UiBlock,
   UiEnvelope,
 } from '../types'
@@ -22,11 +25,12 @@ const ID_REGEX = /^[a-z0-9_-]{1,32}$/
 const FIELD_ID_REGEX = /^[a-z0-9_]{1,32}$/
 const SELECT_VALUE_REGEX = /^[a-zA-Z0-9._-]{1,64}$/
 const PLACEHOLDER_REGEX = /\{([a-zA-Z0-9_]+)\}/g
+const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/
 
 // Espelham backend/ui_blocks/validate.py — mudar lá e aqui juntos (spec, seção 4).
 // Plano 12 §0: teto 6 com subtetos por tipo (iframe pesado, gráfico caro, follow_up único).
 export const MAX_BLOCKS = 6
-const MAX_BLOCKS_PER_TYPE: Record<string, number> = { sandbox: 1, chart: 2, follow_up: 1, options: 1 }
+const MAX_BLOCKS_PER_TYPE: Record<string, number> = { sandbox: 1, chart: 2, table: 1, follow_up: 1, options: 1 }
 const MAX_RAW_JSON_LENGTH = 16000
 const MAX_CONTROL_FIELDS = 4
 const MAX_METRIC_ITEMS = 4
@@ -243,7 +247,8 @@ function validateChart(item: Record<string, unknown>): ChartBlock | null {
     | 'bar'
     | 'line'
     | 'compare'
-  if (!['bar', 'line', 'compare'].includes(kind)) return null
+    | 'pie'
+  if (!['bar', 'line', 'compare', 'pie'].includes(kind)) return null
 
   const xKey = typeof item.x_key === 'string' && item.x_key.trim() ? item.x_key.trim().slice(0, 40) : 'x'
   if (!Array.isArray(item.series) || item.series.length === 0) return null
@@ -279,8 +284,20 @@ function validateChart(item: Record<string, unknown>): ChartBlock | null {
 
     const cleanRows = Object.values(rowsByX).slice(0, 24)
     if (cleanSeries.length > 1 && kind === 'bar') kind = 'compare'
+    else if (kind === 'pie' && cleanSeries.length > 1) cleanSeries.splice(1)
+    if (kind === 'pie') {
+      if (cleanRows.length < 2) return null
+      if (cleanRows.length > 8) {
+        const sK = cleanSeries[0].key
+        const top7 = cleanRows.slice(0, 7)
+        const othersSum = cleanRows.slice(7).reduce((acc, r) => acc + (Number(r[sK]) || 0), 0)
+        top7.push({ [xKey]: 'Outros', [sK]: othersSum })
+        cleanRows.length = 0
+        cleanRows.push(...top7)
+      }
+    }
 
-    return {
+    const out: ChartBlock = {
       id: (item.id as string) || 'chart_1',
       type: 'chart',
       title,
@@ -289,6 +306,11 @@ function validateChart(item: Record<string, unknown>): ChartBlock | null {
       series: cleanSeries,
       rows: cleanRows,
     }
+    if (typeof item.unit === 'string' && item.unit.trim()) out.unit = item.unit.trim().slice(0, 8)
+    if (typeof item.x_label === 'string' && item.x_label.trim()) out.x_label = item.x_label.trim().slice(0, 40)
+    if (typeof item.y_label === 'string' && item.y_label.trim()) out.y_label = item.y_label.trim().slice(0, 40)
+    if (kind === 'compare' && item.stacked === true) out.stacked = true
+    return out
   }
 
   // Formato padrão plano
@@ -309,6 +331,13 @@ function validateChart(item: Record<string, unknown>): ChartBlock | null {
   if (kind === 'bar' && cleanSeries.length !== 1) return null
   if (kind === 'line' && (cleanSeries.length < 1 || cleanSeries.length > 3)) return null
   if (kind === 'compare' && (cleanSeries.length < 2 || cleanSeries.length > 4)) return null
+  if (kind === 'pie') {
+    if (cleanSeries.length > 1) {
+      cleanSeries.splice(1)
+      seenKeys.clear()
+      seenKeys.add(cleanSeries[0].key)
+    }
+  }
 
   if (!Array.isArray(item.rows) || item.rows.length === 0) return null
   const cleanRows: Record<string, string | number>[] = []
@@ -344,7 +373,19 @@ function validateChart(item: Record<string, unknown>): ChartBlock | null {
 
   if (cleanRows.length === 0) return null
 
-  return {
+  if (kind === 'pie') {
+    if (cleanRows.length < 2) return null
+    if (cleanRows.length > 8) {
+      const sK = cleanSeries[0].key
+      const top7 = cleanRows.slice(0, 7)
+      const othersSum = cleanRows.slice(7).reduce((acc, r) => acc + (Number(r[sK]) || 0), 0)
+      top7.push({ [xKey]: 'Outros', [sK]: othersSum })
+      cleanRows.length = 0
+      cleanRows.push(...top7)
+    }
+  }
+
+  const out: ChartBlock = {
     id: (item.id as string) || 'chart_1',
     type: 'chart',
     title,
@@ -353,6 +394,90 @@ function validateChart(item: Record<string, unknown>): ChartBlock | null {
     series: cleanSeries,
     rows: cleanRows,
   }
+  if (typeof item.unit === 'string' && item.unit.trim()) out.unit = item.unit.trim().slice(0, 8)
+  if (typeof item.x_label === 'string' && item.x_label.trim()) out.x_label = item.x_label.trim().slice(0, 40)
+  if (typeof item.y_label === 'string' && item.y_label.trim()) out.y_label = item.y_label.trim().slice(0, 40)
+  if (kind === 'compare' && item.stacked === true) out.stacked = true
+  return out
+}
+
+function validateTable(item: Record<string, unknown>): TableBlock | null {
+  if (!Array.isArray(item.columns) || item.columns.length === 0) return null
+  const cleanColumns: TableColumn[] = []
+  const seenKeys = new Set<string>()
+
+  for (const c of item.columns.slice(0, 8)) {
+    if (!c || typeof c !== 'object') continue
+    const col = c as Record<string, unknown>
+    const key = typeof col.key === 'string' ? col.key.trim() : ''
+    if (!FIELD_ID_REGEX.test(key) || seenKeys.has(key)) continue
+    seenKeys.add(key)
+    const label = typeof col.label === 'string' && col.label.trim() ? col.label.trim().slice(0, 40) : key
+    const rawKind = typeof col.kind === 'string' ? col.kind.trim().toLowerCase() : 'text'
+    const kind: TableColumn['kind'] = rawKind === 'number' || rawKind === 'date' ? rawKind : 'text'
+    const cleanCol: TableColumn = { key, label, kind }
+    if (kind === 'number' && typeof col.unit === 'string' && col.unit.trim()) {
+      cleanCol.unit = col.unit.trim().slice(0, 8)
+    }
+    cleanColumns.push(cleanCol)
+  }
+
+  if (cleanColumns.length < 2) return null
+
+  if (!Array.isArray(item.rows) || item.rows.length === 0) return null
+  const cleanRows: Record<string, string | number | null>[] = []
+
+  for (const r of item.rows.slice(0, 50)) {
+    if (!r || typeof r !== 'object') continue
+    const row = r as Record<string, unknown>
+    const rowObj: Record<string, string | number | null> = {}
+    for (const col of cleanColumns) {
+      const val = row[col.key]
+      if (col.kind === 'number') {
+        if (typeof val === 'number' && Number.isFinite(val)) {
+          rowObj[col.key] = val
+        } else {
+          rowObj[col.key] = null
+        }
+      } else if (col.kind === 'date') {
+        if (typeof val === 'string' && DATE_REGEX.test(val.trim())) {
+          rowObj[col.key] = val.trim()
+        } else {
+          rowObj[col.key] = null
+        }
+      } else {
+        if (val !== undefined && val !== null && typeof val !== 'object') {
+          rowObj[col.key] = String(val).slice(0, 120)
+        } else {
+          rowObj[col.key] = ''
+        }
+      }
+    }
+    cleanRows.push(rowObj)
+  }
+
+  if (cleanRows.length === 0) return null
+
+  const out: TableBlock = {
+    id: typeof item.id === 'string' && ID_REGEX.test(item.id) ? item.id : 'table_1',
+    type: 'table',
+    columns: cleanColumns,
+    rows: cleanRows,
+  }
+  if (typeof item.title === 'string' && item.title.trim()) {
+    out.title = item.title.trim().slice(0, 80)
+  }
+
+  if (item.sort && typeof item.sort === 'object') {
+    const sortObj = item.sort as Record<string, unknown>
+    const sortKey = typeof sortObj.key === 'string' ? sortObj.key.trim() : ''
+    if (seenKeys.has(sortKey)) {
+      const sortDir = typeof sortObj.dir === 'string' && sortObj.dir.trim().toLowerCase() === 'desc' ? 'desc' : 'asc'
+      out.sort = { key: sortKey, dir: sortDir }
+    }
+  }
+
+  return out
 }
 
 function validateControls(item: Record<string, unknown>): ControlsBlock | null {
@@ -595,6 +720,7 @@ function validateFollowUp(item: Record<string, unknown>): FollowUpBlock | null {
  */
 function inferType(obj: Record<string, unknown>): string | null {
   if (obj.kind && obj.series) return 'chart'
+  if (obj.columns && obj.rows) return 'table'
   if (obj.steps || (obj.value !== undefined && obj.max !== undefined)) return 'progress'
   if (obj.fields) return 'controls'
   if (obj.html) return 'sandbox'
@@ -677,6 +803,7 @@ export function parseUiEnvelope(raw: unknown): UiEnvelope | null {
     if (bType === 'progress') validated = validateProgress(obj)
     else if (bType === 'card') validated = validateCard(obj)
     else if (bType === 'chart') validated = validateChart(obj)
+    else if (bType === 'table') validated = validateTable(obj)
     else if (bType === 'controls') validated = validateControls(obj)
     else if (bType === 'sandbox') validated = validateSandbox(obj)
     else if (bType === 'metric') validated = validateMetric(obj)
@@ -737,7 +864,8 @@ export interface UiError {
 const UI_SIGNATURES: Record<string, string> = {
   progress: 'progress: value, max or steps[{label,state}]',
   card: 'card: title, body?, facts?, image?',
-  chart: 'chart: kind bar|line|compare, x_key, series[{key,label}], rows[]',
+  chart: 'chart: kind bar|line|compare|pie, x_key, series[{key,label}], rows[]',
+  table: 'table: columns[{key,label,kind?,unit?}], rows[]',
   controls: 'controls: fields[], action{name:send_message|set_model,template?|field?}',
   sandbox: 'sandbox: title, html, css?, js?',
   metric: 'metric: items[{label,value}]',
@@ -745,7 +873,7 @@ const UI_SIGNATURES: Record<string, string> = {
   follow_up: 'follow_up: items[string]',
 }
 const UI_REQUIRED: Record<string, string> = {
-  chart: 'series', controls: 'fields', sandbox: 'html', metric: 'items', callout: 'body', follow_up: 'items',
+  chart: 'series', table: 'columns', controls: 'fields', sandbox: 'html', metric: 'items', callout: 'body', follow_up: 'items',
 }
 export function parseUiEnvelopeWithDiagnostics(raw: unknown, imageHosts: string[] = [], allowPrivateHttp = false): { envelope: UiEnvelope | null; errors: UiError[]; dropped: number } {
   const result: { envelope: UiEnvelope | null; errors: UiError[]; dropped: number } = { envelope: null, errors: [], dropped: 0 }
@@ -795,7 +923,8 @@ export function parseUiEnvelopeWithDiagnostics(raw: unknown, imageHosts: string[
       else if (kind === 'controls') { code = 'invalid_action'; path = 'action' }
       else if (kind === 'sandbox' && typeof block.html === 'string' && block.html.length > MAX_SANDBOX_HTML) { code = 'limit_exceeded'; path = 'html' }
       else if (kind === 'chart' && (!block.rows || (Array.isArray(block.rows) && !block.rows.length)) && !(Array.isArray(block.series) && block.series[0] && typeof block.series[0] === 'object' && 'rows' in block.series[0])) { code = 'missing_required'; path = 'rows' }
-      else { code = 'type_mismatch'; path = kind === 'chart' && !['bar', 'line', 'compare'].includes(String(block.kind || 'bar').trim().toLowerCase()) ? 'kind' : required || 'value' }
+      else if (kind === 'table' && (!block.rows || (Array.isArray(block.rows) && !block.rows.length))) { code = 'missing_required'; path = 'rows' }
+      else { code = 'type_mismatch'; path = kind === 'chart' && !['bar', 'line', 'compare', 'pie'].includes(String(block.kind || 'bar').trim().toLowerCase()) ? 'kind' : required || 'value' }
     }
     result.dropped++; error(code, blockId, path, hint)
   })

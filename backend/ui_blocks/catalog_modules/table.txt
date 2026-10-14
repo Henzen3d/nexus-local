@@ -1,0 +1,1 @@
+table: title opcional, columns [{key, label, kind text|number|date, unit opcional}], rows (até 50 objetos), sort opcional {key, dir asc|desc}.

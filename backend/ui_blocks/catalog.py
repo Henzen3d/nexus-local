@@ -4,7 +4,7 @@ from backend.ui_blocks.should_offer import select_modules, should_offer_ui
 
 MAX_CATALOG_TOKENS = 450
 ROOT = Path(__file__).resolve().parent
-MODULE_NAMES = ("chart", "metric", "progress", "controls", "callout", "card", "sandbox", "follow_up")
+MODULE_NAMES = ("chart", "metric", "table", "progress", "controls", "callout", "card", "sandbox", "follow_up")
 
 
 def compose_catalog(modules: tuple[str, ...]) -> str:
