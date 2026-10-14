@@ -10,6 +10,8 @@
 
 **Spec:** `melhorias/intelligent-ui/00-visao-e-spec.md` seção 4.3.
 
+**Estado (auditoria 2026-10-14):** implementado (`bar`, `line`, `compare`, tabela `sr-only`, paleta por índice). Pendência: Task 1 Step 4 — o build mostra `recharts` dentro do chunk principal (`ChartCard-*.js` tem só ~3 kB e importa `BarChart` etc. de `index-*.js`) porque `App.tsx` ainda importa `AdminPanel` estaticamente.
+
 ## Global Constraints
 
 - Sem cor, tooltip HTML ou formatter vindo do JSON.
@@ -30,13 +32,13 @@
 - Consumes: bloco `chart` válido
 - Produces: `ChartCard({ block })`, carregado com `React.lazy`. `DynamicRenderer.tsx` não importa `recharts`. Para `kind === "bar"`, um `BarChart` com uma `Bar`.
 
-- [ ] **Step 1: Teste.** Título "Custo por 1M tokens" aparece. A tabela acessível contém "Groq 8B" e "0.05" quando esse for o row do teste. Não exigir pixel do canvas.
+- [ ] **Step 1: Teste.** Título "Custo por 1M tokens" aparece. *(**Pendente** como teste de render. O validador do bloco `chart` é coberto por `test_chart_bar_line_compare` e pelo teste TS "chart bar line e compare".)* A tabela acessível contém "Groq 8B" e "0.05" quando esse for o row do teste. Não exigir pixel do canvas.
 
-- [ ] **Step 2: Implementar `bar`.** `x_key` no eixo. `series[0].key` na barra. Fill: `var(--primary)`.
+- [x] **Step 2: Implementar `bar`.** `x_key` no eixo. `series[0].key` na barra. Fill: `var(--primary)`. *(`frontend/src/ui/components/ChartCard.tsx`, único arquivo do módulo que importa `recharts`.)*
 
-- [ ] **Step 3: Commit** `feat: gráfico de barras sob demanda na bolha`
+- [x] **Step 3: Commit** `feat: gráfico de barras sob demanda na bolha`
 
-- [ ] **Step 4: Conferir o chunk.** `App.tsx` importa `AdminPanel` na linha 8, e o admin já puxa `recharts`. Rodar o build e ver se `recharts` está no chunk do chat sem um bloco de gráfico. Se estiver, trocar o import de `AdminPanel` por `React.lazy` no mesmo passo. Não adicionar outra lib.
+- [ ] **Step 4: Conferir o chunk.** *(**Pendente.** Build de 2026-10-14: `recharts` está no `index-*.js` (1,66 MB). `App.tsx` linha 9 segue com `import { AdminPanel } from './components/AdminPanel'`. Falta trocar por `React.lazy`.)* `App.tsx` importa `AdminPanel` na linha 8, e o admin já puxa `recharts`. Rodar o build e ver se `recharts` está no chunk do chat sem um bloco de gráfico. Se estiver, trocar o import de `AdminPanel` por `React.lazy` no mesmo passo. Não adicionar outra lib.
 
 ### Task 2: line e compare
 
@@ -48,10 +50,10 @@
 - `compare`: `BarChart` com uma `Bar` por série, 2 a 4.
 - Paleta por índice: `--primary`, `--cyan`, `--warning`, `--success`.
 
-- [ ] **Step 1: Teste de kind inválido no componente.** Se `kind` chegar fora da união, retornar null. O validador já barra, o componente não confia.
+- [x] **Step 1: Teste de kind inválido no componente.** *(`renderChart()` retorna `null` para `kind` fora de `bar|line|compare`. Nota: os validadores Python/TS normalizam `kind` inválido para `bar` em vez de descartar o bloco — desvio de auto-healing em relação à spec.)* Se `kind` chegar fora da união, retornar null. O validador já barra, o componente não confia.
 
-- [ ] **Step 2: Implementar os dois kinds. Eixo e legenda usam `series.label`, não a key crua, quando o label existe.**
+- [x] **Step 2: Implementar os dois kinds. Eixo e legenda usam `series.label`, não a key crua, quando o label existe.** *(`line`: uma `Line` por série; `compare`: uma `Bar` por série; `name={s.label || s.key}`; paleta `--primary`, `--cyan`, `--warning`, `--success` por índice.)*
 
-- [ ] **Step 3: Commit** `feat: gráficos line e compare na bolha`
+- [x] **Step 3: Commit** `feat: gráficos line e compare na bolha`
 
 Não adicionar tipo pizza, radar, mapa ou gráfico de área nesta fase.

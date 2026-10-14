@@ -10,6 +10,8 @@
 
 **Spec:** `melhorias/intelligent-ui/00-visao-e-spec.md` seções 4.2 e 6.
 
+**Estado (auditoria 2026-10-14):** implementado. Pendência relevante: o `ImageCard` chama `isAllowedImageUrl(url, [], window.location.host)` com lista de hosts vazia e `allowPrivateHttp=false` fixos — o frontend não recebe `INTELLIGENT_UI_IMAGE_HOSTS`/`INTELLIGENT_UI_ALLOW_PRIVATE_HTTP`, então imagens liberadas pelo backend por essas variáveis são barradas na bolha. Só URL relativa e host da própria página pintam de fato.
+
 ## Global Constraints
 
 - URL fora da seção 6: cartão sem imagem, resto intacto.
@@ -31,13 +33,13 @@
 - Consumes: tipo `card` de `nexusUi.ts`
 - Produces: `ImageCard({ block })` com `title`, `body` opcional e até 6 `facts`. Carga via `React.lazy` no `DynamicRenderer`.
 
-- [ ] **Step 1: Teste.** Título "ESP32-S3" e fato "Flash / 8 MB" aparecem. Sem `image`, não há `<img>`.
+- [ ] **Step 1: Teste.** Título "ESP32-S3" e fato "Flash / 8 MB" aparecem. Sem `image`, não há `<img>`. *(**Pendente** como teste de render. A validação do bloco `card` é coberta por `test_card_e_filtro_imagem` no backend.)*
 
-- [ ] **Step 2: Implementar.** Fundo `--surface-card`, borda `--hairline`, título `--ink`, corpo `--body`.
+- [x] **Step 2: Implementar.** Fundo `--surface-card`, borda `--hairline`, título `--ink`, corpo `--body`. *(`frontend/src/ui/components/ImageCard.tsx`. Sem `image` válida o bloco da foto não é montado — não fica buraco.)*
 
-- [ ] **Step 3: Registrar em `DynamicRenderer`.** Tipo desconhecido continua ignorado.
+- [x] **Step 3: Registrar em `DynamicRenderer`.** Tipo desconhecido continua ignorado. *(`block.type === 'card'` → `ImageCard` via `React.lazy`; tipo sem cartão retorna `null`.)*
 
-- [ ] **Step 4: Commit** `feat: cartão textual na bolha`
+- [x] **Step 4: Commit** `feat: cartão textual na bolha`
 
 ### Task 2: Foto com URL filtrada
 
@@ -48,13 +50,13 @@
 **Interfaces:**
 - Produces: `isAllowedImageUrl(url: string): boolean` com as regras da spec, seção 6. O componente chama de novo antes de montar o `<img>`, mesmo que o backend já tenha filtrado.
 
-- [ ] **Step 1: Testes de URL, iguais no Python e no TS.** Aceitar `/attachments/foto.jpg`. Aceitar URL cujo host é o da página. Aceitar host presente em `INTELLIGENT_UI_IMAGE_HOSTS`. Recusar `https://exemplo.com/a.jpg` com lista vazia. Recusar `http://192.168.0.20/foto.jpg` com a flag privada desligada. Aceitar esse IP só com `INTELLIGENT_UI_ALLOW_PRIVATE_HTTP=true`. Recusar `javascript:alert(1)`, `data:text/html,hi` e URL com userinfo.
+- [x] **Step 1: Testes de URL, iguais no Python e no TS.** *(Python: `is_allowed_image_url` em `validate.py` + `test_card_e_filtro_imagem`. TS: `isAllowedImageUrl` em `nexusUi.ts` + teste "filtro de imagens segue regras de seguranca" cobrindo relativa, host da página, lista branca, externo recusado, `javascript:`, `data:` e IP privado com/sem flag.)* Aceitar `/attachments/foto.jpg`. Aceitar URL cujo host é o da página. Aceitar host presente em `INTELLIGENT_UI_IMAGE_HOSTS`. Recusar `https://exemplo.com/a.jpg` com lista vazia. Recusar `http://192.168.0.20/foto.jpg` com a flag privada desligada. Aceitar esse IP só com `INTELLIGENT_UI_ALLOW_PRIVATE_HTTP=true`. Recusar `javascript:alert(1)`, `data:text/html,hi` e URL com userinfo.
 
-- [ ] **Step 2: No erro de carga (`onError`), esconder a imagem e manter título e fatos.**
+- [x] **Step 2: No erro de carga (`onError`), esconder a imagem e manter título e fatos.** *(`onError={() => setImgError(true)}`; `<img>` com `loading="lazy"` e `referrerPolicy="no-referrer"`.)*
 
-- [ ] **Step 3: Strings e i18n.** Incluir chaves de internacionalização para fallbacks de imagem em `pt-BR.json`, `en-US.json` e `es-ES.json` (`intelligentUi.imageLoadError`).
+- [x] **Step 3: Strings e i18n.** *(`intelligentUi.imageLoadError` existe nos três locales; o componente hoje apenas oculta a imagem, sem exibir o texto.)* Incluir chaves de internacionalização para fallbacks de imagem em `pt-BR.json`, `en-US.json` e `es-ES.json` (`intelligentUi.imageLoadError`).
 
-- [ ] **Step 4: Commit** `feat: foto no cartão só com URL permitida e suporte a i18n`
+- [x] **Step 4: Commit** `feat: foto no cartão só com URL permitida e suporte a i18n`
 
 ### Task 3: Exemplo de produto, não de dado inventado no código
 
