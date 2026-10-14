@@ -1,4 +1,5 @@
 import os
+import re
 import shutil
 from pathlib import Path
 from PIL import Image
@@ -46,8 +47,30 @@ def save_file(file_content: bytes, filename: str, attachment_id: str, is_image: 
 
     return file_rel_path, thumb_rel_path
 
-async def move_attachments_to_conversation(attachment_ids: list[str], conversation_id: str, message_id: str, db) -> None:
+_ATTACHMENT_ID_RE = re.compile(r"^att_[0-9a-f]{32}$")
+
+
+async def move_attachments_to_conversation(
+    attachment_ids: list[str],
+    conversation_id: str,
+    message_id: str,
+    db,
+    user_id: str | None = None,
+) -> None:
+    """Vincula anexos *unsent* à mensagem e move os arquivos para a pasta da conversa.
+
+    Regras de autorização (antes inexistentes):
+    - só anexos ainda sem ``message_id`` podem ser vinculados (um anexo já enviado
+      em outra conversa nunca é "roubado");
+    - quando ``user_id`` é informado, o anexo precisa ter sido enviado por ele
+      (``attachments.user_id``); linhas legadas sem dono continuam aceitas.
+    """
     if not attachment_ids:
+        return
+
+    # conversation_id compõe caminho no filesystem — nunca aceitar algo que não seja UUID.
+    if not re.match(r"^[0-9a-fA-F-]{36}$", str(conversation_id or "")):
+        logger.warning("move_attachments_to_conversation: conversation_id inválido ignorado")
         return
 
     # Ensure conversation storage directory exists
@@ -55,14 +78,19 @@ async def move_attachments_to_conversation(attachment_ids: list[str], conversati
     conv_dir.mkdir(parents=True, exist_ok=True)
 
     for att_id in attachment_ids:
-        # Fetch attachment info
+        if not _ATTACHMENT_ID_RE.match(str(att_id or "")):
+            continue
+        # Fetch attachment info — apenas anexos "unsent" do próprio usuário
         async with db.execute(
-            "SELECT filename, storage_path, thumbnail_path FROM attachments WHERE id = ?",
-            (att_id,)
+            """SELECT filename, storage_path, thumbnail_path FROM attachments
+               WHERE id = ? AND message_id IS NULL
+                 AND (? IS NULL OR user_id IS NULL OR user_id = ?)""",
+            (att_id, user_id, user_id)
         ) as cur:
             row = await cur.fetchone()
         
         if not row:
+            logger.warning("Anexo %s ignorado: inexistente, já enviado ou de outro usuário", att_id)
             continue
 
         filename, rel_storage, rel_thumb = row
@@ -89,9 +117,10 @@ async def move_attachments_to_conversation(attachment_ids: list[str], conversati
         # Update in database
         await db.execute(
             """UPDATE attachments 
-               SET message_id = ?, storage_path = ?, thumbnail_path = ? 
+               SET message_id = ?, storage_path = ?, thumbnail_path = ?,
+                   user_id = COALESCE(user_id, ?)
                WHERE id = ?""",
-            (message_id, new_storage_rel.replace("\\", "/"), new_thumb_rel.replace("\\", "/") if new_thumb_rel else None, att_id)
+            (message_id, new_storage_rel.replace("\\", "/"), new_thumb_rel.replace("\\", "/") if new_thumb_rel else None, user_id, att_id)
         )
     await db.commit()
 

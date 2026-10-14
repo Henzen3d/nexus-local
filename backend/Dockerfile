@@ -24,5 +24,9 @@ COPY . ./backend/
 # Expõe a porta interna do container
 EXPOSE 8000
 
-# Comando para rodar o FastAPI em modo produção
-CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers"]
+# Comando para rodar o FastAPI em modo produção.
+# --forwarded-allow-ips="*": sem isso o uvicorn só confia em X-Forwarded-* vindos
+# de 127.0.0.1 e, como o nginx fala com o backend pela rede Docker, o IP real e o
+# esquema (https) eram ignorados. É seguro porque a porta 8000 NÃO é publicada no
+# host — o único caminho até o backend é o proxy nginx dentro da rede nexus_net.
+CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips=*"]

@@ -6,7 +6,7 @@ import uuid
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from backend.attachments import move_attachments_to_conversation
-from backend.auth import decode_token
+from backend.auth import resolve_token_user
 from backend.database import get_db
 from backend.fusion.orchestrator import executar_fusion
 from backend.logging_config import configure_logging, get_logger
@@ -16,15 +16,19 @@ from backend.orchestration.build_context import (
     build_memory_context,
     resolve_project_context,
 )
+from backend.projects.context_builder import estimate_tokens
 from backend.orchestration.handle_attachments import (
     check_model_vision_support,
     load_attachments,
     load_history,
+    resolve_input_budget,
+    trim_history_to_budget,
 )
 from pathlib import Path
 import os
 
 from backend.orchestration.persist_turn import (
+    ConversationAccessError,
     detect_and_save_artifacts,
     ensure_conversation,
     run_post_turn_indexing,
@@ -33,6 +37,7 @@ from backend.orchestration.persist_turn import (
     save_user_message,
     save_web_search_metadata,
     save_process_steps,
+    verify_conversation_owner,
 )
 from backend.ui_blocks.extract import extract_ui
 from backend.ui_blocks.should_offer import should_offer_ui
@@ -89,7 +94,7 @@ async def websocket_chat(ws: WebSocket):
     token = ws.query_params.get("token")
     user = None
     if token:
-        user = decode_token(token)
+        user = await resolve_token_user(token)
 
     if not user:
         await ws.accept()
@@ -170,6 +175,14 @@ async def websocket_chat(ws: WebSocket):
                 )
             except WebSocketDisconnect:
                 raise
+            except ConversationAccessError as access_err:
+                # Conversa de outro usuário / inexistente / ID malformado:
+                # responde sem vazar detalhes e sem derrubar o socket.
+                try:
+                    await ws.send_json({"type": "error", "message": str(access_err)})
+                    await ws.send_json({"type": "stream_end", "finish_reason": "error"})
+                except Exception:
+                    break
             except Exception:
                 logger.exception("turno de chat falhou")
                 try:
@@ -205,6 +218,15 @@ async def _process_turn(
     process_started_at = time.perf_counter()
     is_auto = (model_id == "auto" or not model_id)
     auto_route_decision = None
+
+    # ── Autorização: a conversa informada precisa pertencer ao usuário ─────
+    # Antes desta checagem, qualquer usuário autenticado conseguia enviar um
+    # conversation_id alheio e (1) injetar mensagens nela e (2) receber uma
+    # resposta do modelo gerada a partir do histórico/anexos de outra pessoa.
+    if conversation_id:
+        await verify_conversation_owner(db, conversation_id, user_id)
+    else:
+        conversation_id = None  # normaliza "" / None
 
     from backend.context import RequestContext
     req_ctx = RequestContext(user_id=user_id, conversation_id=conversation_id)
@@ -414,7 +436,9 @@ async def _process_turn(
 
     # ── Attachments ─────────────────────────────────────────────────
     if attachment_ids:
-        await move_attachments_to_conversation(attachment_ids, conversation_id, user_msg_id, db)
+        await move_attachments_to_conversation(
+            attachment_ids, conversation_id, user_msg_id, db, user_id=user_id
+        )
 
     # ── Web Search ──────────────────────────────────────────────────
     web_search_used, web_search_query, web_search_sources, search_results, search_config, process_steps = (
@@ -482,6 +506,19 @@ async def _process_turn(
                         system_instruction += "\n\n" + cat_content
             except Exception as e:
                 logger.error("Erro ao carregar catálogo Intelligent UI:", exc_info=e)
+
+    # ── Poda do histórico ao orçamento de entrada do modelo ─────────
+    # Antes, a conversa inteira era enviada a cada turno: conversas longas
+    # estouravam o context_length (HTTP 400/413) e o custo crescia a cada mensagem.
+    try:
+        input_budget = await resolve_input_budget(db, model_id, provider_id)
+        history, trimmed_count = trim_history_to_budget(
+            history, input_budget, reserved_tokens=estimate_tokens(system_instruction),
+        )
+        if trimmed_count:
+            req_ctx.set_memo("history_trimmed", trimmed_count)
+    except Exception:
+        logger.warning("Falha ao podar histórico; enviando completo", exc_info=True)
 
     history = [{"role": "system", "content": system_instruction}] + history
 

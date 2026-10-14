@@ -36,7 +36,8 @@ async def update_settings(body: SettingsUpdate, current_user: dict = Depends(req
 
 
 @router.get("/entries/{cache_type}")
-async def list_entries(cache_type: str, limit: int = 50, current_user: dict = Depends(get_current_user)):
+async def list_entries(cache_type: str, limit: int = 50, current_user: dict = Depends(require_admin)):
+    """Lista prompt_text/hash de entradas de TODOS os usuários → restrito a admin."""
     if cache_type not in ("exact", "semantic"):
         raise HTTPException(status_code=400, detail="cache_type deve ser 'exact' ou 'semantic'")
     return await cache_manager.list_entries(cache_type, limit)

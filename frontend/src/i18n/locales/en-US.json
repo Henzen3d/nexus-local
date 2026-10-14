@@ -63,7 +63,8 @@
     "fillRequired": "Enter your username and password to continue.",
     "emailRequired": "Enter the email you used to register.",
     "registerError": "Could not create the account. That username or email may already be in use.",
-    "loginError": "Incorrect username or password. Check them and try again."
+    "loginError": "Incorrect username or password. Check them and try again.",
+    "tooManyAttempts": "Too many login attempts. Wait a few minutes and try again."
   },
   "chat": {
     "openSidebar": "Open sidebar",

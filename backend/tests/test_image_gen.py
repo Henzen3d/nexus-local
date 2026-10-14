@@ -184,7 +184,14 @@ async def test_image_gen_db_and_queue(monkeypatch):
         found = [x for x in lib["items"] if x["id"] == "att-test-1"][0]
         assert found["filename"] == "image.jpg"
         assert found["is_generated"] is True
-        assert found["file_url"] == "/attachments/c1/att-test-1_image.jpg"
+        # URLs de anexos agora são assinadas (HMAC + expiração): /attachments/<rel>?exp=...&sig=...
+        from urllib.parse import urlparse, parse_qs
+        from backend.attachments.signing import verify_attachment_signature
+        parsed = urlparse(found["file_url"])
+        assert parsed.path == "/attachments/c1/att-test-1_image.jpg"
+        qs = parse_qs(parsed.query)
+        assert verify_attachment_signature("c1/att-test-1_image.jpg", qs["exp"][0], qs["sig"][0])
+        assert not verify_attachment_signature("c1/outro.jpg", qs["exp"][0], qs["sig"][0])
 
         del_res = await delete_library_item("att-test-1", current_user=current_user)
         assert del_res["status"] == "ok"

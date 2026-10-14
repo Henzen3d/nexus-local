@@ -18,8 +18,9 @@ FROM nginx:alpine
 RUN rm -rf /usr/share/nginx/html/*
 # Copia os arquivos compilados do Vite (pasta dist) do Estágio 1
 COPY --from=builder /app/dist /usr/share/nginx/html
-# Copia a sua configuração customizada de rotas
+# Copia a sua configuração customizada de rotas + cabeçalhos de segurança
 COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY nginx-security-headers.conf /etc/nginx/snippets/security-headers.conf
 
 # Expõe a porta interna do container
 EXPOSE 80

@@ -19,6 +19,14 @@ pandas>=2.0.0
 ddgs>=9.14.4
 fastembed>=0.7.1
 edge-tts>=7.3.1
+# Importados diretamente pelo código, mas até aqui vinham só como dependências
+# transitivas (fastembed → loguru/numpy, python-docx → lxml). Pinar evita que um
+# bump de dependência indireta remova-os e quebre o boot.
+loguru>=0.7.2,<0.8
+numpy>=1.26,<3
+lxml>=5.0,<6
+# Ferramentas de teste (não são necessárias em runtime; mantidas aqui porque o
+# Dockerfile instala este arquivo — mover para requirements-dev.txt é recomendado)
 pytest>=8.0.0
 pytest-asyncio>=0.23.0
 

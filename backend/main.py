@@ -1,7 +1,5 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
 from pathlib import Path
 import asyncio
 import os
@@ -22,7 +20,7 @@ from backend.routers.cache_admin import router as cache_router
 from backend.routers.enhancer import router as enhancer_router
 from backend.routers.fusion import router as fusion_router
 from backend.routers.artifacts import router as artifacts_router
-from backend.routers.attachments import router as attachments_router
+from backend.routers.attachments import router as attachments_router, files_router as attachment_files_router
 from backend.routers.vision_relay import router as vision_relay_router
 from backend.routers.web_search import router as web_search_router
 from backend.routers.families import router as families_router
@@ -37,10 +35,10 @@ from backend.routers.image_gen import router as image_gen_router
 
 app = FastAPI(title="NexusLocal", version="1.0.0")
 
-# Mount attachments static files directory
+# Diretório de anexos. NÃO é mais montado como StaticFiles público: os arquivos
+# são servidos por GET /attachments/{path} com URL assinada (routers/attachments.py).
 attachments_dir = Path(__file__).parent / "storage" / "attachments"
 attachments_dir.mkdir(parents=True, exist_ok=True)
-app.mount("/attachments", StaticFiles(directory=str(attachments_dir)), name="attachments")
 
 origins_env = os.getenv("ALLOWED_ORIGINS")
 if origins_env:
@@ -68,6 +66,7 @@ app.include_router(enhancer_router)
 app.include_router(fusion_router)
 app.include_router(artifacts_router)
 app.include_router(attachments_router)
+app.include_router(attachment_files_router)
 app.include_router(vision_relay_router)
 app.include_router(web_search_router)
 app.include_router(families_router)
@@ -424,20 +423,30 @@ async def startup():
     await recover_interrupted_dreams()
     logger.info("NexusLocal iniciado - banco de dados pronto.")
     # Warm-up embedder before accepting heavy traffic (background task still lets HTTP start)
-    asyncio.create_task(warm_up_fastembed())
-    asyncio.create_task(run_auto_sync())
-    asyncio.create_task(run_quota_release_job())
-    asyncio.create_task(run_minute_reset_job())
-    asyncio.create_task(run_day_reset_job())
-    asyncio.create_task(run_free_registry_sync_job())
-    asyncio.create_task(run_memory_idle_extraction_job())
-    asyncio.create_task(run_dream_consolidation_job())
-    asyncio.create_task(run_project_memory_synthesis_job())
-    
+    # As referências ficam em app.state para os jobs não serem coletados pelo GC
+    # no meio da execução (comportamento documentado de asyncio.create_task).
+    app.state.background_tasks = set()
+    for coro in (
+        warm_up_fastembed(),
+        run_auto_sync(),
+        run_quota_release_job(),
+        run_minute_reset_job(),
+        run_day_reset_job(),
+        run_free_registry_sync_job(),
+        run_memory_idle_extraction_job(),
+        run_dream_consolidation_job(),
+        run_project_memory_synthesis_job(),
+    ):
+        task = asyncio.create_task(coro)
+        app.state.background_tasks.add(task)
+        task.add_done_callback(app.state.background_tasks.discard)
+
     # Warm-up do cache semântico (fastembed)
     try:
         from backend.cache.manager import cache_manager
-        asyncio.create_task(cache_manager.warmup())
+        task = asyncio.create_task(cache_manager.warmup())
+        app.state.background_tasks.add(task)
+        task.add_done_callback(app.state.background_tasks.discard)
     except Exception as e:
         logger.warning("Falha ao iniciar warm-up do cache", exc_info=e)
 
@@ -458,6 +467,11 @@ async def shutdown():
         logger.info("[ImageGen Worker] Worker finalizado no shutdown")
     except Exception as e:
         logger.warning("[ImageGen Worker] Falha ao parar worker de imagem", exc_info=e)
+    try:
+        from backend.providers.base import close_http_client
+        await close_http_client()
+    except Exception as e:
+        logger.warning("Falha ao fechar pool HTTP dos provedores", exc_info=e)
 
 
 @app.get("/health")

@@ -7,6 +7,7 @@ do controller WebSocket (`backend/routers/chat.py`), seguindo SRP.
 from __future__ import annotations
 
 import json
+import re
 import uuid
 from typing import Any
 
@@ -14,6 +15,37 @@ from backend.logging_config import get_logger
 from backend.orchestration.artifacts import detect_artifacts, save_artifact
 
 logger = get_logger(__name__)
+
+# IDs de conversa são sempre UUID v4 gerados pelo servidor. Validar o formato
+# antes de usar o valor em queries e, principalmente, em caminhos do filesystem
+# (storage/attachments/{conversation_id}) elimina qualquer vetor de traversal.
+_CONVERSATION_ID_RE = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+
+
+class ConversationAccessError(Exception):
+    """Conversa inexistente, com ID malformado ou pertencente a outro usuário."""
+
+
+def is_valid_conversation_id(conversation_id: str | None) -> bool:
+    return bool(conversation_id) and bool(_CONVERSATION_ID_RE.match(str(conversation_id)))
+
+
+async def verify_conversation_owner(db, conversation_id: str, user_id: str) -> None:
+    """Garante que *conversation_id* existe e pertence a *user_id*.
+
+    Levanta ``ConversationAccessError`` caso contrário. Deve ser chamado antes
+    de qualquer leitura/escrita de histórico iniciada pelo cliente (WebSocket),
+    que até então confiava cegamente no ``conversation_id`` recebido.
+    """
+    if not is_valid_conversation_id(conversation_id):
+        raise ConversationAccessError("ID de conversa inválido.")
+    async with db.execute(
+        "SELECT user_id FROM conversations WHERE id = ?", (conversation_id,)
+    ) as cur:
+        row = await cur.fetchone()
+    if not row or row[0] != user_id:
+        # Mesma mensagem para "não existe" e "não é sua": evita enumeração.
+        raise ConversationAccessError("Conversa não encontrada.")
 
 
 async def ensure_conversation(
@@ -31,8 +63,11 @@ async def ensure_conversation(
 
     Retorna ``(conversation_id, project_id, created_payload)``.
     Se a conversa já existia, *created_payload* é ``None``.
+
+    Levanta ``ConversationAccessError`` se o ID informado não pertencer ao usuário.
     """
     if conversation_id:
+        await verify_conversation_owner(db, conversation_id, user_id)
         return conversation_id, None, None
 
     new_id = str(uuid.uuid4())

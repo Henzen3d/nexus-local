@@ -63,7 +63,8 @@
     "fillRequired": "Veuillez renseigner le nom d'utilisateur et le mot de passe.",
     "emailRequired": "Veuillez saisir votre e-mail d'inscription.",
     "registerError": "Échec de l'inscription. Ce nom d'utilisateur ou e-mail existe peut-être déjà.",
-    "loginError": "Nom d'utilisateur ou mot de passe incorrect."
+    "loginError": "Nom d'utilisateur ou mot de passe incorrect.",
+    "tooManyAttempts": "Trop de tentatives de connexion. Patientez quelques minutes puis réessayez."
   },
   "chat": {
     "openSidebar": "Ouvrir la barre latérale",

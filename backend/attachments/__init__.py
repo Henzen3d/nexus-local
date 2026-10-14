@@ -1,3 +1,4 @@
 from backend.attachments.validators import validate_attachment, SUPPORTED_DOCUMENT_TYPES, SUPPORTED_IMAGE_TYPES
 from backend.attachments.storage import save_file, move_attachments_to_conversation, get_absolute_path, save_attachment_for_conversation
 from backend.attachments.extractors import extract_text, ExtractionError
+from backend.attachments.signing import attachment_url, verify_attachment_signature

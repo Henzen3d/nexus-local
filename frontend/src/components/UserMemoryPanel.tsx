@@ -35,6 +35,7 @@ import {
   type DreamPreviewResponse,
 } from '../api/client'
 import type { MemorySummary, Provider } from '../types'
+import { useStore } from '../store/useStore'
 import { DreamPreviewModal } from './DreamPreviewModal'
 import { DreamJournalSection } from './DreamJournalSection'
 
@@ -63,6 +64,9 @@ interface MemoryPreview {
 
 export function UserMemoryPanel() {
   const { t } = useTranslation()
+  // A configuração do extrator é global (afeta todos os usuários) e o backend só aceita
+  // alterações de administradores; para os demais a seção é ocultada.
+  const isAdmin = useStore((s) => s.user?.role === 'admin')
   const [memories, setMemories] = useState<MemoryFact[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -1576,8 +1580,8 @@ export function UserMemoryPanel() {
         </div>
       )}
 
-      {/* Extractor model settings */}
-      {extractor && (
+      {/* Extractor model settings (global → somente admin) */}
+      {isAdmin && extractor && (
         <div style={{ marginTop: '28px', borderTop: '1px solid var(--hairline)', paddingTop: '20px' }}>
           <h3 style={{ fontSize: '15px', fontWeight: 600, color: 'var(--ink)', margin: '0 0 6px 0' }}>
             {t('memory.extractorTitle')}

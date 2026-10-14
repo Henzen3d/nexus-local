@@ -63,7 +63,8 @@
     "fillRequired": "Por favor, completa el nombre de usuario y la contraseña.",
     "emailRequired": "Por favor, ingresa tu correo de registro.",
     "registerError": "Error al registrarse. Este usuario o correo tal vez ya exista.",
-    "loginError": "Usuario o contraseña incorrectos."
+    "loginError": "Usuario o contraseña incorrectos.",
+    "tooManyAttempts": "Demasiados intentos de inicio de sesión. Espera unos minutos e inténtalo de nuevo."
   },
   "chat": {
     "openSidebar": "Abrir barra lateral",
