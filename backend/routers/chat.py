@@ -11,6 +11,7 @@ from backend.database import get_db
 from backend.fusion.orchestrator import executar_fusion
 from backend.logging_config import configure_logging, get_logger
 from backend.memory import extract_user_memory_background
+from backend.proactive import delivery as proactive_delivery
 from backend.proactive import presence as proactive_presence
 from backend.proactive import service as proactive_service
 from backend.orchestration.build_context import (
@@ -92,6 +93,19 @@ async def notify_user_sockets(user_id: str, message: dict) -> None:
                 _user_sockets[user_id].discard(ws)
 
 
+def _presence_transition(user_id: str, ws: WebSocket, transition) -> None:
+    """F3.1.4 / F3.2.5: "voltou" (idle|hidden|offline → active) ou trocou de conversa
+    enquanto ativo ⇒ tenta entregar pendências (tarefa rastreada, nunca bloqueia o WS)."""
+    if transition is None or not transition.should_flush:
+        return
+    sock = transition.socket
+    context = proactive_delivery.PresenceContext(view=sock.view, conversation_id=sock.conversation_id)
+    try:
+        proactive_service.schedule_return_flush(user_id, ws, context)
+    except Exception:
+        logger.debug("[Proactive] não foi possível agendar flush de retorno", exc_info=True)
+
+
 @router.websocket("/ws/chat")
 async def websocket_chat(ws: WebSocket):
     """Controller WebSocket fino: autentica, lê mensagens e delega para orquestração."""
@@ -114,6 +128,17 @@ async def websocket_chat(ws: WebSocket):
         await ws.send_json({"type": "ready"})
     except Exception:
         pass
+
+    # F3.1.4: socket novo conta como "voltou". O cliente envia `presence` logo após o
+    # `ready` (e isso dispara o flush com o contexto certo); este é o caminho de
+    # segurança para clientes que não reportam presença (sem duplicar o evento).
+    try:
+        proactive_service.schedule_return_flush(
+            user_id, ws, None,
+            delay=proactive_service.CONNECT_FLUSH_DELAY_S, skip_if_reported=True,
+        )
+    except Exception:
+        logger.debug("[Proactive] não foi possível agendar flush na conexão", exc_info=True)
 
     db = await get_db()
     keepalive_task: asyncio.Task | None = None
@@ -139,20 +164,21 @@ async def websocket_chat(ws: WebSocket):
 
             msg_type = req.get("type")
             if msg_type == "ping":
-                proactive_presence.touch(user_id, ws)
+                _presence_transition(user_id, ws, proactive_presence.touch(user_id, ws))
                 await ws.send_json({"type": "pong"})
                 continue
             if msg_type == "pong":
-                proactive_presence.touch(user_id, ws)
+                _presence_transition(user_id, ws, proactive_presence.touch(user_id, ws))
                 continue
             if msg_type == "presence":
-                # F2.6.2: {type:"presence", state, conversation_id, view} — contrato §3.1
-                proactive_presence.update(
+                # {type:"presence", state, conversation_id, view} — contrato §3.1
+                transition = proactive_presence.update(
                     user_id, ws,
                     state=req.get("state"),
                     conversation_id=req.get("conversation_id"),
                     view=req.get("view"),
                 )
+                _presence_transition(user_id, ws, transition)
                 continue
 
             conversation_id = req.get("conversation_id")

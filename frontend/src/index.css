@@ -11375,6 +11375,115 @@ html[data-theme="light"] .model-option-provider-tag {
   color: var(--proactive-accent);
 }
 .conv-title .conv-proactive-badge svg { color: var(--proactive-accent); opacity: 1; }
+/* Conversa iniciada pela IA ("Me conta aqui") — marcador permanente, mais discreto que o badge de não lido */
+.conv-proactive-badge.origin { opacity: 0.55; }
+.conv-title .conv-proactive-badge.origin svg { opacity: 0.55; }
 @media (prefers-reduced-motion: reduce) {
   .proactive-spin { animation: none; }
+}
+
+/* ── Assistente proativo (F3): cartão "Enquanto você esteve fora…" ─────────── */
+.proactive-welcome-card {
+  width: min(680px, 100%);
+  margin: 4px auto 0;
+  padding: 14px 16px 12px;
+  border-radius: 16px;
+  background: var(--proactive-bg);
+  border: 1px solid color-mix(in srgb, var(--proactive-accent) 28%, transparent);
+  box-shadow: inset 3px 0 0 var(--proactive-accent);
+  text-align: left;
+  animation: proactive-card-in 240ms ease-out;
+}
+@keyframes proactive-card-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: none; }
+}
+.proactive-welcome-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--proactive-accent);
+  margin-bottom: 8px;
+}
+.proactive-welcome-head h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--ink);
+}
+.proactive-welcome-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+.proactive-welcome-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 0;
+  border-top: 1px solid color-mix(in srgb, var(--proactive-accent) 18%, transparent);
+}
+.proactive-welcome-item:first-child { border-top: 0; padding-top: 2px; }
+.proactive-welcome-item-main { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.proactive-welcome-item-title {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.proactive-welcome-spark { color: var(--proactive-accent); font-size: 12px; }
+.proactive-welcome-preview {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.proactive-welcome-origin { font-size: 12px; color: var(--muted); opacity: 0.85; }
+.proactive-welcome-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.proactive-welcome-actions .proactive-action .spin { animation: proactive-spin 1s linear infinite; }
+.proactive-dismiss-label { display: inline; }
+
+/* "veio de «…»" na bolha de um chat iniciado pela IA (F3.3.3) */
+.proactive-origin-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 6px;
+  padding: 2px 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
+.proactive-origin-link:hover { color: var(--proactive-accent); }
+
+.proactive-action:focus-visible,
+.proactive-origin-link:focus-visible {
+  outline: 2px solid var(--proactive-accent);
+  outline-offset: 2px;
+}
+@media (max-width: 640px) {
+  .proactive-welcome-card { padding: 12px 12px 10px; border-radius: 14px; }
+  .proactive-dismiss-label { display: none; }
+  /* alvo de toque ≥ 44 px (F3.5.5) */
+  .proactive-welcome-actions .proactive-action { min-height: 44px; padding: 8px 14px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .proactive-welcome-card { animation: none; }
+  .proactive-welcome-actions .proactive-action .spin { animation: none; }
 }

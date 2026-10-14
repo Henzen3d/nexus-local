@@ -238,6 +238,25 @@ async def run_memory_idle_extraction_job():
         await asyncio.sleep(15 * 60)  # 15 minutes
 
 
+async def run_proactive_housekeeping_job():
+    """F3.2.7: a cada 15 min expira insights vencidos, falha pipelines travados
+    (> 5 min em ``researching``) e apaga insights terminais com > 30 dias."""
+    from backend.database import get_db
+    from backend.proactive.service import run_housekeeping
+
+    await asyncio.sleep(60)
+    while True:
+        try:
+            db = await get_db()
+            try:
+                await run_housekeeping(db)
+            finally:
+                await db.close()
+        except Exception as e:
+            logger.error("Error in proactive housekeeping job", exc_info=e)
+        await asyncio.sleep(15 * 60)
+
+
 async def run_project_memory_synthesis_job():
     """Periodic light cron: synthesize project_memory from recent chat_chunks."""
     from backend.projects.memory_job import synthesize_all_active_projects
@@ -438,6 +457,7 @@ async def startup():
         run_memory_idle_extraction_job(),
         run_dream_consolidation_job(),
         run_project_memory_synthesis_job(),
+        run_proactive_housekeeping_job(),
     ):
         task = asyncio.create_task(coro)
         app.state.background_tasks.add(task)

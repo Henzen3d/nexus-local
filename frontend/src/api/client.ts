@@ -574,6 +574,14 @@ export const api = {
       `/proactive/insights/${encodeURIComponent(insightId)}/ack`,
       { method: 'POST', body: JSON.stringify({ action }) },
     ),
+  // F3 — fila de pendentes (boot) e "Me conta aqui"
+  getProactivePending: () =>
+    fetchJSON<{ insights: import('../types').ProactiveInsight[] }>('/proactive/pending'),
+  expandProactiveInsight: (insightId: string, mode: import('../types').ProactiveExpandMode) =>
+    fetchJSON<import('../types').ProactiveExpandResult>(
+      `/proactive/insights/${encodeURIComponent(insightId)}/expand`,
+      { method: 'POST', body: JSON.stringify({ mode }) },
+    ),
 }
 
 export interface MemoryStatsApi {

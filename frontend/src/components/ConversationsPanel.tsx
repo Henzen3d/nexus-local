@@ -379,11 +379,15 @@ export function ConversationsPanel() {
                         {c.is_favorite && (
                           <Star size={11} className="fill-amber-500 text-amber-500" />
                         )}
-                        {conversationsWithInsight[c.id] && (
+                        {conversationsWithInsight[c.id] ? (
                           <span className="conv-proactive-badge" title={t('proactive.unreadBadge')} aria-label={t('proactive.unreadBadge')}>
                             <Sparkles size={11} />
                           </span>
-                        )}
+                        ) : c.origin_insight_id ? (
+                          <span className="conv-proactive-badge origin" title={t('proactive.spawnedBadge')} aria-label={t('proactive.spawnedBadge')}>
+                            <Sparkles size={11} />
+                          </span>
+                        ) : null}
                       </div>
                       <span className="row-conversation-meta">
                         {capitalizedTime}

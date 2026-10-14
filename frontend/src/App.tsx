@@ -18,6 +18,7 @@ import { MemoryOnboarding } from './components/MemoryOnboarding'
 import { loadTtsPrefs } from './lib/ttsPlayer'
 import { PwaInstallBanner } from './components/PwaInstallBanner'
 import { applyDocumentLang } from './i18n'
+import { useProactive } from './hooks/useProactive'
 import { UNAUTHORIZED_EVENT } from './api/client'
 import { MOBILE_BREAKPOINT } from './hooks/useIsMobile'
 
@@ -135,6 +136,8 @@ export default function App() {
   const { setDeferredPrompt, setIsInstallable } = usePWAStore()
 
   useEdgeSwipeOpenSidebar()
+  // Assistente proativo (F3): fila de pendentes no boot + poda local de vencidos
+  useProactive()
 
   useEffect(() => {
     applyDocumentLang(locale)

@@ -410,7 +410,7 @@ export function Sidebar() {
               }}
             >
               <span>{c.title}</span>
-              {conversationsWithInsight[c.id] && (
+              {conversationsWithInsight[c.id] ? (
                 <span
                   className="conv-proactive-badge"
                   title={t('proactive.unreadBadge')}
@@ -418,7 +418,15 @@ export function Sidebar() {
                 >
                   <Sparkles size={12} />
                 </span>
-              )}
+              ) : c.origin_insight_id ? (
+                <span
+                  className="conv-proactive-badge origin"
+                  title={t('proactive.spawnedBadge')}
+                  aria-label={t('proactive.spawnedBadge')}
+                >
+                  <Sparkles size={12} />
+                </span>
+              ) : null}
             </button>
             <div className="conv-actions-dropdown-container">
               <button

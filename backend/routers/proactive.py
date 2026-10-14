@@ -1,10 +1,15 @@
-"""REST mínimo do Assistente Proativo — Fase 2 (F2.6.4).
+"""REST do Assistente Proativo — Fases 2 e 3.
 
 * ``GET/PUT /api/proactive/settings`` — preferências do usuário (opt-in).
 * ``POST /api/proactive/insights/{id}/ack`` ``{action: seen|dismissed|blocked}``
   — só o dono; insight de outro usuário responde **404** (não revela existência).
+* ``GET /api/proactive/pending`` — insights ``ready`` não entregues (≤ 3), já
+  expirando os vencidos (boot do app — F3.2.4).
+* ``POST /api/proactive/insights/{id}/expand`` ``{mode: same|new_chat}`` —
+  "Me conta aqui" (F3.3): ``same`` devolve o *prefill* (o envio é do usuário);
+  ``new_chat`` cria a conversa iniciada pela IA com ``origin_insight_id``.
 
-``pending``, ``expand``, ``admin-config`` e ``logs`` ficam para F3/F4.
+``admin-config`` e ``logs`` ficam para F4.
 """
 from __future__ import annotations
 
@@ -15,12 +20,16 @@ from pydantic import BaseModel, Field
 
 from backend.auth import get_current_user
 from backend.database import get_db
+from backend.logging_config import get_logger
+from backend.proactive import delivery
 from backend.proactive.config import (
     ALLOWED_CATEGORIES,
     ALLOWED_SENSITIVITIES,
     get_user_settings,
     upsert_user_settings,
 )
+
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/proactive", tags=["proactive"])
 
@@ -36,6 +45,10 @@ class ProactiveSettingsUpdate(BaseModel):
 
 class AckBody(BaseModel):
     action: Literal["seen", "dismissed", "blocked"] = Field(..., description="seen | dismissed | blocked")
+
+
+class ExpandBody(BaseModel):
+    mode: Literal["same", "new_chat"] = Field("new_chat", description="same | new_chat")
 
 
 @router.get("/settings")
@@ -124,5 +137,54 @@ async def ack_insight(insight_id: str, body: AckBody, current_user: dict = Depen
         if changed:
             await db.commit()
         return {"ok": True, "id": insight_id, "status": current_status}
+    finally:
+        await db.close()
+
+
+@router.get("/pending")
+async def list_pending(current_user: dict = Depends(get_current_user)) -> dict:
+    """F3.2.4 — mesmo conteúdo do ``flush`` de retorno, para o boot do app."""
+    db = await get_db()
+    try:
+        insights = await delivery.pending_for_api(db, current_user["id"])
+        return {"insights": insights}
+    finally:
+        await db.close()
+
+
+async def _load_owned_insight(db, insight_id: str, user_id: str) -> dict:
+    insight = await delivery.load_insight(db, insight_id)
+    # Mesmo tratamento para inexistente e de outro usuário: 404 sem detalhes.
+    if not insight or insight.get("user_id") != user_id:
+        raise HTTPException(status_code=404, detail="Insight não encontrado.")
+    return insight
+
+
+@router.post("/insights/{insight_id}/expand")
+async def expand_insight(insight_id: str, body: ExpandBody, current_user: dict = Depends(get_current_user)) -> dict:
+    """F3.3.1 — "Me conta aqui"."""
+    db = await get_db()
+    try:
+        insight = await _load_owned_insight(db, insight_id, current_user["id"])
+        if insight.get("status") in ("failed", "expired", "blocked", "detected", "researching"):
+            raise HTTPException(status_code=409, detail="Este insight não está mais disponível.")
+
+        follow_ups = [f for f in (delivery._loads(insight.get("follow_ups_json"), []) or []) if isinstance(f, str)]
+        if body.mode == "same":
+            # Não escrevemos em nome do usuário: devolvemos o texto para o composer.
+            prefill = (follow_ups[0] if follow_ups else "").strip()
+            return {
+                "ok": True,
+                "mode": "same",
+                "conversation_id": insight["conversation_id"],
+                "prefill": prefill,
+                "topic": insight.get("topic") or "",
+            }
+
+        try:
+            result = await delivery.expand_new_chat(db, insight)
+        except RuntimeError:
+            raise HTTPException(status_code=409, detail="Não foi possível iniciar a conversa.")
+        return {"ok": True, "mode": "new_chat", **result}
     finally:
         await db.close()

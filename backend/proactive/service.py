@@ -23,7 +23,7 @@ import json
 import time
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Optional, Sequence
 
 from backend.logging_config import get_logger
@@ -54,6 +54,59 @@ _semaphores: dict[int, asyncio.Semaphore] = {}
 
 def pending_tasks() -> int:
     return len(_tasks)
+
+
+def track_task(coro: Any, *, name: str = "proactive") -> asyncio.Task:
+    """``create_task`` com referência guardada (nunca uma task solta — F2.2.5)."""
+    task = asyncio.create_task(coro, name=name)
+    _tasks.add(task)
+    task.add_done_callback(_tasks.discard)
+    return task
+
+
+async def wait_tasks(timeout: float = 5.0) -> None:
+    """Somente para testes: aguarda as tasks em voo terminarem."""
+    pending = [t for t in _tasks if not t.done()]
+    if pending:
+        await asyncio.wait(pending, timeout=timeout)
+
+
+CONNECT_FLUSH_DELAY_S = 3.0
+
+
+def schedule_return_flush(
+    user_id: str,
+    ws: Any,
+    context: Any = None,
+    *,
+    delay: float = 0.0,
+    skip_if_reported: bool = False,
+) -> asyncio.Task:
+    """F3.1.4: "voltou" ⇒ tenta entregar pendências sem bloquear o loop do WS.
+
+    ``skip_if_reported`` (usado na conexão): se, passado ``delay``, o cliente já
+    enviou seu primeiro ``presence`` — que por si só dispara o flush com o
+    contexto certo — este flush de segurança é dispensado (sem duplicar
+    ``proactive_pending``). Clientes antigos, que nunca reportam, recebem a
+    pendência pelo caminho de segurança.
+    """
+    from backend.proactive import delivery, presence
+
+    async def _run() -> None:
+        try:
+            if delay > 0:
+                await asyncio.sleep(delay)
+            if skip_if_reported:
+                sock = presence.get_socket(user_id, ws)
+                if sock is None or sock.reported:
+                    return
+            await delivery.flush_pending(user_id, ws, context)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # nunca derruba o socket do usuário
+            logger.warning("[Proactive] flush_pending falhou (user=%s): %s", user_id, exc)
+
+    return track_task(_run(), name=f"proactive-return:{user_id[:8]}")
 
 
 def mark_turn_started(conversation_id: str) -> None:
@@ -257,6 +310,41 @@ async def expire_overdue(db: Any, user_id: Optional[str] = None) -> int:
     changed = cur.rowcount or 0
     await db.commit()
     return changed
+
+
+STUCK_AFTER_MINUTES = 5
+PURGE_AFTER_DAYS = 30
+TERMINAL_STATUSES = ("seen", "dismissed", "blocked", "expired", "failed")
+
+
+async def run_housekeeping(db: Any) -> dict[str, int]:
+    """F3.2.7: expira vencidos, falha pipelines travados e apaga terminais antigos.
+
+    * ``ready`` com ``expires_at < now`` ⇒ ``expired``;
+    * ``detected|researching`` há mais de 5 min ⇒ ``failed:stuck`` (processo
+      reiniciado no meio do pipeline);
+    * terminais (``seen|dismissed|blocked|expired|failed``) com mais de 30 dias
+      ⇒ apagados (retenção do plano; a blocklist é tabela própria e permanece).
+    """
+    expired = await expire_overdue(db)
+    cur = await db.execute(
+        """UPDATE proactive_insights SET status = 'failed', error_code = 'stuck'
+           WHERE status IN ('detected', 'researching')
+             AND created_at < datetime('now', ?)""",
+        (f"-{STUCK_AFTER_MINUTES} minutes",),
+    )
+    stuck = cur.rowcount or 0
+    placeholders = ",".join("?" for _ in TERMINAL_STATUSES)
+    cur = await db.execute(
+        f"""DELETE FROM proactive_insights
+            WHERE status IN ({placeholders}) AND created_at < datetime('now', ?)""",
+        (*TERMINAL_STATUSES, f"-{PURGE_AFTER_DAYS} days"),
+    )
+    purged = cur.rowcount or 0
+    await db.commit()
+    if expired or stuck or purged:
+        logger.info("[Proactive] housekeeping: expired=%d stuck=%d purged=%d", expired, stuck, purged)
+    return {"expired": expired, "stuck": stuck, "purged": purged}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -555,7 +643,7 @@ async def _run_stages(
         synth_model=synth_label,
         latency_synth_ms=int(synthesis.latency_ms),
         expires_at=expires_at,
-        ready_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        ready_at=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),  # mesma base de datetime('now')
     )
     expired = await enforce_pending_limit(db, user_id, config.max_pending, keep_id=insight_id)
     if expired:
@@ -610,7 +698,7 @@ async def schedule_proactive_check(
         logger.debug("[Proactive] agendamento abortado: %s", exc)
         return None
 
-    task = asyncio.create_task(
+    return track_task(
         run_pipeline(
             user_id, conversation_id, user_msg_id, user_message,
             web_search_used=web_search_used, model_id=model_id, provider_id=provider_id,
@@ -618,6 +706,3 @@ async def schedule_proactive_check(
         ),
         name=f"proactive:{conversation_id[:8]}",
     )
-    _tasks.add(task)
-    task.add_done_callback(_tasks.discard)
-    return task

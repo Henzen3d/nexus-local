@@ -6,6 +6,7 @@ import { useStore } from '../store/useStore'
 import { api } from '../api/client'
 import { MessageBubble, StreamingBubble } from './MessageBubble'
 import { ProactiveBubble, ProactiveResearching } from './ProactiveBubble'
+import { ProactiveWelcomeCard } from './ProactiveWelcomeCard'
 import { MessageInput } from './MessageInput'
 import { FusionStatusCard } from './FusionStatusCard'
 import { useChatContext } from '../context/ChatContext'
@@ -594,6 +595,9 @@ export function ChatWindow() {
             <p className="welcome-sub">
               {t('chat.welcomeSub')}
             </p>
+
+            {/* F3.5.3 — "Enquanto você esteve fora…" (só na tela inicial, só com pendentes) */}
+            {!activeConversationId && <ProactiveWelcomeCard />}
           </div>
         )}
       </div>
