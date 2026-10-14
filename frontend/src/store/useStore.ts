@@ -1,8 +1,9 @@
 import { create } from 'zustand'
-import type { Artifact, Conversation, ConversationDetail, Message, Model, CacheStats, CacheSettings, FusionStatusEntry, Attachment, LibraryItem, WebSearchSource, AutoRouteDecisionInfo, UiEnvelope, ProgressBlock, ProcessStep, ProactiveInsight, ProactiveAckAction, ProactiveChannelHint, ToastItem } from '../types'
+import type { Artifact, Conversation, ConversationDetail, Message, Model, CacheStats, CacheSettings, FusionStatusEntry, Attachment, LibraryItem, WebSearchSource, AutoRouteDecisionInfo, UiEnvelope, ProgressBlock, ProcessStep, ProactiveInsight, ProactiveAckAction, ProactiveChannelHint, ProactiveExpandMode, ToastItem } from '../types'
 import { api } from '../api/client'
 import i18n, { detectInitialLocale } from '../i18n'
 import { effectivePreferredModel } from '../lib/modelSelection'
+import { bubbleContent, mergePending, newIds, pruneExpired, toastPreview } from '../lib/proactivePending'
 
 // ── Persistência de provedor/modelo (por usuário quando possível) ───────────
 
@@ -333,12 +334,24 @@ interface AppState {
   conversationsWithInsight: Record<string, true>
   /** Insights inline aguardando momento calmo (sem streaming/digitação). */
   pendingInlineInsights: ProactiveInsight[]
+  /** F3: fila de insights prontos ainda não entregues (≤ 3, nunca vencidos) — cartão/toast/badge. */
+  pendingInsights: ProactiveInsight[]
   /** Texto a ser pré-preenchido no composer (ex.: "Quero saber mais"). */
   composerPrefill: string | null
   setComposerPrefill: (text: string | null) => void
   noteTyping: () => void
   handleProactiveStatus: (evt: { conversation_id: string; stage: string }) => void
   handleProactiveInsight: (evt: { insight: ProactiveInsight; channel_hint?: ProactiveChannelHint }) => void
+  /** `proactive_pending` (WS) ou `GET /pending` (boot): funde, marca badges e avisa uma vez. */
+  handleProactivePending: (evt: { insights: ProactiveInsight[] }, opts?: { quiet?: boolean }) => void
+  loadPendingInsights: () => Promise<void>
+  prunePendingInsights: () => void
+  /** "Abrir conversa" no cartão: vai à origem; a presença faz o backend entregar a bolha. */
+  openPendingInsight: (insightId: string) => Promise<void>
+  /** "Dispensar" no cartão: ack `dismissed` + some da fila (não apaga no servidor). */
+  dismissPendingInsight: (insightId: string) => Promise<void>
+  /** "Me conta aqui": `new_chat` cria a conversa iniciada pela IA; `same` só pré-preenche. */
+  expandProactiveInsight: (insightId: string, mode: ProactiveExpandMode) => Promise<void>
   flushPendingInlineInsights: () => void
   ackProactiveInsight: (insightId: string, action: ProactiveAckAction, opts?: { silent?: boolean }) => Promise<void>
   pauseProactive: () => Promise<void>
@@ -355,23 +368,17 @@ let _proactiveLastTypingAt = 0
 let _proactiveFlushTimer: ReturnType<typeof setTimeout> | null = null
 let _proactiveStatusTimer: ReturnType<typeof setTimeout> | null = null
 const _proactiveAcked = new Set<string>()
-
-/** Prefixo "ao vivo" (§3.4 do contrato) no idioma do insight — espelha o backend. */
-const PROACTIVE_LIVE_PREFIX: Record<string, (topic: string) => string> = {
-  'pt-BR': (t) => `Fiquei curioso com **${t}** e fui pesquisar: `,
-  'en-US': (t) => `I got curious about **${t}** and looked it up: `,
-  'es-ES': (t) => `Me dio curiosidad **${t}** y fui a investigar: `,
-}
+/** Pendentes já anunciados (toast/cartão) — nunca avisar duas vezes o mesmo insight. */
+const _proactiveAnnounced = new Set<string>()
+let _proactiveExpanding: string | null = null
 
 function proactiveMessageFromInsight(insight: ProactiveInsight): Message {
-  const lang = (insight.language || 'pt-BR') as string
-  const prefix = (PROACTIVE_LIVE_PREFIX[lang] || PROACTIVE_LIVE_PREFIX['pt-BR'])(insight.topic)
-  const text = (insight.text || '').trim()
+  // Prefixo §3.4 no idioma do insight (ao vivo × "enquanto você estava fora") — espelha o backend
   return {
     id: insight.message_id || `proactive-${insight.id}`,
     role: 'assistant',
     kind: 'proactive',
-    content: prefix + text,
+    content: bubbleContent(insight),
     created_at: insight.created_at || new Date().toISOString(),
     proactive_insight_id: insight.id,
     insight: { ...insight, status: insight.status || 'delivered' },
@@ -393,8 +400,7 @@ function _proactiveNotifyElsewhere(insight: ProactiveInsight) {
   useStore.setState((s) => ({
     conversationsWithInsight: { ...s.conversationsWithInsight, [insight.conversation_id]: true },
   }))
-  const preview = (insight.text || '').replace(/\*\*/g, '').trim()
-  const message = preview.length > 140 ? preview.slice(0, 139).trimEnd() + '…' : preview
+  const message = toastPreview(insight.text || '')
   store.showToast(message, 'proactive', {
     id: `proactive-${insight.id}`,
     title: i18n.t('proactive.toastTitle', { topic: insight.topic }),
@@ -523,6 +529,7 @@ export const useStore = create<AppState>((set, get) => ({
   proactiveStatus: null,
   conversationsWithInsight: {},
   pendingInlineInsights: [],
+  pendingInsights: [],
   composerPrefill: null,
   models: [],
   selectedModelId: typeof window !== 'undefined' ? readPersistedModelSelection().modelId : null,
@@ -717,6 +724,11 @@ export const useStore = create<AppState>((set, get) => ({
     if (proactiveStatus && proactiveStatus.conversation_id === insight.conversation_id) {
       set({ proactiveStatus: null })
     }
+    // Entregue (inline/pending_inline) ⇒ deixa de ser pendente em todas as abas
+    if (get().pendingInsights.some((p) => p.id === insight.id)) {
+      set((s) => ({ pendingInsights: s.pendingInsights.filter((p) => p.id !== insight.id) }))
+      get().hideToast(`proactive-pending-${insight.id}`)
+    }
     const isOpenHere = view === 'chat' && !!activeConversationId && activeConversationId === insight.conversation_id
     if (isOpenHere && channel_hint !== 'pending') {
       // Inline — mas só em momento calmo (sem streaming / digitação recente)
@@ -729,6 +741,117 @@ export const useStore = create<AppState>((set, get) => ({
       return
     }
     _proactiveNotifyElsewhere(insight)
+  },
+  handleProactivePending: ({ insights }, opts) => {
+    const now = Date.now()
+    const before = get().pendingInsights
+    const after = mergePending(before, Array.isArray(insights) ? insights : [], now)
+    const fresh = newIds(before, after).filter((id) => !_proactiveAnnounced.has(id))
+    for (const id of fresh) _proactiveAnnounced.add(id)
+    const badges: Record<string, true> = {}
+    for (const i of after) badges[i.conversation_id] = true
+    set((s) => ({
+      pendingInsights: after,
+      conversationsWithInsight: { ...s.conversationsWithInsight, ...badges },
+    }))
+    if (fresh.length === 0 || opts?.quiet) return
+
+    const { view, activeConversationId } = get()
+    const atHome = view === 'chat' && !activeConversationId
+    if (atHome) return // o cartão de boas-vindas já mostra
+
+    const items = after.filter((i) => fresh.includes(i.id))
+    if (items.length === 1) {
+      const only = items[0]
+      get().showToast(toastPreview(only.text || ''), 'proactive', {
+        id: `proactive-pending-${only.id}`,
+        title: i18n.t('proactive.toastTitle', { topic: only.topic }),
+        durationMs: 8000,
+        action: {
+          label: i18n.t('proactive.toastView'),
+          onClick: () => {
+            const st = useStore.getState()
+            st.hideToast(`proactive-pending-${only.id}`)
+            void st.openPendingInsight(only.id)
+          },
+        },
+      })
+      return
+    }
+    // Vários de uma vez ⇒ um único toast agrupado que leva à tela inicial (cartão)
+    const toastId = `proactive-pending-group-${items.map((i) => i.id).join('.')}`
+    get().showToast(items.map((i) => i.topic).join(' · '), 'proactive', {
+      id: toastId,
+      title: i18n.t('proactive.toastGrouped', { count: items.length }),
+      durationMs: 10000,
+      action: {
+        label: i18n.t('proactive.toastView'),
+        onClick: () => {
+          const st = useStore.getState()
+          st.hideToast(toastId)
+          st.startNewConversation()
+        },
+      },
+    })
+  },
+  loadPendingInsights: async () => {
+    try {
+      const res = await api.getProactivePending()
+      get().handleProactivePending({ insights: res.insights || [] })
+    } catch (e) {
+      console.warn('[proactive] pendentes indisponíveis:', e)
+    }
+  },
+  prunePendingInsights: () => {
+    const cur = get().pendingInsights
+    const next = pruneExpired(cur, Date.now())
+    if (next !== cur) set({ pendingInsights: next })
+  },
+  openPendingInsight: async (insightId) => {
+    const item = get().pendingInsights.find((p) => p.id === insightId)
+    if (!item) return
+    const st = get()
+    if (st.view !== 'chat') st.setView('chat')
+    // Na origem, a presença dispara a entrega inline (prefixo "enquanto você estava fora")
+    await st.loadConversation(item.conversation_id)
+  },
+  dismissPendingInsight: async (insightId) => {
+    const item = get().pendingInsights.find((p) => p.id === insightId)
+    set((s) => ({ pendingInsights: s.pendingInsights.filter((p) => p.id !== insightId) }))
+    if (item) {
+      set((s) => {
+        const stillPending = s.pendingInsights.some((p) => p.conversation_id === item.conversation_id)
+        if (stillPending) return {}
+        const { [item.conversation_id]: _gone, ...rest } = s.conversationsWithInsight
+        void _gone
+        return { conversationsWithInsight: rest }
+      })
+    }
+    await get().ackProactiveInsight(insightId, 'dismissed', { silent: true })
+  },
+  expandProactiveInsight: async (insightId, mode) => {
+    if (_proactiveExpanding === insightId) return
+    _proactiveExpanding = insightId
+    try {
+      const result = await api.expandProactiveInsight(insightId, mode)
+      set((s) => ({ pendingInsights: s.pendingInsights.filter((p) => p.id !== insightId) }))
+      get().hideToast(`proactive-pending-${insightId}`)
+      const st = get()
+      if (st.view !== 'chat') st.setView('chat')
+      if (mode === 'same') {
+        await st.loadConversation(result.conversation_id)
+        if (result.prefill) get().setComposerPrefill(result.prefill)
+        return
+      }
+      await st.loadConversation(result.conversation_id)
+      // A conversa nova precisa aparecer na sidebar (com o marcador ✦ de origem)
+      void get().loadConversations()
+    } catch (e) {
+      console.warn('[proactive] expand falhou:', e)
+      get().showToast(i18n.t('proactive.expandError'), 'error')
+    } finally {
+      _proactiveExpanding = null
+    }
   },
   flushPendingInlineInsights: () => {
     const { pendingInlineInsights, isStreaming, fusionActive, activeConversationId, view } = get()

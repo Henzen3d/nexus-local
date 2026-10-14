@@ -8,7 +8,7 @@ Use este arquivo para marcar o progresso. Cada item tem o mesmo ID usado no docu
 |---|---|---|---|---|
 | F1 Spike do detector | `02-fase-1-spike-detector.md` | 4 h | — | 🟡 código pronto · porteiro GO · classificador aguarda medição local |
 | F2 Núcleo do pipeline | `03-fase-2-nucleo-pipeline.md` | 10 h | F1 go (métricas do classificador) | 🟡 código pronto · testes verdes · falta validação manual com provedor real |
-| F3 Presença, fila e retorno | `04-fase-3-presenca-fila-retorno.md` | 10 h | F2 | ⏸️ |
+| F3 Presença, fila e retorno | `04-fase-3-presenca-fila-retorno.md` | 10 h | F2 | ✅ |
 | F4 Controles e admin | `05-fase-4-controles-e-admin.md` | 6 h | F2, F3 | ⏸️ |
 | F5 Qualidade e rollout | `06-fase-5-qualidade-e-rollout.md` | 8 h + 1 semana | F1–F4 | ⏸️ |
 | F6 Web Push (opcional) | `07-opcional-web-push-pwa.md` | 8 h | F3, F4 | 🔮 |
@@ -133,52 +133,54 @@ Use este arquivo para marcar o progresso. Cada item tem o mesmo ID usado no docu
 ## 🕒 F3 — Presença, Fila e Retorno (`04-fase-3-presenca-fila-retorno.md`)
 
 **F3.1 Presença (servidor)**
-- [ ] **F3.1.1** `PresenceState` multi-socket e `effective_state`
-- [ ] **F3.1.2** `update/touch/remove` ligados a `presence`, ping/pong e `finally` do WS
-- [ ] **F3.1.3** Timeout de socket congelado ⇒ `hidden`
-- [ ] **F3.1.4** `on_return` ⇒ `flush_pending`
-- [ ] **F3.1.5** Métricas de presença (opcional)
-- [ ] **F3.1.6** Testes da máquina de presença
+- [x] **F3.1.1** `PresenceState` multi-socket e `effective_state`
+- [x] **F3.1.2** `update/touch/remove` ligados a `presence`, ping/pong e `finally` do WS
+- [x] **F3.1.3** Timeout de socket congelado ⇒ `hidden`
+- [x] **F3.1.4** `on_return` ⇒ `flush_pending`
+- [x] **F3.1.5** Métricas de presença (opcional)
+- [x] **F3.1.6** Testes da máquina de presença
 
 **F3.2 Fila e retorno**
-- [ ] **F3.2.1** `decide()` conforme a máquina de estados
-- [ ] **F3.2.2** `pending` sem mensagem; `max_pending=3`
-- [ ] **F3.2.3** `flush_pending` por contexto (origem ⇒ inline com prefixo de retorno; tela inicial ⇒ `proactive_pending`; outra ⇒ toast+badge)
-- [ ] **F3.2.4** `GET /api/proactive/pending`
-- [ ] **F3.2.5** Abrir conversa com pendente ⇒ `pending_inline`
-- [ ] **F3.2.6** `ack` `seen|dismissed|blocked`
-- [ ] **F3.2.7** `run_proactive_housekeeping_job` (expira, destrava, apaga > 30 d)
+- [x] **F3.2.1** `decide()` conforme a máquina de estados
+- [x] **F3.2.2** `pending` sem mensagem; `max_pending=3`
+- [x] **F3.2.3** `flush_pending` por contexto (origem ⇒ inline com prefixo de retorno; tela inicial ⇒ `proactive_pending`; outra ⇒ toast+badge)
+- [x] **F3.2.4** `GET /api/proactive/pending`
+- [x] **F3.2.5** Abrir conversa com pendente ⇒ `pending_inline`
+- [x] **F3.2.6** `ack` `seen|dismissed|blocked`
+- [x] **F3.2.7** `run_proactive_housekeeping_job` (expira, destrava, apaga > 30 d)
 
 **F3.3 "Me conta aqui"**
-- [ ] **F3.3.1** `POST /insights/{id}/expand {same|new_chat}` (same ⇒ prefill; new_chat ⇒ conversa + 1ª msg do assistente)
-- [ ] **F3.3.2** `insight.origin` (link "veio de: «título»")
-- [ ] **F3.3.3** Turno seguinte funciona na conversa nova
-- [ ] **F3.3.4** `origin_insight_id` na listagem (opcional)
+- [x] **F3.3.1** `POST /insights/{id}/expand {same|new_chat}` (same ⇒ prefill; new_chat ⇒ conversa + 1ª msg do assistente)
+- [x] **F3.3.2** `insight.origin` (link "veio de: «título»")
+- [x] **F3.3.3** Turno seguinte funciona na conversa nova
+- [x] **F3.3.4** `origin_insight_id` na listagem (opcional)
 
 **F3.4 Presença (cliente)**
-- [ ] **F3.4.1** `usePresence` (visibilidade, foco, atividade, idle 5 min; emite transições)
-- [ ] **F3.4.2** Emitir no `ready` do WS e ao trocar conversa/view
-- [ ] **F3.4.3** `lastTypingAt` no store (guarda de 3 s)
-- [ ] **F3.4.4** Testes/validação do hook
+- [x] **F3.4.1** `usePresence` (visibilidade, foco, atividade, idle 5 min; emite transições)
+- [x] **F3.4.2** Emitir no `ready` do WS e ao trocar conversa/view
+- [x] **F3.4.3** `lastTypingAt` no store (guarda de 3 s)
+- [x] **F3.4.4** Testes/validação do hook
 
 **F3.5 Cartão de retorno**
-- [ ] **F3.5.1** `useProactive` (boot + `proactive_pending` + expiração local)
-- [ ] **F3.5.2** `ProactiveWelcomeCard` no empty-state (Abrir conversa / Me conta aqui / Dispensar)
-- [ ] **F3.5.3** Toast agrupado + badge fora da tela inicial
-- [ ] **F3.5.4** "veio de" na bolha
-- [ ] **F3.5.5** Acessibilidade (region, 44 px, foco)
-- [ ] **F3.5.6** i18n
-- [ ] **F3.5.7** `npm run build` 0 erros
+- [x] **F3.5.1** `useProactive` (boot + `proactive_pending` + expiração local)
+- [x] **F3.5.2** `ProactiveWelcomeCard` no empty-state (Abrir conversa / Me conta aqui / Dispensar)
+- [x] **F3.5.3** Toast agrupado + badge fora da tela inicial
+- [x] **F3.5.4** "veio de" na bolha
+- [x] **F3.5.5** Acessibilidade (region, 44 px, foco)
+- [x] **F3.5.6** i18n
+- [x] **F3.5.7** `npm run build` 0 erros
 
 **F3.6 Testes**
-- [ ] **F3.6.1** Presença × canal
-- [ ] **F3.6.2** Expiração nunca entrega vencido
-- [ ] **F3.6.3** `max_pending`
-- [ ] **F3.6.4** `expand new_chat` + IDOR
-- [ ] **F3.6.5** WS: `proactive_pending` na conexão; `inline` uma única vez
-- [ ] **F3.6.6** Multi-aba sem duplicatas
+- [x] **F3.6.1** Presença × canal
+- [x] **F3.6.2** Expiração nunca entrega vencido
+- [x] **F3.6.3** `max_pending`
+- [x] **F3.6.4** `expand new_chat` + IDOR
+- [x] **F3.6.5** WS: `proactive_pending` na conexão; `inline` uma única vez
+- [x] **F3.6.6** Multi-aba sem duplicatas
 
 **Aceite F3:** nada enviado com aba oculta · entrega ≤ 2 s após voltar · cenário "almoço" reproduzido · "Me conta aqui" com referência · máx. 3 pendentes · suíte verde
+
+> **Notas F3 (implementação):** presença `active | idle | hidden` por socket com `effective_state` = melhor entre as abas e timeout de socket congelado (55 s sem ping ⇒ `hidden`); "voltou" / "trocou de conversa" ⇒ `flush_pending` (origem ⇒ bolha com prefixo "Enquanto você estava fora…" e `channel='pending_inline'`; tela inicial/outra ⇒ `proactive_pending` ⇒ cartão ou toast agrupado + badge). `GET /api/proactive/pending` no boot; `POST /insights/{id}/expand {same|new_chat}` ("Me conta aqui" cria a conversa com `origin_insight_id`, 1ª mensagem `kind='proactive'` com prefixo de chat novo e `insight.origin` para o link "veio de"). Job `run_proactive_housekeeping_job` a cada 15 min (expira, `failed:stuck` > 5 min, purga terminais > 30 d). Testes: `test_proactive_return.py` (13) + 2 cenários WS em `test_proactive_ws.py` + `presenceState.test.ts`/`proactivePending.test.ts` (13, `node:test`). O cenário §4 em vídeo e a validação com provedores reais ficam para o ambiente do usuário.
 
 ---
 

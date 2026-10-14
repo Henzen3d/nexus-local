@@ -2,6 +2,7 @@ import { useEffect, useRef, useCallback } from 'react'
 import i18n from '../i18n'
 import { useStore } from '../store/useStore'
 import { getTalk } from '../lib/talkLoop'
+import { usePresence } from './usePresence'
 import type { WSMessage, Attachment } from '../types'
 
 const AUTH_CLOSE_CODE = 4001
@@ -9,8 +10,6 @@ const MAX_RETRY_MS = 30_000
 const BASE_RETRY_MS = 1_000
 /** Keepalive em ambos os sentidos — evita idle-timeout do Cloudflare Tunnel (~100s) */
 const HEARTBEAT_MS = 25_000
-/** Debounce das transições de presença (contrato §3.1 — assistente proativo) */
-const PRESENCE_DEBOUNCE_MS = 2_000
 
 function buildWsUrl(token: string | null | undefined): string {
   const tokenQuery = token ? `?token=${encodeURIComponent(token)}` : ''
@@ -38,58 +37,12 @@ export function useChat() {
     token,
     webSearchActive,
     activeProjectId,
-    view,
   } = useStore()
 
-  // ── Presença (assistente proativo, F2) ─────────────────────────────────────
-  // Informa ao backend onde o usuário está para decidir inline × toast × pendente.
-  const presenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const lastPresenceRef = useRef('')
-  const sendPresence = useCallback((immediate = false) => {
-    const fire = () => {
-      presenceTimerRef.current = null
-      const ws = wsRef.current
-      if (!ws || ws.readyState !== WebSocket.OPEN) return
-      const st = useStore.getState()
-      const hidden = typeof document !== 'undefined' && document.visibilityState === 'hidden'
-      const payload = {
-        type: 'presence',
-        state: hidden ? 'hidden' : 'active',
-        conversation_id: st.view === 'chat' ? st.activeConversationId : null,
-        view: st.view,
-      }
-      const frame = JSON.stringify(payload)
-      if (frame === lastPresenceRef.current) return
-      lastPresenceRef.current = frame
-      try {
-        ws.send(frame)
-      } catch {
-        /* ignore — onclose cuidará do reconnect */
-      }
-    }
-    if (presenceTimerRef.current) clearTimeout(presenceTimerRef.current)
-    if (immediate) fire()
-    else presenceTimerRef.current = setTimeout(fire, PRESENCE_DEBOUNCE_MS)
-  }, [])
-
-  // Troca de conversa/tela → envio imediato (sinal principal do F2)
-  useEffect(() => {
-    sendPresence(true)
-  }, [activeConversationId, view, sendPresence])
-
-  // Aba oculta/visível → com debounce de 2 s
-  useEffect(() => {
-    const onVis = () => sendPresence(document.visibilityState === 'visible')
-    document.addEventListener('visibilitychange', onVis)
-    window.addEventListener('focus', onVis)
-    window.addEventListener('blur', onVis)
-    return () => {
-      document.removeEventListener('visibilitychange', onVis)
-      window.removeEventListener('focus', onVis)
-      window.removeEventListener('blur', onVis)
-      if (presenceTimerRef.current) clearTimeout(presenceTimerRef.current)
-    }
-  }, [sendPresence])
+  // ── Presença (assistente proativo, F3.4) ───────────────────────────────────
+  // active | idle | hidden + conversa/tela atual → backend decide inline × toast × pendente
+  // e entrega as pendências quando o usuário volta.
+  const { resendPresence } = usePresence(wsRef)
 
   // Single long-lived socket; reconnect only when token changes or the link drops.
   useEffect(() => {
@@ -143,7 +96,12 @@ export function useChat() {
       }
 
       // Heartbeat / handshake — não mexe no estado do chat
-      if (msg.type === 'ready' || msg.type === 'pong') {
+      if (msg.type === 'ready') {
+        // Socket novo: o backend perdeu o estado anterior → reenvia presença (F3.4.2)
+        resendPresence()
+        return
+      }
+      if (msg.type === 'pong') {
         return
       }
       if (msg.type === 'ping') {
@@ -167,15 +125,8 @@ export function useChat() {
         return
       }
       if (msg.type === 'proactive_pending') {
-        // F3 traz os cards; por ora só marca o badge ✦ nas conversas de origem
-        const ids = (msg.insights || []).map((i) => i.conversation_id).filter(Boolean)
-        if (ids.length) {
-          useStore.setState((st) => {
-            const next = { ...st.conversationsWithInsight }
-            for (const id of ids) next[id] = true
-            return { conversationsWithInsight: next }
-          })
-        }
+        // F3.5: fila de pendentes → cartão (tela inicial), toast agrupado + badge (outras telas)
+        useStore.getState().handleProactivePending(msg)
         return
       }
 
@@ -381,9 +332,7 @@ export function useChat() {
       ws.onopen = () => {
         attempt = 0
         startHeartbeat(ws)
-        // Novo socket: reenvia presença atual (backend perdeu o estado anterior)
-        lastPresenceRef.current = ''
-        sendPresence(true)
+        // Presença é reenviada ao receber `ready` (socket registrado no backend)
       }
 
       ws.onmessage = handleMessage
@@ -398,7 +347,6 @@ export function useChat() {
       ws.onclose = (ev) => {
         clearHeartbeat()
         isGeneratingRef.current = false
-        lastPresenceRef.current = ''
         if (wsRef.current === ws) wsRef.current = null
         if (socket === ws) socket = null
 
@@ -469,7 +417,7 @@ export function useChat() {
       socket = null
       if (wsRef.current) wsRef.current = null
     }
-  }, [token, sendPresence])
+  }, [token, resendPresence])
 
   const stopStream = useCallback(() => {
     isGeneratingRef.current = false

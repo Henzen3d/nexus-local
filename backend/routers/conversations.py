@@ -26,7 +26,8 @@ async def list_conversations(
                       COUNT(m.id) as message_count,
                       c.is_favorite, c.favorited_at,
                       c.project_tag,
-                      c.project_id
+                      c.project_id,
+                      c.origin_insight_id
                FROM conversations c
                LEFT JOIN messages m ON m.conversation_id = c.id
                WHERE c.user_id = ?
@@ -64,6 +65,8 @@ async def list_conversations(
                 "favorited_at": r[8],
                 "project_tag": r[9] if len(r) > 9 else None,
                 "project_id": r[10] if len(r) > 10 else None,
+                # F3.3.4: conversa iniciada pelo assistente proativo ("Me conta aqui")
+                "origin_insight_id": r[11] if len(r) > 11 else None,
             }
             for r in rows
         ]
@@ -76,7 +79,7 @@ async def get_conversation(conversation_id: str, current_user: dict = Depends(ge
     db = await get_db()
     try:
         async with db.execute(
-            "SELECT id, title, model_id, provider_id, created_at, user_id, is_favorite, favorited_at, project_tag, project_id FROM conversations WHERE id = ?",
+            "SELECT id, title, model_id, provider_id, created_at, user_id, is_favorite, favorited_at, project_tag, project_id, origin_insight_id FROM conversations WHERE id = ?",
             (conversation_id,),
         ) as cur:
             conv = await cur.fetchone()
@@ -100,19 +103,28 @@ async def get_conversation(conversation_id: str, current_user: dict = Depends(ge
         ) as cur:
             messages = await cur.fetchall()
 
-        # Insights proativos desta conversa (F2.6.3) — só do dono, por construção
+        # Insights proativos das bolhas desta conversa (F2.6.3 / F3.3.2) — só do dono.
+        # Inclui a 1ª mensagem de um chat iniciado por "Me conta aqui" (insight de outra conversa).
         msg_insights: dict[str, dict] = {}
         try:
-            from backend.proactive.delivery import INSIGHT_COLUMNS, insight_public_dict
+            from backend.proactive.delivery import INSIGHT_COLUMNS, attach_origin_titles, insight_public_dict
 
-            async with db.execute(
-                f"""SELECT {', '.join(INSIGHT_COLUMNS)} FROM proactive_insights
-                    WHERE conversation_id = ? AND user_id = ? AND delivered_message_id IS NOT NULL""",
-                (conversation_id, current_user["id"]),
-            ) as cur:
-                for row in await cur.fetchall():
-                    data = dict(zip(INSIGHT_COLUMNS, row))
-                    msg_insights[data["delivered_message_id"]] = insight_public_dict(data)
+            insight_ids = sorted({m[15] for m in messages if len(m) > 15 and m[15] and (m[14] or "normal") == "proactive"})
+            if insight_ids:
+                placeholders = ",".join("?" for _ in insight_ids)
+                async with db.execute(
+                    f"""SELECT {', '.join(INSIGHT_COLUMNS)} FROM proactive_insights
+                        WHERE user_id = ? AND id IN ({placeholders})""",
+                    (current_user["id"], *insight_ids),
+                ) as cur:
+                    found = [dict(zip(INSIGHT_COLUMNS, row)) for row in await cur.fetchall()]
+                spawned = [i for i in found if i.get("spawned_conversation_id") == conversation_id]
+                if spawned:
+                    await attach_origin_titles(db, spawned)
+                by_id = {i["id"]: insight_public_dict(i) for i in found}
+                for m in messages:
+                    if len(m) > 15 and m[15] in by_id:
+                        msg_insights[m[0]] = by_id[m[15]]
         except Exception:
             msg_insights = {}
 
@@ -241,6 +253,7 @@ async def get_conversation(conversation_id: str, current_user: dict = Depends(ge
             "is_favorite": bool(conv[6]), "favorited_at": conv[7],
             "project_tag": conv[8] if len(conv) > 8 else None,
             "project_id": conv[9] if len(conv) > 9 else None,
+            "origin_insight_id": conv[10] if len(conv) > 10 else None,
             "messages": built,
         }
     finally:

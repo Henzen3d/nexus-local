@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { Sparkles, MessageCircle, Ban, PauseCircle, Loader2 } from 'lucide-react'
+import { Sparkles, MessageCircle, Ban, PauseCircle, Loader2, CornerUpLeft } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { Message, WebSearchSource } from '../types'
 import { useStore } from '../store/useStore'
@@ -14,6 +14,7 @@ import { SourceShelf } from './SourceShelf'
 // fontes (SourceShelf) e três ações: "Quero saber mais" (pré-preenche o composer),
 // "Não quero sobre isso" (ack blocked) e "Pausar" (settings.enabled=false).
 // O ack `seen` é enviado uma única vez quando a bolha entra na viewport.
+// F3.3.3: em chat iniciado por "Me conta aqui", mostra "veio de «conversa de origem»".
 
 const formatTime = (isoString?: string) => {
   if (!isoString) return ''
@@ -44,12 +45,18 @@ export function ProactiveBubble({ message }: { message: Message }) {
   const ackProactiveInsight = useStore((s) => s.ackProactiveInsight)
   const pauseProactive = useStore((s) => s.pauseProactive)
   const setComposerPrefill = useStore((s) => s.setComposerPrefill)
+  const loadConversation = useStore((s) => s.loadConversation)
+  const activeConversationId = useStore((s) => s.activeConversationId)
   const rootRef = useRef<HTMLDivElement>(null)
 
   const insight = message.insight || null
   const insightId = insight?.id || message.proactive_insight_id || null
   const status = insight?.status || 'delivered'
   const isClosed = status === 'blocked' || status === 'dismissed'
+  // Só quando a bolha NÃO está na própria conversa de origem (chat novo via "Me conta aqui")
+  const origin = insight?.origin && insight.origin.conversation_id && insight.origin.conversation_id !== activeConversationId
+    ? insight.origin
+    : null
 
   const sources = useMemo<WebSearchSource[]>(() => {
     const fromInsight = (insight?.sources || []).map((s) => ({ title: s.title || s.domain || s.url, url: s.url }))
@@ -122,6 +129,18 @@ export function ProactiveBubble({ message }: { message: Message }) {
           </div>
 
           {insight?.reason_line && <div className="proactive-reason">{insight.reason_line}</div>}
+
+          {origin && (
+            <button
+              type="button"
+              className="proactive-origin-link"
+              onClick={() => void loadConversation(origin.conversation_id)}
+              title={t('proactive.cameFrom', { title: origin.title || '…' })}
+            >
+              <CornerUpLeft size={12} aria-hidden="true" />
+              <span>{t('proactive.cameFrom', { title: origin.title || '…' })}</span>
+            </button>
+          )}
 
           {sources.length > 0 && <SourceShelf sources={sources} />}
 

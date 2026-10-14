@@ -114,9 +114,38 @@ export interface ProactiveInsight {
   language?: string | null
   expires_at?: string | null
   created_at?: string | null
+  /** F3: canal efetivo da entrega (inline | toast | pending_inline | new_chat …) */
+  channel?: ProactiveChannel | null
+  ready_at?: string | null
+  /** F3.3: conversa criada por "Me conta aqui" (quando existir) */
+  spawned_conversation_id?: string | null
+  /** F3: conversa de origem (presente nos pendentes e nas bolhas de chat novo) */
+  origin?: ProactiveOrigin | null
 }
 
+export interface ProactiveOrigin {
+  conversation_id: string
+  title: string
+}
+
+export type ProactiveChannel =
+  | 'inline' | 'toast' | 'pending_card' | 'pending_inline' | 'new_chat' | 'push'
+
 export type ProactiveChannelHint = 'inline' | 'toast' | 'pending'
+export type ProactiveExpandMode = 'same' | 'new_chat'
+
+export interface ProactiveExpandResult {
+  ok: boolean
+  mode: ProactiveExpandMode
+  conversation_id: string
+  /** mode=same: texto sugerido para o composer (follow_ups[0]) */
+  prefill?: string
+  topic?: string
+  /** mode=new_chat */
+  message_id?: string
+  title?: string
+  created?: boolean
+}
 export type ProactiveSensitivity = 'low' | 'medium' | 'high'
 
 export interface ProactiveSettings {
@@ -269,6 +298,8 @@ export interface Conversation {
   project_tag?: string | null
   /** Projects module FK (nullable = chat avulso) */
   project_id?: string | null
+  /** F3.3: conversa iniciada pelo assistente proativo ("Me conta aqui") */
+  origin_insight_id?: string | null
 }
 
 export interface Project {
