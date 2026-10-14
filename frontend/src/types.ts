@@ -121,6 +121,8 @@ export interface ProactiveInsight {
   spawned_conversation_id?: string | null
   /** F3: conversa de origem (presente nos pendentes e nas bolhas de chat novo) */
   origin?: ProactiveOrigin | null
+  /** F4.3.2: hash do tópico — "Desfazer" do bloqueio (`DELETE /blocklist/{hash}`) */
+  topic_hash?: string | null
 }
 
 export interface ProactiveOrigin {
@@ -148,18 +150,135 @@ export interface ProactiveExpandResult {
 }
 export type ProactiveSensitivity = 'low' | 'medium' | 'high'
 
+export interface ProactiveQuietHours {
+  start: string
+  end: string
+}
+
+export interface ProactiveBlockedTopic {
+  topic_hash: string
+  topic_label: string
+  created_at?: string | null
+}
+
+export interface ProactiveUserStats {
+  insights_30d: number
+  delivered_30d: number
+  know_more_30d: number
+  blocked_30d: number
+}
+
 export interface ProactiveSettings {
   enabled: boolean
   sensitivity: ProactiveSensitivity
   categories: ProactiveCategory[]
-  quiet_hours?: Record<string, unknown> | null
+  quiet_hours?: ProactiveQuietHours | null
   onboarding_seen_at?: string | null
   updated_at?: string | null
   allowed_categories?: ProactiveCategory[]
   allowed_sensitivities?: ProactiveSensitivity[]
+  /** F4.1.1 */
+  blocked_topics?: ProactiveBlockedTopic[]
+  stats?: ProactiveUserStats
+  conversation_count?: number
+  /** F4.2.1 — onboarding nunca visto, desligado e ≥ 3 conversas (fonte: servidor) */
+  onboarding_eligible?: boolean
+  /** F4.1.5 — eco do PUT {enabled:false} */
+  disabled?: { cancelled: number; expired: number }
 }
 
-export type ProactiveAckAction = 'seen' | 'dismissed' | 'blocked'
+export type ProactiveAckAction = 'seen' | 'dismissed' | 'blocked' | 'know_more'
+
+/** F4.4.1 — configuração global (admin), persistida em `meta` */
+export interface ProactiveAdminConfig {
+  enabled_global: boolean
+  detector_provider_id: string | null
+  detector_model_id: string | null
+  synth_provider_id: string | null
+  synth_model_id: string | null
+  allow_chat_model_fallback: boolean
+  max_per_hour_conv: number
+  max_per_day_user: number
+  topic_cooldown_hours: number
+  max_pending: number
+  concurrency: number
+  total_timeout_s: number
+  research_timeout_s: number
+  synth_timeout_s: number
+  expiry_news_hours: number
+  expiry_default_days: number
+  limits?: Record<string, [number, number]>
+  kill_switch?: { cancelled: number; expired: number }
+}
+
+export type ProactiveAdminConfigUpdate = Partial<Omit<ProactiveAdminConfig, 'limits' | 'kill_switch'>>
+
+/** F4.4.2 — linha anonimizada (nunca o texto da mensagem) */
+export interface ProactiveLogRow {
+  id: string
+  created_at: string
+  username: string
+  category: ProactiveCategory | string
+  topic: string
+  confidence: number | null
+  status: ProactiveStatus
+  channel: ProactiveChannel | null
+  latency_detect_ms: number | null
+  latency_research_ms: number | null
+  latency_synth_ms: number | null
+  detector_model: string | null
+  synth_model: string | null
+  error_code: string | null
+}
+
+export interface ProactiveLogsResponse {
+  rows: ProactiveLogRow[]
+  total: number
+  limit: number
+  offset: number
+  status?: string | null
+}
+
+export interface ProactiveStatsWindow {
+  total: number
+  by_status: Record<ProactiveStatus, number>
+  delivered: number
+  know_more: number
+  blocked: number
+  dismissed: number
+  users: number
+  know_more_rate: number | null
+  blocked_rate: number | null
+  failure_rate: number | null
+}
+
+/** F4.4.3 */
+export interface ProactiveAdminStats {
+  windows: { '24h': ProactiveStatsWindow; '7d': ProactiveStatsWindow }
+  latency: {
+    samples: number
+    detect_p50_ms: number | null
+    detect_p95_ms: number | null
+    research_p50_ms: number | null
+    research_p95_ms: number | null
+    synth_p50_ms: number | null
+    synth_p95_ms: number | null
+    total_p95_ms: number | null
+  }
+  users_enabled: number
+  pending_now: number
+  blocklist_size: number
+  runtime: {
+    tasks_in_flight: number
+    presence: {
+      users_online?: number
+      users_active?: number
+      sockets?: number
+      transitions_last_hour?: number
+      transitions_by_kind?: Record<string, number>
+    }
+  }
+}
 
 export type PresenceState = 'active' | 'idle' | 'hidden'
 

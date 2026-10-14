@@ -9,7 +9,7 @@ Use este arquivo para marcar o progresso. Cada item tem o mesmo ID usado no docu
 | F1 Spike do detector | `02-fase-1-spike-detector.md` | 4 h | — | 🟡 código pronto · porteiro GO · classificador aguarda medição local |
 | F2 Núcleo do pipeline | `03-fase-2-nucleo-pipeline.md` | 10 h | F1 go (métricas do classificador) | 🟡 código pronto · testes verdes · falta validação manual com provedor real |
 | F3 Presença, fila e retorno | `04-fase-3-presenca-fila-retorno.md` | 10 h | F2 | ✅ |
-| F4 Controles e admin | `05-fase-4-controles-e-admin.md` | 6 h | F2, F3 | ⏸️ |
+| F4 Controles e admin | `05-fase-4-controles-e-admin.md` | 6 h | F2, F3 | ✅ |
 | F5 Qualidade e rollout | `06-fase-5-qualidade-e-rollout.md` | 8 h + 1 semana | F1–F4 | ⏸️ |
 | F6 Web Push (opcional) | `07-opcional-web-push-pwa.md` | 8 h | F3, F4 | 🔮 |
 
@@ -187,40 +187,42 @@ Use este arquivo para marcar o progresso. Cada item tem o mesmo ID usado no docu
 ## 🎛️ F4 — Controles e Admin (`05-fase-4-controles-e-admin.md`)
 
 **F4.1 Settings (backend)**
-- [ ] **F4.1.1** `GET /settings` completo (blocklist + stats)
-- [ ] **F4.1.2** `PUT /settings` parcial com validação
-- [ ] **F4.1.3** `DELETE /blocklist/{topic_hash}`
-- [ ] **F4.1.4** `POST /settings/onboarding-seen`
-- [ ] **F4.1.5** Desligar ⇒ cancela tasks e expira pendentes
+- [x] **F4.1.1** `GET /settings` completo (blocklist + stats)
+- [x] **F4.1.2** `PUT /settings` parcial com validação
+- [x] **F4.1.3** `DELETE /blocklist/{topic_hash}`
+- [x] **F4.1.4** `POST /settings/onboarding-seen`
+- [x] **F4.1.5** Desligar ⇒ cancela tasks e expira pendentes
 
 **F4.2 Onboarding opt-in**
-- [ ] **F4.2.1** `ProactiveOnboarding.tsx` (uma vez, servidor como fonte, após ≥ 3 conversas)
-- [ ] **F4.2.2** Conteúdo (o que faz / não faz / limites / como desligar)
-- [ ] **F4.2.3** Ativar ⇒ `PUT /settings` + toast
-- [ ] **F4.2.4** i18n
+- [x] **F4.2.1** `ProactiveOnboarding.tsx` (uma vez, servidor como fonte, após ≥ 3 conversas)
+- [x] **F4.2.2** Conteúdo (o que faz / não faz / limites / como desligar)
+- [x] **F4.2.3** Ativar ⇒ `PUT /settings` + toast
+- [x] **F4.2.4** i18n
 
 **F4.3 Painel do usuário**
-- [ ] **F4.3.1** `ProactiveSettings.tsx` (toggle, sensibilidade, categorias, quiet hours, blocklist, stats)
-- [ ] **F4.3.2** Ações da bolha com "Desfazer"/"Reativar"
-- [ ] **F4.3.3** `proactiveSettings` no store (hidratação no boot)
-- [ ] **F4.3.4** i18n
+- [x] **F4.3.1** `ProactiveSettings.tsx` (toggle, sensibilidade, categorias, quiet hours, blocklist, stats)
+- [x] **F4.3.2** Ações da bolha com "Desfazer"/"Reativar"
+- [x] **F4.3.3** `proactiveSettings` no store (hidratação no boot)
+- [x] **F4.3.4** i18n
 
 **F4.4 Admin**
-- [ ] **F4.4.1** `GET/PUT /admin-config` (`require_admin`, `meta`, invalidação de cache)
-- [ ] **F4.4.2** `GET /logs` anonimizado
-- [ ] **F4.4.3** `GET /admin-stats`
-- [ ] **F4.4.4** Kill-switch global
-- [ ] **F4.4.5** Seção no `AdminPanel` (só admin)
-- [ ] **F4.4.6** i18n admin
+- [x] **F4.4.1** `GET/PUT /admin-config` (`require_admin`, `meta`, invalidação de cache)
+- [x] **F4.4.2** `GET /logs` anonimizado
+- [x] **F4.4.3** `GET /admin-stats`
+- [x] **F4.4.4** Kill-switch global
+- [x] **F4.4.5** Seção no `AdminPanel` (só admin)
+- [x] **F4.4.6** i18n admin
 
 **F4.5 Testes**
-- [ ] **F4.5.1** 403 para não-admin
-- [ ] **F4.5.2** `PUT` parcial preserva campos
-- [ ] **F4.5.3** Desligar cancela/expira
-- [ ] **F4.5.4** Logs sem texto do usuário
-- [ ] **F4.5.5** Kill-switch efetivo
+- [x] **F4.5.1** 403 para não-admin
+- [x] **F4.5.2** `PUT` parcial preserva campos
+- [x] **F4.5.3** Desligar cancela/expira
+- [x] **F4.5.4** Logs sem texto do usuário
+- [x] **F4.5.5** Kill-switch efetivo
 
-**Aceite F4:** ninguém recebe insight sem ativar · onboarding único e multi-dispositivo · admin sem restart · logs anonimizados · suíte verde
+**Aceite F4:** ✅ ninguém recebe insight sem ativar · onboarding único e multi-dispositivo · admin sem restart · logs anonimizados · suíte verde
+
+> **Notas F4 (implementação):** `GET /settings` agora traz `blocked_topics`, `stats` (30 d), `conversation_count` e `onboarding_eligible` (servidor decide: nunca visto + desligado + ≥ 3 conversas). Desligar (`PUT {enabled:false}`) cancela as tasks do usuário e expira pendentes com `user_disabled`; o kill-switch (`PUT /admin-config {enabled_global:false}`) faz o mesmo para todos com `global_disabled` e bloqueia novas detecções imediatamente (cache invalidado). `DELETE /blocklist/{hash}` é o "Desfazer" do bloqueio (volta os insights `blocked` para `seen`); a ação `know_more` do ack alimenta `know_more_at` (taxa `know_more / delivered` no `admin-stats`). Logs admin só com `LOG_COLUMNS` (sem `synthesized_text` nem mensagens). UI: aba **Assistente proativo** no `AdminPanel` (`ProactiveSettings` + `ProactiveAdminSettings` só para admin) e `ProactiveOnboarding` em `App.tsx`. Testes: `test_proactive_admin.py` (9). Validação visual (modal/painel) fica para o ambiente do usuário — o sandbox só roda `tsc`/`build`.
 
 ---
 

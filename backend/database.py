@@ -1945,6 +1945,8 @@ async def _migrate_proactive_schema(db: aiosqlite.Connection) -> None:
         ("reason_line", "TEXT"),
         ("language", "TEXT"),
         ("emotion", "TEXT"),
+        # F4: "Quero saber mais" / "Me conta aqui" (métrica know_more, sem alterar o status)
+        ("know_more_at", "TEXT"),
     ]:
         try:
             await db.execute(f"SELECT {col_name} FROM proactive_insights LIMIT 1")

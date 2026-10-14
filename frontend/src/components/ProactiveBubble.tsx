@@ -93,6 +93,8 @@ export function ProactiveBubble({ message }: { message: Message }) {
     const followUp = insight?.follow_ups?.[0]
     const prompt = followUp && followUp.trim() ? followUp.trim() : t('proactive.knowMorePrompt', { topic })
     setComposerPrefill(prompt)
+    // F4: métrica "quero saber mais" (não altera o status da bolha)
+    if (insightId) void ackProactiveInsight(insightId, 'know_more', { silent: true })
   }
 
   const handleNotThisTopic = () => {

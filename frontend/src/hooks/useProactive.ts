@@ -16,7 +16,7 @@ export function useProactive() {
 
   useEffect(() => {
     if (!token) {
-      useStore.setState({ pendingInsights: [] })
+      useStore.setState({ pendingInsights: [], proactiveSettings: null })
       return
     }
     void useStore.getState().loadPendingInsights()

@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Artifact, Conversation, ConversationDetail, Message, Model, CacheStats, CacheSettings, FusionStatusEntry, Attachment, LibraryItem, WebSearchSource, AutoRouteDecisionInfo, UiEnvelope, ProgressBlock, ProcessStep, ProactiveInsight, ProactiveAckAction, ProactiveChannelHint, ProactiveExpandMode, ToastItem } from '../types'
+import type { Artifact, Conversation, ConversationDetail, Message, Model, CacheStats, CacheSettings, FusionStatusEntry, Attachment, LibraryItem, WebSearchSource, AutoRouteDecisionInfo, UiEnvelope, ProgressBlock, ProcessStep, ProactiveInsight, ProactiveAckAction, ProactiveChannelHint, ProactiveExpandMode, ProactiveSettings, ToastItem } from '../types'
 import { api } from '../api/client'
 import i18n, { detectInitialLocale } from '../i18n'
 import { effectivePreferredModel } from '../lib/modelSelection'
@@ -355,6 +355,15 @@ interface AppState {
   flushPendingInlineInsights: () => void
   ackProactiveInsight: (insightId: string, action: ProactiveAckAction, opts?: { silent?: boolean }) => Promise<void>
   pauseProactive: () => Promise<void>
+  /** F4.3.3 — preferências do usuário (fonte: servidor), hidratadas no boot. */
+  proactiveSettings: ProactiveSettings | null
+  loadProactiveSettings: () => Promise<ProactiveSettings | null>
+  updateProactiveSettings: (
+    patch: Parameters<typeof api.updateProactiveSettings>[0],
+    opts?: { silent?: boolean },
+  ) => Promise<ProactiveSettings | null>
+  unblockProactiveTopic: (topicHash: string) => Promise<boolean>
+  markProactiveOnboardingSeen: () => Promise<void>
   addErrorMessage: (content: string) => void
   handleImagePending: (event: { conversation_id: string; message_id: string; task_id: string; prompt: string }) => void
   handleImageReady: (event: { conversation_id: string; message_id: string; task_id: string; attachment: Attachment }) => void
@@ -530,6 +539,7 @@ export const useStore = create<AppState>((set, get) => ({
   conversationsWithInsight: {},
   pendingInlineInsights: [],
   pendingInsights: [],
+  proactiveSettings: null,
   composerPrefill: null,
   models: [],
   selectedModelId: typeof window !== 'undefined' ? readPersistedModelSelection().modelId : null,
@@ -882,30 +892,130 @@ export const useStore = create<AppState>((set, get) => ({
     const key = `${insightId}:${action}`
     if (_proactiveAcked.has(key)) return
     _proactiveAcked.add(key)
+    let result: Awaited<ReturnType<typeof api.ackProactiveInsight>> | null = null
     try {
-      await api.ackProactiveInsight(insightId, action)
+      result = await api.ackProactiveInsight(insightId, action)
     } catch (e) {
       _proactiveAcked.delete(key)
       if (!opts?.silent) console.warn('[proactive] ack falhou:', e)
-      if (action !== 'seen') get().showToast(i18n.t('proactive.ackError'), 'error')
+      if (action !== 'seen' && action !== 'know_more') get().showToast(i18n.t('proactive.ackError'), 'error')
       return
     }
-    set((s) => ({
-      messages: s.messages.map((m) =>
-        m.proactive_insight_id === insightId || m.insight?.id === insightId
-          ? { ...m, insight: m.insight ? { ...m.insight, status: action } : m.insight }
-          : m
-      ),
-    }))
-    if (action === 'blocked' && !opts?.silent) get().showToast(i18n.t('proactive.blockedToast'), 'info')
+    if (action !== 'know_more') {
+      set((s) => ({
+        messages: s.messages.map((m) =>
+          m.proactive_insight_id === insightId || m.insight?.id === insightId
+            ? { ...m, insight: m.insight ? { ...m.insight, status: action } : m.insight }
+            : m
+        ),
+      }))
+    }
+    if (action === 'blocked' && !opts?.silent) {
+      // F4.3.2 — efeito imediato + "Desfazer" (DELETE /blocklist/{hash} reabre a bolha)
+      const topicHash = result?.topic_hash || null
+      const toastId = `proactive-blocked-${insightId}`
+      get().showToast(i18n.t('proactive.blockedToast'), 'info', {
+        id: toastId,
+        durationMs: 8000,
+        action: topicHash
+          ? {
+              label: i18n.t('proactive.undo'),
+              onClick: () => {
+                get().hideToast(toastId)
+                _proactiveAcked.delete(key)
+                void get().unblockProactiveTopic(topicHash)
+              },
+            }
+          : undefined,
+      })
+      void get().loadProactiveSettings()
+    }
   },
   pauseProactive: async () => {
     try {
-      await api.updateProactiveSettings({ enabled: false })
-      get().showToast(i18n.t('proactive.pausedToast'), 'info', { durationMs: 6000 })
+      const settings = await api.updateProactiveSettings({ enabled: false })
+      set({ proactiveSettings: settings, pendingInsights: [] })
+      const toastId = 'proactive-paused'
+      get().showToast(i18n.t('proactive.pausedToast'), 'info', {
+        id: toastId,
+        durationMs: 8000,
+        action: {
+          label: i18n.t('proactive.reactivate'),
+          onClick: () => {
+            get().hideToast(toastId)
+            void get().updateProactiveSettings({ enabled: true })
+          },
+        },
+      })
     } catch (e) {
       console.warn('[proactive] pausar falhou:', e)
       get().showToast(i18n.t('proactive.ackError'), 'error')
+    }
+  },
+  loadProactiveSettings: async () => {
+    try {
+      const settings = await api.getProactiveSettings()
+      set({ proactiveSettings: settings })
+      return settings
+    } catch (e) {
+      console.warn('[proactive] settings indisponíveis:', e)
+      return null
+    }
+  },
+  updateProactiveSettings: async (patch, opts) => {
+    try {
+      const settings = await api.updateProactiveSettings(patch)
+      set((s) => ({
+        proactiveSettings: settings,
+        // desligar limpa a fila local; o servidor já expirou as pendências
+        pendingInsights: settings.enabled ? s.pendingInsights : [],
+      }))
+      if (!opts?.silent && patch.enabled === true) {
+        get().showToast(i18n.t('proactive.enabledToast'), 'success', { durationMs: 6000 })
+      }
+      return settings
+    } catch (e) {
+      console.warn('[proactive] salvar preferências falhou:', e)
+      if (!opts?.silent) get().showToast(i18n.t('proactive.ackError'), 'error')
+      return null
+    }
+  },
+  unblockProactiveTopic: async (topicHash) => {
+    try {
+      const res = await api.unblockProactiveTopic(topicHash)
+      const restored = new Set(res.restored_insight_ids || [])
+      set((s) => ({
+        proactiveSettings: s.proactiveSettings
+          ? {
+              ...s.proactiveSettings,
+              blocked_topics: (s.proactiveSettings.blocked_topics || []).filter((b) => b.topic_hash !== topicHash),
+            }
+          : s.proactiveSettings,
+        messages: restored.size
+          ? s.messages.map((m) =>
+              m.insight && restored.has(m.insight.id) ? { ...m, insight: { ...m.insight, status: 'seen' } } : m
+            )
+          : s.messages,
+      }))
+      for (const id of restored) _proactiveAcked.delete(`${id}:blocked`)
+      get().showToast(i18n.t('proactive.unblockedToast'), 'success', { durationMs: 4000 })
+      return true
+    } catch (e) {
+      console.warn('[proactive] desbloquear falhou:', e)
+      get().showToast(i18n.t('proactive.ackError'), 'error')
+      return false
+    }
+  },
+  markProactiveOnboardingSeen: async () => {
+    try {
+      const res = await api.markProactiveOnboardingSeen()
+      set((s) => ({
+        proactiveSettings: s.proactiveSettings
+          ? { ...s.proactiveSettings, onboarding_seen_at: res.onboarding_seen_at, onboarding_eligible: false }
+          : s.proactiveSettings,
+      }))
+    } catch (e) {
+      console.warn('[proactive] onboarding-seen falhou:', e)
     }
   },
 
@@ -1408,6 +1518,9 @@ export const useStore = create<AppState>((set, get) => ({
     const { token, user } = get()
     if (!token || !user?.id) return
     const userId = user.id
+    // F4.3.3 — preferências do assistente proativo vêm do servidor (fonte da verdade,
+    // vale em qualquer dispositivo); o useProactive só limpa no logout.
+    void get().loadProactiveSettings()
     // Only migrate data already scoped to this userId (never global leftovers)
     const cachedDisplay = localStorage.getItem(`nexuslocal_${userId}_display_name`) || ''
     const cachedFull = localStorage.getItem(`nexuslocal_${userId}_full_name`) || ''
