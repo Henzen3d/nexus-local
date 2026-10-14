@@ -49,7 +49,8 @@ Lista para quem for ligar `INTELLIGENT_UI_ENABLED` no servidor da família. Item
 - [x] "bom dia" não injeta `catalog.txt`. *(`test_should_offer_ui_triggers`.)*
 - [x] "compare os custos dos modelos" injeta, com a flag ligada. *(`test_should_offer_ui_triggers` + gate em `chat.py`.)*
 - [x] "calcule a divisão da conta de 150 com 10% de gorjeta" ativa `controls` com `computed` ou catálogo. *(Regex `calcul` dispara o catálogo; `test_should_offer_ui_triggers` cobre "calcule a divisão da conta de 150 reais".)*
-- [x] Catálogo acima de 400 tokens estimados (`len/4`) não é injetado. *(Checagem em `chat.py`; catálogo atual ≈ 251 tokens.)*
+- [x] Catálogo acima de 400 tokens estimados (`len/4`) não é injetado. *(Checagem em `chat.py`; catálogo atual ≈ 277 tokens, com teto conferido por `test_catalogo_cabe_no_teto_e_tem_as_regras_da_spec`.)*
+- [x] Há como medir se vale a pena manter ligado: oferecido / produzido / válido / descartado por motivo. *(`backend/ui_blocks/telemetry.py` + `GET /api/intelligent-ui/stats` (admin) + bloco no painel; `test_telemetria_conta_oferta_producao_validade_e_descartes`, `test_telemetria_motivos_de_descarte`.)*
 
 ## Acessibilidade e visual
 

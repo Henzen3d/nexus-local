@@ -644,7 +644,14 @@
     "intelligentUiSourceEnv": "サーバーの .env から",
     "intelligentUiSourceDefault": "既定（未設定）",
     "intelligentUiSourceHint": "ここで保存すると、これらの項目は .env から読み込まれなくなります。",
-    "intelligentUiSaveError": "保存できませんでした。もう一度お試しください。"
+    "intelligentUiSaveError": "保存できませんでした。もう一度お試しください。",
+    "intelligentUiStatsTitle": "前回の再起動以降",
+    "intelligentUiStatsRefresh": "更新",
+    "intelligentUiStatsOffered": "カタログを提示",
+    "intelligentUiStatsProduced": "モデルがフェンス付きで応答",
+    "intelligentUiStatsValid": "有効なエンベロープ",
+    "intelligentUiStatsDropped": "破棄されたブロック",
+    "intelligentUiStatsReasons": "理由"
   },
   "intelligentUi": {
     "progressOf": "{{max}} 中 {{current}}",

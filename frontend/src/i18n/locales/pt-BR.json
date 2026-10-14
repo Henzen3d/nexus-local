@@ -792,7 +792,14 @@
     "intelligentUiSourceEnv": "vindo do .env do servidor",
     "intelligentUiSourceDefault": "padrão (nunca configurado)",
     "intelligentUiSourceHint": "Depois de salvar aqui, o .env deixa de ser lido para estas opções.",
-    "intelligentUiSaveError": "Não foi possível salvar. Tente novamente."
+    "intelligentUiSaveError": "Não foi possível salvar. Tente novamente.",
+    "intelligentUiStatsTitle": "Desde o último restart",
+    "intelligentUiStatsRefresh": "Atualizar",
+    "intelligentUiStatsOffered": "Catálogo oferecido",
+    "intelligentUiStatsProduced": "Modelo respondeu com fence",
+    "intelligentUiStatsValid": "Envelopes válidos",
+    "intelligentUiStatsDropped": "Blocos descartados",
+    "intelligentUiStatsReasons": "Motivos"
   },
   "memory": {
     "useMemoryGlobal": "Memória nas conversas (padrão: ligada)",

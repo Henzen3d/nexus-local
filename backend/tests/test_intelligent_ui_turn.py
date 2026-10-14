@@ -241,3 +241,41 @@ def test_endpoint_config_get_para_usuario_e_post_so_admin(turn_env):
 
         r = client.get("/api/intelligent-ui/config", headers={"Authorization": f"Bearer {user_tok}"})
         assert r.json()["enabled"] is True and r.json()["allow_private_http"] is False
+
+
+def test_telemetria_conta_oferta_producao_validade_e_descartes(turn_env, monkeypatch):
+    from backend.ui_blocks.telemetry import intelligent_ui_telemetry
+
+    intelligent_ui_telemetry.reset()
+    monkeypatch.setenv("INTELLIGENT_UI_ENABLED", "true")
+
+    # Turno 1: oferta + fence válido (2 blocos: um fica, a imagem do card sai mas o card fica)
+    _run_turn(turn_env["user_id"], "compare os custos dos modelos")
+    # Turno 2: sem gatilho (não oferecido), modelo manda fence mesmo assim
+    _run_turn(turn_env["user_id"], "bom dia, tudo bem?")
+
+    snap = intelligent_ui_telemetry.snapshot()
+    assert snap["turns"] == 2
+    assert snap["offered"] == 1
+    assert snap["produced"] == 2
+    assert snap["produced_without_offer"] == 1
+    assert snap["valid"] == 2
+    assert snap["blocks_in"] == 4 and snap["blocks_out"] == 4
+    assert snap["discarded"] == {"no_fence": 0, "invalid_json": 0, "rejected_envelope": 0, "empty_after_validation": 0}
+    assert snap["block_types"] == {"progress": 2, "card": 2}
+    assert snap["rates"]["produced_given_offered"] == 1.0
+
+    # Endpoint só para admin
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from backend.auth import create_access_token
+
+    app = FastAPI()
+    app.include_router(iui_router.router)
+    with TestClient(app) as client:
+        user_tok = create_access_token(turn_env["user_id"], turn_env["user_id"], "user")
+        admin_tok = create_access_token(turn_env["admin_id"], turn_env["admin_id"], "admin")
+        assert client.get("/api/intelligent-ui/stats", headers={"Authorization": f"Bearer {user_tok}"}).status_code in (401, 403)
+        r = client.get("/api/intelligent-ui/stats", headers={"Authorization": f"Bearer {admin_tok}"})
+        assert r.status_code == 200 and r.json()["turns"] == 2

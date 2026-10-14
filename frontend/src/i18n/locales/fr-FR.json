@@ -644,7 +644,14 @@
     "intelligentUiSourceEnv": "issue du .env du serveur",
     "intelligentUiSourceDefault": "par défaut (jamais configuré)",
     "intelligentUiSourceHint": "Après enregistrement ici, le .env n'est plus lu pour ces options.",
-    "intelligentUiSaveError": "Enregistrement impossible. Réessayez."
+    "intelligentUiSaveError": "Enregistrement impossible. Réessayez.",
+    "intelligentUiStatsTitle": "Depuis le dernier redémarrage",
+    "intelligentUiStatsRefresh": "Actualiser",
+    "intelligentUiStatsOffered": "Catalogue proposé",
+    "intelligentUiStatsProduced": "Le modèle a répondu avec un fence",
+    "intelligentUiStatsValid": "Enveloppes valides",
+    "intelligentUiStatsDropped": "Blocs rejetés",
+    "intelligentUiStatsReasons": "Motifs"
   },
   "intelligentUi": {
     "progressOf": "{{current}} sur {{max}}",

@@ -250,6 +250,8 @@ CREATE TABLE IF NOT EXISTS message_ui_blocks (
 );
 ```
 
+Um envelope por mensagem, de propósito. Se um dia o host gravar blocos próprios na mesma mensagem (hoje `ui_progress` só vive no socket e no estado do frontend, que mescla host primeiro e modelo depois), a regra é mesclar no mesmo envelope — não abrir uma segunda linha nem trocar a chave para `(message_id, source)`. Rebuild de tabela no SQLite por um caso que ainda não existe não compensa.
+
 `payload` é o envelope já validado, `{"v":1,"blocks":[...]}`. Não é o fence cru.
 
 `messages.content` guarda a prosa com o fence removido. Se a remoção falhar, grava a prosa e não grava bloco. Nunca grava o JSON dentro de `content`.
@@ -257,7 +259,7 @@ CREATE TABLE IF NOT EXISTS message_ui_blocks (
 Eventos, acrescentados em `WSMessage` (`frontend/src/types.ts`):
 
 - `stream_end` ganha `ui_blocks?: UiEnvelope | null`.
-- `ui_progress`: `{ type: 'ui_progress'; block: ProgressBlock }`. Só o servidor emite. Substitui o bloco de mesmo `id` na mensagem em stream. Não vem do modelo no meio dos tokens.
+- `ui_progress`: `{ type: 'ui_progress'; block: ProgressBlock }`. Só o servidor emite. Substitui o bloco de mesmo `id` na mensagem em stream. Não vem do modelo no meio dos tokens. No frontend, durante o stream a mensagem do assistente ainda não existe em `messages`: o bloco fica em `streamingUiBlocks` (desenhado na `StreamingBubble`) e entra na mensagem no `finalizeStream`, antes dos blocos do modelo. Fora do stream, atualiza a última mensagem **do assistente** — nunca a bolha do usuário.
 
 Ao recarregar a conversa, a API de mensagens devolve `ui_blocks` junto da mensagem. O frontend valida de novo. Payload inválido no banco: mostrar só a prosa.
 
@@ -329,6 +331,8 @@ Heurístico, case insensitive, na última mensagem do usuário. Ligar o catálog
 - ou três ou mais números e uma destas palavras: `custo`, `tempo`, `modelo`, `%`, `taxa`, `valor`
 
 Turno que não bater: sem catálogo, sem cobrança de token extra, sem widget de modelo. Bloco de host (Fusion, busca, upload) não depende deste heurístico.
+
+**Medição.** Cada turno com a flag ligada registra uma linha de log `intelligent_ui turn offered=… produced=… valid=… blocks=in/out dropped=… reason=…` e alimenta contadores de processo (`backend/ui_blocks/telemetry.py`): oferecido, produzido (fence fechado), produzido sem oferta, válido, blocos entrados/saídos e motivo do descarte (`no_fence`, `invalid_json`, `rejected_envelope`, `empty_after_validation`). `GET /api/intelligent-ui/stats` (admin) devolve o snapshot, que o painel mostra abaixo das opções. É a resposta operacional para "vale a pena manter ligado?": oferta alta com produção baixa pede ajuste do catálogo; produção alta com validade baixa pede olhar os motivos. Zera no restart; sem tabela de propósito.
 
 Texto do catálogo, copiar literal na implementação (`backend/ui_blocks/catalog.txt`; o teste `test_catalogo_cabe_no_teto_e_tem_as_regras_da_spec` confere o teto e as linhas obrigatórias). O exemplo concreto de `chart` e a regra "use SEMPRE o nome de fence" entraram porque modelos pequenos escreviam ```` ```chart ```` solto. O bloco usa quatro tis para o fence interno não fechar o externo.
 

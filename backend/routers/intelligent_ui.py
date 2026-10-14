@@ -5,6 +5,9 @@
   confia, para repetir a mesma checagem antes de montar o ``<img>``.
 - ``POST /api/intelligent-ui/config`` — só admin. Grava na tabela singleton e
   passa a valer imediatamente para os próximos turnos (sem restart).
+- ``GET  /api/intelligent-ui/stats`` — só admin. Contadores do processo
+  (oferecido / produzido / válido / descartado por motivo) para decidir se vale
+  manter o recurso ligado. Zera no restart.
 """
 
 from __future__ import annotations
@@ -16,6 +19,7 @@ from pydantic import BaseModel, Field
 
 from backend.auth import get_current_user, require_admin
 from backend.database import get_db
+from backend.ui_blocks.telemetry import intelligent_ui_telemetry
 from backend.ui_blocks.config import (
     MAX_IMAGE_HOSTS,
     get_intelligent_ui_config,
@@ -57,3 +61,8 @@ async def save_config(
         return {"ok": True, "config": cfg.to_dict()}
     finally:
         await db.close()
+
+
+@router.get("/stats")
+async def get_stats(current_user: dict = Depends(require_admin)) -> Dict[str, Any]:
+    return intelligent_ui_telemetry.snapshot()

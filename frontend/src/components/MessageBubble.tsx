@@ -724,6 +724,8 @@ export function StreamingBubble({ content }: { content: string }) {
   const selectedProviderId = useStore((s) => s.selectedProviderId)
   const processSteps = useStore((s) => s.processSteps)
   const processStartedAt = useStore((s) => s.processStartedAt)
+  // Blocos do host (ui_progress) chegados durante o stream — spec §3/§5
+  const streamingUiBlocks = useStore((s) => s.streamingUiBlocks)
 
   // Obtém o adaptador e normaliza a resposta de stream em tempo real (Fase 7.4)
   const adapter = AdapterRegistry.getAdapter(selectedModelId, selectedProviderId)
@@ -795,6 +797,9 @@ export function StreamingBubble({ content }: { content: string }) {
         {showCursor && (
           <span className="streaming-cursor" aria-hidden="true">▍</span>
         )}
+
+        {/* Progresso do host durante o turno (Fusion, busca, upload). O renderer já respeita a flag. */}
+        {streamingUiBlocks && <DynamicRenderer envelope={streamingUiBlocks} />}
       </div>
     </div>
   )

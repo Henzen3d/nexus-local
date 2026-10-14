@@ -793,7 +793,14 @@
     "intelligentUiSourceEnv": "from the server .env",
     "intelligentUiSourceDefault": "default (never configured)",
     "intelligentUiSourceHint": "After saving here, the .env is no longer read for these options.",
-    "intelligentUiSaveError": "Could not save. Please try again."
+    "intelligentUiSaveError": "Could not save. Please try again.",
+    "intelligentUiStatsTitle": "Since last restart",
+    "intelligentUiStatsRefresh": "Refresh",
+    "intelligentUiStatsOffered": "Catalog offered",
+    "intelligentUiStatsProduced": "Model replied with a fence",
+    "intelligentUiStatsValid": "Valid envelopes",
+    "intelligentUiStatsDropped": "Blocks dropped",
+    "intelligentUiStatsReasons": "Reasons"
   },
   "memory": {
     "useMemoryGlobal": "Memory in conversations (default: on)",

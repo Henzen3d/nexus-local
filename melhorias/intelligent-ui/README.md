@@ -43,7 +43,7 @@ Ordem de execução: 01, depois 02, 03, 04, 05. O 06 acompanha cada fase, não e
 | Fase | Plano | Situação | Evidência |
 |---|---|---|---|
 | 1 | 01-plano-fundacao | Implementada | `backend/ui_blocks/validate.py`, `extract.py`, `config.py`; tabelas `message_ui_blocks` e `intelligent_ui_config` em `database.py`; `save_ui_blocks` em `persist_turn.py`; `routers/intelligent_ui.py`; `frontend/src/lib/nexusUi.ts`, `ui/hooks/useIntelligentUi.ts`, `components/IntelligentUiSettings.tsx`. Flag fecha o recurso inteiro; teste de turno em `tests/test_intelligent_ui_turn.py`. |
-| 2 | 02-plano-indicadores | Implementada | `ProgressCard.tsx`, `ChecklistCard.tsx`, `DynamicRenderer.tsx`, `handleUiProgress` no store, `should_offer.py`, `catalog.txt`, gate em `chat.py`. |
+| 2 | 02-plano-indicadores | Implementada | `ProgressCard.tsx`, `ChecklistCard.tsx`, `DynamicRenderer.tsx` (gate da flag + skeleton), `handleUiProgress` no store (buffer `streamingUiBlocks` durante o stream, mescla no `finalizeStream`), `should_offer.py`, `catalog.txt`, gate em `chat.py`, telemetria em `ui_blocks/telemetry.py`. |
 | 3 | 03-plano-cartoes-imagens | Implementada | `ImageCard.tsx`, `isAllowedImageUrl` nos dois lados; hosts e flag privada chegam ao frontend por `GET /api/intelligent-ui/config`. Falta só teste de render do cartão. |
 | 4 | 04-plano-graficos | Implementada | `ChartCard.tsx` (bar/line/compare, tabela sr-only). `AdminPanel` lazy em `App.tsx`: `recharts` em chunk próprio, fora do chat. |
 | 5 | 05-plano-controles | Implementada | `ControlsCard.tsx`, `lib/safeMath.ts`. `set_model` lista `models` do store, some com lista vazia, erro curto para id desconhecido; a11y (`htmlFor`, `aria-live`, `role=alert`), `maxLength` 200, clamp de número/range. |

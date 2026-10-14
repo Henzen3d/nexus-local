@@ -466,3 +466,36 @@ async def test_config_env_vale_ate_alguem_salvar_no_painel(monkeypatch):
                 os.remove(temp_db_path)
             except OSError:
                 pass
+
+
+# ─── Telemetria ──────────────────────────────────────────────────────────────
+
+def test_telemetria_motivos_de_descarte():
+    from backend.ui_blocks.telemetry import IntelligentUiTelemetry, inspect_fence
+
+    t = IntelligentUiTelemetry()
+    ok = '```nexus-ui\n{"v":1,"blocks":[{"id":"p","type":"progress","label":"A","value":1,"max":2},{"id":"x","type":"chart","kind":"pie"}]}\n```'
+    # Oferecido, produzido, válido, 1 bloco caiu
+    s = t.record_turn(offered=True, text="Oi.\n\n" + ok, envelope=validate_envelope('{"v":1,"blocks":[{"id":"p","type":"progress","label":"A","value":1,"max":2}]}'))
+    assert s["produced"] and s["valid"] and s["blocks_in"] == 2 and s["blocks_out"] == 1 and s["blocks_dropped"] == 1
+    # Oferecido, sem fence → no_fence
+    s = t.record_turn(offered=True, text="Só prosa.", envelope=None)
+    assert s["reason"] == "no_fence"
+    # Não oferecido e sem fence → caminho normal, não conta como descarte
+    t.record_turn(offered=False, text="Só prosa.", envelope=None)
+    # JSON quebrado
+    s = t.record_turn(offered=True, text="x\n```nexus-ui\n{\"v\":1,\n```", envelope=None)
+    assert s["reason"] == "invalid_json"
+    # v≠1: JSON ok, envelope rejeitado inteiro
+    s = t.record_turn(offered=True, text='x\n```nexus-ui\n{"v":2,"blocks":[{"type":"progress","label":"A","value":1,"max":2}]}\n```', envelope=None)
+    assert s["reason"] == "empty_after_validation"  # havia blocos; o validador zerou
+    s = t.record_turn(offered=True, text='x\n```nexus-ui\n{"v":1,"blocks":[]}\n```', envelope=None)
+    assert s["reason"] == "rejected_envelope"
+
+    snap = t.snapshot()
+    assert snap["turns"] == 6 and snap["offered"] == 5 and snap["produced"] == 4 and snap["valid"] == 1
+    assert snap["discarded"] == {"no_fence": 1, "invalid_json": 1, "rejected_envelope": 1, "empty_after_validation": 1}
+    assert snap["rates"]["valid_given_produced"] == 0.25
+
+    assert inspect_fence("sem nada")["found"] is False
+    assert inspect_fence('```chart\n{"kind":"bar","series":[]}\n```')["alt_fence"] is True

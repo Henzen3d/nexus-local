@@ -644,7 +644,14 @@
     "intelligentUiSourceEnv": "서버 .env 에서 가져옴",
     "intelligentUiSourceDefault": "기본값(설정된 적 없음)",
     "intelligentUiSourceHint": "여기서 저장하면 이 옵션들은 더 이상 .env 에서 읽히지 않습니다.",
-    "intelligentUiSaveError": "저장할 수 없습니다. 다시 시도하세요."
+    "intelligentUiSaveError": "저장할 수 없습니다. 다시 시도하세요.",
+    "intelligentUiStatsTitle": "마지막 재시작 이후",
+    "intelligentUiStatsRefresh": "새로고침",
+    "intelligentUiStatsOffered": "카탈로그 제공",
+    "intelligentUiStatsProduced": "모델이 펜스로 응답",
+    "intelligentUiStatsValid": "유효한 엔벨로프",
+    "intelligentUiStatsDropped": "폐기된 블록",
+    "intelligentUiStatsReasons": "사유"
   },
   "intelligentUi": {
     "progressOf": "{{max}} 중 {{current}}",

@@ -748,7 +748,14 @@
     "intelligentUiSourceEnv": "procedente del .env del servidor",
     "intelligentUiSourceDefault": "predeterminado (nunca configurado)",
     "intelligentUiSourceHint": "Después de guardar aquí, el .env deja de leerse para estas opciones.",
-    "intelligentUiSaveError": "No se pudo guardar. Inténtalo de nuevo."
+    "intelligentUiSaveError": "No se pudo guardar. Inténtalo de nuevo.",
+    "intelligentUiStatsTitle": "Desde el último reinicio",
+    "intelligentUiStatsRefresh": "Actualizar",
+    "intelligentUiStatsOffered": "Catálogo ofrecido",
+    "intelligentUiStatsProduced": "El modelo respondió con fence",
+    "intelligentUiStatsValid": "Sobres válidos",
+    "intelligentUiStatsDropped": "Bloques descartados",
+    "intelligentUiStatsReasons": "Motivos"
   },
   "memory": {
     "useMemoryGlobal": "Memoria en las conversaciones (predeterminado: activada)",

@@ -571,6 +571,7 @@ export const api = {
 
   // ── Intelligent UI ──────────────────────────────────────────────
   getIntelligentUiConfig: () => fetchJSON<import('../types').IntelligentUiConfig>('/intelligent-ui/config'),
+  getIntelligentUiStats: () => fetchJSON<import('../types').IntelligentUiStats>('/intelligent-ui/stats'),
   saveIntelligentUiConfig: (data: Partial<import('../types').IntelligentUiConfig>) =>
     fetchJSON<{ ok: boolean; config: import('../types').IntelligentUiConfig }>('/intelligent-ui/config', {
       method: 'POST',

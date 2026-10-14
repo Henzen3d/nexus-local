@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
-import { LayoutGrid, Save, ToggleLeft, ToggleRight, Info } from 'lucide-react'
+import { LayoutGrid, Save, ToggleLeft, ToggleRight, Info, RefreshCw } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { api } from '../api/client'
 import { useStore } from '../store/useStore'
-import type { IntelligentUiConfig } from '../types'
+import type { IntelligentUiConfig, IntelligentUiStats } from '../types'
 
 /**
  * Configurações → Ferramentas → Interface Inteligente.
@@ -20,6 +20,18 @@ export function IntelligentUiSettings() {
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [stats, setStats] = useState<IntelligentUiStats | null>(null)
+
+  const loadStats = () => {
+    api
+      .getIntelligentUiStats()
+      .then(setStats)
+      .catch(() => setStats(null))
+  }
+
+  useEffect(() => {
+    loadStats()
+  }, [])
 
   useEffect(() => {
     let alive = true
@@ -170,6 +182,74 @@ export function IntelligentUiSettings() {
           })}
         </span>
       </div>
+
+      {/* Telemetria do processo: vale a pena manter ligado? */}
+      {stats && (
+        <div
+          style={{
+            padding: '10px 12px',
+            border: '1px solid var(--hairline)',
+            borderRadius: 'var(--radius-md)',
+            marginBottom: '16px',
+            fontSize: '12px',
+            color: 'var(--ink-muted)',
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+            <strong style={{ color: 'var(--ink)', fontWeight: 600 }}>
+              {t('toolsSettings.intelligentUiStatsTitle', { defaultValue: 'Desde o último restart' })}
+            </strong>
+            <button
+              type="button"
+              onClick={loadStats}
+              title={t('toolsSettings.intelligentUiStatsRefresh', { defaultValue: 'Atualizar' })}
+              aria-label={t('toolsSettings.intelligentUiStatsRefresh', { defaultValue: 'Atualizar' })}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                minWidth: '32px',
+                minHeight: '32px',
+                border: '1px solid var(--hairline)',
+                borderRadius: '6px',
+                background: 'transparent',
+                color: 'var(--ink-muted)',
+                cursor: 'pointer',
+              }}
+            >
+              <RefreshCw size={13} />
+            </button>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '6px 12px' }}>
+            <span>
+              {t('toolsSettings.intelligentUiStatsOffered', { defaultValue: 'Catálogo oferecido' })}: <b>{stats.offered}</b> /{' '}
+              {stats.turns}
+            </span>
+            <span>
+              {t('toolsSettings.intelligentUiStatsProduced', { defaultValue: 'Modelo respondeu com fence' })}:{' '}
+              <b>{stats.produced}</b>
+              {stats.produced_without_offer > 0 ? ` (${stats.produced_without_offer} sem oferta)` : ''}
+            </span>
+            <span>
+              {t('toolsSettings.intelligentUiStatsValid', { defaultValue: 'Envelopes válidos' })}: <b>{stats.valid}</b>
+              {stats.rates.valid_given_produced !== null ? ` (${Math.round(stats.rates.valid_given_produced * 100)}%)` : ''}
+            </span>
+            <span>
+              {t('toolsSettings.intelligentUiStatsDropped', { defaultValue: 'Blocos descartados' })}: <b>{stats.blocks_dropped}</b> /{' '}
+              {stats.blocks_in}
+            </span>
+          </div>
+          {Object.values(stats.discarded).some((n) => n > 0) && (
+            <div style={{ marginTop: '6px', fontSize: '11.5px' }}>
+              {t('toolsSettings.intelligentUiStatsReasons', { defaultValue: 'Motivos' })}:{' '}
+              {Object.entries(stats.discarded)
+                .filter(([, n]) => n > 0)
+                .map(([k, n]) => `${k} ${n}`)
+                .join(' · ')}
+            </div>
+          )}
+        </div>
+      )}
 
       {error && (
         <p role="alert" style={{ color: 'var(--error)', fontSize: '12.5px', margin: '0 0 12px' }}>

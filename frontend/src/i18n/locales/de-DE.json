@@ -644,7 +644,14 @@
     "intelligentUiSourceEnv": "aus der .env des Servers",
     "intelligentUiSourceDefault": "Standard (nie konfiguriert)",
     "intelligentUiSourceHint": "Nach dem Speichern hier wird die .env für diese Optionen nicht mehr gelesen.",
-    "intelligentUiSaveError": "Speichern fehlgeschlagen. Bitte erneut versuchen."
+    "intelligentUiSaveError": "Speichern fehlgeschlagen. Bitte erneut versuchen.",
+    "intelligentUiStatsTitle": "Seit dem letzten Neustart",
+    "intelligentUiStatsRefresh": "Aktualisieren",
+    "intelligentUiStatsOffered": "Katalog angeboten",
+    "intelligentUiStatsProduced": "Modell antwortete mit Fence",
+    "intelligentUiStatsValid": "Gültige Envelopes",
+    "intelligentUiStatsDropped": "Verworfene Blöcke",
+    "intelligentUiStatsReasons": "Gründe"
   },
   "intelligentUi": {
     "progressOf": "{{current}} von {{max}}",
