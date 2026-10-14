@@ -773,6 +773,15 @@ DEFAULT_PROVIDERS = [
         ],
     },
     {
+        "id": "reflection",
+        "name": "Reflection AI",
+        "base_url": "https://api.reflection.ai/openai/v1",
+        "is_free": 0,
+        "models": [
+            ("reflection/Beam-1.0-501B-A23B", "Beam-1.0-501B-A23B", "Beam 1.0 501B A23B (Reflection)", 262144),
+        ],
+    },
+    {
         "id": "orcarouter",
         "name": "OrcaRouter",
         "base_url": "https://api.orcarouter.ai/v1",
