@@ -63,3 +63,17 @@ Este arquivo serve como o **checklist operacional definitivo** para a futura imp
 - [x] **5.3**: Exibir indicador de estimativa de tokens preservados e throughput médio atingido.
 - [x] **5.4**: Realizar bateria de testes manuais com usuários reais (turnos com perguntas simples, código complexo e análise de imagens).
 - [x] **5.5**: Validar que a compilação do TypeScript (`npm run build`) e os testes backend (`pytest`) continuam com 100% de sucesso.
+
+---
+
+## 📌 Fase 6: Calibração 2026 (Perfil de Modelos + Seleção por Fit)
+*Objetivo:* Corrigir a seleção "sempre o mesmo modelo" com o catálogo gratuito atual e garantir troca de modelo por mensagem. Detalhes em [06-diagnostico-e-calibracao-2026.md](06-diagnostico-e-calibracao-2026.md).
+
+- [x] **6.1**: Criar `backend/ranking/model_profile.py` (porte, raciocínio, especialidade, visão, velocidade, qualidade-base) — função pura e cacheada.
+- [x] **6.2**: Substituir o pool por família + "60 para todos" pela pontuação de adequação (`score_candidate`/`rank_candidates`) por intenção × complexidade × política.
+- [x] **6.3**: Sticky Routing condicionado à adequação (tolerâncias 2,5 / 4 / 8 pts) e sinal `model_switch`.
+- [x] **6.4**: Estimador léxico de complexidade, perguntas analíticas sem palavras-chave → raciocínio, palavras-chave em inglês.
+- [x] **6.5**: Esforço de raciocínio adaptativo no modo Auto (LIGHT → low, HEAVY → high; sem parâmetro em modelos sem dial).
+- [x] **6.6**: Endpoint `POST /api/dashboard/auto-router/preview` + seção "Testar o roteador" no painel (i18n pt-BR/en-US/es-ES).
+- [x] **6.7**: Testes com banco temporário e catálogo realista (`test_smart_router_calibration.py`); suíte anterior verde; `npm run build` sem erros.
+

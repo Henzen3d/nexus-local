@@ -1,4 +1,4 @@
-import type { Conversation, ConversationDetail, Model, Provider, CacheStats, CacheSettings, CacheEntry, EnhancerConfig, FusionConfig, Artifact, Attachment, LibraryItem, VisionRelayConfig, WebSearchConfig, WebSearchLog } from '../types'
+import type { Conversation, ConversationDetail, Model, Provider, CacheStats, CacheSettings, CacheEntry, EnhancerConfig, FusionConfig, Artifact, Attachment, LibraryItem, VisionRelayConfig, WebSearchConfig, WebSearchLog, AutoRouterPreviewResult } from '../types'
 
 export interface UserProfileApi {
   user_id?: string
@@ -318,6 +318,20 @@ export const api = {
     fetchJSON<{ status: string; policy: string }>('/dashboard/auto-router/policy', {
       method: 'POST',
       body: JSON.stringify({ policy }),
+    }),
+  previewAutoRouter: (payload: {
+    prompt: string
+    web_search?: boolean
+    has_attachment?: boolean
+    previous_model_id?: string | null
+    previous_intent?: string | null
+    policy?: string | null
+    reasoning_effort?: string | null
+    limit?: number
+  }) =>
+    fetchJSON<AutoRouterPreviewResult>('/dashboard/auto-router/preview', {
+      method: 'POST',
+      body: JSON.stringify(payload),
     }),
 
   // Ranking Weights

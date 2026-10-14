@@ -25,6 +25,14 @@ export function AutoRouteBadge({ decision }: AutoRouteBadgeProps) {
 
   const confidencePct = Math.round((decision.confidence ?? 0.9) * 100)
   const latency = decision.decision_latency_ms ? `${decision.decision_latency_ms}ms` : '< 1ms'
+  const complexityLabel =
+    decision.complexity === 1
+      ? t('autoRouter.complexityLight', { defaultValue: 'Leve' })
+      : decision.complexity === 3
+        ? t('autoRouter.complexityHeavy', { defaultValue: 'Pesada' })
+        : decision.complexity === 2
+          ? t('autoRouter.complexityMedium', { defaultValue: 'Média' })
+          : null
 
   return (
     <div
@@ -63,6 +71,18 @@ export function AutoRouteBadge({ decision }: AutoRouteBadgeProps) {
                 {decision.chosen_model_name}
               </span>
             </div>
+
+            {complexityLabel && (
+              <div className="auto-route-popover-row">
+                <span className="auto-route-popover-label">
+                  {t('autoRouter.previewComplexity', { defaultValue: 'Complexidade' })}:
+                </span>
+                <span className="auto-route-popover-val">
+                  {complexityLabel}
+                  {decision.reasoning_effort ? ` · ${t('autoRouter.previewEffort', { defaultValue: 'Esforço' })} ${decision.reasoning_effort}` : ''}
+                </span>
+              </div>
+            )}
 
             <div className="auto-route-popover-row">
               <span className="auto-route-popover-label">

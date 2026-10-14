@@ -1,8 +1,19 @@
 import React, { useEffect, useState } from 'react'
-import { Target, Zap, ShieldCheck, Sparkles, Check, Save, Loader2, ArrowRight } from 'lucide-react'
+import { Target, Zap, ShieldCheck, Sparkles, Check, Save, Loader2, ArrowRight, FlaskConical, Play } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { api } from '../api/client'
 import { useStore } from '../store/useStore'
+import type { AutoRouterPreviewResult } from '../types'
+
+const INTENT_LABEL_KEYS: Record<string, string> = {
+  code_engineering: 'autoRouter.codeEngineering',
+  deep_reasoning: 'autoRouter.deepReasoning',
+  trivial_quick: 'autoRouter.trivialQuick',
+  creative_longform: 'autoRouter.creativeLongform',
+  multimodal_vision: 'autoRouter.multimodalVision',
+  web_research: 'autoRouter.webResearch',
+  general_chat: 'autoRouter.generalChat',
+}
 
 export function AutoRouterSettings() {
   const { t } = useTranslation()
@@ -11,6 +22,47 @@ export function AutoRouterSettings() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [savedSuccess, setSavedSuccess] = useState(false)
+
+  // ── Testar o roteador (dry-run) ────────────────────────────────────────────
+  const [previewPrompt, setPreviewPrompt] = useState('')
+  const [previewContinue, setPreviewContinue] = useState(false)
+  const [previewLoading, setPreviewLoading] = useState(false)
+  const [preview, setPreview] = useState<AutoRouterPreviewResult | null>(null)
+  const [lastChosenModelId, setLastChosenModelId] = useState<string | null>(null)
+  const [lastIntent, setLastIntent] = useState<string | null>(null)
+
+  const complexityLabel = (c?: number) => {
+    if (c === 1) return t('autoRouter.complexityLight', { defaultValue: 'Leve' })
+    if (c === 3) return t('autoRouter.complexityHeavy', { defaultValue: 'Pesada' })
+    return t('autoRouter.complexityMedium', { defaultValue: 'Média' })
+  }
+
+  const intentLabel = (intent: string, fallback?: string) => {
+    const key = INTENT_LABEL_KEYS[intent]
+    return key ? t(key, { defaultValue: fallback || intent }) : (fallback || intent)
+  }
+
+  const runPreview = async () => {
+    const prompt = previewPrompt.trim()
+    if (!prompt || previewLoading) return
+    try {
+      setPreviewLoading(true)
+      const res = await api.previewAutoRouter({
+        prompt,
+        previous_model_id: previewContinue ? lastChosenModelId : null,
+        previous_intent: previewContinue ? lastIntent : null,
+        limit: 8,
+      })
+      setPreview(res)
+      setLastChosenModelId(res.decision.chosen_model_id)
+      setLastIntent(res.decision.intent)
+    } catch (err) {
+      console.error('Erro ao simular rota:', err)
+      showToast(t('autoRouter.previewError', { defaultValue: 'Não foi possível simular a rota.' }), 'error')
+    } finally {
+      setPreviewLoading(false)
+    }
+  }
 
   useEffect(() => {
     let mounted = true
@@ -177,6 +229,227 @@ export function AutoRouterSettings() {
         </div>
       </div>
 
+      {/* Testar o roteador (simulação sem gastar tokens) */}
+      <div
+        style={{
+          background: 'var(--surface-soft)',
+          border: '1px solid var(--hairline)',
+          borderRadius: '10px',
+          padding: '16px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '12px',
+          marginTop: '6px',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: 600, color: 'var(--ink)' }}>
+          <FlaskConical size={16} className="text-primary" />
+          <span>{t('autoRouter.previewTitle', { defaultValue: 'Testar o roteador' })}</span>
+        </div>
+        <p style={{ margin: 0, fontSize: '12px', color: 'var(--muted)', lineHeight: 1.5 }}>
+          {t('autoRouter.previewSubtitle', {
+            defaultValue:
+              'Simule a decisão para uma mensagem sem gastar tokens: veja a intenção detectada, o modelo escolhido e o ranking de adequação do seu catálogo.',
+          })}
+        </p>
+
+        <textarea
+          value={previewPrompt}
+          onChange={(e) => setPreviewPrompt(e.target.value)}
+          onKeyDown={(e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+              e.preventDefault()
+              void runPreview()
+            }
+          }}
+          rows={3}
+          placeholder={t('autoRouter.previewPlaceholder', {
+            defaultValue: "Digite uma mensagem de teste… ex.: 'Oi' ou 'Analise a viabilidade de abrir uma franquia…'",
+          })}
+          style={{
+            width: '100%',
+            boxSizing: 'border-box',
+            resize: 'vertical',
+            fontSize: '13px',
+            padding: '10px 12px',
+            borderRadius: '8px',
+            border: '1px solid var(--hairline)',
+            background: 'var(--surface-card, #1e1e24)',
+            color: 'var(--ink)',
+            fontFamily: 'inherit',
+          }}
+        />
+
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: 'var(--muted)', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={previewContinue}
+              onChange={(e) => setPreviewContinue(e.target.checked)}
+              disabled={!lastChosenModelId}
+            />
+            <span>
+              {t('autoRouter.previewContinueConversation', {
+                defaultValue: 'Simular como continuação (usa o modelo escolhido na simulação anterior)',
+              })}
+            </span>
+          </label>
+
+          <button
+            type="button"
+            onClick={() => void runPreview()}
+            disabled={previewLoading || !previewPrompt.trim()}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '8px 14px',
+              borderRadius: '8px',
+              border: 'none',
+              background: 'var(--accent, #6366f1)',
+              color: '#fff',
+              fontSize: '13px',
+              fontWeight: 600,
+              cursor: previewLoading || !previewPrompt.trim() ? 'not-allowed' : 'pointer',
+              opacity: previewLoading || !previewPrompt.trim() ? 0.6 : 1,
+            }}
+          >
+            {previewLoading ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
+            {previewLoading
+              ? t('autoRouter.previewRunning', { defaultValue: 'Simulando…' })
+              : t('autoRouter.previewRun', { defaultValue: 'Simular rota' })}
+          </button>
+        </div>
+
+        {preview && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+                gap: '8px',
+                fontSize: '12px',
+              }}
+            >
+              <div style={{ background: 'var(--surface-card, #1e1e24)', borderRadius: '8px', padding: '10px 12px' }}>
+                <div style={{ color: 'var(--muted)', marginBottom: '2px' }}>{t('autoRouter.intent', { defaultValue: 'Intenção' })}</div>
+                <div style={{ color: 'var(--ink)', fontWeight: 600 }}>
+                  {intentLabel(preview.intent.intent, preview.intent.reason_label_pt)}
+                  <span style={{ color: 'var(--muted)', fontWeight: 400 }}> · {Math.round((preview.intent.confidence ?? 0) * 100)}%</span>
+                </div>
+              </div>
+              <div style={{ background: 'var(--surface-card, #1e1e24)', borderRadius: '8px', padding: '10px 12px' }}>
+                <div style={{ color: 'var(--muted)', marginBottom: '2px' }}>{t('autoRouter.previewComplexity', { defaultValue: 'Complexidade' })}</div>
+                <div style={{ color: 'var(--ink)', fontWeight: 600 }}>
+                  {complexityLabel(preview.intent.complexity)}
+                  <span style={{ color: 'var(--muted)', fontWeight: 400 }}> · {preview.intent.complexity_score.toFixed(2)}</span>
+                </div>
+              </div>
+              <div style={{ background: 'var(--surface-card, #1e1e24)', borderRadius: '8px', padding: '10px 12px' }}>
+                <div style={{ color: 'var(--muted)', marginBottom: '2px' }}>{t('autoRouter.modelChosen', { defaultValue: 'Modelo Escolhido' })}</div>
+                <div style={{ color: 'var(--accent, #6366f1)', fontWeight: 700, wordBreak: 'break-word' }}>
+                  {preview.decision.chosen_model_name}
+                </div>
+                <div style={{ color: 'var(--muted)' }}>{preview.decision.provider_id} · {preview.decision.reason_pt}</div>
+              </div>
+              <div style={{ background: 'var(--surface-card, #1e1e24)', borderRadius: '8px', padding: '10px 12px' }}>
+                <div style={{ color: 'var(--muted)', marginBottom: '2px' }}>{t('autoRouter.previewEffort', { defaultValue: 'Esforço de raciocínio' })}</div>
+                <div style={{ color: 'var(--ink)', fontWeight: 600 }}>
+                  {preview.decision.reasoning_effort || t('autoRouter.previewEffortNone', { defaultValue: 'sem dial' })}
+                  <span style={{ color: 'var(--muted)', fontWeight: 400 }}> · T {preview.decision.temperature} · {preview.decision.decision_latency_ms}ms</span>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--ink)', marginTop: '4px' }}>
+              {t('autoRouter.previewRanking', { defaultValue: 'Ranking de adequação' })}
+              <span style={{ color: 'var(--muted)', fontWeight: 400 }}>
+                {' '}· {t('autoRouter.previewCandidates', {
+                  defaultValue: '{{count}} candidatos avaliados de {{total}} modelos habilitados',
+                  count: preview.candidates_considered,
+                  total: preview.catalog_size,
+                })}
+              </span>
+            </div>
+
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                <thead>
+                  <tr style={{ color: 'var(--muted)', textAlign: 'left' }}>
+                    <th style={{ padding: '6px 8px', fontWeight: 600 }}>#</th>
+                    <th style={{ padding: '6px 8px', fontWeight: 600 }}>{t('autoRouter.modelChosen', { defaultValue: 'Modelo' })}</th>
+                    <th style={{ padding: '6px 8px', fontWeight: 600 }}>{t('autoRouter.previewFit', { defaultValue: 'Fit' })}</th>
+                    <th style={{ padding: '6px 8px', fontWeight: 600 }}>{t('autoRouter.previewQuality', { defaultValue: 'Qualidade' })}</th>
+                    <th style={{ padding: '6px 8px', fontWeight: 600 }}>{t('autoRouter.previewTags', { defaultValue: 'Perfil' })}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {preview.ranking.map((c, idx) => {
+                    const chosen = c.model_id === preview.decision.chosen_model_id
+                    return (
+                      <tr
+                        key={c.model_id}
+                        style={{
+                          borderTop: '1px solid var(--hairline)',
+                          background: chosen ? 'var(--accent-subtle, rgba(99, 102, 241, 0.12))' : 'transparent',
+                        }}
+                      >
+                        <td style={{ padding: '6px 8px', color: 'var(--muted)' }}>{idx + 1}</td>
+                        <td style={{ padding: '6px 8px', color: 'var(--ink)' }}>
+                          <div style={{ fontWeight: chosen ? 700 : 500 }}>
+                            {c.model_name}
+                            {chosen && (
+                              <span style={{ marginLeft: '6px', color: 'var(--accent, #6366f1)', fontSize: '10px', fontWeight: 700 }}>
+                                ✓ {t('autoRouter.previewChosen', { defaultValue: 'escolhido' })}
+                              </span>
+                            )}
+                          </div>
+                          <div style={{ color: 'var(--muted)', fontSize: '11px' }}>
+                            {c.provider_id}
+                            {c.is_free ? ` · ${t('autoRouter.previewFree', { defaultValue: 'grátis' })}` : ''}
+                            {c.quota_status && c.quota_status !== 'available' ? ` · ${c.quota_status}` : ''}
+                          </div>
+                        </td>
+                        <td style={{ padding: '6px 8px', color: 'var(--ink)', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>
+                          {c.fit_score.toFixed(1)}
+                        </td>
+                        <td style={{ padding: '6px 8px', color: 'var(--muted)', fontVariantNumeric: 'tabular-nums' }}>
+                          {c.quality_score.toFixed(0)}{c.has_ranking ? '' : '*'}
+                        </td>
+                        <td style={{ padding: '6px 8px' }}>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                            {c.tags.map((tag) => (
+                              <span
+                                key={tag}
+                                style={{
+                                  fontSize: '10px',
+                                  padding: '1px 6px',
+                                  borderRadius: '8px',
+                                  background: 'var(--surface-badge, rgba(255, 255, 255, 0.06))',
+                                  color: 'var(--muted)',
+                                  whiteSpace: 'nowrap',
+                                }}
+                              >
+                                {tag}
+                              </span>
+                            ))}
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <div style={{ fontSize: '11px', color: 'var(--muted)' }}>
+              {t('autoRouter.previewQualityNote', {
+                defaultValue: '* qualidade estimada pelo perfil heurístico (modelo ainda sem ranking real).',
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Blindagens de Segunda Escala Ativas */}
       <div
         style={{
@@ -200,7 +473,10 @@ export function AutoRouterSettings() {
             <strong>Context Window Guard:</strong> Descarta modelos automaticamente se o histórico estimado + nova pergunta ultrapassar o tamanho de contexto (impede erro HTTP 400).
           </li>
           <li>
-            <strong>Sticky Routing (KV Cache Protector):</strong> Mantém o modelo do turno anterior se ele atender à intenção atual, evitando quebra desnecessária de cache de servidor e latência inicial.
+            <strong>Sticky Routing (KV Cache Protector):</strong> Mantém o modelo do turno anterior apenas enquanto ele continua adequado à nova mensagem (follow-ups do mesmo tema); mudanças de intenção ou de complexidade trocam de modelo.
+          </li>
+          <li>
+            <strong>Perfil de Capacidades + Esforço Adaptativo:</strong> Cada modelo é classificado por porte, raciocínio (thinking), especialidade e velocidade; saudações vão para modelos pequenos/rápidos com esforço baixo, análises pesadas para modelos pensantes com esforço alto.
           </li>
           <li>
             <strong>Weighted Slot Rotation:</strong> Aplica rotação circular entre provedores gratuitos rápidos (Groq, Cerebras, Cloudflare) para mitigar efeito Thundering Herd e rate limit 429.

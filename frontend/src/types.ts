@@ -421,6 +421,14 @@ export interface UiEnvelope {
   blocks: UiBlock[]
 }
 
+export interface AutoRouteAlternative {
+  model_id: string
+  model_name: string
+  provider_id: string
+  fit_score: number
+  tags?: string[]
+}
+
 export interface AutoRouteDecisionInfo {
   chosen_model_id: string
   chosen_model_name: string
@@ -432,6 +440,46 @@ export interface AutoRouteDecisionInfo {
   temperature: number
   decision_latency_ms: number
   matched_signals?: string[]
+  /** 1 = leve, 2 = média, 3 = pesada (calibração 2026) */
+  complexity?: number
+  fit_score?: number
+  /** Esforço de raciocínio adaptativo aplicado (null = modelo sem dial) */
+  reasoning_effort?: string | null
+  model_tags?: string[]
+  alternatives?: AutoRouteAlternative[]
+}
+
+export interface AutoRouterPreviewCandidate {
+  model_id: string
+  model_name: string
+  provider_id: string
+  fit_score: number
+  quality_score: number
+  has_ranking: boolean
+  is_free: boolean
+  quota_status?: string
+  tags: string[]
+  breakdown?: Record<string, number>
+}
+
+export interface AutoRouterPreviewResult {
+  intent: {
+    intent: string
+    complexity: number
+    complexity_score: number
+    confidence: number
+    reason_label_pt: string
+    matched_signals: string[]
+    recommended_temperature: number
+    inherited_from_history: boolean
+    min_context_length_required: number
+    processing_time_ms: number
+  }
+  policy: string
+  decision: AutoRouteDecisionInfo
+  ranking: AutoRouterPreviewCandidate[]
+  candidates_considered: number
+  catalog_size: number
 }
 
 
