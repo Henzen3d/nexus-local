@@ -425,6 +425,16 @@ Open Intelligent UI detalhado em [08-open-intelligent-ui-referencia.md](08-open-
 
 Cada fase deixa o chat atual intacto com a flag desligada.
 
+### 11.1 Extensões planejadas (aditivas ao `nexus-ui/1`)
+
+Levantadas em 2026-10-14 a partir do Intelligent UI do ChatGPT e de três repositórios de referência ([10-referencias-answerui-openui-openwebui.md](10-referencias-answerui-openui-openwebui.md)). Nenhuma muda o contrato acima: tipo novo é descartado por cliente antigo; campo novo é opcional. Até serem implementadas, o que vale é a spec desta página.
+
+| Plano | O que acrescenta | Impacto nesta spec quando entrar |
+|---|---|---|
+| [11-plano-camada-visual.md](11-plano-camada-visual.md) | Camada visual compartilhada dos cartões (`UiCard`, tokens, formatação por locale, movimento reduzido, montagem adiada do sandbox). **Primeira fatia entregue.** | Nenhum (só render). |
+| [12-plano-paridade-intelligent-ui.md](12-plano-paridade-intelligent-ui.md) | Blocos `metric`, `table`, `callout`, `options`, `follow_up`; `chart` com `pie`/`unit`/rótulos/`stacked`; estado compartilhado por expressões `=…` no `safeMath`; render progressivo do fence; laço "Pedir correção"; catálogo modular; `Origin` no WebSocket. | §4 ganha subseções por tipo; teto de blocos 4 → 6 com subtetos (§4, §8 e item "Mais de 4 blocos" do §10 passam a dizer 6); §8 catálogo vira base + módulos com teto de 450 tokens por turno; §5 `stream_end` ganha `ui_errors`. |
+| [13-plano-cenas-2d-3d.md](13-plano-cenas-2d-3d.md) | `sandbox` com `kind: "scene"`: runtime local three.js/canvas sem rede, `params`/`report`, Pausar/Reiniciar/Tela cheia. | §4.5 ganha a variante `scene`; CSP sem CDN para essa variante. |
+
 ## 12. Riscos
 
 | Risco | Corte |

@@ -663,7 +663,17 @@
     "exportTooltip": "대화형 도구를 독립 파일로 다운로드",
     "computedResult": "결과",
     "modelNotInList": "해당 모델은 목록에 없습니다.",
-    "controlsDone": "전송됨"
+    "controlsDone": "전송됨",
+    "copyData": "데이터 복사",
+    "copied": "복사됨",
+    "restart": "다시 시작",
+    "fullscreen": "전체 화면",
+    "sandboxEscaped": "콘텐츠가 샌드박스를 벗어나려고 하여 중단되었습니다.",
+    "stepsSummary": "{{total}}개 중 {{done}}개",
+    "stepDone": "완료",
+    "stepActive": "진행 중",
+    "stepPending": "대기 중",
+    "stepError": "오류"
   },
   "memory": {
     "useMemoryGlobal": "대화 메모리 (기본: 켜짐)",

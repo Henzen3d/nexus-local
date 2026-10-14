@@ -1036,7 +1036,17 @@
     "exportTooltip": "Download standalone interactive tool",
     "computedResult": "Result",
     "modelNotInList": "That model is not in your list.",
-    "controlsDone": "Sent"
+    "controlsDone": "Sent",
+    "copyData": "Copy data",
+    "copied": "Copied",
+    "restart": "Restart",
+    "fullscreen": "Full screen",
+    "sandboxEscaped": "The content tried to leave the sandbox and was stopped.",
+    "stepsSummary": "{{done}} of {{total}}",
+    "stepDone": "done",
+    "stepActive": "in progress",
+    "stepPending": "pending",
+    "stepError": "failed"
   },
   "proactive": {
     "bubbleBadge": "Proactive assistant",

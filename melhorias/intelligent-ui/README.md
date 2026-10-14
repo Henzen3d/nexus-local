@@ -32,9 +32,13 @@ Fora desta pasta: reescrever o Multi+, substituir o painel de artefatos lateral,
 | [07-chatkit-referencia.md](07-chatkit-referencia.md) | Referência conceitual do ChatKit da OpenAI. |
 | [08-open-intelligent-ui-referencia.md](08-open-intelligent-ui-referencia.md) | Referência profunda do CopilotKit OpenIntelligentUI (spectrum, sandbox, streaming anti-shift, theme bridge). |
 | [09-plano-sandbox-e-exportacao.md](09-plano-sandbox-e-exportacao.md) | Fase 7: Micro-ferramentas sob demanda em sandbox isolado, theme bridge e exportação 1-click HTML. |
-| [referencias-codigo/](referencias-codigo/) | Módulos e rotinas extraídos do OpenIntelligentUI prontos para uso (`sandbox-core.ts`, `design-tokens-bridge.ts`, `export-standalone.ts`, etc.). |
+| [10-referencias-answerui-openui-openwebui.md](10-referencias-answerui-openui-openwebui.md) | Leitura de três repositórios de referência (AnswerUI, OpenUI, Open WebUI) com tabela de paridade contra o Intelligent UI do ChatGPT e o que adotar de cada um. |
+| [11-plano-camada-visual.md](11-plano-camada-visual.md) | Camada visual compartilhada dos cartões nativos (`UiCard`, tokens, formatação por locale, movimento reduzido, montagem adiada). **Primeira fatia entregue em 2026-10-14.** |
+| [12-plano-paridade-intelligent-ui.md](12-plano-paridade-intelligent-ui.md) | Paridade de funcionalidades: blocos `metric`, `table`, `callout`, `options`, `follow_up`; `chart` com `pie`; estado compartilhado; render progressivo; laço "Pedir correção"; catálogo modular; `Origin` no WebSocket. |
+| [13-plano-cenas-2d-3d.md](13-plano-cenas-2d-3d.md) | Cenas 2D/3D: `sandbox` com `kind: "scene"`, runtime local three.js/canvas sem rede, `params`/`report`, barra Pausar/Reiniciar/Tela cheia. |
+| [referencias-codigo/](referencias-codigo/) | Módulos prontos para uso: do OpenIntelligentUI (`sandbox-core.ts`, `design-tokens-bridge.ts`, `export-standalone.ts`, `visualization-criteria.py`, `open-gen-ui-prompt-skill.txt`), do AnswerUI/MIT para o plano 13 (`scene-protocol.ts`, `scene-runtime-core.ts`, `scene-document.ts`) e próprio para o plano 12 (`partial-json.ts`, scanner de envelope parcial). |
 
-Ordem de execução: 01, depois 02, 03, 04, 05. O 06 acompanha cada fase, não espera o fim. A Fase 7 (plano 09) entra após a estabilização das fases nativas, aproveitando diretamente o código de `referencias-codigo/`.
+Ordem de execução: 01, depois 02, 03, 04, 05. O 06 acompanha cada fase, não espera o fim. A Fase 7 (plano 09) entra após a estabilização das fases nativas, aproveitando diretamente o código de `referencias-codigo/`. Os planos 11, 12 e 13 são aditivos e entram nessa ordem: 11 (visual, já iniciado), 12 (paridade, em passos independentes com flag desligada) e 13 (cenas, depois do laço de correção do 12).
 
 ## Estado
 
@@ -50,7 +54,9 @@ Ordem de execução: 01, depois 02, 03, 04, 05. O 06 acompanha cada fase, não e
 | 6 | 06-criterios-aceite | 37 de 44 itens atendidos | Bloqueadores para ligar em produção listados no topo do arquivo. |
 | 7 | 09-plano-sandbox-e-exportacao | Implementada | `SandboxCard.tsx`, `themeBridge.ts`, `hooks/useResolvedTheme.ts`, `lib/exportStandalone.ts` + testes de função pura. Tema reativo por `postMessage`, CSP `default-src 'none'` (esm.sh só para módulos), `lang` do i18n. |
 
-Testes que passam: `backend/tests/test_ui_blocks.py` (15), `frontend/src/lib/nexusUi.test.ts` (7), `frontend/src/ui/lib/safeMath.test.ts` (4). `tsc` e `vite build` limpos. Não há testes de render dos componentes.
+Testes que passam: `backend/tests/test_ui_blocks.py` (15), `frontend/src/lib/nexusUi.test.ts` (7), `frontend/src/ui/lib/safeMath.test.ts` (4), `frontend/src/ui/lib/chartFormat.test.ts` (14). `tsc` e `vite build` limpos. Não há testes de render dos componentes (só smoke de SSR manual; o `test:dom` com jsdom está previsto no plano 11 §4.5).
+
+**Camada visual (plano 11, primeira fatia em 2026-10-14):** os seis cartões (`ProgressCard`, `ChecklistCard`, `ImageCard`, `ChartCard`, `ControlsCard`, `SandboxCard`) passaram a compartilhar `ui/components/UiCard.tsx` (cabeçalho, ícone, ações, rodapé, erro) e as classes `nexus-ui-*` do `index.css`, só com tokens do Nexus; números formatados por locale (`ui/lib/chartFormat.ts`), ticks por altura, paleta derivada de `--primary`, tooltip e legenda próprios, `prefers-reduced-motion` respeitado (`ui/hooks/useMotionAndViewport.ts`), sandbox monta só perto da vista e nunca desmonta, alvos de 44 px em toque. Dez chaves novas de i18n (`intelligentUi.*`) nos oito idiomas.
 
 Desvios de contrato adotados como "auto-healing" nos dois validadores (fora da spec, mas simétricos): `v` é forçado para 1; bloco sem `type` é inferido pelos campos; `kind` inválido de chart vira `bar`; `controls` aceita até 6 fields; fences ```` ```chart ````/```` ```ui ```` são aceitos como fallback. Assimetria conhecida: ação desconhecida em `controls` descarta o bloco no Python e vira `send_message` com template padrão no TS.
 

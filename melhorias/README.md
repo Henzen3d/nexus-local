@@ -17,7 +17,14 @@ melhorias/
 │   ├── 04-plano-graficos.md
 │   ├── 05-plano-controles.md
 │   ├── 06-criterios-aceite.md
-│   └── 07-chatkit-referencia.md
+│   ├── 07-chatkit-referencia.md
+│   ├── 08-open-intelligent-ui-referencia.md
+│   ├── 09-plano-sandbox-e-exportacao.md
+│   ├── 10-referencias-answerui-openui-openwebui.md
+│   ├── 11-plano-camada-visual.md
+│   ├── 12-plano-paridade-intelligent-ui.md
+│   ├── 13-plano-cenas-2d-3d.md
+│   └── referencias-codigo/     # Módulos prontos (sandbox, tokens, exportação, cena, JSON parcial)
 │
 ├── assistente-proativo/        # 🤖 Assistente Proativo (Detecção de emoção/entidades + pesquisa background)
 │   ├── README.md               # Hub e índice (comece aqui)
@@ -130,7 +137,7 @@ melhorias/
 
 ## Intelligent UI
 
-Spec e planos em [`intelligent-ui/`](intelligent-ui/README.md). **Implementado** (Fases 1–7; auditoria de 2026-10-14 com pendências anotadas nos planos). A IA manda dados. O React atual desenha. A flag nasce desligada e, desde as correções de 2026-10-14, desliga o recurso inteiro (catálogo, extração, persistência, render); liga-se pelo painel admin (Ferramentas → Interface Inteligente) ou por `INTELLIGENT_UI_ENABLED`. Pendências restantes em `intelligent-ui/06-criterios-aceite.md`.
+Spec e planos em [`intelligent-ui/`](intelligent-ui/README.md). **Implementado** (Fases 1–7; auditoria de 2026-10-14 com pendências anotadas nos planos). A IA manda dados. O React atual desenha. A flag nasce desligada e, desde as correções de 2026-10-14, desliga o recurso inteiro (catálogo, extração, persistência, render); liga-se pelo painel admin (Ferramentas → Interface Inteligente) ou por `INTELLIGENT_UI_ENABLED`. Pendências restantes em `intelligent-ui/06-criterios-aceite.md`. Em 2026-10-14 a camada visual dos cartões foi unificada (plano 11) e ficaram planejados, de forma aditiva, a paridade com o Intelligent UI do ChatGPT (plano 12: `metric`, `table`, `callout`, `options`, `follow_up`, estado compartilhado, render progressivo, laço de correção) e as cenas 2D/3D (plano 13), com base nos repositórios AnswerUI, OpenUI e Open WebUI (leitura no plano 10).
 
 ## New Chat Input (Redesign Benchmark Claude 2026)
 

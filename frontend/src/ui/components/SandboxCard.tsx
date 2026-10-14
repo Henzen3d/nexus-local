@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Download, Maximize2, RotateCcw } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useChatContext } from '../../context/ChatContext'
 import type { SandboxBlock } from '../../types'
@@ -11,7 +12,9 @@ import {
   THEME_MESSAGE_TYPE,
 } from '../themeBridge'
 import { useIntelligentUiConfig } from '../hooks/useIntelligentUi'
+import { useNearScreen } from '../hooks/useMotionAndViewport'
 import { useResolvedTheme } from '../hooks/useResolvedTheme'
+import { UiCard, UiCardAction } from './UiCard'
 
 interface Props {
   block: SandboxBlock
@@ -32,7 +35,14 @@ export function SandboxCard({ block }: Props) {
   const { title, initial_height = 300, html, css = '', js = '', standalone_download = true } = block
 
   const [currentHeight, setCurrentHeight] = useState<number>(initial_height)
+  const [run, setRun] = useState(0)
+  const [escaped, setEscaped] = useState(false)
   const iframeRef = useRef<HTMLIFrameElement>(null)
+  const loads = useRef(0)
+  const [card, setCard] = useState<HTMLElement | null>(null)
+  // O iframe só monta quando o cartão chega a uma tela de distância do viewport
+  // (conversas longas não pagam por sandboxes fora da vista). Depois fica montado.
+  const near = useNearScreen(card)
 
   // Tema efetivo do app, reativo (data-theme no <html>, resolvido pelo App.tsx)
   const themeMode = useResolvedTheme()
@@ -103,7 +113,7 @@ export function SandboxCard({ block }: Props) {
     const win = iframeRef.current?.contentWindow
     if (!win) return
     win.postMessage({ type: THEME_MESSAGE_TYPE, mode: themeMode, tokens: readLiveThemeTokens() }, '*')
-  }, [themeMode, srcDoc])
+  }, [themeMode, srcDoc, run, near])
 
   // Listener para eventos postMessage originados do sandbox
   useEffect(() => {
@@ -134,102 +144,98 @@ export function SandboxCard({ block }: Props) {
     }
   }, [sendMessage])
 
-  // Ao carregar (ou recarregar) o iframe, reenvia o tema atual
+  // Ao carregar o iframe, reenvia o tema atual. Um SEGUNDO load no mesmo iframe
+  // significa que o conteúdo navegou para fora do srcdoc (o sandbox bloqueia a
+  // navegação do topo, mas não a do próprio frame): em vez de deixar uma página de
+  // erro do navegador, avisamos e oferecemos Reiniciar. Ideia do AnswerUI (MIT).
   const handleIframeLoad = () => {
+    loads.current += 1
+    if (loads.current > 1) {
+      setEscaped(true)
+      return
+    }
     iframeRef.current?.contentWindow?.postMessage(
       { type: THEME_MESSAGE_TYPE, mode: themeMode, tokens: readLiveThemeTokens() },
       '*'
     )
   }
 
+  const handleRestart = useCallback(() => {
+    loads.current = 0
+    setEscaped(false)
+    setCurrentHeight(initial_height)
+    setRun((n) => n + 1)
+  }, [initial_height])
+
+  const handleFullscreen = () => {
+    const target = card as (HTMLElement & { webkitRequestFullscreen?: () => void }) | null
+    if (!target) return
+    if (document.fullscreenElement === target) {
+      void document.exitFullscreen?.()
+    } else if (target.requestFullscreen) {
+      void target.requestFullscreen()
+    } else {
+      target.webkitRequestFullscreen?.()
+    }
+  }
+
   const handleDownload = () => {
     downloadStandaloneHtml(title, html, css, js, isDark, lang)
   }
 
-  return (
-    <div
-      style={{
-        marginTop: '12px',
-        backgroundColor: 'var(--surface-card)',
-        border: '1px solid var(--hairline)',
-        borderRadius: '10px',
-        overflow: 'hidden',
-        boxShadow: '0 2px 10px rgba(0, 0, 0, 0.06)',
-        display: 'flex',
-        flexDirection: 'column',
-      }}
-    >
-      {/* Header com título e botão de exportação standalone */}
-      <div
-        style={{
-          padding: '6px 8px 6px 14px',
-          borderBottom: '1px solid var(--hairline)',
-          backgroundColor: 'var(--surface-soft)',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          gap: '8px',
-          minHeight: '44px',
-        }}
-      >
-        <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--ink)' }}>
-          {title}
-        </span>
+  const restartLabel = t('intelligentUi.restart') || 'Reiniciar'
 
-        {standalone_download && (
-          <button
-            type="button"
-            onClick={handleDownload}
-            title={t('intelligentUi.exportTooltip') || 'Baixar como HTML autônomo'}
-            aria-label={t('intelligentUi.exportTooltip') || 'Baixar como HTML autônomo'}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              fontSize: '12px',
-              fontWeight: 500,
-              minHeight: '44px',
-              minWidth: '44px',
-              padding: '0 12px',
-              borderRadius: '8px',
-              border: '1px solid var(--hairline)',
-              backgroundColor: 'var(--surface-card)',
-              color: 'var(--ink)',
-              cursor: 'pointer',
-            }}
-          >
-            <span aria-hidden="true">↓</span> {t('intelligentUi.exportStandalone') || 'Baixar HTML'}
-          </button>
+  return (
+    <UiCard
+      ref={setCard}
+      as="figure"
+      variant="flush"
+      className="nexus-ui-sandbox"
+      title={title}
+      actions={
+        <>
+          <UiCardAction icon={<RotateCcw size={14} />} label={restartLabel} onClick={handleRestart} hideLabel />
+          <UiCardAction
+            icon={<Maximize2 size={14} />}
+            label={t('intelligentUi.fullscreen') || 'Tela cheia'}
+            onClick={handleFullscreen}
+            hideLabel
+          />
+          {standalone_download && (
+            <UiCardAction
+              icon={<Download size={14} />}
+              label={t('intelligentUi.exportStandalone') || 'Baixar HTML'}
+              onClick={handleDownload}
+            />
+          )}
+        </>
+      }
+    >
+      {/* Container iframe sandbox estrito (SEM allow-same-origin) */}
+      <div className="nexus-ui-sandbox__stage" style={{ height: `${currentHeight}px` }}>
+        {escaped ? (
+          <div className="nexus-ui-sandbox__notice" role="alert">
+            <p>{t('intelligentUi.sandboxEscaped') || 'O conteúdo tentou sair do sandbox e foi interrompido.'}</p>
+            <button type="button" className="nexus-ui-button" onClick={handleRestart}>
+              <RotateCcw size={14} aria-hidden="true" /> {restartLabel}
+            </button>
+          </div>
+        ) : near ? (
+          <iframe
+            key={run}
+            ref={iframeRef}
+            srcDoc={srcDoc}
+            sandbox="allow-scripts allow-forms"
+            referrerPolicy="no-referrer"
+            title={title}
+            onLoad={handleIframeLoad}
+            style={{ colorScheme: isDark ? 'dark' : 'light' }}
+          />
+        ) : (
+          <div className="nexus-ui-sandbox__placeholder" aria-hidden="true" />
         )}
       </div>
-
-      {/* Container iframe sandbox estrito (SEM allow-same-origin) */}
-      <div
-        style={{
-          width: '100%',
-          height: `${currentHeight}px`,
-          position: 'relative',
-          transition: 'height 0.2s ease',
-        }}
-      >
-        <iframe
-          ref={iframeRef}
-          srcDoc={srcDoc}
-          sandbox="allow-scripts allow-forms"
-          referrerPolicy="no-referrer"
-          title={title}
-          onLoad={handleIframeLoad}
-          style={{
-            width: '100%',
-            height: '100%',
-            border: 'none',
-            display: 'block',
-            backgroundColor: 'transparent',
-            colorScheme: isDark ? 'dark' : 'light',
-          }}
-        />
-      </div>
-    </div>
+    </UiCard>
   )
 }
 
