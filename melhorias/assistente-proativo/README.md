@@ -9,6 +9,7 @@ Transformar o Nexus de chat reativo em assistente que percebe **interesse genuí
 | 0 | [`00-visao-geral-v2.md`](./00-visao-geral-v2.md) | Visão ajustada ao código real, decisões de produto, o que reaproveitar, correções ao plano original, fases e critérios de sucesso |
 | 1 | [`01-decisao-entrega-e-presenca.md`](./01-decisao-entrega-e-presenca.md) | **A decisão que estava em aberto:** toast × bolha × cartão de retorno × push; máquina de estados de presença; regras de frescor; contratos WS/REST; cenário "saiu para almoçar" passo a passo |
 | 2 | [`02-fase-1-spike-detector.md`](./02-fase-1-spike-detector.md) | F1 — porteiro léxico + classificador LLM + dataset gold + métricas (go/no-go) |
+| 2b | [`resultados-spike-f1.md`](./resultados-spike-f1.md) | Resultados do spike F1: entregáveis, métricas medidas do porteiro, comandos para medir o classificador, decisão go/no-go |
 | 3 | [`03-fase-2-nucleo-pipeline.md`](./03-fase-2-nucleo-pipeline.md) | F2 — migrações, limites, pesquisa, síntese, entrega inline/toast, bolha, integração no chat |
 | 4 | [`04-fase-3-presenca-fila-retorno.md`](./04-fase-3-presenca-fila-retorno.md) | F3 — presença, fila `pending`, cartão "Enquanto você esteve fora", "Me conta aqui" iniciando chat novo, expiração |
 | 5 | [`05-fase-4-controles-e-admin.md`](./05-fase-4-controles-e-admin.md) | F4 — opt-in e onboarding, settings do usuário, blocklist, painel admin, logs anonimizados, kill-switch |
@@ -31,8 +32,8 @@ Transformar o Nexus de chat reativo em assistente que percebe **interesse genuí
 ## Estado das fases
 | Fase | Status |
 |---|---|
-| F1 Spike do detector | ⏳ não iniciada |
-| F2 Núcleo do pipeline | ⏸️ aguardando F1 |
+| F1 Spike do detector | 🟡 código pronto — porteiro **GO** (83,3 % / 0 %); classificador aguarda medição local ([`resultados-spike-f1.md`](./resultados-spike-f1.md)) |
+| F2 Núcleo do pipeline | ⏸️ aguardando métricas do classificador (F1) |
 | F3 Presença, fila e retorno | ⏸️ |
 | F4 Controles e admin | ⏸️ |
 | F5 Qualidade e rollout | ⏸️ |
