@@ -48,7 +48,7 @@ def inspect_fence(text: str) -> dict[str, Any]:
         blocks = data.get("blocks")
         if isinstance(blocks, list):
             raw_blocks = len(blocks)
-        elif isinstance(blocks, dict) or "type" in data or any(k in data for k in ("kind", "steps", "fields", "html", "facts", "body")):
+        elif isinstance(blocks, dict) or "type" in data or any(k in data for k in ("kind", "steps", "fields", "html", "facts", "body", "items")):
             raw_blocks = 1
     return {"found": True, "alt_fence": alt, "json_ok": json_ok, "raw_blocks": raw_blocks, "raw_len": len(raw)}
 

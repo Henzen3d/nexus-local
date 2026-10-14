@@ -5,9 +5,13 @@
  */
 
 import type {
+  CalloutBlock,
   CardBlock,
   ChartBlock,
   ControlsBlock,
+  FollowUpBlock,
+  MetricBlock,
+  MetricItem,
   ProgressBlock,
   SandboxBlock,
   UiBlock,
@@ -19,10 +23,34 @@ const FIELD_ID_REGEX = /^[a-z0-9_]{1,32}$/
 const SELECT_VALUE_REGEX = /^[a-zA-Z0-9._-]{1,64}$/
 const PLACEHOLDER_REGEX = /\{([a-zA-Z0-9_]+)\}/g
 
-const MAX_BLOCKS = 4
 // Espelham backend/ui_blocks/validate.py — mudar lá e aqui juntos (spec, seção 4).
+// Plano 12 §0: teto 6 com subtetos por tipo (iframe pesado, gráfico caro, follow_up único).
+export const MAX_BLOCKS = 6
+const MAX_BLOCKS_PER_TYPE: Record<string, number> = { sandbox: 1, chart: 2, follow_up: 1, options: 1 }
 const MAX_RAW_JSON_LENGTH = 16000
 const MAX_CONTROL_FIELDS = 4
+const MAX_METRIC_ITEMS = 4
+const MAX_FOLLOW_UP_ITEMS = 4
+const CALLOUT_KINDS = ['info', 'success', 'warning', 'danger'] as const
+// Sinônimos que modelos usam; qualquer outra coisa vira `info`.
+const CALLOUT_KIND_ALIASES: Record<string, CalloutBlock['kind']> = {
+  error: 'danger',
+  erro: 'danger',
+  alert: 'danger',
+  critical: 'danger',
+  warn: 'warning',
+  aviso: 'warning',
+  atencao: 'warning',
+  atenção: 'warning',
+  caution: 'warning',
+  ok: 'success',
+  sucesso: 'success',
+  done: 'success',
+  note: 'info',
+  tip: 'info',
+  nota: 'info',
+  dica: 'info',
+}
 const MAX_SANDBOX_HTML = 12000
 const MAX_SANDBOX_CSS = 4000
 const MAX_SANDBOX_JS = 8000
@@ -479,6 +507,109 @@ function validateSandbox(item: Record<string, unknown>): SandboxBlock | null {
   return out
 }
 
+/** Texto aparado dentro de [min, max]; qualquer outra coisa → null. */
+function cleanText(value: unknown, min: number, max: number): string | null {
+  if (value === null || value === undefined || typeof value === 'boolean' || typeof value === 'object') return null
+  const text = String(value).trim()
+  if (text.length < min) return null
+  return text.slice(0, max)
+}
+
+function validateMetric(item: Record<string, unknown>): MetricBlock | null {
+  if (!Array.isArray(item.items)) return null
+  const cleanItems: MetricItem[] = []
+  for (const raw of item.items) {
+    if (cleanItems.length >= MAX_METRIC_ITEMS) break
+    if (!raw || typeof raw !== 'object') continue
+    const r = raw as Record<string, unknown>
+    const label = cleanText(r.label, 1, 40)
+    if (label === null) continue
+    let value: number | string | null
+    if (typeof r.value === 'boolean') value = null
+    else if (typeof r.value === 'number') value = Number.isFinite(r.value) ? r.value : null // NaN não vira texto
+    else value = cleanText(r.value, 1, 24)
+    if (value === null) continue
+    const clean: MetricItem = { label, value }
+    const unit = cleanText(r.unit, 1, 8)
+    if (unit !== null && typeof value === 'number') clean.unit = unit
+    const delta = cleanText(r.delta, 1, 12)
+    if (delta !== null) clean.delta = delta
+    const trend = String(r.trend || '').trim().toLowerCase()
+    if (trend === 'up' || trend === 'down' || trend === 'flat') clean.trend = trend
+    const good = String(r.good || '').trim().toLowerCase()
+    if (good === 'up' || good === 'down') clean.good = good
+    const hint = cleanText(r.hint, 1, 40)
+    if (hint !== null) clean.hint = hint
+    cleanItems.push(clean)
+  }
+  if (cleanItems.length === 0) return null
+  const out: MetricBlock = { id: (item.id as string) || 'metric_1', type: 'metric', items: cleanItems }
+  const title = cleanText(item.title, 1, 80)
+  if (title !== null) out.title = title
+  return out
+}
+
+function normalizeCalloutKind(raw: unknown): CalloutBlock['kind'] {
+  const kind = String(raw || 'info').trim().toLowerCase()
+  if ((CALLOUT_KINDS as readonly string[]).includes(kind)) return kind as CalloutBlock['kind']
+  return CALLOUT_KIND_ALIASES[kind] ?? 'info'
+}
+
+function validateCallout(item: Record<string, unknown>): CalloutBlock | null {
+  const body = cleanText(item.body, 1, 400)
+  if (body === null) return null
+  const out: CalloutBlock = {
+    id: (item.id as string) || 'callout_1',
+    type: 'callout',
+    kind: normalizeCalloutKind(item.kind),
+    body,
+  }
+  const title = cleanText(item.title, 1, 60)
+  if (title !== null) out.title = title
+  return out
+}
+
+function validateFollowUp(item: Record<string, unknown>): FollowUpBlock | null {
+  if (!Array.isArray(item.items)) return null
+  const cleanItems: string[] = []
+  const seen = new Set<string>()
+  for (let raw of item.items) {
+    if (cleanItems.length >= MAX_FOLLOW_UP_ITEMS) break
+    if (raw && typeof raw === 'object') {
+      const r = raw as Record<string, unknown>
+      raw = r.label || r.text
+    }
+    const text = cleanText(raw, 3, 80)
+    if (text === null || seen.has(text.toLowerCase())) continue
+    seen.add(text.toLowerCase())
+    cleanItems.push(text)
+  }
+  if (cleanItems.length === 0) return null
+  return { id: (item.id as string) || 'follow_up_1', type: 'follow_up', items: cleanItems }
+}
+
+/**
+ * Bloco sem `type`: inferido pelos campos, na mesma ordem do Python (spec §4).
+ * `items` de textos → follow_up; `items` de {label, value} → metric; `kind` de
+ * callout com `body` → callout. O card fica por último (title/body são comuns).
+ */
+function inferType(obj: Record<string, unknown>): string | null {
+  if (obj.kind && obj.series) return 'chart'
+  if (obj.steps || (obj.value !== undefined && obj.max !== undefined)) return 'progress'
+  if (obj.fields) return 'controls'
+  if (obj.html) return 'sandbox'
+  if (Array.isArray(obj.items) && obj.items.length > 0) {
+    if (obj.items.every((x) => typeof x === 'string')) return 'follow_up'
+    if (obj.items.every((x) => x && typeof x === 'object' && 'label' in x && 'value' in x)) return 'metric'
+  }
+  const kind = String(obj.kind || '').trim().toLowerCase()
+  if (obj.body !== undefined && ((CALLOUT_KINDS as readonly string[]).includes(kind) || kind in CALLOUT_KIND_ALIASES)) {
+    return 'callout'
+  }
+  if (obj.facts || obj.body || obj.title) return 'card'
+  return null
+}
+
 /**
  * Validador principal de envelope nexus-ui/1
  */
@@ -501,7 +632,9 @@ export function parseUiEnvelope(raw: unknown): UiEnvelope | null {
 
   // Normalização de bloco único ou ausência de "blocks"
   if (!Array.isArray(data.blocks)) {
-    if (data.type || data.kind || data.steps || data.fields || data.html || data.facts || data.body || data.title) {
+    if (data.blocks && typeof data.blocks === 'object') {
+      data = { ...data, blocks: [data.blocks] }
+    } else if (data.type || inferType(data)) {
       data = { v: 1, blocks: [data] }
     } else {
       return null
@@ -512,23 +645,25 @@ export function parseUiEnvelope(raw: unknown): UiEnvelope | null {
   if ('v' in data && data.v !== 1 && data.v !== '1') return null
   data.v = 1
 
-  const cleanBlocks: UiBlock[] = []
+  let cleanBlocks: UiBlock[] = []
   const seenIds = new Set<string>()
+  const perType: Record<string, number> = {}
 
   for (let idx = 0; idx < (data.blocks as unknown[]).slice(0, MAX_BLOCKS).length; idx++) {
     const item = (data.blocks as unknown[])[idx]
     if (!item || typeof item !== 'object') continue
     const obj = { ...(item as Record<string, unknown>) }
 
-    let bType = obj.type as string | undefined
+    let bType = typeof obj.type === 'string' ? obj.type.trim().toLowerCase() : undefined
     if (!bType) {
-      if (obj.kind && obj.series) bType = 'chart'
-      else if (obj.steps || (obj.value !== undefined && obj.max !== undefined)) bType = 'progress'
-      else if (obj.fields) bType = 'controls'
-      else if (obj.html) bType = 'sandbox'
-      else bType = 'card'
+      // Sem `type` e sem campo reconhecível: o Python descarta; aqui o card
+      // continua sendo o fallback histórico (validateCard exige só um título).
+      bType = inferType(obj) ?? 'card'
       obj.type = bType
     }
+
+    // Subteto por tipo (plano 12 §0): o excedente cai, os demais seguem.
+    if (bType in MAX_BLOCKS_PER_TYPE && (perType[bType] ?? 0) >= MAX_BLOCKS_PER_TYPE[bType]) continue
 
     let bId = obj.id as string | undefined
     if (typeof bId !== 'string' || !ID_REGEX.test(bId) || seenIds.has(bId)) {
@@ -542,14 +677,23 @@ export function parseUiEnvelope(raw: unknown): UiEnvelope | null {
     else if (bType === 'chart') validated = validateChart(obj)
     else if (bType === 'controls') validated = validateControls(obj)
     else if (bType === 'sandbox') validated = validateSandbox(obj)
+    else if (bType === 'metric') validated = validateMetric(obj)
+    else if (bType === 'callout') validated = validateCallout(obj)
+    else if (bType === 'follow_up') validated = validateFollowUp(obj)
 
     if (validated) {
       seenIds.add(bId)
+      perType[bType] = (perType[bType] ?? 0) + 1
       cleanBlocks.push(validated)
     }
   }
 
   if (cleanBlocks.length === 0) return null
+
+  // `follow_up` é sempre o último bloco (plano 12 §2.3): se veio antes, vai para o fim.
+  if (cleanBlocks.some((b) => b.type === 'follow_up') && cleanBlocks[cleanBlocks.length - 1].type !== 'follow_up') {
+    cleanBlocks = [...cleanBlocks.filter((b) => b.type !== 'follow_up'), ...cleanBlocks.filter((b) => b.type === 'follow_up')]
+  }
 
   return {
     v: 1,

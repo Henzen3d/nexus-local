@@ -70,7 +70,7 @@ Envelope:
 Limites do envelope, iguais no backend e no frontend:
 
 - `v` só pode ser `1`. Outro valor: envelope inteiro descartado.
-- `blocks` é lista. Máximo 4 itens. Lista vazia: descartar o envelope, manter a prosa.
+- `blocks` é lista. Máximo 6 itens (era 4 até o plano 12), com subtetos por tipo: 1 `sandbox`, 2 `chart`, 1 `follow_up` (sempre o último; o validador reordena). Só os 6 primeiros itens da lista são olhados; o excedente de um subteto cai e os demais seguem. Lista vazia: descartar o envelope, manter a prosa.
 - JSON do fence: no máximo 16000 caracteres.
 - `id` de cada bloco: 1 a 32 caracteres, `[a-z0-9_-]+`, único na mensagem.
 - Campo desconhecido: ignorar o campo, não o bloco. Tipo desconhecido: descartar o bloco.
@@ -86,7 +86,10 @@ Limites do envelope, iguais no backend e no frontend:
 | `v` ausente | assume 1 | modelo pequeno esquece o campo |
 | `v` presente e ≠ 1 (inclusive `null`) | envelope inteiro descartado | outro contrato |
 | Bloco solto sem envelope, ou `blocks` como objeto | embrulha em `{"v":1,"blocks":[…]}` | idem |
-| `type` ausente | inferido pelos campos (`steps`/`value+max` → progress, `kind+series` → chart, `fields` → controls, `html` → sandbox, `facts`/`body`/`title` → card) | idem |
+| `type` ausente | inferido pelos campos, nesta ordem: `kind+series` → chart, `steps`/`value+max` → progress, `fields` → controls, `html` → sandbox, `items` de textos → follow_up, `items` de `{label, value}` → metric, `kind` de callout + `body` → callout, `facts`/`body`/`title` → card | idem |
+| `callout.kind` fora da união | sinônimos mapeados (`warn` → warning, `error` → danger, `note`/`tip` → info, `ok` → success); o resto vira `info` | aviso errado de cor é melhor que aviso perdido |
+| `metric.items[].value` NaN/infinito, ou booleano | item fora | não vira texto "nan" |
+| `follow_up` antes de outros blocos; segundo `follow_up` | reordenado para o fim; o segundo cai | sempre o último, um só |
 | `id` ausente, inválido ou repetido | gerado (`tipo_n`) | id é só âncora de render |
 | `label`/`title` ausente | texto padrão | não vale perder o bloco por isso |
 | `chart.kind` ausente | `bar` | padrão razoável |
@@ -237,6 +240,44 @@ Para ferramentas dinâmicas sob demanda (calculadoras complexas, simulações in
 - **Host Bridge Seguro via `postMessage`:** Comunicação bidirecional estrita: o sandbox só pode disparar `{ type: 'nexus_action', action: 'send_message', text: '...' }` para o host. O host valida a mensagem antes de encaminhar ao chat.
 - **1-Click Export Standalone:** Quando `standalone_download` for true, o cartão exibe botão para baixar o código como arquivo HTML autônomo funcional com as dependências embutidas.
 
+### 4.6 `metric` (plano 12 §2.1)
+
+Indicadores em grade, no desenho de KPI (valor pesado, delta com seta, rótulo em cima, dica embaixo).
+
+```json
+{
+  "id": "kpis",
+  "type": "metric",
+  "title": "Este mês",
+  "items": [
+    {"label": "Receita", "value": 48200, "unit": "R$", "delta": "+8,1%", "trend": "up", "hint": "vs. mês anterior"},
+    {"label": "Churn", "value": "1,8%", "delta": "-0,3 p.p.", "trend": "down", "good": "down"}
+  ]
+}
+```
+
+- `title`: opcional, 1–80.
+- `items`: 1 a 4. `label` 1–40 (obrigatório); `value` número finito **ou** texto 1–24 (obrigatório); `unit` opcional 1–8, só mantida quando `value` é número; `delta` opcional 1–12; `trend` opcional `up|down|flat`; `good` opcional `up|down` (qual direção é boa; padrão `up`); `hint` opcional 1–40.
+- Render (`MetricCard`): valor numérico formatado por locale sem notação compacta; cor do delta = `--success` quando `trend === good`, `--error` quando o oposto, neutra em `flat`; texto sr-only com a tendência.
+
+### 4.7 `callout` (plano 12 §2.2)
+
+```json
+{"id": "aviso", "type": "callout", "kind": "warning", "title": "Atenção", "body": "A taxa Selic usada é a de outubro de 2026."}
+```
+
+- `kind`: `info|success|warning|danger`; ausente ou desconhecido → `info` (sinônimos na tabela de tolerâncias). `title` opcional 1–60. `body` 1–400, obrigatório.
+- Render (`CalloutCard`): faixa com borda esquerda de 3 px na cor do tipo (`--primary`, `--success`, `--warning`, `--error`), ícone, `role="note"` em todos os tipos (é conteúdo do modelo, não alerta do sistema). Não substitui `> [!NOTE]` na prosa.
+
+### 4.8 `follow_up` (plano 12 §2.3)
+
+```json
+{"id": "proximos", "type": "follow_up", "items": ["Comparar com 2025", "Mostrar por região", "Exportar como tabela"]}
+```
+
+- `items`: 1 a 4 textos de 3–80 caracteres (objetos `{label}`/`{text}` são aceitos; repetições sem caixa caem). Um por envelope, sempre o último bloco.
+- Render (`FollowUpCard`): lista vertical de botões separados por linha fina, `aria-label="Sugestão: …"`. Clique = `sendMessage(texto)` — gesto do usuário, nunca automático (§7). Desabilitado durante o stream. O item escolhido fica marcado; a lista permanece no histórico.
+
 ## 5. Persistência e stream
 
 Tabela nova, criada no `init_db` de `backend/database.py` no mesmo estilo das migrações incrementais (try/select, senão create):
@@ -297,6 +338,8 @@ Por isso:
 
 Sem endpoint SSE novo.
 
+**Origin no handshake** (plano 12 §6, `backend/ws_origin.py`): `/ws/chat` recusa, antes do `accept` (HTTP 403), um `Origin` que não seja o mesmo `host[:porta]` do cabeçalho `Host` nem conste em `ALLOWED_ORIGINS` (a mesma lista do CORS). Sem `Origin` (cliente que não é navegador) passa; `Origin: null` não. Clickjacking da página já é coberto pelo nginx (`frame-ancestors 'self'` + `X-Frame-Options: SAMEORIGIN` em `frontend/nginx-security-headers.conf`).
+
 ## 7. Segurança, acessibilidade e prevenção de layout shift
 
 - Pintar texto com nó de texto React. Nunca `dangerouslySetInnerHTML` na bolha principal.
@@ -343,13 +386,16 @@ Se um visual ajudar, anexe UM único fence ```nexus-ui no final, depois da prosa
 {"v":1,"blocks":[{"type":"chart","title":"Título","kind":"bar","x_key":"x","series":[{"key":"y","label":"Rótulo"}],"rows":[{"x":"Item","y":10}]}]}
 ```
 
-Máximo 4 blocos. Tipos no campo "type":
+Máximo 6 blocos (até 2 chart, 1 sandbox, 1 follow_up sempre por último). Tipos no campo "type":
 - progress: label, value, max, steps com label e state pending|active|done|error.
 - card: title, body, facts (lista de {label, value}), image opcional com url e alt. URL de imagem só se for arquivo do app ou host da lista confiável.
 - chart: kind bar|line|compare, x_key, series (key e label), rows numéricas. Sem cor.
+- metric: title opcional, items (1 a 4) com label, value (número ou texto curto), unit, delta, trend up|down|flat, good up|down (qual direção é boa), hint.
+- callout: kind info|success|warning|danger, title opcional, body: um aviso curto que merece destaque.
+- follow_up: items com 1 a 4 sugestões curtas de próxima pergunta, sem repetir o que a prosa já respondeu.
 - controls: title, submit_label, fields (text|select|number|range, máximo 4), computed opcional e uma action: send_message usa template com {id_do_campo}; set_model usa field do select e não invente id de modelo.
 - sandbox: title, initial_height, html, css, js, standalone_download (simulação interativa isolada).
-Regras: use SEMPRE o nome de fence ```nexus-ui, nunca ```chart ou ```card. Não escreva HTML na bolha principal.
+Regras: use SEMPRE o nome de fence ```nexus-ui, nunca ```chart ou ```card. Não escreva HTML na bolha principal. Pergunta curta ou factual: só prosa.
 ~~~~
 
 O fence de exemplo dentro do catálogo é texto de instrução, não um bloco a renderizar. O extrator só olha a resposta do assistente, não o system prompt.
@@ -404,7 +450,7 @@ Open Intelligent UI detalhado em [08-open-intelligent-ui-referencia.md](08-open-
 - Instalar SDKs pesados de terceiros ou desenhar árvore livre de widgets no host.
 - Abrir SSE ao lado do WebSocket.
 - Aceitar qualquer URL `https` como imagem.
-- Mais de 4 blocos, dashboard, vídeo, áudio player, upload novo (anexo já existe).
+- Mais de 6 blocos, dashboard, vídeo, áudio player, upload novo (anexo já existe).
 - Proxy de imagem.
 - Widget no cache semântico ou exato.
 - Ação de widget que rode script, leia arquivo arbitrário ou controle outro serviço.
@@ -432,7 +478,7 @@ Levantadas em 2026-10-14 a partir do Intelligent UI do ChatGPT e de três reposi
 | Plano | O que acrescenta | Impacto nesta spec quando entrar |
 |---|---|---|
 | [11-plano-camada-visual.md](11-plano-camada-visual.md) | Camada visual compartilhada dos cartões (`UiCard`, tokens, formatação por locale, movimento reduzido, montagem adiada do sandbox). **Primeira fatia entregue.** | Nenhum (só render). |
-| [12-plano-paridade-intelligent-ui.md](12-plano-paridade-intelligent-ui.md) | Blocos `metric`, `table`, `callout`, `options`, `follow_up`; `chart` com `pie`/`unit`/rótulos/`stacked`; estado compartilhado por expressões `=…` no `safeMath`; render progressivo do fence; laço "Pedir correção"; catálogo modular; `Origin` no WebSocket. | §4 ganha subseções por tipo; teto de blocos 4 → 6 com subtetos (§4, §8 e item "Mais de 4 blocos" do §10 passam a dizer 6); §8 catálogo vira base + módulos com teto de 450 tokens por turno; §5 `stream_end` ganha `ui_errors`. |
+| [12-plano-paridade-intelligent-ui.md](12-plano-paridade-intelligent-ui.md) | Blocos `metric`, `table`, `callout`, `options`, `follow_up`; `chart` com `pie`/`unit`/rótulos/`stacked`; estado compartilhado por expressões `=…` no `safeMath`; render progressivo do fence; laço "Pedir correção"; catálogo modular; `Origin` no WebSocket. **Passos 1 e 2 entregues** (`Origin` no WebSocket; `metric`, `callout`, `follow_up`; teto 6 — já refletidos em §4.6–4.8, §6.1 e §8). | Pendentes: §8 catálogo vira base + módulos com teto de 450 tokens por turno; §5 `stream_end` ganha `ui_errors`; §4 ganha `table` e `options`. |
 | [13-plano-cenas-2d-3d.md](13-plano-cenas-2d-3d.md) | `sandbox` com `kind: "scene"`: runtime local three.js/canvas sem rede, `params`/`report`, Pausar/Reiniciar/Tela cheia. | §4.5 ganha a variante `scene`; CSP sem CDN para essa variante. |
 
 ## 12. Riscos

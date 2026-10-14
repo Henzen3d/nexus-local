@@ -673,7 +673,16 @@
     "stepDone": "완료",
     "stepActive": "진행 중",
     "stepPending": "대기 중",
-    "stepError": "오류"
+    "stepError": "오류",
+    "metricUp": "상승",
+    "metricDown": "하락",
+    "metricFlat": "보합",
+    "calloutInfo": "정보",
+    "calloutSuccess": "성공",
+    "calloutWarning": "주의",
+    "calloutDanger": "경고",
+    "followUpTitle": "이어서",
+    "followUpHint": "제안: {{text}}"
   },
   "memory": {
     "useMemoryGlobal": "대화 메모리 (기본: 켜짐)",

@@ -20,8 +20,32 @@ FIELD_ID_REGEX = re.compile(r"^[a-z0-9_]{1,32}$")
 PLACEHOLDER_REGEX = re.compile(r"\{([a-zA-Z0-9_]+)\}")
 
 MAX_RAW_JSON_LENGTH = 16000
-MAX_BLOCKS = 4
+# Plano 12 §0: teto 6 com subtetos por tipo (iframe pesado, gráfico caro, follow_up único).
+MAX_BLOCKS = 6
+MAX_BLOCKS_PER_TYPE = {"sandbox": 1, "chart": 2, "follow_up": 1, "options": 1}
 MAX_CONTROL_FIELDS = 4
+MAX_METRIC_ITEMS = 4
+MAX_FOLLOW_UP_ITEMS = 4
+CALLOUT_KINDS = ("info", "success", "warning", "danger")
+# Sinônimos que modelos usam; qualquer outra coisa vira `info`.
+CALLOUT_KIND_ALIASES = {
+    "error": "danger",
+    "erro": "danger",
+    "alert": "danger",
+    "critical": "danger",
+    "warn": "warning",
+    "aviso": "warning",
+    "atencao": "warning",
+    "atenção": "warning",
+    "caution": "warning",
+    "ok": "success",
+    "sucesso": "success",
+    "done": "success",
+    "note": "info",
+    "tip": "info",
+    "nota": "info",
+    "dica": "info",
+}
 # Limites por campo do bloco `sandbox`. O envelope inteiro já é cortado em
 # MAX_RAW_JSON_LENGTH, então o teto real de html+css+js é menor que a soma.
 MAX_SANDBOX_HTML = 12000
@@ -527,6 +551,156 @@ def _validate_sandbox(block: dict[str, Any]) -> dict[str, Any] | None:
     return out
 
 
+def _clean_text(value: Any, min_len: int, max_len: int) -> str | None:
+    """Texto aparado dentro de [min_len, max_len]; qualquer outra coisa → None."""
+    if value is None or isinstance(value, (bool, dict, list)):
+        return None
+    text = str(value).strip()
+    if len(text) < min_len:
+        return None
+    return text[:max_len]
+
+
+def _finite_number(value: Any) -> int | float | None:
+    """Número finito (int ou float, nunca bool); mantém o tipo para o JSON gravado ficar limpo."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    if math.isnan(value) or math.isinf(value):
+        return None
+    return value
+
+
+def _validate_metric(block: dict[str, Any]) -> dict[str, Any] | None:
+    """`metric` (plano 12 §2.1): 1 a 4 indicadores com valor, delta e tendência."""
+    items = block.get("items")
+    if not isinstance(items, list):
+        return None
+
+    clean_items: list[dict[str, Any]] = []
+    for raw in items:
+        if len(clean_items) >= MAX_METRIC_ITEMS:
+            break
+        if not isinstance(raw, dict):
+            continue
+        label = _clean_text(raw.get("label"), 1, 40)
+        if label is None:
+            continue
+        raw_value = raw.get("value")
+        value: int | float | str | None
+        if isinstance(raw_value, bool):
+            value = None
+        elif isinstance(raw_value, (int, float)):
+            value = _finite_number(raw_value)  # NaN/inf não vira texto "nan"
+        else:
+            value = _clean_text(raw_value, 1, 24)
+        if value is None:
+            continue
+        item: dict[str, Any] = {"label": label, "value": value}
+        unit = _clean_text(raw.get("unit"), 1, 8)
+        if unit is not None and not isinstance(value, str):
+            item["unit"] = unit
+        delta = _clean_text(raw.get("delta"), 1, 12)
+        if delta is not None:
+            item["delta"] = delta
+        trend = str(raw.get("trend") or "").strip().lower()
+        if trend in ("up", "down", "flat"):
+            item["trend"] = trend
+        good = str(raw.get("good") or "").strip().lower()
+        if good in ("up", "down"):
+            item["good"] = good
+        hint = _clean_text(raw.get("hint"), 1, 40)
+        if hint is not None:
+            item["hint"] = hint
+        clean_items.append(item)
+
+    if not clean_items:
+        return None
+
+    out: dict[str, Any] = {
+        "id": block.get("id") or "metric_1",
+        "type": "metric",
+        "items": clean_items,
+    }
+    title = _clean_text(block.get("title"), 1, 80)
+    if title is not None:
+        out["title"] = title
+    return out
+
+
+def _validate_callout(block: dict[str, Any]) -> dict[str, Any] | None:
+    """`callout` (plano 12 §2.2): aviso curto com tipo; `kind` desconhecido vira `info`."""
+    body = _clean_text(block.get("body"), 1, 400)
+    if body is None:
+        return None
+    raw_kind = str(block.get("kind") or "info").strip().lower()
+    kind = raw_kind if raw_kind in CALLOUT_KINDS else CALLOUT_KIND_ALIASES.get(raw_kind, "info")
+    out: dict[str, Any] = {
+        "id": block.get("id") or "callout_1",
+        "type": "callout",
+        "kind": kind,
+        "body": body,
+    }
+    title = _clean_text(block.get("title"), 1, 60)
+    if title is not None:
+        out["title"] = title
+    return out
+
+
+def _validate_follow_up(block: dict[str, Any]) -> dict[str, Any] | None:
+    """`follow_up` (plano 12 §2.3): 1 a 4 sugestões de próxima pergunta (texto 3–80)."""
+    items = block.get("items")
+    if not isinstance(items, list):
+        return None
+    clean_items: list[str] = []
+    seen: set[str] = set()
+    for raw in items:
+        if len(clean_items) >= MAX_FOLLOW_UP_ITEMS:
+            break
+        if isinstance(raw, dict):
+            raw = raw.get("label") or raw.get("text")
+        text = _clean_text(raw, 3, 80)
+        if text is None or text.lower() in seen:
+            continue
+        seen.add(text.lower())
+        clean_items.append(text)
+    if not clean_items:
+        return None
+    return {
+        "id": block.get("id") or "follow_up_1",
+        "type": "follow_up",
+        "items": clean_items,
+    }
+
+
+def _infer_type(item: dict[str, Any]) -> str | None:
+    """Bloco sem `type`: inferido pelos campos, na mesma ordem do frontend (spec §4).
+
+    `items` de textos → follow_up; `items` de {label, value} → metric; `kind` de
+    callout com `body` → callout. O card fica por último porque `title`/`body`
+    aparecem em quase todos os tipos.
+    """
+    if "kind" in item and "series" in item:
+        return "chart"
+    if "steps" in item or ("value" in item and "max" in item):
+        return "progress"
+    if "fields" in item:
+        return "controls"
+    if "html" in item:
+        return "sandbox"
+    items = item.get("items")
+    if isinstance(items, list) and items:
+        if all(isinstance(x, str) for x in items):
+            return "follow_up"
+        if all(isinstance(x, dict) and "label" in x and "value" in x for x in items):
+            return "metric"
+    kind = str(item.get("kind") or "").strip().lower()
+    if "body" in item and (kind in CALLOUT_KINDS or kind in CALLOUT_KIND_ALIASES):
+        return "callout"
+    if "facts" in item or "body" in item or "title" in item:
+        return "card"
+    return None
+
+
 def validate_envelope(
     raw: str | dict[str, Any],
     *,
@@ -542,6 +716,10 @@ def validate_envelope(
     pelos campos; ``id`` ausente/duplicado gerado; títulos e labels padrão.
     Rejeições estritas: ``v`` presente e diferente de 1; ``kind`` de chart fora
     da união; ação de controls ausente ou fora de ``send_message``/``set_model``.
+
+    Teto de ``MAX_BLOCKS`` blocos com subtetos por tipo (``MAX_BLOCKS_PER_TYPE``);
+    ``follow_up`` é reordenado para o fim. Tipos: progress, card, chart, controls,
+    sandbox, metric, callout, follow_up (plano 12). Tipo desconhecido → bloco fora.
     """
     if isinstance(raw, str):
         if len(raw) > MAX_RAW_JSON_LENGTH:
@@ -567,23 +745,12 @@ def validate_envelope(
     if "blocks" not in data:
         if "type" in data:
             data = {"v": 1, "blocks": [data]}
-        elif "kind" in data and "series" in data:
-            data["type"] = "chart"
-            data = {"v": 1, "blocks": [data]}
-        elif "steps" in data or ("value" in data and "max" in data):
-            data["type"] = "progress"
-            data = {"v": 1, "blocks": [data]}
-        elif "fields" in data:
-            data["type"] = "controls"
-            data = {"v": 1, "blocks": [data]}
-        elif "html" in data:
-            data["type"] = "sandbox"
-            data = {"v": 1, "blocks": [data]}
-        elif "facts" in data or "body" in data or "title" in data:
-            data["type"] = "card"
-            data = {"v": 1, "blocks": [data]}
         else:
-            return None
+            inferred = _infer_type(data)
+            if inferred is None:
+                return None
+            data["type"] = inferred
+            data = {"v": 1, "blocks": [data]}
     elif isinstance(data.get("blocks"), dict):
         data["blocks"] = [data["blocks"]]
 
@@ -596,6 +763,7 @@ def validate_envelope(
     blocks_to_check = blocks_raw[:MAX_BLOCKS]
     clean_blocks: list[dict[str, Any]] = []
     seen_ids: set[str] = set()
+    per_type: dict[str, int] = {}
 
     for idx, item in enumerate(blocks_to_check):
         if not isinstance(item, dict):
@@ -603,21 +771,15 @@ def validate_envelope(
 
         b_type = item.get("type")
         if not b_type:
-            if "kind" in item and "series" in item:
-                b_type = "chart"
-                item["type"] = "chart"
-            elif "steps" in item or ("value" in item and "max" in item):
-                b_type = "progress"
-                item["type"] = "progress"
-            elif "fields" in item:
-                b_type = "controls"
-                item["type"] = "controls"
-            elif "html" in item:
-                b_type = "sandbox"
-                item["type"] = "sandbox"
-            elif "facts" in item or "body" in item or "title" in item:
-                b_type = "card"
-                item["type"] = "card"
+            b_type = _infer_type(item)
+            if b_type:
+                item["type"] = b_type
+        if isinstance(b_type, str):
+            b_type = b_type.strip().lower()
+
+        # Subteto por tipo (plano 12 §0): o excedente cai, os demais seguem.
+        if b_type in MAX_BLOCKS_PER_TYPE and per_type.get(b_type, 0) >= MAX_BLOCKS_PER_TYPE[b_type]:
+            continue
 
         b_id = item.get("id")
         if not isinstance(b_id, str) or not ID_REGEX.match(b_id) or b_id in seen_ids:
@@ -635,12 +797,24 @@ def validate_envelope(
             validated = _validate_controls(item)
         elif b_type == "sandbox":
             validated = _validate_sandbox(item)
+        elif b_type == "metric":
+            validated = _validate_metric(item)
+        elif b_type == "callout":
+            validated = _validate_callout(item)
+        elif b_type == "follow_up":
+            validated = _validate_follow_up(item)
 
         if validated is not None:
             seen_ids.add(b_id)
+            per_type[b_type] = per_type.get(b_type, 0) + 1
             clean_blocks.append(validated)
 
     if not clean_blocks:
         return None
+
+    # `follow_up` é sempre o último bloco (plano 12 §2.3): se veio antes, vai para o fim.
+    follow_ups = [b for b in clean_blocks if b["type"] == "follow_up"]
+    if follow_ups and clean_blocks[-1]["type"] != "follow_up":
+        clean_blocks = [b for b in clean_blocks if b["type"] != "follow_up"] + follow_ups
 
     return {"v": 1, "blocks": clean_blocks}

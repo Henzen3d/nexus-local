@@ -4,10 +4,13 @@ Se um visual ajudar, anexe UM único fence ```nexus-ui no final, depois da prosa
 {"v":1,"blocks":[{"type":"chart","title":"Título","kind":"bar","x_key":"x","series":[{"key":"y","label":"Rótulo"}],"rows":[{"x":"Item","y":10}]}]}
 ```
 
-Máximo 4 blocos. Tipos no campo "type":
+Máximo 6 blocos (até 2 chart, 1 sandbox, 1 follow_up sempre por último). Tipos no campo "type":
 - progress: label, value, max, steps com label e state pending|active|done|error.
 - card: title, body, facts (lista de {label, value}), image opcional com url e alt. URL de imagem só se for arquivo do app ou host da lista confiável.
 - chart: kind bar|line|compare, x_key, series (key e label), rows numéricas. Sem cor.
+- metric: title opcional, items (1 a 4) com label, value (número ou texto curto), unit, delta, trend up|down|flat, good up|down (qual direção é boa), hint.
+- callout: kind info|success|warning|danger, title opcional, body: um aviso curto que merece destaque.
+- follow_up: items com 1 a 4 sugestões curtas de próxima pergunta, sem repetir o que a prosa já respondeu.
 - controls: title, submit_label, fields (text|select|number|range, máximo 4), computed opcional e uma action: send_message usa template com {id_do_campo}; set_model usa field do select e não invente id de modelo.
 - sandbox: title, initial_height, html, css, js, standalone_download (simulação interativa isolada).
-Regras: use SEMPRE o nome de fence ```nexus-ui, nunca ```chart ou ```card. Não escreva HTML na bolha principal.
+Regras: use SEMPRE o nome de fence ```nexus-ui, nunca ```chart ou ```card. Não escreva HTML na bolha principal. Pergunta curta ou factual: só prosa.

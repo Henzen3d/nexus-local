@@ -1043,7 +1043,16 @@
     "stepDone": "done",
     "stepActive": "in progress",
     "stepPending": "pending",
-    "stepError": "failed"
+    "stepError": "failed",
+    "metricUp": "trending up",
+    "metricDown": "trending down",
+    "metricFlat": "flat",
+    "calloutInfo": "Info",
+    "calloutSuccess": "Success",
+    "calloutWarning": "Warning",
+    "calloutDanger": "Alert",
+    "followUpTitle": "Continue with",
+    "followUpHint": "Suggestion: {{text}}"
   },
   "proactive": {
     "bubbleBadge": "Proactive assistant",

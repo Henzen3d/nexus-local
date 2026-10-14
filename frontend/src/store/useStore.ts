@@ -3,6 +3,7 @@ import type { Artifact, Conversation, ConversationDetail, Message, Model, CacheS
 import { api } from '../api/client'
 import i18n, { detectInitialLocale } from '../i18n'
 import { effectivePreferredModel } from '../lib/modelSelection'
+import { MAX_BLOCKS } from '../lib/nexusUi'
 import { bubbleContent, mergePending, newIds, pruneExpired, toastPreview } from '../lib/proactivePending'
 
 // ── Persistência de provedor/modelo (por usuário quando possível) ───────────
@@ -434,16 +435,20 @@ function _proactiveNotifyElsewhere(insight: ProactiveInsight) {
   })
 }
 
-/** Substitui o bloco de mesmo id ou acrescenta até o teto de 4 (spec §5, `ui_progress`). */
+/** Substitui o bloco de mesmo id ou acrescenta até o teto de blocos (spec §5, `ui_progress`). */
 function upsertUiBlock(env: UiEnvelope | null, block: ProgressBlock): UiEnvelope {
   const blocks = [...(env?.blocks ?? [])]
   const idx = blocks.findIndex((b) => b.id === block.id)
   if (idx >= 0) blocks[idx] = block
-  else if (blocks.length < 4) blocks.push(block)
+  else if (blocks.length < MAX_BLOCKS) blocks.push(block)
   return { v: 1, blocks }
 }
 
-/** Host primeiro, modelo depois; id repetido fica com o do host; teto de 4. */
+/**
+ * Host primeiro, modelo depois; id repetido fica com o do host; teto de MAX_BLOCKS.
+ * O `follow_up` do modelo continua por último (plano 12 §2.3) porque entra depois
+ * dos blocos do host e o validador já o pôs no fim do envelope dele.
+ */
 function mergeUiEnvelopes(host: UiEnvelope | null, model?: UiEnvelope | null): UiEnvelope | null {
   if (!host?.blocks.length) return model ?? null
   const seen = new Set<string>()
@@ -452,7 +457,7 @@ function mergeUiEnvelopes(host: UiEnvelope | null, model?: UiEnvelope | null): U
     seen.add(b.id)
     return true
   })
-  return { v: 1, blocks: blocks.slice(0, 4) }
+  return { v: 1, blocks: blocks.slice(0, MAX_BLOCKS) }
 }
 
 export const useStore = create<AppState>((set, get) => ({

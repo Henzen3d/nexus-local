@@ -190,3 +190,104 @@ test('stripUiFences: remove fence no inicio da linha, preserva mencao inline', (
   assert.equal(stripUiFences('Texto.\n```nexus-ui\n{"v":1,"blo'), 'Texto.')
   assert.equal(stripUiFences('falando de ```nexus-ui no meio'), 'falando de ```nexus-ui no meio')
 })
+
+// ─── Plano 12 — metric, callout, follow_up; teto 6 e subtetos (espelho do Python) ───
+
+test('metric: limites, unit so com numero, NaN cai', () => {
+  const out = parseUiEnvelope({
+    v: 1,
+    blocks: [
+      {
+        id: 'kpis',
+        type: 'metric',
+        title: 'Este mês',
+        items: [
+          { label: 'Receita', value: 48200, unit: 'R$', delta: '+8,1%', trend: 'up', hint: 'vs. mês anterior' },
+          { label: 'Churn', value: '1,8%', delta: '-0,3 p.p.', trend: 'down', good: 'down' },
+          { label: 'Texto com unidade', value: 'alto', unit: '%' },
+          { label: 'Sem valor' },
+          { label: 'NaN', value: Number.NaN },
+          { label: 'Quinto', value: 5 },
+          { label: 'Sexto', value: 6 },
+        ],
+      },
+    ],
+  })
+  assert.equal(out?.blocks[0]?.type, 'metric')
+  if (out?.blocks[0]?.type === 'metric') {
+    const block = out.blocks[0]
+    assert.equal(block.title, 'Este mês')
+    assert.deepEqual(
+      block.items.map((i) => i.label),
+      ['Receita', 'Churn', 'Texto com unidade', 'Quinto']
+    )
+    assert.deepEqual(block.items[0], {
+      label: 'Receita', value: 48200, unit: 'R$', delta: '+8,1%', trend: 'up', hint: 'vs. mês anterior',
+    })
+    assert.equal(block.items[1].good, 'down')
+    assert.equal(block.items[2].unit, undefined)
+  }
+  assert.equal(parseUiEnvelope({ v: 1, blocks: [{ type: 'metric', items: [] }] }), null)
+  assert.equal(parseUiEnvelope({ v: 1, blocks: [{ type: 'metric', items: [{ label: 'x', value: true }] }] }), null)
+})
+
+test('callout: kind tolerante, body obrigatorio', () => {
+  const out = parseUiEnvelope({
+    v: 1,
+    blocks: [
+      { type: 'callout', kind: 'warn', title: 'Atenção', body: 'A Selic usada é a de outubro.' },
+      { type: 'callout', kind: 'pizza', body: 'Vira info.' },
+      { type: 'callout', kind: 'error', body: 'Vira danger.' },
+      { type: 'callout', kind: 'danger', title: 'Sem corpo' },
+    ],
+  })
+  assert.deepEqual(
+    out?.blocks.map((b) => (b.type === 'callout' ? [b.kind, b.title] : null)),
+    [['warning', 'Atenção'], ['info', undefined], ['danger', undefined]]
+  )
+})
+
+test('follow_up: vai para o fim, so um por envelope, teto 4', () => {
+  const out = parseUiEnvelope({
+    v: 1,
+    blocks: [
+      { type: 'follow_up', items: ['Comparar com 2025', 'Mostrar por região', 'x', 'comparar com 2025', { label: 'Exportar' }, 'Quinto item'] },
+      { type: 'progress', label: 'A', value: 1, max: 2 },
+      { type: 'follow_up', items: ['Segundo bloco cai'] },
+    ],
+  })
+  assert.deepEqual(out?.blocks.map((b) => b.type), ['progress', 'follow_up'])
+  if (out?.blocks[1]?.type === 'follow_up') {
+    assert.deepEqual(out.blocks[1].items, ['Comparar com 2025', 'Mostrar por região', 'Exportar', 'Quinto item'])
+  }
+  assert.equal(parseUiEnvelope({ v: 1, blocks: [{ type: 'follow_up', items: ['ab'] }] }), null)
+})
+
+test('teto de seis blocos com subtetos por tipo', () => {
+  const chart = { type: 'chart', kind: 'bar', x_key: 'x', series: [{ key: 'y', label: 'Y' }], rows: [{ x: 'a', y: 1 }] }
+  const sandbox = { type: 'sandbox', title: 'S', html: '<div></div>' }
+  const out = parseUiEnvelope({
+    v: 1,
+    blocks: [
+      { ...chart, id: 'c1' }, { ...chart, id: 'c2' }, { ...chart, id: 'c3' },
+      { ...sandbox, id: 's1' }, { ...sandbox, id: 's2' },
+      { id: 'm', type: 'metric', items: [{ label: 'a', value: 1 }] },
+      { id: 'setimo', type: 'callout', body: 'fora da janela de 6' },
+    ],
+  })
+  assert.deepEqual(out?.blocks.map((b) => b.id), ['c1', 'c2', 's1', 'm'])
+})
+
+test('inferencia de tipo dos blocos novos', () => {
+  const out = parseUiEnvelope({
+    v: 1,
+    blocks: [
+      { items: ['Primeira sugestão', 'Segunda sugestão'] },
+      { items: [{ label: 'Receita', value: 10 }] },
+      { kind: 'danger', body: 'Cuidado.' },
+      { title: 'Só título' },
+    ],
+  })
+  assert.deepEqual(out?.blocks.map((b) => b.type), ['metric', 'callout', 'card', 'follow_up'])
+  assert.equal(parseUiEnvelope({ items: ['Uma sugestão válida'] })?.blocks[0]?.type, 'follow_up')
+})

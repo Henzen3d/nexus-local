@@ -2,7 +2,6 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pathlib import Path
 import asyncio
-import os
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -35,6 +34,7 @@ from backend.routers.image_gen import router as image_gen_router
 from backend.routers.proactive import router as proactive_router
 from backend.routers.intelligent_ui import router as intelligent_ui_router
 from backend.routers.push import router as push_router
+from backend.ws_origin import allowed_origins_from_env
 
 app = FastAPI(title="NexusLocal", version="1.0.0")
 
@@ -43,11 +43,8 @@ app = FastAPI(title="NexusLocal", version="1.0.0")
 attachments_dir = Path(__file__).parent / "storage" / "attachments"
 attachments_dir.mkdir(parents=True, exist_ok=True)
 
-origins_env = os.getenv("ALLOWED_ORIGINS")
-if origins_env:
-    allow_origins = [origin.strip() for origin in origins_env.split(",") if origin.strip()]
-else:
-    allow_origins = ["http://localhost:5173", "http://127.0.0.1:5173"]
+# A mesma lista vale para o CORS (HTTP) e para o Origin do WebSocket (backend/ws_origin.py).
+allow_origins = allowed_origins_from_env()
 
 app.add_middleware(
     CORSMiddleware,

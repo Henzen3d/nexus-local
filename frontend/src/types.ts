@@ -328,7 +328,15 @@ export interface ToastItem {
   durationMs?: number
 }
 
-export type UiBlockType = 'progress' | 'card' | 'chart' | 'controls' | 'sandbox'
+export type UiBlockType =
+  | 'progress'
+  | 'card'
+  | 'chart'
+  | 'controls'
+  | 'sandbox'
+  | 'metric'
+  | 'callout'
+  | 'follow_up'
 
 export interface ProgressStep {
   id: string
@@ -413,12 +421,51 @@ export interface SandboxBlock {
   standalone_download?: boolean
 }
 
+/** Indicador de `metric` (plano 12 §2.1): valor com delta e tendência, estilo KPI. */
+export interface MetricItem {
+  label: string
+  value: number | string
+  /** Só acompanha `value` numérico. */
+  unit?: string
+  delta?: string
+  trend?: 'up' | 'down' | 'flat'
+  /** Qual direção é boa (padrão `up`): define a cor do delta. */
+  good?: 'up' | 'down'
+  hint?: string
+}
+
+export interface MetricBlock {
+  id: string
+  type: 'metric'
+  title?: string
+  items: MetricItem[]
+}
+
+/** Aviso curto com destaque (plano 12 §2.2). */
+export interface CalloutBlock {
+  id: string
+  type: 'callout'
+  kind: 'info' | 'success' | 'warning' | 'danger'
+  title?: string
+  body: string
+}
+
+/** Sugestões de próxima pergunta (plano 12 §2.3); sempre o último bloco do envelope. */
+export interface FollowUpBlock {
+  id: string
+  type: 'follow_up'
+  items: string[]
+}
+
 export type UiBlock =
   | ProgressBlock
   | CardBlock
   | ChartBlock
   | ControlsBlock
   | SandboxBlock
+  | MetricBlock
+  | CalloutBlock
+  | FollowUpBlock
 
 export interface UiEnvelope {
   v: 1

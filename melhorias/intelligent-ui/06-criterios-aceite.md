@@ -44,6 +44,21 @@ Lista para quem for ligar `INTELLIGENT_UI_ENABLED` no servidor da família. Item
 - [x] Na Fase 7 (quando sandbox estiver ativo): sandbox roda estritamente sem `allow-same-origin` e sincroniza o tema dark/light através do Theme Bridge. *(Corrigido 2026-10-14: `sandbox="allow-scripts allow-forms"` + CSP `default-src 'none'` (esm.sh só em `script-src`/`connect-src`); tema reativo por `postMessage` com `data-theme` + tokens de `getComputedStyle`, sem recarregar o iframe.)*
 - [x] Exportação 1-click standalone (Fase 7) gera arquivo HTML autônomo funcional sem impactar o chat. *(`exportStandalone.ts`; Blob + `<a download>`; sem chamada ao backend. Sem teste automatizado.)*
 
+## Plano 12 — passos 1 e 2 (2026-10-14)
+
+- [x] `Origin` de outro site não abre `/ws/chat`: fecha com 4003 antes do `accept`; mesmo host e `ALLOWED_ORIGINS` passam; sem `Origin` passa. *(`backend/ws_origin.py`; `test_ws_origin.py` cobre os três caminhos e o handshake com `TestClient`.)*
+- [x] CORS e WebSocket leem a mesma lista `ALLOWED_ORIGINS`. *(`main.py` usa `allowed_origins_from_env()`.)*
+- [x] `metric` com 7 itens fica com 4; item sem `value`, com NaN ou booleano cai; `unit` só acompanha número. *(Testado em Python e TS.)*
+- [x] `callout` com `kind` desconhecido vira `info`; sinônimos (`warn`, `error`, `note`, `ok`) mapeados; sem `body` cai. *(Idem.)*
+- [x] `follow_up` escrito antes de outros blocos é pintado por último; o segundo `follow_up` cai; item com menos de 3 caracteres ou repetido cai. *(Idem.)*
+- [x] Envelope com 7 blocos: só os 6 primeiros são olhados; terceiro `chart` e segundo `sandbox` caem; os demais seguem. *(Idem; `mergeUiEnvelopes`/`upsertUiBlock` usam `MAX_BLOCKS` exportado por `nexusUi.ts`.)*
+- [x] Bloco sem `type` com `items` de textos vira `follow_up`, com `items` de `{label, value}` vira `metric`, com `kind` de callout e `body` vira `callout`. *(Idem.)*
+- [x] `MetricCard`, `CalloutCard` e `FollowUpCard` renderizam sem erro em SSR e no showcase, em claro e escuro, de 320 a 900 px. *(Smoke manual; sem teste de DOM ainda.)*
+- [x] Clique em sugestão de `follow_up` chama `sendMessage(texto)`; durante o stream os botões ficam desabilitados; nenhum envio automático. *(`FollowUpCard`; sem teste de DOM.)*
+- [x] Catálogo com os três tipos continua sob 400 tokens (`len/4` ≈ 389) e o exemplo dele segue sendo um envelope válido. *(`test_catalogo_cabe_no_teto_e_tem_as_regras_da_spec`.)*
+- [x] Strings novas (`metricUp/Down/Flat`, `calloutInfo/Success/Warning/Danger`, `followUpTitle/Hint`) nos oito idiomas. *(`check-i18n.mjs intelligentUi` OK.)*
+- [ ] Teste de DOM (`test:dom`, plano 11 §4.5) para o clique do `follow_up` e a cor do delta por `trend × good`.
+
 ## Prompt
 
 - [x] "bom dia" não injeta `catalog.txt`. *(`test_should_offer_ui_triggers`.)*
