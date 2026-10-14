@@ -130,7 +130,7 @@ melhorias/
 
 ## Intelligent UI
 
-Spec e planos em [`intelligent-ui/`](intelligent-ui/README.md). Não implementado. A IA manda dados. O React atual desenha. Flag futura nasce desligada.
+Spec e planos em [`intelligent-ui/`](intelligent-ui/README.md). **Implementado** (Fases 1–7; auditoria de 2026-10-14 com pendências anotadas nos planos). A IA manda dados. O React atual desenha. `INTELLIGENT_UI_ENABLED` nasce desligada e hoje só controla a injeção do catálogo no prompt — ver bloqueadores em `intelligent-ui/06-criterios-aceite.md` antes de ligar em produção.
 
 ## New Chat Input (Redesign Benchmark Claude 2026)
 

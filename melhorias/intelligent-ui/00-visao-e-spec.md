@@ -1,6 +1,6 @@
 # Intelligent UI — visão e spec
 
-**Estado:** spec para implementação futura. Não autoriza código de produto até um pedido explícito de executar um plano.
+**Estado:** implementado (Fases 1–7) e auditado em 2026-10-14. Esta spec continua sendo o contrato de referência; os desvios encontrados no código e as pendências estão anotados em cada plano e em `06-criterios-aceite.md` e resumidos no `README.md` da pasta.
 
 **Data:** 2026-10-08
 
@@ -377,7 +377,7 @@ Open Intelligent UI detalhado em [08-open-intelligent-ui-referencia.md](08-open-
 
 ## 10. Fora de escopo
 
-- Implementar agora. Esta pasta é plano.
+- ~~Implementar agora. Esta pasta é plano.~~ *(Superado: implementado em 2026-10.)*
 - Substituir `ArtifactPanel` ou aceitar HTML/JSX desprotegido na bolha principal.
 - Instalar SDKs pesados de terceiros ou desenhar árvore livre de widgets no host.
 - Abrir SSE ao lado do WebSocket.

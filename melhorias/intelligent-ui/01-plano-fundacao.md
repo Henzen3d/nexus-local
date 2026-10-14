@@ -10,6 +10,8 @@
 
 **Spec:** `melhorias/intelligent-ui/00-visao-e-spec.md`
 
+**Estado (auditoria 2026-10-14):** implementado, com uma pendência na Task 4 (a flag não desliga extração/persistência). Evidência: `backend/ui_blocks/{validate,extract}.py`, `backend/tests/test_ui_blocks.py` (15 passed), `frontend/src/lib/nexusUi.ts` + `nexusUi.test.ts` (passa com `node --experimental-strip-types --test`).
+
 ## Global Constraints
 
 - `INTELLIGENT_UI_ENABLED` ausente ou diferente de `true` significa desligado.
@@ -33,7 +35,7 @@
 - Consumes: nada
 - Produces: `validate_envelope(raw: str) -> dict | None`. Retorna `{"v": 1, "blocks": [...]}` só com blocos válidos, ou `None` se o envelope inteiro for inválido (`v` errado, JSON inválido, tamanho acima de 16000, `blocks` ausente). Bloco inválido some da lista. Lista vazia depois do filtro retorna `None`.
 
-- [ ] **Step 1: Escrever o teste que falha**
+- [x] **Step 1: Escrever o teste que falha**
 
 ```python
 from ui_blocks.validate import validate_envelope
@@ -52,19 +54,19 @@ def test_bloco_ruim_nao_derruba_o_bom():
     assert [b["id"] for b in out["blocks"]] == ["ok"]
 ```
 
-- [ ] **Step 2: Rodar e ver falhar**
+- [x] **Step 2: Rodar e ver falhar**
 
 Run: `cd backend && python -m pytest tests/test_ui_blocks.py -q` (ou no host: `cd /home/osmar/nexuslocal/backend && ...`)
 Expected: FAIL, módulo ausente.
 
-- [ ] **Step 3: Implementar `validate_envelope` com as regras da spec, seções 4 e 6.** Incluir progress, card, chart e controls nesta função, mesmo que a UI ainda não pinte. URL de imagem segue a seção 6: relativa do app, host da lista, ou IP privado só com flag. `https` solto não passa. Ação fora de `send_message` e `set_model` descarta o bloco.
+- [x] **Step 3: Implementar `validate_envelope` com as regras da spec, seções 4 e 6.** *(Feito em `backend/ui_blocks/validate.py` com auto-healing além da spec: `v` é forçado para 1 em vez de descartar o envelope, `kind` inválido de chart vira `bar`, até 6 fields em controls, ação desconhecida vira `send_message`. Ver desvios em `06-criterios-aceite.md`.)* Incluir progress, card, chart e controls nesta função, mesmo que a UI ainda não pinte. URL de imagem segue a seção 6: relativa do app, host da lista, ou IP privado só com flag. `https` solto não passa. Ação fora de `send_message` e `set_model` descarta o bloco.
 
-- [ ] **Step 4: Rodar e ver passar**
+- [x] **Step 4: Rodar e ver passar**
 
 Run: `cd backend && python -m pytest tests/test_ui_blocks.py -q`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add backend/ui_blocks backend/tests/test_ui_blocks.py
@@ -81,7 +83,7 @@ git commit -m "feat: validar envelope nexus-ui/1 sem renderizar"
 - Consumes: `validate_envelope`
 - Produces: `extract_ui(text: str) -> tuple[str, dict | None]`. Devolve prosa sem fence e envelope validado, ou prosa original e `None`.
 
-- [ ] **Step 1: Teste**
+- [x] **Step 1: Teste**
 
 ```python
 from ui_blocks.extract import extract_ui
@@ -101,9 +103,9 @@ def test_fence_aberto_nao_grava_json():
 
 Fence aberto: remover o pedaço aberto da prosa visível e não devolver envelope. O usuário não vê JSON pela metade.
 
-- [ ] **Step 2: Rodar, ver falhar, implementar, ver passar.** Mesmo comando de pytest.
+- [x] **Step 2: Rodar, ver falhar, implementar, ver passar.** Mesmo comando de pytest. *(Feito em `backend/ui_blocks/extract.py`. Além de ```` ```nexus-ui ````, também aceita ```` ```nexus-ui/1 ````, ```` ```nexus ```` e, como fallback, ```` ```chart ````/```` ```ui ```` com JSON. Há teste extra `test_multiplos_fences_usa_apenas_o_ultimo`.)*
 
-- [ ] **Step 3: Commit** `feat: extrair fence nexus-ui da prosa`
+- [x] **Step 3: Commit** `feat: extrair fence nexus-ui da prosa`
 
 ### Task 3: Tabela
 
@@ -113,11 +115,11 @@ Fence aberto: remover o pedaço aberto da prosa visível e não devolver envelop
 **Interfaces:**
 - Produces: tabela `message_ui_blocks` como na spec, seção 5.
 
-- [ ] **Step 1: Teste que abre o db de teste, chama `init_db` e faz `SELECT payload, source FROM message_ui_blocks LIMIT 1`.** Esperado antes do código: `OperationalError`.
+- [x] **Step 1: Teste que abre o db de teste, chama `init_db` e faz `SELECT payload, source FROM message_ui_blocks LIMIT 1`.** *(`test_tabela_message_ui_blocks_isolada` e `test_recuperacao_ui_blocks_em_conversa`.)* Esperado antes do código: `OperationalError`.
 
-- [ ] **Step 2: Criar a tabela se o select falhar.** `CREATE TABLE IF NOT EXISTS` da spec. Não adicionar coluna em `messages`.
+- [x] **Step 2: Criar a tabela se o select falhar.** *(`backend/database.py`, migração incremental no `init_db`, DDL idêntico ao da spec.)* `CREATE TABLE IF NOT EXISTS` da spec. Não adicionar coluna em `messages`.
 
-- [ ] **Step 3: Commit** `feat: tabela message_ui_blocks`
+- [x] **Step 3: Commit** `feat: tabela message_ui_blocks`
 
 ### Task 4: Flag e gancho no chat, ainda sem pintar
 
@@ -131,15 +133,15 @@ Fence aberto: remover o pedaço aberto da prosa visível e não devolver envelop
 - Consumes: `extract_ui`
 - Produces: se a flag estiver true, `stream_end.ui_blocks` carrega o envelope ou null. Se false, o campo não é enviado e o fence, se aparecer, permanece no texto como hoje (não extrair com a flag off, para não mudar comportamento).
 
-- [ ] **Step 1: Teste da flag off.** Resposta com fence é persistida intacta. Sem linha em `message_ui_blocks`.
+- [ ] **Step 1: Teste da flag off.** Resposta com fence é persistida intacta. Sem linha em `message_ui_blocks`. *(**Pendente.** Não há teste e o comportamento atual é o oposto: `extract_ui` roda em todo turno, independentemente da flag — `backend/routers/chat.py`, bloco "extração de fence antes de persistir".)*
 
-- [ ] **Step 2: Teste da flag on.** `content` gravado sem fence. Linha na tabela com `source='model'`. `stream_end` inclui `ui_blocks`.
+- [ ] **Step 2: Teste da flag on.** `content` gravado sem fence. Linha na tabela com `source='model'`. `stream_end` inclui `ui_blocks`. *(**Parcial.** O fluxo existe em `chat.py` → `save_assistant_message` + `save_ui_blocks(source="model")` + `stream_end_payload["ui_blocks"]`, mas sem teste de integração do turno; só `save_ui_blocks` é coberto por `test_recuperacao_ui_blocks_em_conversa`.)*
 
-- [ ] **Step 3: Implementar o mínimo.** Ler a flag uma vez por turno. Não injetar catálogo nesta task.
+- [ ] **Step 3: Implementar o mínimo.** Ler a flag uma vez por turno. Não injetar catálogo nesta task. *(**Parcial.** Hoje a flag `INTELLIGENT_UI_ENABLED` controla apenas a injeção do catálogo. Extração, gravação em `message_ui_blocks`, envio de `stream_end.ui_blocks` e a renderização no frontend acontecem com a flag ausente ou `false`. Para fechar o plano é preciso condicionar `extract_ui` à flag no backend e `DynamicRenderer`/`extractClientUi` no frontend.)*
 
-- [ ] **Step 4: Acrescentar o tipo em `WSMessage` e em `Message`, sem usar na bolha.**
+- [x] **Step 4: Acrescentar o tipo em `WSMessage` e em `Message`, sem usar na bolha.** *(`frontend/src/types.ts`: `UiEnvelope`, `UiBlock`, `Message.ui_blocks`, `stream_end.ui_blocks`, evento `ui_progress`. `.env.example` tem as três variáveis com padrão desligado.)*
 
-- [ ] **Step 5: Commit** `feat: persistir ui_blocks atrás de flag desligada`
+- [ ] **Step 5: Commit** `feat: persistir ui_blocks atrás de flag desligada` *(Aguarda os steps 1–3.)*
 
 ### Task 5: Validador TypeScript espelhado
 
@@ -150,13 +152,13 @@ Fence aberto: remover o pedaço aberto da prosa visível e não devolver envelop
 **Interfaces:**
 - Produces: `parseUiEnvelope(raw: unknown): UiEnvelope | null` com as mesmas rejeições do Python. Nomes de campo iguais: `v`, `blocks`, `x_key`, `submit_label`, `send_message`, `set_model`.
 
-- [ ] **Step 1: Portar os três casos da Task 1 para o teste TS.**
+- [x] **Step 1: Portar os três casos da Task 1 para o teste TS.** *(`frontend/src/lib/nexusUi.test.ts`: os três casos mais filtro de imagem, chart, controls e sandbox.)*
 
-- [ ] **Step 2: Rodar**
+- [x] **Step 2: Rodar**
 
 Run: `cd frontend && node --experimental-strip-types --test src/lib/nexusUi.test.ts` (ou no host: `cd /home/osmar/nexuslocal/frontend && ...`)
 Expected: PASS
 
-- [ ] **Step 3: Commit** `feat: espelhar validador nexus-ui no frontend`
+- [x] **Step 3: Commit** `feat: espelhar validador nexus-ui no frontend`
 
-Não renderizar. `MessageBubble` não muda nesta fase.
+Não renderizar. `MessageBubble` não muda nesta fase. *(Nota: as fases seguintes já foram executadas; `MessageBubble` hoje monta `DynamicRenderer` abaixo do markdown.)*
