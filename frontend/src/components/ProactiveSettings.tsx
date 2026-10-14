@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Sparkles, ToggleLeft, ToggleRight, Ban, Undo2, Moon, BarChart3 } from 'lucide-react'
+import { Sparkles, ToggleLeft, ToggleRight, Ban, Undo2, Moon, BarChart3, BookOpen } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useStore } from '../store/useStore'
 import type { ProactiveCategory, ProactiveSensitivity } from '../types'
@@ -197,6 +197,22 @@ export function ProactiveSettings() {
           </div>
         </div>
       )}
+
+      {/* F5.3.4 — guia curto "para a família" (a versão completa está em docs/guia-assistente-proativo.md) */}
+      <details className="proactive-guide" data-testid="proactive-guide">
+        <summary>
+          <BookOpen size={14} aria-hidden="true" /> {t('proactive.guide.title')}
+        </summary>
+        <p>{t('proactive.guide.intro')}</p>
+        <ol>
+          <li>{t('proactive.guide.step1')}</li>
+          <li>{t('proactive.guide.step2')}</li>
+          <li>{t('proactive.guide.step3')}</li>
+          <li>{t('proactive.guide.step4')}</li>
+          <li>{t('proactive.guide.step5')}</li>
+        </ol>
+        <p className="proactive-guide-privacy">{t('proactive.guide.privacy')}</p>
+      </details>
     </div>
   )
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import {
   Eye, EyeOff, Save, ToggleLeft, ToggleRight, Database, Sparkles, Users, Trash2, X, Monitor, Sun, Moon, Search, ChevronDown, ChevronRight,
   ChevronLeft, Info, Settings, CreditCard, Shield, Sliders, Volume2, Lock, Link2, LogOut, Check, User, Palette, Type, Smartphone, Trash, Activity,
@@ -1706,6 +1706,8 @@ function AdminPanelDesktop() {
   const [userError, setUserError] = useState('')
   const [sidebarSearch, setSidebarSearch] = useState('')
   const [shareKeysEnabled, setShareKeysEnabled] = useState(false)
+  // F5.2.5 — badge de alarme no menu "Assistente proativo" (admin): failed/total > 50 % em 24 h
+  const [proactiveAlert, setProactiveAlert] = useState(false)
 
   const startEditing = (modelId: string, currentVal: number) => {
     setEditingModelId(modelId)
@@ -1794,6 +1796,15 @@ function AdminPanelDesktop() {
   useEffect(() => {
     load()
   }, [])
+
+  useEffect(() => {
+    if (user?.role !== 'admin') return
+    let cancelled = false
+    api.getProactiveAdminStats(1)
+      .then((stats) => { if (!cancelled) setProactiveAlert(Boolean(stats.alert?.active)) })
+      .catch(() => { /* best-effort: sem badge se a API falhar */ })
+    return () => { cancelled = true }
+  }, [user?.role, tab])
 
   useEffect(() => {
     if (tab === 'users') {
@@ -2228,9 +2239,9 @@ function AdminPanelDesktop() {
     { id: 'cache' as Tab, label: t('settings.smartCache'), icon: <Database size={14} /> },
     { id: 'tools' as Tab, label: t('settings.tools'), icon: <Sparkles size={14} /> },
     { id: 'memory' as Tab, label: t('settings.memory'), icon: <Brain size={14} /> },
-    { id: 'proactive' as Tab, label: t('proactive.settingsTitle'), icon: <Radar size={14} /> },
+    { id: 'proactive' as Tab, label: t('proactive.settingsTitle'), icon: <Radar size={14} />, alert: proactiveAlert },
     ...(user?.role === 'admin' ? [{ id: 'users' as Tab, label: t('settings.users'), icon: <Users size={14} /> }] : [])
-  ]
+  ] as Array<{ id: Tab; label: string; icon: ReactNode; alert?: boolean }>
 
   const filteredMenuItems = menuItems.filter((item) =>
     item.label.toLowerCase().includes(sidebarSearch.toLowerCase())
@@ -2262,6 +2273,14 @@ function AdminPanelDesktop() {
               >
                 {item.icon}
                 <span>{item.label}</span>
+                {item.alert && (
+                  <span
+                    className="settings-menu-badge alert"
+                    title={t('proactive.dashboard.alertTooltip')}
+                    aria-label={t('proactive.dashboard.alertTooltip')}
+                    data-testid="proactive-menu-alert"
+                  />
+                )}
               </button>
             ))}
           </div>

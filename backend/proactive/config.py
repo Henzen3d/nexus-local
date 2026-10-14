@@ -55,6 +55,9 @@ class ProactiveConfig:
     # F4.4.1 — validade dos insights (news +48 h; demais categorias +7 d; event usa a data do evento)
     expiry_news_hours: int = 48
     expiry_default_days: int = 7
+    # F5.4.3 — rollout gradual: o modal de onboarding só aparece quando o admin libera.
+    # Enquanto estiver desligado, cada pessoa ainda pode ativar em Configurações.
+    onboarding_enabled: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -74,6 +77,7 @@ class ProactiveConfig:
             "allow_chat_model_fallback": self.allow_chat_model_fallback,
             "expiry_news_hours": self.expiry_news_hours,
             "expiry_default_days": self.expiry_default_days,
+            "onboarding_enabled": self.onboarding_enabled,
         }
 
 
@@ -95,6 +99,7 @@ _FIELD_SPECS: tuple[tuple[str, str, str, str], ...] = (
     ("allow_chat_model_fallback", "proactive_allow_chat_model_fallback", "PROACTIVE_ALLOW_CHAT_MODEL_FALLBACK", "bool"),
     ("expiry_news_hours", "proactive_expiry_news_hours", "PROACTIVE_EXPIRY_NEWS_HOURS", "int"),
     ("expiry_default_days", "proactive_expiry_default_days", "PROACTIVE_EXPIRY_DEFAULT_DAYS", "int"),
+    ("onboarding_enabled", "proactive_onboarding_enabled", "PROACTIVE_ONBOARDING_ENABLED", "bool"),
 )
 
 META_KEY_BY_FIELD: dict[str, str] = {spec[0]: spec[1] for spec in _FIELD_SPECS}

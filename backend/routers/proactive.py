@@ -90,10 +90,12 @@ class AdminConfigUpdate(BaseModel):
     synth_timeout_s: Optional[float] = None
     expiry_news_hours: Optional[int] = None
     expiry_default_days: Optional[int] = None
+    onboarding_enabled: Optional[bool] = None
 
 
 async def _settings_payload(db, user_id: str) -> dict:
     settings = await get_user_settings(db, user_id)
+    config = await load_config(db)
     blocked = await proactive_admin.list_blocked_topics(db, user_id)
     stats = await proactive_admin.user_stats(db, user_id)
     conversations = await proactive_admin.conversation_count(db, user_id)
@@ -104,9 +106,13 @@ async def _settings_payload(db, user_id: str) -> dict:
         "blocked_topics": blocked,
         "stats": stats,
         "conversation_count": conversations,
-        # F4.2.1 — uma vez, só depois de ≥ 3 conversas, fonte da verdade no servidor
+        # F4.2.1 — uma vez, só depois de ≥ 3 conversas, fonte da verdade no servidor.
+        # F5.4.3 — e só quando o admin liberou o onboarding (rollout gradual);
+        # o kill-switch global também segura o modal.
         "onboarding_eligible": (
-            settings.onboarding_seen_at is None
+            config.enabled_global
+            and config.onboarding_enabled
+            and settings.onboarding_seen_at is None
             and not settings.enabled
             and conversations >= ONBOARDING_MIN_CONVERSATIONS
         ),
@@ -347,9 +353,13 @@ async def read_logs(
 
 
 @router.get("/admin-stats")
-async def read_admin_stats(_: dict = Depends(require_admin)) -> dict:
+async def read_admin_stats(
+    days: int = Query(proactive_admin.DAILY_DEFAULT_DAYS, ge=1, le=proactive_admin.DAILY_MAX_DAYS),
+    _: dict = Depends(require_admin),
+) -> dict:
+    """F4.4.3 + F5.2.4/F5.2.5: janelas 24 h/7 d, p95, série diária, tokens e alarme."""
     db = await get_db()
     try:
-        return await proactive_admin.admin_stats(db)
+        return await proactive_admin.admin_stats(db, days=days)
     finally:
         await db.close()

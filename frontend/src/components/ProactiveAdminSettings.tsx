@@ -66,6 +66,14 @@ function ms(value: number | null | undefined): string {
   return value >= 1000 ? `${(value / 1000).toFixed(1)} s` : `${Math.round(value)} ms`
 }
 
+/** 12 345 → "12,3k"; 1 234 567 → "1,2M" (tokens estimados, F5.2.4) */
+export function compact(value: number | null | undefined): string {
+  if (value === null || value === undefined) return '—'
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`
+  if (value >= 1_000) return `${(value / 1_000).toFixed(1)}k`
+  return String(Math.round(value))
+}
+
 export function ProactiveAdminSettings() {
   const { t } = useTranslation()
   const [config, setConfig] = useState<ProactiveAdminConfig | null>(null)
@@ -125,7 +133,7 @@ export function ProactiveAdminSettings() {
   const dirty = useMemo(() => {
     if (!config || !draft) return false
     return (Object.keys(draft) as Array<keyof ProactiveAdminConfig>).some(
-      (k) => k !== 'limits' && k !== 'kill_switch' && draft[k] !== config[k],
+      (k) => k !== 'limits' && k !== 'kill_switch' && k !== 'onboarding_enabled' && draft[k] !== config[k],
     )
   }, [config, draft])
 
@@ -153,7 +161,7 @@ export function ProactiveAdminSettings() {
     if (!config || !draft) return
     const patch: ProactiveAdminConfigUpdate = {}
     for (const k of Object.keys(draft) as Array<keyof ProactiveAdminConfig>) {
-      if (k === 'limits' || k === 'kill_switch' || k === 'enabled_global') continue
+      if (k === 'limits' || k === 'kill_switch' || k === 'enabled_global' || k === 'onboarding_enabled') continue
       if (draft[k] !== config[k]) (patch as Record<string, unknown>)[k] = draft[k] ?? ''
     }
     if (Object.keys(patch).length === 0) return
@@ -332,6 +340,24 @@ export function ProactiveAdminSettings() {
         </button>
       </div>
 
+      {/* F5.4.3 — liberação do onboarding (semana 2 do rollout) */}
+      <div className="enhancer-toggle-row" data-testid="proactive-admin-onboarding">
+        <div className="enhancer-toggle-info">
+          <span>{t('proactive.admin.onboarding')}</span>
+          <small>{t('proactive.admin.onboardingDesc')}</small>
+        </div>
+        <button
+          type="button"
+          className={`toggle-btn ${config.onboarding_enabled ? 'on' : 'off'}`}
+          onClick={() => void apply({ onboarding_enabled: !config.onboarding_enabled })}
+          aria-pressed={config.onboarding_enabled}
+          disabled={saving}
+        >
+          {config.onboarding_enabled ? <ToggleRight size={24} /> : <ToggleLeft size={24} />}
+          {config.onboarding_enabled ? t('common.active') : t('common.inactive')}
+        </button>
+      </div>
+
       {/* Limites e tempos */}
       <div className="proactive-admin-grid">
         {NUMERIC_FIELDS.map((field) => {
@@ -383,6 +409,18 @@ export function ProactiveAdminSettings() {
           <RefreshCw size={14} aria-hidden="true" /> {t('proactive.admin.refresh')}
         </button>
       </div>
+      {stats?.alert?.active && (
+        <div className="proactive-admin-alert" role="alert" data-testid="proactive-admin-alert">
+          <AlertTriangle size={16} aria-hidden="true" />
+          <span>
+            {t('proactive.admin.alertFailures', {
+              failed: stats.alert.failed,
+              total: stats.alert.total,
+              pct: Math.round((stats.alert.ratio ?? 0) * 100),
+            })}
+          </span>
+        </div>
+      )}
       {stats && w24 && w7 ? (
         <>
           <div className="proactive-admin-cards">
@@ -398,6 +436,13 @@ export function ProactiveAdminSettings() {
               value={ms(stats.latency.total_p95_ms)}
               sub={`${t('proactive.admin.stat.research')} ${ms(stats.latency.research_p95_ms)} · ${t('proactive.admin.stat.synth')} ${ms(stats.latency.synth_p95_ms)}`}
             />
+            {stats.tokens && (
+              <StatCard
+                label={t('proactive.admin.stat.tokens24h')}
+                value={compact(stats.tokens['24h'].tokens_in + stats.tokens['24h'].tokens_out)}
+                sub={t('proactive.admin.stat.tokens7d', { n: compact(stats.tokens['7d'].tokens_in + stats.tokens['7d'].tokens_out) })}
+              />
+            )}
           </div>
           <div className="proactive-admin-status-row">
             {(Object.keys(w7.by_status) as ProactiveStatus[]).map((st) => (

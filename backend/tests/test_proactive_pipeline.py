@@ -23,76 +23,20 @@ from backend.routers import chat as chat_router
 # Fakes e helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
-CLASSIFIER_JSON = {
-    "interest": 0.92, "topic": "show do Coldplay em Curitiba", "entities": ["Coldplay", "Curitiba"],
-    "entity_type": "event", "category": "event", "suggested_query": "Coldplay show Curitiba ingressos",
-    "time_sensitive": True, "emotion": "excited", "language": "pt-BR", "reason": "Quer ir ao show.",
-}
-SYNTH_JSON = {
-    "text": "O show do Coldplay em Curitiba está marcado para 21 de março no Couto Pereira, e os ingressos "
-            "abrem na terça pelo site da Eventim. Quer que eu fique de olho na abertura das vendas?",
-    "reason_line": "Pesquisei porque você pareceu animado com o show do Coldplay.",
-    "follow_ups": ["Quanto custam os ingressos?", "Tem setor pista?", "Qual o horário?"],
-    "used_source_urls": ["https://www.eventim.com.br/coldplay?utm_source=x"],
-    "event_date": "2027-03-21",
-}
-USER_MESSAGE = "Gente, o Coldplay vai tocar em Curitiba!!! Não vejo a hora, quero muito ir nesse show!"
-SOURCES_RAW = [
-    {"title": "Coldplay em Curitiba — ingressos", "url": "https://www.eventim.com.br/coldplay?utm_source=x",
-     "snippet": "Vendas abrem terça."},
-    {"title": "Coldplay anuncia show em Curitiba", "url": "https://g1.globo.com/pr/coldplay-curitiba",
-     "snippet": "Banda toca no Couto Pereira em 21 de março."},
-    {"title": "Coldplay - Wikipedia", "url": "https://pt.wikipedia.org/wiki/Coldplay", "snippet": "Banda britânica."},
-    {"title": "post no insta", "url": "https://www.instagram.com/p/abc", "snippet": "🔥"},
-]
+# Fakes compartilhados (F5.1.2) — re-exportados aqui porque os testes de F3/F4 os importam deste módulo
+from backend.tests.fakes.proactive import (  # noqa: E402
+    CLASSIFIER_JSON,
+    SOURCES_RAW,
+    SYNTH_JSON,
+    USER_MESSAGE,
+    FakeLLM,
+    FakeSocket,
+    fake_fetch,
+    fake_search,
+)
 
-
-class FakeLLM:
-    """Responde ao classificador e à síntese conforme o system prompt recebido."""
-
-    def __init__(self, classifier=None, synth=None, *, synth_raw: str | None = None, delay: float = 0.0):
-        self.classifier = classifier if classifier is not None else CLASSIFIER_JSON
-        self.synth = synth if synth is not None else SYNTH_JSON
-        self.synth_raw = synth_raw
-        self.delay = delay
-        self.calls: list[dict] = []
-
-    async def stream_chat(self, model, messages, temperature=0.7, max_tokens=4096, **kwargs):
-        system = messages[0]["content"]
-        kind = "classifier" if system.startswith("You are the interest detector") else "synth"
-        self.calls.append({"kind": kind, "model": model, "messages": messages})
-        if self.delay:
-            await asyncio.sleep(self.delay)
-        if kind == "classifier":
-            payload = json.dumps(self.classifier, ensure_ascii=False)
-        else:
-            payload = self.synth_raw if self.synth_raw is not None else json.dumps(self.synth, ensure_ascii=False)
-        for i in range(0, len(payload), 11):
-            yield payload[i:i + 11]
-
-
-class FakeSocket:
-    def __init__(self):
-        self.sent: list[dict] = []
-
-    async def send_json(self, message: dict):
-        self.sent.append(message)
-
-    def of_type(self, kind: str) -> list[dict]:
-        return [m for m in self.sent if m.get("type") == kind]
-
-
-async def fake_search(query: str, db) -> list[dict]:
-    return list(SOURCES_RAW)
-
-
-async def fake_fetch(url: str, timeout: float = 6.0):
-    if "eventim" in url:
-        return {"title": "Eventim — Coldplay Curitiba", "published_date": "2027-01-10",
-                "articles": [], "text_sample": "Coldplay Music of the Spheres Tour — Curitiba, 21 de março de 2027."}
-    if "g1" in url:
-        raise RuntimeError("boom")  # 1 página falhando é tolerado
-    return None
+__all__ = ["CLASSIFIER_JSON", "SOURCES_RAW", "SYNTH_JSON", "USER_MESSAGE", "FakeLLM", "FakeSocket",
+           "fake_fetch", "fake_search"]
 
 
 async def seed_user_conv(db, *, enabled: bool = True):

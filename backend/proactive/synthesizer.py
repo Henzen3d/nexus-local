@@ -57,6 +57,9 @@ class Synthesis:
     latency_ms: float = 0.0
     raw: str = ""
     error: str = ""
+    # telemetria para custo estimado (F5.2.4): chars do prompt e da resposta
+    prompt_chars: int = 0
+    response_chars: int = 0
 
     @property
     def ok(self) -> bool:
@@ -102,7 +105,7 @@ def _as_str_list(value: Any, *, limit: int, max_items: int) -> list[str]:
         if not text:
             continue
         if len(text) > limit:
-            text = text[:limit].rstrip() + "…"
+            text = text[: limit - 1].rstrip() + "…"  # ≤ limit, contando a reticência
         if text not in out:
             out.append(text)
         if len(out) >= max_items:
@@ -287,6 +290,7 @@ async def synthesize(
 ) -> Synthesis:
     """Chama o modelo (``stream_chat``, temperatura baixa) e devolve :class:`Synthesis`."""
     messages = build_synth_messages(signal, sources, user_message=user_message, now=now)
+    prompt_chars = sum(len(str(m.get("content") or "")) for m in messages)
     chunks: list[str] = []
 
     async def _collect() -> None:
@@ -299,18 +303,24 @@ async def synthesize(
     try:
         await asyncio.wait_for(_collect(), timeout=timeout)
     except asyncio.TimeoutError:
-        return Synthesis(raw="".join(chunks), error="synth_timeout", model_label=model_name,
-                         model_source=model_source, latency_ms=(time.perf_counter() - started) * 1000)
+        raw = "".join(chunks)
+        return Synthesis(raw=raw, error="synth_timeout", model_label=model_name,
+                         model_source=model_source, latency_ms=(time.perf_counter() - started) * 1000,
+                         prompt_chars=prompt_chars, response_chars=len(raw))
     except Exception as exc:
         logger.debug("[Proactive] erro do provedor na síntese: %s", exc)
-        return Synthesis(raw="".join(chunks), error=f"synth_provider:{type(exc).__name__}",
+        raw = "".join(chunks)
+        return Synthesis(raw=raw, error=f"synth_provider:{type(exc).__name__}",
                          model_label=model_name, model_source=model_source,
-                         latency_ms=(time.perf_counter() - started) * 1000)
+                         latency_ms=(time.perf_counter() - started) * 1000,
+                         prompt_chars=prompt_chars, response_chars=len(raw))
 
     synthesis = parse_synthesis("".join(chunks), sources)
     synthesis.latency_ms = (time.perf_counter() - started) * 1000
     synthesis.model_label = model_name
     synthesis.model_source = model_source
+    synthesis.prompt_chars = prompt_chars
+    synthesis.response_chars = len(synthesis.raw or "")
     if synthesis.ok and not synthesis.reason_line:
         synthesis.reason_line = default_reason_line(signal)
     return synthesis

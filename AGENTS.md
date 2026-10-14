@@ -62,3 +62,15 @@ Este arquivo é a base de conhecimento de regras de comportamento e restrições
 * **Radical Aesthetics:** Manter estilo glassmórfico refinado, tooltips contextuais, animações suaves e contraste impecável tanto no tema claro quanto no escuro.
 * **I18n Rigoroso:** Todas as novas strings devem possuir correspondentes em `pt-BR.json`, `en-US.json` e `es-ES.json`.
 * **TypeScript Estrito:** A compilação `npm run build` deve sempre passar com 0 erros de tipagem antes de qualquer commit.
+
+## 🧭 3. Módulo "Assistente Proativo" (`backend/proactive/`, `frontend/src/components/Proactive*.tsx`)
+
+Pesquisa espontânea opt-in: detecta interesse na mensagem do usuário, pesquisa na web e entrega um resumo curto com fontes **sem interromper** a conversa. Plano, contratos e critérios de aceite vivem em `melhorias/assistente-proativo/` (índice no `README.md` da pasta; guia da família em `docs/guia-assistente-proativo.md`).
+
+* **Invariantes (não quebrar):** opt-in por usuário (`proactive_user_settings.enabled`, padrão 0); nunca pesquisa `private_person`; insights só do dono (IDOR ⇒ 404); entrega só após o fim do turno (`service.TurnGuard`/`wait_turn_end`); nunca entrega expirado; máx. `max_pending` pendentes; URLs privadas/locais nunca são buscadas nem listadas (`web_search.reader.is_safe_public_url` + `researcher.is_public_looking_url`); texto sintetizado ≤ `synthesizer.MAX_TEXT_CHARS`.
+* **Config:** `proactive.config.load_config()` — `meta` (`proactive_*`, painel admin) > env `PROACTIVE_*` > padrão. Kill-switch = `enabled_global`; rollout do convite = `onboarding_enabled`.
+* **Tarefas assíncronas:** nunca `asyncio.create_task` solto — use `service.track_task(...)` (cancelamento no kill-switch, contagem em `pending_tasks()` e no admin-stats). Boot: `main.recover_interrupted_proactive()` marca `detected|researching` órfãos como `failed:restart`.
+* **Logs:** `service.log_stage(...)` — sempre `insight_id`, `stage`, `latency_ms`; **jamais** o texto do usuário nem o texto sintetizado (vale também para `GET /api/proactive/logs`, que só expõe `LOG_COLUMNS`).
+* **Testes:** `backend/tests/test_proactive_*.py` com os fakes compartilhados de `backend/tests/fakes/proactive.py` (`FakeProvider`, `FakeSearch`, `FakeReader`, `FakeSocket`). Rodar da raiz: `.venv/bin/python -m pytest backend/tests -q` (o `conftest.py` já aponta `DB_PATH` para um SQLite temporário).
+* **Frontend:** strings novas em `proactive.*` nos 8 locales; `npm run check:i18n` compara as chaves de `pt-BR` com os demais (`check:i18n:all` cobre o app inteiro). Mensagens `kind: 'proactive'` não alimentam o auto-TTS.
+

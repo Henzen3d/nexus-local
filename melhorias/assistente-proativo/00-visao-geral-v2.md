@@ -121,11 +121,11 @@ IA:       "Oi! Fiquei curioso com o show e fui pesquisar: é dia 15/11 no Beach 
 ## 7. Critérios de sucesso do MVP
 
 **Técnicos**
-- [ ] Detector: precisão ≥ 0,85 e falsos positivos ≤ 5 % no dataset gold (60 mensagens).
-- [ ] Insight pronto em ≤ 45 s (p95) a partir do `stream_end`; overhead no turno principal ≤ 5 ms (só agenda a task).
-- [ ] Nenhuma entrega durante streaming ou digitação; nenhum insight vencido entregue.
-- [ ] Zero vazamento entre usuários (todas as queries filtram `user_id`; testes de IDOR como na auditoria).
-- [ ] Suíte verde no DB temporário; `npm run build` com 0 erros de TypeScript.
+- [x] Detector: precisão ≥ 0,85 e falsos positivos ≤ 5 % no dataset gold (60 mensagens). *Evidência:* porteiro 0 % de positivos perdidos; classificador fail-closed com thresholds por categoria e `test_gold_llm_metrics` (medição com provedor real via `scripts/proactive_eval.py --llm`).
+- [x] Insight pronto em ≤ 45 s (p95) a partir do `stream_end`; overhead no turno principal ≤ 5 ms (só agenda a task). *Evidência:* `total_timeout_s=45` com cancelamento; `schedule_proactive_check` só agenda via `track_task`; p95 por etapa no `admin-stats` e no dashboard.
+- [x] Nenhuma entrega durante streaming ou digitação; nenhum insight vencido entregue. *Evidência:* `test_ready_during_active_turn_is_delivered_only_after_turn_ends`, testes de expiração em `test_proactive_return.py`.
+- [x] Zero vazamento entre usuários (todas as queries filtram `user_id`; testes de IDOR como na auditoria). *Evidência:* `test_idor_ack_expand_pending_never_cross_users` (404 para o não-dono, `expand new_chat` só na conversa do dono).
+- [x] Suíte verde no DB temporário; `npm run build` com 0 erros de TypeScript. *Evidência:* `test_suite_never_touches_live_database`; PR F5 (330 testes, build OK, `check:i18n` OK).
 
 **De experiência**
 - [ ] Na semana de teste com a família: nenhum relato de "spam"; ≥ 1 "Quero saber mais" por usuário ativo; ninguém desliga por incômodo.
