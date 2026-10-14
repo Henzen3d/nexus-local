@@ -1,0 +1,33 @@
+
+> nexuslocal-frontend@1.0.0 build
+> tsc && vite build
+
+vite v5.4.21 building for production...
+transforming...
+✓ 2762 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/manifest.webmanifest                            0.48 kB
+dist/index.html                                      1.51 kB │ gzip:   0.70 kB
+dist/assets/index-Cdxf8O5w.css                     218.47 kB │ gzip:  35.28 kB
+dist/assets/ProgressCard-Cl-Vs0f4.js                 1.21 kB │ gzip:   0.66 kB
+dist/assets/ImageCard-C3Y4lTDg.js                    1.66 kB │ gzip:   0.79 kB
+dist/assets/ChecklistCard-3chTfV-1.js                1.78 kB │ gzip:   0.73 kB
+dist/assets/ChartCard-DTGZ0dcJ.js                    3.05 kB │ gzip:   0.99 kB
+dist/assets/ControlsCard-BmtBv6kv.js                 5.45 kB │ gzip:   1.92 kB
+dist/assets/workbox-window.prod.es5-BqEJf4Xk.js      5.71 kB │ gzip:   2.34 kB
+dist/assets/SandboxCard-BJccbVxw.js                  9.21 kB │ gzip:   3.27 kB
+dist/assets/index-D7D0wZQY.js                    1,659.42 kB │ gzip: 483.71 kB
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 6.74s
+
+PWA v1.3.0
+mode      generateSW
+precache  15 entries (1890.37 KiB)
+files generated
+  dist/sw.js
+  dist/workbox-835c8c05.js

@@ -1,0 +1,89 @@
+04-configurado-1440 NexusLocal
+Nova conversa
+Conversas
+Projetos
+Biblioteca
+Artefatos
+HOJE
+Olá! Como começo a usar? Ação, 日本語, 👩🏽‍💻
+Q
+Qa-admin
+Configurações
+Apoiar o NexusLocal
+No que você está pensando hoje, Qa-admin?
+
+Chat local com free tiers — Groq, Gemini, OpenRouter e mais, com suas chaves.
+
+QA qa-a
+Escrever
+Aprender
+Código
+Brainstorm
+05-resposta-1440 NexusLocal
+Nova conversa
+Conversas
+Projetos
+Biblioteca
+Artefatos
+HOJE
+Teste diário: ação, 日本語, 👩🏽‍💻 e <script>alert(1)</script>
+Olá! Como começo a usar? Ação, 日本語, 👩🏽‍💻
+Q
+Qa-admin
+Configurações
+Apoiar o NexusLocal
+
+Teste diário: ação, 日本語, 👩🏽‍💻 e <script>alert(1)</script>
+
+14:11
+·
+QA qa-a
+chat.generationError
+Erro ao chamar modelo: Illegal header value b'Bearer '
+Modelos podem errar. Confira fatos importantes antes de usar.
+QA qa-a
+Failover: ollama/qa-a esgotado. Alternando para Qwen 2.5 (Ollama)...
+Failover: ollama/qa-a esgotado. Alternando para Mistral (Ollama)...
+Erro ao chamar modelo: Illegal header value b'Bearer '
+06-modelos-1440 NexusLocal
+Nova conversa
+Conversas
+Projetos
+Biblioteca
+Artefatos
+HOJE
+Teste diário: ação, 日本語, 👩🏽‍💻 e <script>alert(1)</script>
+Olá! Como começo a usar? Ação, 日本語, 👩🏽‍💻
+Q
+Qa-admin
+Configurações
+Apoiar o NexusLocal
+
+Teste diário: ação, 日本語, 👩🏽‍💻 e <script>alert(1)</script>
+
+14:11
+·
+QA qa-a
+chat.generationError
+Erro ao chamar modelo: Illegal header value b'Bearer '
+Modelos podem errar. Confira fatos importantes antes de usar.
+QA qa-a
+Roteamento Inteligente
+Seleciona a melhor IA por contexto, cota e velocidade
+Provedor
+Todos
+QA qa-a
+Ollama
+8k
+QA qa-b
+Ollama
+8k
+QA qa-bad
+Ollama
+8k
+Mais modelos
+6
+Failover: ollama/qa-a esgotado. Alternando para Qwen 2.5 (Ollama)...
+Failover: ollama/qa-a esgotado. Alternando para Mistral (Ollama)...
+Erro ao chamar modelo: Illegal header value b'Bearer '
+BUTTONS ['NexusLocal', '', '', 'Nova conversa', 'Conversas', 'Projetos', 'Biblioteca', 'Artefatos', 'Teste diário: ação, 日本語, 👩🏽\u200d💻 e <script>alert(1)</script>', '', 'Olá! Como começo a usar? Ação, 日本語, 👩🏽\u200d💻', '', 'QQa-adminConfigurações', '', '', '', '', '', '', 'QA qa-a', 'ProvedorTodos', 'Mais modelos6', '', '', '']

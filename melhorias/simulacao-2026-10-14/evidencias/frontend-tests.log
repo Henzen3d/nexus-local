@@ -1,0 +1,314 @@
+
+> nexuslocal-frontend@1.0.0 test
+> node --experimental-strip-types --test src/lib/*.test.ts
+
+TAP version 13
+# Subtest: falha com facts_after 0 não vira 100% de ruído
+ok 1 - falha com facts_after 0 não vira 100% de ruído
+  ---
+  duration_ms: 1.271461
+  type: 'test'
+  ...
+# Subtest: trava de segurança não mostra reversão bloqueada
+ok 2 - trava de segurança não mostra reversão bloqueada
+  ---
+  duration_ms: 0.212268
+  type: 'test'
+  ...
+# Subtest: sucesso com snapshot libera rollback; sucesso antigo fica bloqueado
+ok 3 - sucesso com snapshot libera rollback; sucesso antigo fica bloqueado
+  ---
+  duration_ms: 0.244678
+  type: 'test'
+  ...
+# Subtest: 60% no passo reasoning não marca a transação flash como ativa
+ok 4 - 60% no passo reasoning não marca a transação flash como ativa
+  ---
+  duration_ms: 0.293713
+  type: 'test'
+  ...
+# Subtest: lista vazia não inventa modelo — o toggle não pode desligar no vazio
+ok 5 - lista vazia não inventa modelo — o toggle não pode desligar no vazio
+  ---
+  duration_ms: 0.755138
+  type: 'test'
+  ...
+# Subtest: restaura o último manual se ainda existe e não está esgotado
+ok 6 - restaura o último manual se ainda existe e não está esgotado
+  ---
+  duration_ms: 0.176621
+  type: 'test'
+  ...
+# Subtest: ignora último manual esgotado e cai no primeiro disponível
+ok 7 - ignora último manual esgotado e cai no primeiro disponível
+  ---
+  duration_ms: 0.108651
+  type: 'test'
+  ...
+# Subtest: auto gravado sem opt-in não é o padrão
+ok 8 - auto gravado sem opt-in não é o padrão
+  ---
+  duration_ms: 0.110416
+  type: 'test'
+  ...
+# Subtest: auto com opt-in permanece
+ok 9 - auto com opt-in permanece
+  ---
+  duration_ms: 0.151431
+  type: 'test'
+  ...
+# Subtest: modelo manual não depende do opt-in
+ok 10 - modelo manual não depende do opt-in
+  ---
+  duration_ms: 0.07273
+  type: 'test'
+  ...
+# Subtest: sem histórico, não devolve id auto
+ok 11 - sem histórico, não devolve id auto
+  ---
+  duration_ms: 0.169609
+  type: 'test'
+  ...
+# Subtest: rejeita versao errada
+ok 12 - rejeita versao errada
+  ---
+  duration_ms: 0.973576
+  type: 'test'
+  ...
+# Subtest: progress valido
+ok 13 - progress valido
+  ---
+  duration_ms: 0.362854
+  type: 'test'
+  ...
+# Subtest: bloco ruim nao derruba o bom
+ok 14 - bloco ruim nao derruba o bom
+  ---
+  duration_ms: 0.866546
+  type: 'test'
+  ...
+# Subtest: filtro de imagens segue regras de seguranca
+ok 15 - filtro de imagens segue regras de seguranca
+  ---
+  duration_ms: 0.546288
+  type: 'test'
+  ...
+# Subtest: chart bar line e compare
+ok 16 - chart bar line e compare
+  ---
+  duration_ms: 0.181041
+  type: 'test'
+  ...
+# Subtest: controls com formula e template
+ok 17 - controls com formula e template
+  ---
+  duration_ms: 0.5685
+  type: 'test'
+  ...
+# Subtest: sandbox com initial_height
+ok 18 - sandbox com initial_height
+  ---
+  duration_ms: 0.248923
+  type: 'test'
+  ...
+# Subtest: aba oculta é hidden independentemente da atividade
+ok 19 - aba oculta é hidden independentemente da atividade
+  ---
+  duration_ms: 0.752676
+  type: 'test'
+  ...
+# Subtest: visível + atividade recente = active; ≥ 5 min sem atividade = idle
+ok 20 - visível + atividade recente = active; ≥ 5 min sem atividade = idle
+  ---
+  duration_ms: 0.156424
+  type: 'test'
+  ...
+# Subtest: conversation_id só vai na tela de chat
+ok 21 - conversation_id só vai na tela de chat
+  ---
+  duration_ms: 0.601921
+  type: 'test'
+  ...
+# Subtest: →active e primeiro relato são imediatos; sair espera o debounce
+ok 22 - →active e primeiro relato são imediatos; sair espera o debounce
+  ---
+  duration_ms: 0.153448
+  type: 'test'
+  ...
+# Subtest: sameFrame compara estado, conversa e tela
+ok 23 - sameFrame compara estado, conversa e tela
+  ---
+  duration_ms: 0.123759
+  type: 'test'
+  ...
+# Subtest: timestamps UTC sem sufixo são lidos como UTC
+ok 24 - timestamps UTC sem sufixo são lidos como UTC
+  ---
+  duration_ms: 0.918421
+  type: 'test'
+  ...
+# Subtest: insight vencido nunca entra na fila
+ok 25 - insight vencido nunca entra na fila
+  ---
+  duration_ms: 0.871426
+  type: 'test'
+  ...
+# Subtest: merge deduplica por id, ordena do mais antigo e corta em 3
+ok 26 - merge deduplica por id, ordena do mais antigo e corta em 3
+  ---
+  duration_ms: 0.300689
+  type: 'test'
+  ...
+# Subtest: insights que deixaram de estar ready saem da fila
+ok 27 - insights que deixaram de estar ready saem da fila
+  ---
+  duration_ms: 0.129406
+  type: 'test'
+  ...
+# Subtest: título "novidade" só quando o mais novo tem < 10 min
+ok 28 - título "novidade" só quando o mais novo tem < 10 min
+  ---
+  duration_ms: 0.202949
+  type: 'test'
+  ...
+# Subtest: idade relativa
+ok 29 - idade relativa
+  ---
+  duration_ms: 0.291773
+  type: 'test'
+  ...
+# Subtest: prefixo da bolha segue canal e idioma
+ok 30 - prefixo da bolha segue canal e idioma
+  ---
+  duration_ms: 0.350481
+  type: 'test'
+  ...
+# Subtest: preview do toast remove markdown e corta
+ok 31 - preview do toast remove markdown e corta
+  ---
+  duration_ms: 0.218829
+  type: 'test'
+  ...
+# Subtest: mantém os passos de busca quando já existe um passo de raciocínio
+ok 32 - mantém os passos de busca quando já existe um passo de raciocínio
+  ---
+  duration_ms: 2.273586
+  type: 'test'
+  ...
+# Subtest: recompõe a busca a partir das fontes quando a árvore só tem raciocínio
+ok 33 - recompõe a busca a partir das fontes quando a árvore só tem raciocínio
+  ---
+  duration_ms: 0.178187
+  type: 'test'
+  ...
+# Subtest: não inventa busca quando não houve pesquisa
+ok 34 - não inventa busca quando não houve pesquisa
+  ---
+  duration_ms: 0.145072
+  type: 'test'
+  ...
+# Subtest: botão só para administrador, em qualquer caixa
+ok 35 - botão só para administrador, em qualquer caixa
+  ---
+  duration_ms: 0.793695
+  type: 'test'
+  ...
+# Subtest: regressão visual: botão não pode sumir no layout
+ok 36 - regressão visual: botão não pode sumir no layout
+  ---
+  duration_ms: 1.593194
+  type: 'test'
+  ...
+# Subtest: rótulo pt-BR é Cadastrar Usuário
+ok 37 - rótulo pt-BR é Cadastrar Usuário
+  ---
+  duration_ms: 1.180776
+  type: 'test'
+  ...
+# Subtest: host sem www e favicon pelo domínio
+ok 38 - host sem www e favicon pelo domínio
+  ---
+  duration_ms: 2.17256
+  type: 'test'
+  ...
+# Subtest: plural de páginas
+ok 39 - plural de páginas
+  ---
+  duration_ms: 0.147845
+  type: 'test'
+  ...
+# Subtest: parar exato sai da conversa, frase comum não
+ok 40 - parar exato sai da conversa, frase comum não
+  ---
+  duration_ms: 1.156747
+  type: 'test'
+  ...
+# Subtest: toque único manda o texto e não reabre o microfone
+ok 41 - toque único manda o texto e não reabre o microfone
+  ---
+  duration_ms: 0.695402
+  type: 'test'
+  ...
+# Subtest: transcrição vazia no toque único não manda
+ok 42 - transcrição vazia no toque único não manda
+  ---
+  duration_ms: 0.160332
+  type: 'test'
+  ...
+# Subtest: modo conversa manda e espera a leitura antes de ouvir de novo
+ok 43 - modo conversa manda e espera a leitura antes de ouvir de novo
+  ---
+  duration_ms: 0.207146
+  type: 'test'
+  ...
+# Subtest: leitura fora do modo conversa não reabre o microfone
+ok 44 - leitura fora do modo conversa não reabre o microfone
+  ---
+  duration_ms: 0.177031
+  type: 'test'
+  ...
+# Subtest: parar ou toque no microfone sai, sem ouvir enquanto a voz fala
+ok 45 - parar ou toque no microfone sai, sem ouvir enquanto a voz fala
+  ---
+  duration_ms: 0.235579
+  type: 'test'
+  ...
+# Subtest: vazio na conversa ouve de novo, sem mandar
+ok 46 - vazio na conversa ouve de novo, sem mandar
+  ---
+  duration_ms: 0.252742
+  type: 'test'
+  ...
+# Subtest: botão conversar liga e desliga o loop
+ok 47 - botão conversar liga e desliga o loop
+  ---
+  duration_ms: 0.20577
+  type: 'test'
+  ...
+# Subtest: toque no microfone parado começa uma escuta só
+ok 48 - toque no microfone parado começa uma escuta só
+  ---
+  duration_ms: 0.312935
+  type: 'test'
+  ...
+# Subtest: sessão de voz pede pt-BR e separa parcial de final
+ok 49 - sessão de voz pede pt-BR e separa parcial de final
+  ---
+  duration_ms: 0.669606
+  type: 'test'
+  ...
+# Subtest: composer tem microfone e modo conversa
+ok 50 - composer tem microfone e modo conversa
+  ---
+  duration_ms: 0.368563
+  type: 'test'
+  ...
+1..50
+# tests 50
+# suites 0
+# pass 50
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1089.560096

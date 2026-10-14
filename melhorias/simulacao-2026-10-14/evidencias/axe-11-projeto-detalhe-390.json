@@ -1,0 +1,479 @@
+[
+  {
+    "id": "aria-hidden-focus",
+    "impact": "serious",
+    "tags": [
+      "cat.name-role-value",
+      "wcag2a",
+      "wcag412",
+      "TTv5",
+      "TT6.a",
+      "EN-301-549",
+      "EN-9.4.1.2",
+      "RGAAv4",
+      "RGAA-10.8.1"
+    ],
+    "description": "Ensure aria-hidden elements are not focusable nor contain focusable elements",
+    "help": "ARIA hidden element must not be focusable or contain focusable elements",
+    "helpUrl": "https://dequeuniversity.com/rules/axe/4.14/aria-hidden-focus?application=axeAPI",
+    "nodes": [
+      {
+        "any": [],
+        "all": [
+          {
+            "id": "focusable-disabled",
+            "data": null,
+            "relatedNodes": [
+              {
+                "html": "<button type=\"button\" class=\"new-chat-btn custom-tooltip-trigger\" data-tooltip=\"Nova conversa\" aria-label=\"Nova conversa\">",
+                "target": [
+                  ".new-chat-btn"
+                ]
+              },
+              {
+                "html": "<button type=\"button\" class=\"sidebar-fixed-nav-item custom-tooltip-trigger \" data-tooltip=\"Conversas\" aria-label=\"Conversas\">",
+                "target": [
+                  "button[data-tooltip=\"Conversas\"]"
+                ]
+              },
+              {
+                "html": "<button type=\"button\" class=\"sidebar-fixed-nav-item custom-tooltip-trigger selected\" data-tooltip=\"Projetos\" aria-label=\"Projetos\">",
+                "target": [
+                  ".selected"
+                ]
+              },
+              {
+                "html": "<button type=\"button\" class=\"sidebar-fixed-nav-item custom-tooltip-trigger \" data-tooltip=\"Biblioteca\" aria-label=\"Biblioteca\">",
+                "target": [
+                  "button[data-tooltip=\"Biblioteca\"]"
+                ]
+              },
+              {
+                "html": "<button type=\"button\" class=\"sidebar-fixed-nav-item custom-tooltip-trigger \" data-tooltip=\"Artefatos\" aria-label=\"Artefatos\">",
+                "target": [
+                  "button[data-tooltip=\"Artefatos\"]"
+                ]
+              },
+              {
+                "html": "<button class=\"conv-title\"><span>QA interface mobile 1440</span></button>",
+                "target": [
+                  ".conv-item:nth-child(2) > .conv-title"
+                ]
+              },
+              {
+                "html": "<button class=\"conv-menu-trigger\" title=\"Ações\" aria-label=\"Ações\" aria-expanded=\"false\">",
+                "target": [
+                  ".conv-item:nth-child(2) > .conv-actions-dropdown-container > .conv-menu-trigger[title=\"Ações\"][aria-label=\"Ações\"]"
+                ]
+              },
+              {
+                "html": "<button class=\"conv-title\"><span>Teste diário: ação, 日本語, 👩🏽‍💻 e &lt;script&gt;alert(1)&lt;/script&gt;</span></button>",
+                "target": [
+                  ".conv-item:nth-child(3) > .conv-title"
+                ]
+              },
+              {
+                "html": "<button class=\"conv-menu-trigger\" title=\"Ações\" aria-label=\"Ações\" aria-expanded=\"false\">",
+                "target": [
+                  ".conv-item:nth-child(3) > .conv-actions-dropdown-container > .conv-menu-trigger[title=\"Ações\"][aria-label=\"Ações\"]"
+                ]
+              },
+              {
+                "html": "<button class=\"conv-title\"><span>QA429</span></button>",
+                "target": [
+                  ".conv-item:nth-child(4) > .conv-title"
+                ]
+              },
+              {
+                "html": "<button class=\"conv-menu-trigger\" title=\"Ações\" aria-label=\"Ações\" aria-expanded=\"false\">",
+                "target": [
+                  ".conv-item:nth-child(4) > .conv-actions-dropdown-container > .conv-menu-trigger[title=\"Ações\"][aria-label=\"Ações\"]"
+                ]
+              },
+              {
+                "html": "<button class=\"conv-title\"><span>QA offline</span></button>",
+                "target": [
+                  ".conv-item:nth-child(5) > .conv-title"
+                ]
+              },
+              {
+                "html": "<button class=\"conv-menu-trigger\" title=\"Ações\" aria-label=\"Ações\" aria-expanded=\"false\">",
+                "target": [
+                  ".conv-item:nth-child(5) > .conv-actions-dropdown-container > .conv-menu-trigger[title=\"Ações\"][aria-label=\"Ações\"]"
+                ]
+              },
+              {
+                "html": "<button class=\"conv-title\"><span>Pesquise na web as novidades do FastAPI</span></button>",
+                "target": [
+                  ".conv-item:nth-child(6) > .conv-title"
+                ]
+              },
+              {
+                "html": "<button class=\"conv-menu-trigger\" title=\"Ações\" aria-label=\"Ações\" aria-expanded=\"false\">",
+                "target": [
+                  ".conv-item:nth-child(6) > .conv-actions-dropdown-container > .conv-menu-trigger[title=\"Ações\"][aria-label=\"Ações\"]"
+                ]
+              },
+              {
+                "html": "<button class=\"conv-title\"><span>Explique QA com uma falha</span></button>",
+                "target": [
+                  ".conv-item:nth-child(7) > .conv-title"
+                ]
+              },
+              {
+                "html": "<button class=\"conv-menu-trigger\" title=\"Ações\" aria-label=\"Ações\" aria-expanded=\"false\">",
+                "target": [
+                  ".conv-item:nth-child(7) > .conv-actions-dropdown-container > .conv-menu-trigger[title=\"Ações\"][aria-label=\"Ações\"]"
+                ]
+              },
+              {
+                "html": "<button class=\"conv-title\"><span>Descreva imagem</span></button>",
+                "target": [
+                  ".conv-item:nth-child(8) > .conv-title"
+                ]
+              },
+              {
+                "html": "<button class=\"conv-menu-trigger\" title=\"Ações\" aria-label=\"Ações\" aria-expanded=\"false\">",
+                "target": [
+                  ".conv-item:nth-child(8) > .conv-actions-dropdown-container > .conv-menu-trigger[title=\"Ações\"][aria-label=\"Ações\"]"
+                ]
+              },
+              {
+                "html": "<button class=\"conv-title\"><span>Nos arquivos do projeto, qual é o código secreto de devoluçã…</span></button>",
+                "target": [
+                  ".conv-item:nth-child(9) > .conv-title"
+                ]
+              },
+              {
+                "html": "<button class=\"conv-menu-trigger\" title=\"Ações\" aria-label=\"Ações\" aria-expanded=\"false\">",
+                "target": [
+                  ".conv-item:nth-child(9) > .conv-actions-dropdown-container > .conv-menu-trigger[title=\"Ações\"][aria-label=\"Ações\"]"
+                ]
+              },
+              {
+                "html": "<button class=\"conv-title\"><span>QA Fusion: qual código de devolução nos arquivos?</span></button>",
+                "target": [
+                  ".conv-item:nth-child(10) > .conv-title"
+                ]
+              },
+              {
+                "html": "<button class=\"conv-menu-trigger\" title=\"Ações\" aria-label=\"Ações\" aria-expanded=\"false\">",
+                "target": [
+                  ".conv-item:nth-child(10) > .conv-actions-dropdown-container > .conv-menu-trigger[title=\"Ações\"][aria-label=\"Ações\"]"
+                ]
+              },
+              {
+                "html": "<button class=\"conv-title\"><span>QA uma falha isolada</span></button>",
+                "target": [
+                  ".conv-item:nth-child(11) > .conv-title"
+                ]
+              },
+              {
+                "html": "<button class=\"conv-menu-trigger\" title=\"Ações\" aria-label=\"Ações\" aria-expanded=\"false\">",
+                "target": [
+                  ".conv-item:nth-child(11) > .conv-actions-dropdown-container > .conv-menu-trigger[title=\"Ações\"][aria-label=\"Ações\"]"
+                ]
+              },
+              {
+                "html": "<button class=\"conv-title\"><span>QA fusion com projeto</span></button>",
+                "target": [
+                  ".conv-item:nth-child(12) > .conv-title"
+                ]
+              },
+              {
+                "html": "<button class=\"conv-menu-trigger\" title=\"Ações\" aria-label=\"Ações\" aria-expanded=\"false\">",
+                "target": [
+                  ".conv-item:nth-child(12) > .conv-actions-dropdown-container > .conv-menu-trigger[title=\"Ações\"][aria-label=\"Ações\"]"
+                ]
+              },
+              {
+                "html": "<button class=\"conv-title\"><span>Descreva a imagem QA</span></button>",
+                "target": [
+                  ".conv-item:nth-child(13) > .conv-title"
+                ]
+              },
+              {
+                "html": "<button class=\"conv-menu-trigger\" title=\"Ações\" aria-label=\"Ações\" aria-expanded=\"false\">",
+                "target": [
+                  ".conv-item:nth-child(13) > .conv-actions-dropdown-container > .conv-menu-trigger[title=\"Ações\"][aria-label=\"Ações\"]"
+                ]
+              },
+              {
+                "html": "<button class=\"conv-title\"><span>Qual o código secreto de devolução?</span></button>",
+                "target": [
+                  ".conv-item:nth-child(14) > .conv-title"
+                ]
+              },
+              {
+                "html": "<button class=\"conv-menu-trigger\" title=\"Ações\" aria-label=\"Ações\" aria-expanded=\"false\">",
+                "target": [
+                  ".conv-item:nth-child(14) > .conv-actions-dropdown-container > .conv-menu-trigger[title=\"Ações\"][aria-label=\"Ações\"]"
+                ]
+              },
+              {
+                "html": "<button class=\"conv-title\"><span>QA fechar aba</span></button>",
+                "target": [
+                  ".conv-item:nth-child(15) > .conv-title"
+                ]
+              },
+              {
+                "html": "<button class=\"conv-menu-trigger\" title=\"Ações\" aria-label=\"Ações\" aria-expanded=\"false\">",
+                "target": [
+                  ".conv-item:nth-child(15) > .conv-actions-dropdown-container > .conv-menu-trigger[title=\"Ações\"][aria-label=\"Ações\"]"
+                ]
+              },
+              {
+                "html": "<button class=\"conv-title\"><span>QA duplo envio</span></button>",
+                "target": [
+                  ".conv-item:nth-child(16) > .conv-title"
+                ]
+              },
+              {
+                "html": "<button class=\"conv-menu-trigger\" title=\"Ações\" aria-label=\"Ações\" aria-expanded=\"false\">",
+                "target": [
+                  ".conv-item:nth-child(16) > .conv-actions-dropdown-container > .conv-menu-trigger[title=\"Ações\"][aria-label=\"Ações\"]"
+                ]
+              },
+              {
+                "html": "<button class=\"conv-title\"><span>QA duplo envio</span></button>",
+                "target": [
+                  ".conv-item:nth-child(17) > .conv-title"
+                ]
+              },
+              {
+                "html": "<button class=\"conv-menu-trigger\" title=\"Ações\" aria-label=\"Ações\" aria-expanded=\"false\">",
+                "target": [
+                  ".conv-item:nth-child(17) > .conv-actions-dropdown-container > .conv-menu-trigger[title=\"Ações\"][aria-label=\"Ações\"]"
+                ]
+              },
+              {
+                "html": "<button class=\"conv-title\"><span>測測測測測測測測測測測測測測測測測測測測測測測測測測測測測測測測測測測測測測測測測測測測測測測測測測測測測測測測測測測測…</span></button>",
+                "target": [
+                  ".conv-item:nth-child(18) > .conv-title"
+                ]
+              },
+              {
+                "html": "<button class=\"conv-menu-trigger\" title=\"Ações\" aria-label=\"Ações\" aria-expanded=\"false\">",
+                "target": [
+                  ".conv-item:nth-child(18) > .conv-actions-dropdown-container > .conv-menu-trigger[title=\"Ações\"][aria-label=\"Ações\"]"
+                ]
+              },
+              {
+                "html": "<button class=\"conv-title\"><span>Ação 日本語 👩🏽‍💻 &lt;script&gt;alert(1)&lt;/script&gt;</span></button>",
+                "target": [
+                  ".conv-item:nth-child(19) > .conv-title"
+                ]
+              },
+              {
+                "html": "<button class=\"conv-menu-trigger\" title=\"Ações\" aria-label=\"Ações\" aria-expanded=\"false\">",
+                "target": [
+                  ".conv-item:nth-child(19) > .conv-actions-dropdown-container > .conv-menu-trigger[title=\"Ações\"][aria-label=\"Ações\"]"
+                ]
+              },
+              {
+                "html": "<button class=\"conv-title\"><span>Teste diário: ação, 日本語, 👩🏽‍💻 e &lt;script&gt;alert(1)&lt;/script&gt;</span></button>",
+                "target": [
+                  ".conv-item:nth-child(20) > .conv-title"
+                ]
+              },
+              {
+                "html": "<button class=\"conv-menu-trigger\" title=\"Ações\" aria-label=\"Ações\" aria-expanded=\"false\">",
+                "target": [
+                  ".conv-item:nth-child(20) > .conv-actions-dropdown-container > .conv-menu-trigger[title=\"Ações\"][aria-label=\"Ações\"]"
+                ]
+              },
+              {
+                "html": "<button class=\"conv-title\"><span>Teste diário: ação, 日本語, 👩🏽‍💻 e &lt;script&gt;alert(1)&lt;/script&gt;</span></button>",
+                "target": [
+                  ".conv-item:nth-child(21) > .conv-title"
+                ]
+              },
+              {
+                "html": "<button class=\"conv-menu-trigger\" title=\"Ações\" aria-label=\"Ações\" aria-expanded=\"false\">",
+                "target": [
+                  ".conv-item:nth-child(21) > .conv-actions-dropdown-container > .conv-menu-trigger[title=\"Ações\"][aria-label=\"Ações\"]"
+                ]
+              },
+              {
+                "html": "<button class=\"conv-title\"><span>Olá! Como começo a usar? Ação, 日本語, 👩🏽‍💻</span></button>",
+                "target": [
+                  ".conv-item:nth-child(22) > .conv-title"
+                ]
+              },
+              {
+                "html": "<button class=\"conv-menu-trigger\" title=\"Ações\" aria-label=\"Ações\" aria-expanded=\"false\">",
+                "target": [
+                  ".conv-item:nth-child(22) > .conv-actions-dropdown-container > .conv-menu-trigger[title=\"Ações\"][aria-label=\"Ações\"]"
+                ]
+              },
+              {
+                "html": "<button class=\"btn btn-ghost btn-icon custom-tooltip-trigger\" data-tooltip=\"Usar tema escuro\">",
+                "target": [
+                  "button[data-tooltip=\"Usar tema escuro\"]"
+                ]
+              },
+              {
+                "html": "<button class=\"btn btn-ghost btn-icon custom-tooltip-trigger\" data-tooltip=\"Sair da conta\">",
+                "target": [
+                  "button[data-tooltip=\"Sair da conta\"]"
+                ]
+              }
+            ],
+            "impact": "serious",
+            "message": "Focusable content should be disabled, be removed from the DOM, or not be hidden with aria-hidden"
+          },
+          {
+            "id": "focusable-not-tabbable",
+            "data": null,
+            "relatedNodes": [
+              {
+                "html": "<div class=\"user-card custom-tooltip-trigger \" data-tooltip=\"Configurações\" role=\"button\" tabindex=\"0\" style=\"display: flex; align-items: center; justify-content: space-between; width: 100%; cursor: pointer;\">",
+                "target": [
+                  ".user-card"
+                ]
+              }
+            ],
+            "impact": "serious",
+            "message": "Focusable content should have tabindex=\"-1\", be removed from the DOM, or not be hidden with aria-hidden"
+          }
+        ],
+        "none": [],
+        "impact": "serious",
+        "html": "<aside class=\"sidebar\" aria-hidden=\"true\" aria-expanded=\"false\" data-open=\"false\">",
+        "target": [
+          ".sidebar"
+        ],
+        "failureSummary": "Fix all of the following:\n  Focusable content should be disabled, be removed from the DOM, or not be hidden with aria-hidden\n  Focusable content should have tabindex=\"-1\", be removed from the DOM, or not be hidden with aria-hidden"
+      }
+    ]
+  },
+  {
+    "id": "color-contrast",
+    "impact": "serious",
+    "tags": [
+      "cat.color",
+      "wcag2aa",
+      "wcag143",
+      "TTv5",
+      "TT13.c",
+      "EN-301-549",
+      "EN-9.1.4.3",
+      "ACT",
+      "RGAAv4",
+      "RGAA-3.2.1"
+    ],
+    "description": "Ensure the contrast between foreground and background colors meets WCAG 2 AA minimum contrast ratio thresholds",
+    "help": "Elements must meet minimum color contrast ratio thresholds",
+    "helpUrl": "https://dequeuniversity.com/rules/axe/4.14/color-contrast?application=axeAPI",
+    "nodes": [
+      {
+        "any": [
+          {
+            "id": "color-contrast",
+            "data": {
+              "fgColor": "#3d9a64",
+              "bgColor": "#ffffff",
+              "contrastRatio": 3.49,
+              "fontSize": "8.6pt (11.5px)",
+              "fontWeight": "normal",
+              "messageKey": null,
+              "expectedContrastRatio": "4.5:1",
+              "shadowColor": null,
+              "colorParse": null
+            },
+            "relatedNodes": [
+              {
+                "html": "<section class=\"claude-side-card\">",
+                "target": [
+                  "section:nth-child(3)"
+                ]
+              }
+            ],
+            "impact": "serious",
+            "message": "Element has insufficient color contrast of 3.49 (foreground color: #3d9a64, background color: #ffffff, font size: 8.6pt (11.5px), font weight: normal). Expected contrast ratio of 4.5:1"
+          }
+        ],
+        "all": [],
+        "none": [],
+        "impact": "serious",
+        "html": "<span class=\"claude-file-status status-ready\">Indexado</span>",
+        "target": [
+          ".claude-file-item:nth-child(1) > .claude-file-meta > .status-ready.claude-file-status"
+        ],
+        "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 3.49 (foreground color: #3d9a64, background color: #ffffff, font size: 8.6pt (11.5px), font weight: normal). Expected contrast ratio of 4.5:1"
+      },
+      {
+        "any": [
+          {
+            "id": "color-contrast",
+            "data": {
+              "fgColor": "#3d9a64",
+              "bgColor": "#ffffff",
+              "contrastRatio": 3.49,
+              "fontSize": "8.6pt (11.5px)",
+              "fontWeight": "normal",
+              "messageKey": null,
+              "expectedContrastRatio": "4.5:1",
+              "shadowColor": null,
+              "colorParse": null
+            },
+            "relatedNodes": [
+              {
+                "html": "<section class=\"claude-side-card\">",
+                "target": [
+                  "section:nth-child(3)"
+                ]
+              }
+            ],
+            "impact": "serious",
+            "message": "Element has insufficient color contrast of 3.49 (foreground color: #3d9a64, background color: #ffffff, font size: 8.6pt (11.5px), font weight: normal). Expected contrast ratio of 4.5:1"
+          }
+        ],
+        "all": [],
+        "none": [],
+        "impact": "serious",
+        "html": "<span class=\"claude-file-status status-ready\">Indexado</span>",
+        "target": [
+          ".claude-file-item:nth-child(2) > .claude-file-meta > .status-ready.claude-file-status"
+        ],
+        "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 3.49 (foreground color: #3d9a64, background color: #ffffff, font size: 8.6pt (11.5px), font weight: normal). Expected contrast ratio of 4.5:1"
+      },
+      {
+        "any": [
+          {
+            "id": "color-contrast",
+            "data": {
+              "fgColor": "#3d9a64",
+              "bgColor": "#ffffff",
+              "contrastRatio": 3.49,
+              "fontSize": "8.6pt (11.5px)",
+              "fontWeight": "normal",
+              "messageKey": null,
+              "expectedContrastRatio": "4.5:1",
+              "shadowColor": null,
+              "colorParse": null
+            },
+            "relatedNodes": [
+              {
+                "html": "<section class=\"claude-side-card\">",
+                "target": [
+                  "section:nth-child(3)"
+                ]
+              }
+            ],
+            "impact": "serious",
+            "message": "Element has insufficient color contrast of 3.49 (foreground color: #3d9a64, background color: #ffffff, font size: 8.6pt (11.5px), font weight: normal). Expected contrast ratio of 4.5:1"
+          }
+        ],
+        "all": [],
+        "none": [],
+        "impact": "serious",
+        "html": "<span class=\"claude-file-status status-ready\">Indexado</span>",
+        "target": [
+          ".claude-file-item:nth-child(3) > .claude-file-meta > .status-ready.claude-file-status"
+        ],
+        "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 3.49 (foreground color: #3d9a64, background color: #ffffff, font size: 8.6pt (11.5px), font weight: normal). Expected contrast ratio of 4.5:1"
+      }
+    ]
+  }
+]
