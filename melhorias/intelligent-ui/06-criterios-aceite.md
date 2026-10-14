@@ -91,3 +91,16 @@ Lista para quem for ligar `INTELLIGENT_UI_ENABLED` no servidor da família. Item
 
 Pizza, vídeo, proxy de imagem, widget dentro do cache semântico e Thesys não são falha de aceite. Nas Fases 1 a 6, o foco é estritamente Nível 1 (Controlled Generative UI). A execução em sandbox Nível 2 é reservada para a Fase 7 pós-estabilização.
 
+
+
+## Plano 12 — passo 4, laço de correção (2026-10-14)
+
+- [x] APIs legadas dos validadores e contrato `nexus-ui/1` preservados; diagnósticos em API aditiva. Tipo desconhecido cai, id duplicado continua curado; versão inválida é rejeitada também no bloco solto e booleano não vira `1`.
+- [x] Python/TS compartilham `backend/tests/fixtures/ui-errors.json`: mesmos códigos, contagem e limites para o mesmo JSON/fence; casos válidos, rejeições, mistura de válidos/inválidos, subtetos, imagem insegura e auto-healing. APIs detalhadas não alteram a entrada. *(`test_ui_diagnostics.py`, `nexusUiDiagnostics.test.ts`.)*
+- [x] `stream_end.ui_errors` / `ui_dropped` só com flag ligada, incluindo rejeição total/JSON inválido; até 4 erros com mensagem ≤160. Prosa/envelope continuam sendo persistidos da mesma forma. *(`test_intelligent_ui_turn.py`.)*
+- [x] Botão só com flag ligada e erro, nenhuma ação no mount, desabilitado no stream; clique envia mensagem visível pela mesma função `sendMessage` e consome uma oferta por mensagem; falha offline permite retry. Remount e runtime compartilham a trava. *(Testes do componente React real em `scripts/tests/correction.ui.tsx`, integrados a `npm test`; renderer, sem navegador/E2E.)*
+- [x] Bootstrap do sandbox captura `error` / `unhandledrejection`, limita mensagem a 500 e confere a origem pela janela esperada; fonte estrangeira é ignorada. CSP e sandbox sem `allow-same-origin` preservados. *(Mesmo teste executa o script em VM e exercita o listener real.)*
+- [x] Fluxo WS de oferta → pedido explícito → resposta corrigida conta `correction_valid`; replay não conta novo pedido. Endpoint runtime autenticado, dono obrigatório (404), flag e dedup. *(`test_intelligent_ui_turn.py`.)*
+- [x] Telemetria guarda só contagens/códigos e IDs de correlação limitados a 2048; nunca texto/payload. Admin mostra taxas por modelo e aviso abaixo de 50%. *(`test_ui_diagnostics.py`; aviso no `IntelligentUiSettings`.)*
+- [x] Oito chaves novas traduzidas em oito locales. Checker global não modificado; pendência preexistente de seis locales registrada separadamente na [issue #17](https://github.com/Henzen3d/nexus-local/issues/17).
+- [ ] Smoke E2E em navegador real da aparência e do erro de iframe; os testes de componente/VM não substituem essa inspeção.

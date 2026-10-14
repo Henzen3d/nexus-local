@@ -1,3 +1,4 @@
+import type { UiError } from '../lib/nexusUi'
 import { create } from 'zustand'
 import type { Artifact, Conversation, ConversationDetail, Message, Model, CacheStats, CacheSettings, FusionStatusEntry, Attachment, LibraryItem, WebSearchSource, AutoRouteDecisionInfo, UiEnvelope, ProgressBlock, IntelligentUiConfig, ProcessStep, ProactiveInsight, ProactiveAckAction, ProactiveChannelHint, ProactiveExpandMode, ProactiveSettings, ToastItem } from '../types'
 import { api } from '../api/client'
@@ -267,7 +268,8 @@ interface AppState {
   beginProcess: (thinkingTitle?: string) => void
   startProcessStep: (step: ProcessStep) => void
   updateProcessStep: (id: string, update: Partial<Pick<ProcessStep, 'detail' | 'subSteps' | 'status'>>) => void
-  finalizeStream: (messageId: string, artifactMeta?: { id: string; type: string; title: string }, artifacts?: { id: string; type: string; title: string }[], relayUsed?: boolean, relayModel?: string | null, webSearchUsed?: boolean, webSearchQuery?: string, webSearchSources?: WebSearchSource[], wasFallback?: boolean, uiBlocks?: UiEnvelope | null, processDurationMs?: number, serverSteps?: ProcessStep[]) => void
+  uiCorrectionRequested: Record<string, boolean>
+  finalizeStream: (messageId: string, artifactMeta?: { id: string; type: string; title: string }, artifacts?: { id: string; type: string; title: string }[], relayUsed?: boolean, relayModel?: string | null, webSearchUsed?: boolean, webSearchQuery?: string, webSearchSources?: WebSearchSource[], wasFallback?: boolean, uiBlocks?: UiEnvelope | null, processDurationMs?: number, serverSteps?: ProcessStep[], uiErrors?: UiError[], uiDropped?: number) => void
   handleUiProgress: (block: ProgressBlock) => void
   lastAutoRouteDecision: AutoRouteDecisionInfo | null
   setAutoRouteDecision: (decision: AutoRouteDecisionInfo | null) => void
@@ -547,6 +549,7 @@ export const useStore = create<AppState>((set, get) => ({
       activeConversationId: null,
       activeConversation: null,
       messages: [],
+      uiCorrectionRequested: {},
       activeArtifact: null,
       artifactPanelOpen: false,
       displayName: '',
@@ -1239,6 +1242,7 @@ export const useStore = create<AppState>((set, get) => ({
     }))
   },
 
+  uiCorrectionRequested: {},
   finalizeStream: (
     messageId: string,
     artifactMeta?: { id: string; type: string; title: string },
@@ -1251,7 +1255,9 @@ export const useStore = create<AppState>((set, get) => ({
     wasFallback?: boolean,
     uiBlocks?: UiEnvelope | null,
     processDurationMs?: number,
-    serverSteps?: ProcessStep[]
+    serverSteps?: ProcessStep[],
+    uiErrors?: UiError[],
+    uiDropped?: number
   ) => {
     const { streamingContent, selectedModelId, models, lastAutoRouteDecision, processSteps, processStartedAt, streamingUiBlocks } = get()
     const resolvedModelId = lastAutoRouteDecision?.chosen_model_id || selectedModelId
@@ -1298,7 +1304,9 @@ export const useStore = create<AppState>((set, get) => ({
       process_duration_ms: processDurationMs ?? (processStartedAt ? Date.now() - processStartedAt : undefined),
       was_fallback: wasFallback,
       auto_route: lastAutoRouteDecision,
-      // Blocos do host (ui_progress) primeiro, depois os do modelo; teto de 4, id único
+      ui_errors: uiErrors,
+      ui_dropped: uiDropped,
+      // Blocos do host (ui_progress) primeiro, depois os do modelo; teto de 6, id único
       ui_blocks: mergeUiEnvelopes(streamingUiBlocks, uiBlocks),
       // Popula os metadados do artifact no objeto de mensagem para que o badge seja exibido
       ...(artifactMeta

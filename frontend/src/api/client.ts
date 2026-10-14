@@ -71,6 +71,9 @@ async function fetchJSON<T>(url: string, opts?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  offerUiCorrection: (messageId: string) => fetchJSON<{ ok: boolean }>('/intelligent-ui/correction-offered', {
+    method: 'POST', body: JSON.stringify({ message_id: messageId }),
+  }),
   // Conversations
   getConversations: (search?: string, filter?: string, page = 1, limit = 100) => {
     const params = new URLSearchParams()

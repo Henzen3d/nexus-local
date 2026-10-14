@@ -12,9 +12,10 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any, Dict, List, Optional, Union
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from backend.auth import get_current_user, require_admin
@@ -66,3 +67,29 @@ async def save_config(
 @router.get("/stats")
 async def get_stats(current_user: dict = Depends(require_admin)) -> Dict[str, Any]:
     return intelligent_ui_telemetry.snapshot()
+
+
+class RuntimeCorrectionOffer(BaseModel):
+    message_id: str = Field(min_length=1, max_length=64)
+
+
+@router.post('/correction-offered')
+async def runtime_correction_offer(body: RuntimeCorrectionOffer, current_user: dict = Depends(get_current_user)):
+    """Counts sandbox failures without receiving their text. Owner-only, flag gated."""
+    db = await get_db()
+    try:
+        cfg = await get_intelligent_ui_config(db)
+        async with db.execute(
+            "SELECT m.model_id, b.payload FROM messages m JOIN conversations c ON c.id = m.conversation_id "
+            "JOIN message_ui_blocks b ON b.message_id = m.id "
+            "WHERE m.id = ? AND m.role = 'assistant' AND c.user_id = ?",
+            (body.message_id, current_user['id']),
+        ) as cur:
+            row = await cur.fetchone()
+        if not row or not any(block.get('type') == 'sandbox' for block in json.loads(row[1]).get('blocks', [])):
+            raise HTTPException(status_code=404, detail='Message not found')
+        if cfg.enabled:
+            intelligent_ui_telemetry.offer_correction(current_user['id'], body.message_id, row[0] or '')
+        return {'ok': True}
+    finally:
+        await db.close()

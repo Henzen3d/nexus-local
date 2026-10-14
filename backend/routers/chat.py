@@ -46,7 +46,7 @@ from backend.orchestration.persist_turn import (
 from backend.ui_blocks.config import get_intelligent_ui_config
 from backend.ui_blocks.telemetry import intelligent_ui_telemetry
 from backend.ui_blocks.extract import extract_ui
-from backend.ui_blocks.catalog import build_catalog
+from backend.ui_blocks.catalog import MODULE_NAMES, build_catalog, compose_catalog
 from backend.orchestration.resolve_request import resolve_and_stream
 from backend.web_search import (
     execute_agentic_search,
@@ -596,6 +596,25 @@ async def _run_turn(
         from backend.ui_blocks.config import IntelligentUiConfig
         iui_cfg = IntelligentUiConfig()
     intelligent_ui_enabled = bool(iui_cfg.enabled)
+    correction_model = None
+    correction_modules = ()
+    correction_id = req.get('ui_correction_message_id')
+    if intelligent_ui_enabled and isinstance(correction_id, str) and len(correction_id) <= 64:
+        async with db.execute(
+            "SELECT b.payload FROM messages m LEFT JOIN message_ui_blocks b ON b.message_id = m.id "
+            "WHERE m.id = ? AND m.conversation_id = ? AND m.role = 'assistant'",
+            (correction_id, conversation_id),
+        ) as cur:
+            correction_row = await cur.fetchone()
+            if correction_row:
+                correction_model = intelligent_ui_telemetry.request_correction(user_id, correction_id)
+                if correction_model is not None:
+                    # Known type signatures from the visible request; runtime tools
+                    # also have a sanitized persisted envelope. Still at most two modules.
+                    names = [name for name in MODULE_NAMES if f'{name}:' in user_message]
+                    if correction_row[0]:
+                        names += [block['type'] for block in json.loads(correction_row[0]).get('blocks', [])]
+                    correction_modules = tuple(dict.fromkeys(name for name in names if name in MODULE_NAMES))[:2]
 
     # ── Intelligent UI: oferta de catálogo condicional (Spec Seção 8) ───
     # Em modo voz a resposta vai para TTS: um fence JSON contradiz as
@@ -605,6 +624,9 @@ async def _run_turn(
     if intelligent_ui_enabled and not voice_mode:
         try:
             cat_content, intelligent_ui_modules = build_catalog(user_message)
+            if correction_model is not None:
+                intelligent_ui_modules = correction_modules
+                cat_content = compose_catalog(correction_modules)
             if cat_content:
                 system_instruction += "\n\n" + cat_content
                 intelligent_ui_offered = True
@@ -668,12 +690,14 @@ async def _run_turn(
     # Só com a flag ligada. Desligada, o texto é persistido intacto (um fence
     # eventual aparece como bloco de código, como antes do recurso existir).
     ui_envelope = None
+    ui_diagnostics = {"errors": [], "dropped": 0}
     if intelligent_ui_enabled:
         raw_model_text = full_response
         full_response, ui_envelope = extract_ui(
             full_response,
             image_hosts=iui_cfg.image_hosts,
             allow_private_http=iui_cfg.allow_private_http,
+            diagnostics=ui_diagnostics,
         )
         try:
             intelligent_ui_telemetry.record_turn(
@@ -683,6 +707,8 @@ async def _run_turn(
                 envelope=ui_envelope,
                 voice_mode=voice_mode,
                 request_id=req_ctx.request_id,
+                ui_errors=ui_diagnostics["errors"],
+                ui_dropped=ui_diagnostics["dropped"],
             )
         except Exception as e:  # telemetria nunca derruba o turno
             logger.debug("intelligent_ui telemetry falhou: {}", e)
@@ -695,6 +721,13 @@ async def _run_turn(
 
     if ui_envelope:
         await save_ui_blocks(db, assistant_msg_id, ui_envelope, source="model")
+
+    if intelligent_ui_enabled:
+        if ui_diagnostics['errors']:
+            intelligent_ui_telemetry.offer_correction(user_id, assistant_msg_id, model_id)
+        if correction_model is not None:
+            intelligent_ui_telemetry.correction_result(
+                correction_model, bool(ui_envelope) and not ui_diagnostics['errors'])
 
     # ── Index Q+A for RAG ───────────────────────────────────────────
     await run_post_turn_indexing(
@@ -743,6 +776,9 @@ async def _run_turn(
     if ui_envelope:
         stream_end_payload["ui_blocks"] = ui_envelope
 
+    if intelligent_ui_enabled:
+        stream_end_payload['ui_errors'] = ui_diagnostics['errors']
+        stream_end_payload['ui_dropped'] = ui_diagnostics['dropped']
     await ws.send_json(stream_end_payload)
 
     # ── Non-blocking Task Benchmark (Plano 09) ──────────────────────

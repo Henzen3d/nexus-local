@@ -239,6 +239,15 @@ export function IntelligentUiSettings() {
               {stats.blocks_in}
             </span>
           </div>
+          {Object.entries(stats.corrections ?? {}).map(([model, counts]) => (
+            <div key={model} style={{ marginTop: 6 }}>
+              {t('intelligentUi.correctionStats')} · {model}: {counts.correction_valid} / {counts.correction_requested}
+              {counts.valid_rate !== null && ` (${Math.round(counts.valid_rate * 100)}%)`}
+              {counts.valid_rate !== null && counts.valid_rate < 0.5 && (
+                <p role="status" style={{ color: 'var(--warning)' }}>{t('intelligentUi.correctionReviewCatalog')}</p>
+              )}
+            </div>
+          ))}
           {Object.values(stats.discarded).some((n) => n > 0) && (
             <div style={{ marginTop: '6px', fontSize: '11.5px' }}>
               {t('toolsSettings.intelligentUiStatsReasons', { defaultValue: 'Motivos' })}:{' '}

@@ -18,6 +18,7 @@ import { UiCard, UiCardAction } from './UiCard'
 
 interface Props {
   block: SandboxBlock
+  onRuntimeError?: (title: string, message: string) => void
 }
 
 const RESIZE_MESSAGE_TYPE = '__nexus_ogui_resize'
@@ -28,7 +29,7 @@ function escapeScriptClose(code: string): string {
   return code.replace(/<\/script/gi, '<\\/script')
 }
 
-export function SandboxCard({ block }: Props) {
+export function SandboxCard({ block, onRuntimeError }: Props) {
   const { t, i18n } = useTranslation()
   const { sendMessage } = useChatContext()
   const { image_hosts } = useIntelligentUiConfig()
@@ -73,6 +74,12 @@ export function SandboxCard({ block }: Props) {
     ${css.replace(/<\/style/gi, '<\\/style')}
   </style>
   <script>
+    // Runtime errors remain untrusted text, never HTML or automatic requests.
+    function reportError(message) {
+      parent.postMessage({ type: '__nexus_ogui_error', message: String(message || 'Runtime error').slice(0, 500) }, '*');
+    }
+    window.addEventListener('error', function(e) { reportError(e.message); });
+    window.addEventListener('unhandledrejection', function(e) { reportError(e.reason && e.reason.message || e.reason); });
     // Bridge para envio de ações de volta ao chat
     window.NexusBridge = {
       sendMessage: function(text) {
@@ -123,7 +130,9 @@ export function SandboxCard({ block }: Props) {
         const data = event.data
         if (!data || typeof data !== 'object') return
 
-        if (data.type === RESIZE_MESSAGE_TYPE && typeof data.height === 'number') {
+        if (data.type === '__nexus_ogui_error' && typeof data.message === 'string') {
+          onRuntimeError?.(title, data.message.slice(0, 500))
+        } else if (data.type === RESIZE_MESSAGE_TYPE && typeof data.height === 'number') {
           const boundedHeight = Math.min(1000, Math.max(120, data.height + 20))
           setCurrentHeight(boundedHeight)
         } else if (
@@ -142,7 +151,7 @@ export function SandboxCard({ block }: Props) {
     return () => {
       window.removeEventListener('message', handleMessage)
     }
-  }, [sendMessage])
+  }, [sendMessage, onRuntimeError, title])
 
   // Ao carregar o iframe, reenvia o tema atual. Um SEGUNDO load no mesmo iframe
   // significa que o conteúdo navegou para fora do srcdoc (o sandbox bloqueia a

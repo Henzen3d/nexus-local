@@ -15,6 +15,7 @@ import { AdapterRegistry } from '../adapters/AdapterRegistry'
 import { AIMetadataDisplay } from './AIMetadataDisplay'
 import { playSpeech, useTtsPlay } from '../lib/ttsPlayer'
 import { AutoRouteBadge } from './AutoRouteBadge'
+import { CorrectionNotice } from '../ui/components/CorrectionNotice'
 import { DynamicRenderer } from '../ui/DynamicRenderer'
 import { stripUiFences } from '../lib/nexusUi'
 import { useIntelligentUiEnabled } from '../ui/hooks/useIntelligentUi'
@@ -391,6 +392,11 @@ export function MessageBubble({ message }: Props) {
   // A flag de thinking agora é fornecida diretamente pelo adapter
   const isThinking = message.role === 'assistant' && (parsedResponse.isThinking ?? false)
 
+  const [runtimeUiError, setRuntimeUiError] = useState<{ title: string; message: string } | null>(null)
+  const handleRuntimeUiError = React.useCallback((title: string, error: string) => {
+    setRuntimeUiError((previous) => previous ?? { title, message: error })
+  }, [])
+
   // Intelligent UI: o envelope vem SEMPRE do servidor (stream_end / GET da conversa),
   // já validado e gravado em message_ui_blocks. Sem reparse do markdown no cliente.
   // Com a flag desligada o texto fica intacto: um fence eventual aparece como
@@ -482,7 +488,8 @@ export function MessageBubble({ message }: Props) {
               )}
 
               {/* Intelligent UI: renderizador de blocos visuais e micro-ferramentas */}
-              {effectiveUiEnvelope && <DynamicRenderer envelope={effectiveUiEnvelope} />}
+              {effectiveUiEnvelope && <DynamicRenderer envelope={effectiveUiEnvelope} onRuntimeError={handleRuntimeUiError} />}
+              <CorrectionNotice messageId={message.id} errors={message.ui_errors} dropped={message.ui_dropped} runtime={runtimeUiError} />
 
               {artifacts.length > 0 && (
                 <div className="artifact-chat-card-list">

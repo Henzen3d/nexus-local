@@ -15,6 +15,7 @@ const FollowUpCard = React.lazy(() => import('./components/FollowUpCard'))
 
 interface Props {
   envelope?: UiEnvelope | null
+  onRuntimeError?: (title: string, message: string) => void
 }
 
 /**
@@ -67,7 +68,7 @@ function BlockSkeleton({ blocks }: { blocks: UiBlock[] }) {
   )
 }
 
-export function DynamicRenderer({ envelope }: Props) {
+export function DynamicRenderer({ envelope, onRuntimeError }: Props) {
   // Flag desligada (ou ainda não carregada): nada é pintado, mesmo com payload.
   const enabled = useIntelligentUiEnabled()
   if (!enabled || !envelope) return null
@@ -106,7 +107,7 @@ export function DynamicRenderer({ envelope }: Props) {
           }
 
           if (block.type === 'sandbox') {
-            return <SandboxCard key={block.id} block={block} />
+            return <SandboxCard key={block.id} block={block} onRuntimeError={onRuntimeError} />
           }
 
           if (block.type === 'metric') {
