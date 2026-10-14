@@ -10,7 +10,7 @@
 
 **Spec:** `melhorias/intelligent-ui/00-visao-e-spec.md` seção 4.3.
 
-**Estado (auditoria 2026-10-14):** implementado (`bar`, `line`, `compare`, tabela `sr-only`, paleta por índice). Pendência: Task 1 Step 4 — o build mostra `recharts` dentro do chunk principal (`ChartCard-*.js` tem só ~3 kB e importa `BarChart` etc. de `index-*.js`) porque `App.tsx` ainda importa `AdminPanel` estaticamente.
+**Estado (correções 2026-10-14):** implementado (`bar`, `line`, `compare`, tabela `sr-only`, paleta por índice). Pendência fechada: `App.tsx` carrega `AdminPanel` com `React.lazy` + `Suspense`; o build passou a emitir `recharts` em chunk próprio (`BarChart-*.js`, ~384 kB) compartilhado por `ChartCard` e admin — zero ocorrências de `ResponsiveContainer` no `index-*.js`.
 
 ## Global Constraints
 
@@ -38,7 +38,7 @@
 
 - [x] **Step 3: Commit** `feat: gráfico de barras sob demanda na bolha`
 
-- [ ] **Step 4: Conferir o chunk.** *(**Pendente.** Build de 2026-10-14: `recharts` está no `index-*.js` (1,66 MB). `App.tsx` linha 9 segue com `import { AdminPanel } from './components/AdminPanel'`. Falta trocar por `React.lazy`.)* `App.tsx` importa `AdminPanel` na linha 8, e o admin já puxa `recharts`. Rodar o build e ver se `recharts` está no chunk do chat sem um bloco de gráfico. Se estiver, trocar o import de `AdminPanel` por `React.lazy` no mesmo passo. Não adicionar outra lib.
+- [x] **Step 4: Conferir o chunk.** *(Feito 2026-10-14: `AdminPanel` via `lazy(() => import(...))` em `App.tsx`; build mostra `recharts` só em `BarChart-*.js`, fora do chunk do chat.)* `App.tsx` importa `AdminPanel` na linha 8, e o admin já puxa `recharts`. Rodar o build e ver se `recharts` está no chunk do chat sem um bloco de gráfico. Se estiver, trocar o import de `AdminPanel` por `React.lazy` no mesmo passo. Não adicionar outra lib.
 
 ### Task 2: line e compare
 

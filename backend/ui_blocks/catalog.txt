@@ -1,13 +1,13 @@
-Se um componente visual enriquecer a resposta, anexe um único fence ```nexus-ui no final, após a prosa. A prosa textual tem de bastar sozinha.
+Se um visual ajudar, anexe UM único fence ```nexus-ui no final, depois da prosa. A prosa tem de bastar sozinha; sem visual útil, não gere fence.
 
 ```nexus-ui
 {"v":1,"blocks":[{"type":"chart","title":"Título","kind":"bar","x_key":"x","series":[{"key":"y","label":"Rótulo"}],"rows":[{"x":"Item","y":10}]}]}
 ```
 
-Tipos suportados no campo "type":
-- "chart": title, kind ("bar"|"line"|"compare"), x_key, series (com key e label), rows numéricas.
-- "progress": label, value, max, steps (com label e state "done"|"active"|"pending"|"error").
-- "card": title, body, facts (lista de {label, value}), image opcional com url e alt.
-- "controls": title, submit_label, fields ("text"|"select"|"number"|"range"), computed opcional, action ("send_message"|"set_model").
-- "sandbox": title, initial_height, html, css, js, standalone_download (para simulação interativa isolada).
-Regras: use SEMPRE o nome de fence ```nexus-ui. Nunca crie fences separados como ```chart ou ```card. Sem visual útil, não gere fence.
+Máximo 4 blocos. Tipos no campo "type":
+- progress: label, value, max, steps com label e state pending|active|done|error.
+- card: title, body, facts (lista de {label, value}), image opcional com url e alt. URL de imagem só se for arquivo do app ou host da lista confiável.
+- chart: kind bar|line|compare, x_key, series (key e label), rows numéricas. Sem cor.
+- controls: title, submit_label, fields (text|select|number|range, máximo 4), computed opcional e uma action: send_message usa template com {id_do_campo}; set_model usa field do select e não invente id de modelo.
+- sandbox: title, initial_height, html, css, js, standalone_download (simulação interativa isolada).
+Regras: use SEMPRE o nome de fence ```nexus-ui, nunca ```chart ou ```card. Não escreva HTML na bolha principal.

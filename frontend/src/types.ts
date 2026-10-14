@@ -421,6 +421,38 @@ export interface UiEnvelope {
   blocks: UiBlock[]
 }
 
+/** Configuração efetiva do Intelligent UI (GET /api/intelligent-ui/config). */
+export interface IntelligentUiConfig {
+  enabled: boolean
+  /** Hosts remotos confiáveis para imagem de cartão (já normalizados pelo servidor). */
+  image_hosts: string[]
+  allow_private_http: boolean
+  /** De onde veio o valor efetivo: painel ('db'), .env ('env') ou padrão. */
+  source?: 'db' | 'env' | 'default'
+  updated_at?: string | null
+}
+
+/** Contadores do processo (GET /api/intelligent-ui/stats, admin). Zeram no restart. */
+export interface IntelligentUiStats {
+  since: string
+  turns: number
+  offered: number
+  produced: number
+  produced_when_offered: number
+  produced_without_offer: number
+  valid: number
+  blocks_in: number
+  blocks_out: number
+  blocks_dropped: number
+  discarded: Record<'no_fence' | 'invalid_json' | 'rejected_envelope' | 'empty_after_validation', number>
+  block_types: Record<string, number>
+  rates: {
+    produced_given_offered: number | null
+    valid_given_produced: number | null
+    blocks_kept: number | null
+  }
+}
+
 export interface AutoRouteAlternative {
   model_id: string
   model_name: string

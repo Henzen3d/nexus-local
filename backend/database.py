@@ -925,6 +925,22 @@ async def init_db():
             """)
             await db.commit()
 
+        # Incremental migration: Intelligent UI runtime config (painel admin > .env).
+        # Sem linha inicial: enquanto ninguém salvar no painel, o .env continua valendo.
+        try:
+            await db.execute("SELECT enabled FROM intelligent_ui_config LIMIT 1")
+        except aiosqlite.OperationalError:
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS intelligent_ui_config (
+                    id                 INTEGER PRIMARY KEY CHECK (id = 1),
+                    enabled            INTEGER NOT NULL DEFAULT 0,
+                    image_hosts        TEXT    NOT NULL DEFAULT '',
+                    allow_private_http INTEGER NOT NULL DEFAULT 0,
+                    updated_at         TEXT    DEFAULT (datetime('now'))
+                )
+            """)
+            await db.commit()
+
         # Garante que pelo menos um admin exista se houver usuários cadastrados
         async with db.execute("SELECT COUNT(id) FROM users WHERE role = 'admin'") as cur:
             row = await cur.fetchone()

@@ -8,13 +8,13 @@ Lista para quem for ligar `INTELLIGENT_UI_ENABLED` no servidor da família. Item
 
 ## Flag
 
-- [ ] Ausente no ambiente: chat idêntico ao de hoje, inclusive se o modelo escrever um fence. *(**Falha.** `extract_ui` roda sem checar a flag em `chat.py`; o fence é removido de `content`, gravado em `message_ui_blocks` e enviado em `stream_end.ui_blocks`. No frontend, `DynamicRenderer` não consulta flag e `MessageBubble` ainda tem fallback `extractClientUi(answer)` que pinta blocos a partir do texto mesmo sem `ui_blocks` do servidor.)*
-- [ ] `false`: mesma coisa. *(**Falha**, mesmo motivo. A flag hoje controla só a injeção do `catalog.txt`.)*
+- [x] Ausente no ambiente: chat idêntico ao de hoje, inclusive se o modelo escrever um fence. *(Corrigido 2026-10-14. `chat.py` lê a config efetiva por turno; sem flag não há catálogo, extração, linha em `message_ui_blocks` nem `stream_end.ui_blocks`. Frontend: `DynamicRenderer` devolve `null`, `MessageBubble` não reparseia (`extractClientUi` removido) e o fence aparece como bloco de código. Teste: `test_flag_desligada_turno_identico_ao_chat_sem_o_recurso`.)*
+- [x] `false`: mesma coisa. *(Mesmo caminho: `config_from_env` trata ausente e `false` igual; painel pode ligar sem mexer no `.env`.)*
 - [x] `true` em dev: blocos válidos pintam. Inválidos somem. A prosa fica. *(Código: validação dupla backend/frontend; bloco inválido é descartado individualmente; prosa limpa vai para `cleanedContent`. Não observado em browser nesta auditoria.)*
 
 ## Contrato
 
-- [ ] `v` diferente de 1 descarta o envelope. *(**Falha por decisão de auto-healing:** `validate.py` e `nexusUi.ts` fazem `data["v"] = 1` e aceitam `{"v":2,"blocks":[bloco válido]}`. O teste `test_rejeita_versao_errada` só passa porque usa `blocks: []`.)*
+- [x] `v` diferente de 1 descarta o envelope. *(Corrigido nos dois lados: `v` presente e ≠ 1 (inclusive `null`) → `None`; `v` ausente continua tolerado. Testes `test_rejeita_v_diferente_de_1_mesmo_com_bloco_valido` e `v ausente assume 1; v null ou string estranha rejeita`.)*
 - [x] Quinto bloco é ignorado. *(`blocks_raw[:MAX_BLOCKS]` / `slice(0, MAX_BLOCKS)`; verificado: 5 blocos → 4.)*
 - [x] JSON acima de 16000 caracteres não grava linha em `message_ui_blocks`. *(`test_rejeita_acima_do_limite_tamanho`; `validate_envelope` retorna `None` → `save_ui_blocks` não insere.)*
 - [x] `messages.content` de uma resposta com fence válido não contém `nexus-ui` nem o JSON. *(`test_tira_fence_e_deixa_prosa`, `test_fence_aberto_nao_grava_json`; `chat.py` grava `full_response` já limpo.)*
@@ -28,7 +28,7 @@ Lista para quem for ligar `INTELLIGENT_UI_ENABLED` no servidor da família. Item
 - [x] Cartão sem imagem não reserva um buraco de foto. *(`ImageCard.tsx`: o container da foto só monta se `isImgValid`.)*
 - [x] `https://exemplo.com/a.jpg` não vai para o `<img>` se o host não está em `INTELLIGENT_UI_IMAGE_HOSTS`. *(Backend remove a imagem; frontend repete a checagem. Testado nos dois lados.)*
 - [x] `/attachments/foto.jpg` e URL do próprio host podem ir para o `<img>`. *(Teste TS "filtro de imagens"; `ImageCard` passa `window.location.host`.)*
-- [ ] `http://192.168.0.20/foto.jpg` não passa com a flag privada desligada. Passa só com `INTELLIGENT_UI_ALLOW_PRIVATE_HTTP=true`. *(**Parcial.** A primeira metade vale. A segunda só vale no backend: `ImageCard` chama `isAllowedImageUrl(url, [], host)` com `allowPrivateHttp=false` fixo e lista de hosts vazia — o frontend nunca recebe `INTELLIGENT_UI_ALLOW_PRIVATE_HTTP`/`INTELLIGENT_UI_IMAGE_HOSTS`, então a foto da rede local ou de host confiável não pinta mesmo com a flag ligada no servidor.)*
+- [x] `http://192.168.0.20/foto.jpg` não passa com a flag privada desligada. Passa só com `INTELLIGENT_UI_ALLOW_PRIVATE_HTTP=true` (ou o toggle equivalente no painel). *(Corrigido: `ImageCard` usa `image_hosts`/`allow_private_http` vindos de `GET /api/intelligent-ui/config`; backend coberto por `test_filtro_imagem_usa_parametros_e_nao_env` e `test_painel_manda_sobre_env_e_lista_de_hosts_chega_ao_filtro`.)*
 - [x] `javascript:` e `data:` não passam. *(Também `blob:` e `file:`; testado em Python e TS.)*
 - [x] Erro de carga some com a foto e deixa título e fatos. *(`onError` → `setImgError(true)`.)*
 - [x] `bar`, `line` e `compare` desenham com Recharts já instalado. Nenhum `npm install` novo. *(`ChartCard.tsx`; `package.json` sem dependência nova para o módulo.)*
@@ -39,9 +39,9 @@ Lista para quem for ligar `INTELLIGENT_UI_ENABLED` no servidor da família. Item
 - [x] Slider (`range`) no controle atualiza o valor numérico em tempo real ao arrastar. *(`<strong>{val}</strong>` ao lado do `<input type="range">`.)*
 - [x] Calculadora reativa (`computed`) recalcula a fórmula imediatamente no cliente sem fazer requisição ao servidor. *(`useMemo` + `evaluateSafeFormula`; `safeMath.test.ts` passa.)*
 - [x] Clique em `send_message` cria bolha do usuário com o template preenchido (incluindo `{resultado}` calculado, se houver). *(`handleSubmit` interpola campos e `{resultado}` e chama `sendMessage` do `ChatContext`.)*
-- [ ] `set_model` não aceita id fora de `models`. Não usa as options que o modelo escreveu. *(**Parcial.** A primeira frase vale (`models.find` antes de `selectModel`). A segunda falha: o `<select>` renderiza `field.options` do JSON; não lista `models` do store nem some com `models` vazio.)*
+- [x] `set_model` não aceita id fora de `models`. Não usa as options que o modelo escreveu. *(Corrigido 2026-10-14: `ControlsCard` lista `models` do store, some com lista vazia e mostra erro curto para id desconhecido.)*
 - [x] Bloco com `initial_height` reserva o espaço vertical antes do desenho final, prevenindo salto de scroll (Zero CLS). *(`SandboxCard` inicia `currentHeight = initial_height` (fallback 300) e depois auto-ajusta via `__nexus_ogui_resize`.)*
-- [ ] Na Fase 7 (quando sandbox estiver ativo): sandbox roda estritamente sem `allow-same-origin` e sincroniza o tema dark/light através do Theme Bridge. *(**Parcial.** `sandbox="allow-scripts allow-forms"` confirmado. O tema é injetado na montagem a partir de `isDark`, mas não re-sincroniza quando o usuário troca o tema com o cartão já aberto, e o `importmap` puxa libs de `https://esm.sh` — CDN externo fora da spec.)*
+- [x] Na Fase 7 (quando sandbox estiver ativo): sandbox roda estritamente sem `allow-same-origin` e sincroniza o tema dark/light através do Theme Bridge. *(Corrigido 2026-10-14: `sandbox="allow-scripts allow-forms"` + CSP `default-src 'none'` (esm.sh só em `script-src`/`connect-src`); tema reativo por `postMessage` com `data-theme` + tokens de `getComputedStyle`, sem recarregar o iframe.)*
 - [x] Exportação 1-click standalone (Fase 7) gera arquivo HTML autônomo funcional sem impactar o chat. *(`exportStandalone.ts`; Blob + `<a download>`; sem chamada ao backend. Sem teste automatizado.)*
 
 ## Prompt
@@ -49,15 +49,16 @@ Lista para quem for ligar `INTELLIGENT_UI_ENABLED` no servidor da família. Item
 - [x] "bom dia" não injeta `catalog.txt`. *(`test_should_offer_ui_triggers`.)*
 - [x] "compare os custos dos modelos" injeta, com a flag ligada. *(`test_should_offer_ui_triggers` + gate em `chat.py`.)*
 - [x] "calcule a divisão da conta de 150 com 10% de gorjeta" ativa `controls` com `computed` ou catálogo. *(Regex `calcul` dispara o catálogo; `test_should_offer_ui_triggers` cobre "calcule a divisão da conta de 150 reais".)*
-- [x] Catálogo acima de 400 tokens estimados (`len/4`) não é injetado. *(Checagem em `chat.py`; catálogo atual ≈ 251 tokens.)*
+- [x] Catálogo acima de 400 tokens estimados (`len/4`) não é injetado. *(Checagem em `chat.py`; catálogo atual ≈ 277 tokens, com teto conferido por `test_catalogo_cabe_no_teto_e_tem_as_regras_da_spec`.)*
+- [x] Há como medir se vale a pena manter ligado: oferecido / produzido / válido / descartado por motivo. *(`backend/ui_blocks/telemetry.py` + `GET /api/intelligent-ui/stats` (admin) + bloco no painel; `test_telemetria_conta_oferta_producao_validade_e_descartes`, `test_telemetria_motivos_de_descarte`.)*
 
 ## Acessibilidade e visual
 
 - [x] Barra tem `role="progressbar"` quando há value e max. *(`ProgressCard.tsx`, com `aria-valuenow/min/max/label`; `ChecklistCard` usa `role="list"`.)*
 - [x] Botão do controle mede pelo menos 44×44 px no breakpoint móvel. *(`minHeight: 44px`, largura total do cartão. Inputs têm 36 px de altura.)*
-- [x] Com `prefers-reduced-motion: reduce`, a barra não anima em loop. *(Não há animação em loop em nenhum cartão; só `transition: width 0.4s` no preenchimento. Não há media query específica, mas o critério — sem loop — é atendido.)*
+- [x] Com `prefers-reduced-motion: reduce`, a barra não anima em loop. *(Não há animação em loop; a transição de preenchimento (`.nexus-ui-progress-fill`) e o pulso do skeleton são desligados por media query em `index.css`, e o sandbox recebe a mesma regra no bridge.)*
 - [x] Cores só dos tokens já existentes: `--surface-card`, `--hairline`, `--ink`, `--body`, `--primary`, `--cyan`, `--warning`, `--success`, `--error`. *(Também `--surface-soft` e `--canvas`, já existentes. Exceções pontuais: `#ffffff` no texto do botão de `ControlsCard` e sombras `rgba(0,0,0,…)`.)*
-- [ ] Transições de tema escuro/claro refletem instantaneamente nos cartões nativos e no sandbox bridge. *(**Parcial.** Cartões nativos sim (usam `var(--…)`). Sandbox não: `srcDoc` é gerado com tokens fixos do tema detectado na montagem.)*
+- [x] Transições de tema escuro/claro refletem instantaneamente nos cartões nativos e no sandbox bridge. *(Corrigido 2026-10-14: `useResolvedTheme` observa `data-theme`; o sandbox recebe `__nexus_theme` e troca o atributo do `<html>` interno, cujos tokens vêm por `html[data-theme]` no bridge.)*
 
 ## Internacionalização (i18n)
 

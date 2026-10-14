@@ -568,6 +568,15 @@ export const api = {
       body: JSON.stringify(data),
     }),
   getImageModels: () => fetchJSON<import('../types').ImageModel[]>('/image-gen/models'),
+
+  // ── Intelligent UI ──────────────────────────────────────────────
+  getIntelligentUiConfig: () => fetchJSON<import('../types').IntelligentUiConfig>('/intelligent-ui/config'),
+  getIntelligentUiStats: () => fetchJSON<import('../types').IntelligentUiStats>('/intelligent-ui/stats'),
+  saveIntelligentUiConfig: (data: Partial<import('../types').IntelligentUiConfig>) =>
+    fetchJSON<{ ok: boolean; config: import('../types').IntelligentUiConfig }>('/intelligent-ui/config', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
   getImageTasks: (conversationId?: string) => {
     const params = conversationId ? `?conversation_id=${encodeURIComponent(conversationId)}` : ''
     return fetchJSON<import('../types').ImageTask[]>(`/image-gen/tasks${params}`)

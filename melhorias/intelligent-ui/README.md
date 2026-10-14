@@ -1,6 +1,6 @@
 # Intelligent UI — documentação e planos
 
-Spec, planos e registro de auditoria do Intelligent UI. **O código das Fases 1 a 7 está implementado no repositório** (ver seção *Estado*). A flag `INTELLIGENT_UI_ENABLED` nasce desligada e hoje controla apenas a injeção do catálogo no prompt.
+Spec, planos e registro de auditoria do Intelligent UI. **O código das Fases 1 a 7 está implementado no repositório** (ver seção *Estado*). A flag nasce desligada (`INTELLIGENT_UI_ENABLED` no `.env`, ou o toggle em Configurações → Ferramentas → Interface Inteligente, que manda sobre o `.env`) e, desde as correções de 2026-10-14, desliga o recurso inteiro: catálogo, extração, persistência, `stream_end.ui_blocks` e render.
 
 O Multi+ continua o frontend atual (React 18, Vite, Zustand, Vanilla CSS). O sistema adota a estratégia do **Generative UI Spectrum** (inspirada nos lançamentos de outubro de 2026: ChatGPT Intelligent UI e [CopilotKit Open Intelligent UI](https://github.com/CopilotKit/OpenIntelligentUI)):
 1. **Nível 1 — Controlled Generative UI (Fases 1 a 6):** O modelo entrega um JSON pequeno e validado (`nexus-ui/1`). O frontend renderiza através de componentes nativos rápidos e seguros, 100% integrados aos design tokens do Multi+ (`var(--primary)`, `var(--surface-card)`, etc.).
@@ -42,13 +42,13 @@ Ordem de execução: 01, depois 02, 03, 04, 05. O 06 acompanha cada fase, não e
 
 | Fase | Plano | Situação | Evidência |
 |---|---|---|---|
-| 1 | 01-plano-fundacao | Implementada, 1 pendência | `backend/ui_blocks/validate.py`, `extract.py`; tabela `message_ui_blocks` em `database.py`; `save_ui_blocks` em `persist_turn.py`; `frontend/src/lib/nexusUi.ts`. Pendência: a flag não desliga extração/persistência/render. |
-| 2 | 02-plano-indicadores | Implementada | `ProgressCard.tsx`, `ChecklistCard.tsx`, `DynamicRenderer.tsx`, `handleUiProgress` no store, `should_offer.py`, `catalog.txt`, gate em `chat.py`. |
-| 3 | 03-plano-cartoes-imagens | Implementada, 1 pendência | `ImageCard.tsx`, `isAllowedImageUrl` nos dois lados. Pendência: frontend não recebe `INTELLIGENT_UI_IMAGE_HOSTS`/`ALLOW_PRIVATE_HTTP`. |
-| 4 | 04-plano-graficos | Implementada, 1 pendência | `ChartCard.tsx` (bar/line/compare, tabela sr-only). Pendência: `recharts` ainda no chunk principal via `AdminPanel` estático. |
-| 5 | 05-plano-controles | Implementada, `set_model` parcial | `ControlsCard.tsx`, `lib/safeMath.ts`. Pendência: select de `set_model` usa options do modelo, não `models` do store. |
+| 1 | 01-plano-fundacao | Implementada | `backend/ui_blocks/validate.py`, `extract.py`, `config.py`; tabelas `message_ui_blocks` e `intelligent_ui_config` em `database.py`; `save_ui_blocks` em `persist_turn.py`; `routers/intelligent_ui.py`; `frontend/src/lib/nexusUi.ts`, `ui/hooks/useIntelligentUi.ts`, `components/IntelligentUiSettings.tsx`. Flag fecha o recurso inteiro; teste de turno em `tests/test_intelligent_ui_turn.py`. |
+| 2 | 02-plano-indicadores | Implementada | `ProgressCard.tsx`, `ChecklistCard.tsx`, `DynamicRenderer.tsx` (gate da flag + skeleton), `handleUiProgress` no store (buffer `streamingUiBlocks` durante o stream, mescla no `finalizeStream`), `should_offer.py`, `catalog.txt`, gate em `chat.py`, telemetria em `ui_blocks/telemetry.py`. |
+| 3 | 03-plano-cartoes-imagens | Implementada | `ImageCard.tsx`, `isAllowedImageUrl` nos dois lados; hosts e flag privada chegam ao frontend por `GET /api/intelligent-ui/config`. Falta só teste de render do cartão. |
+| 4 | 04-plano-graficos | Implementada | `ChartCard.tsx` (bar/line/compare, tabela sr-only). `AdminPanel` lazy em `App.tsx`: `recharts` em chunk próprio, fora do chat. |
+| 5 | 05-plano-controles | Implementada | `ControlsCard.tsx`, `lib/safeMath.ts`. `set_model` lista `models` do store, some com lista vazia, erro curto para id desconhecido; a11y (`htmlFor`, `aria-live`, `role=alert`), `maxLength` 200, clamp de número/range. |
 | 6 | 06-criterios-aceite | 37 de 44 itens atendidos | Bloqueadores para ligar em produção listados no topo do arquivo. |
-| 7 | 09-plano-sandbox-e-exportacao | Implementada, sem testes | `SandboxCard.tsx`, `themeBridge.ts`, `lib/exportStandalone.ts`. Desvio: `importmap` para `esm.sh`. |
+| 7 | 09-plano-sandbox-e-exportacao | Implementada | `SandboxCard.tsx`, `themeBridge.ts`, `hooks/useResolvedTheme.ts`, `lib/exportStandalone.ts` + testes de função pura. Tema reativo por `postMessage`, CSP `default-src 'none'` (esm.sh só para módulos), `lang` do i18n. |
 
 Testes que passam: `backend/tests/test_ui_blocks.py` (15), `frontend/src/lib/nexusUi.test.ts` (7), `frontend/src/ui/lib/safeMath.test.ts` (4). `tsc` e `vite build` limpos. Não há testes de render dos componentes.
 

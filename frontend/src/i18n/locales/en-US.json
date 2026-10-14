@@ -779,7 +779,28 @@
     "imageGenStepsHint": "For Flux-1-Schnell, 4 steps offers the ideal balance of quality and speed (~1-3s). Max 8.",
     "imageGenDailyCap": "Daily Limit Per User",
     "imageGenDailyCapHint": "Protects against quota exhaustion on shared accounts.",
-    "imageGenDimensionsInfo": "Default resolution: 1024x1024px · Output format: PNG · Local storage in Nexus."
+    "imageGenDimensionsInfo": "Default resolution: 1024x1024px · Output format: PNG · Local storage in Nexus.",
+    "intelligentUiTitle": "Intelligent UI",
+    "intelligentUiDesc": "Progress bars, cards, charts, controls and micro-tools drawn by the app itself from structured data sent by the AI. The prose stays complete without them.",
+    "intelligentUiEnable": "Enable visual blocks in replies",
+    "intelligentUiEnableDesc": "When off, chat is identical to before: no catalog in the prompt, no extraction, no blocks in the bubble.",
+    "intelligentUiImageHosts": "Trusted hosts for card images",
+    "intelligentUiImageHostsHint": "Comma-separated. The app's own attachments always pass. Any other https host outside this list is stripped from the card (the AI does not pick the list).",
+    "intelligentUiPrivateHttp": "Allow http:// on private LAN IPs / .local",
+    "intelligentUiPrivateHttpDesc": "For pictures from a home camera, NAS or 3D printer (10.x, 192.168.x, 172.16-31.x, *.local).",
+    "intelligentUiSourceInfo": "Current value",
+    "intelligentUiSourceDb": "set in this panel",
+    "intelligentUiSourceEnv": "from the server .env",
+    "intelligentUiSourceDefault": "default (never configured)",
+    "intelligentUiSourceHint": "After saving here, the .env is no longer read for these options.",
+    "intelligentUiSaveError": "Could not save. Please try again.",
+    "intelligentUiStatsTitle": "Since last restart",
+    "intelligentUiStatsRefresh": "Refresh",
+    "intelligentUiStatsOffered": "Catalog offered",
+    "intelligentUiStatsProduced": "Model replied with a fence",
+    "intelligentUiStatsValid": "Valid envelopes",
+    "intelligentUiStatsDropped": "Blocks dropped",
+    "intelligentUiStatsReasons": "Reasons"
   },
   "memory": {
     "useMemoryGlobal": "Memory in conversations (default: on)",
@@ -1013,7 +1034,9 @@
     "controlsError": "Error executing action.",
     "exportStandalone": "Download HTML",
     "exportTooltip": "Download standalone interactive tool",
-    "computedResult": "Result"
+    "computedResult": "Result",
+    "modelNotInList": "That model is not in your list.",
+    "controlsDone": "Sent"
   },
   "proactive": {
     "bubbleBadge": "Proactive assistant",

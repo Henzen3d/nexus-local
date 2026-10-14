@@ -16,6 +16,7 @@ import { FusionSettings } from './FusionSettings'
 import { VisionRelaySettings } from './VisionRelaySettings'
 import { ImageGenSettings } from './ImageGenSettings'
 import { WebSearchSettings } from './WebSearchSettings'
+import { IntelligentUiSettings } from './IntelligentUiSettings'
 import { FreeRegistrySettings } from './FreeRegistrySettings'
 import { FamilySettings } from './FamilySettings'
 import { UsageDashboard } from './UsageDashboard'
@@ -2634,6 +2635,8 @@ function AdminPanelDesktop() {
                   <ImageGenSettings />
                   <div className="admin-divider" style={{ margin: 0 }} />
                   <WebSearchSettings />
+                  <div className="admin-divider" style={{ margin: 0 }} />
+                  <IntelligentUiSettings />
                   <div className="admin-divider" style={{ margin: 0 }} />
                   <FreeRegistrySettings />
                   <div className="admin-divider" style={{ margin: 0 }} />

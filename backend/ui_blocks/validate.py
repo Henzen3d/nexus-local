@@ -21,10 +21,34 @@ PLACEHOLDER_REGEX = re.compile(r"\{([a-zA-Z0-9_]+)\}")
 
 MAX_RAW_JSON_LENGTH = 16000
 MAX_BLOCKS = 4
+MAX_CONTROL_FIELDS = 4
+# Limites por campo do bloco `sandbox`. O envelope inteiro já é cortado em
+# MAX_RAW_JSON_LENGTH, então o teto real de html+css+js é menor que a soma.
+MAX_SANDBOX_HTML = 12000
+MAX_SANDBOX_CSS = 4000
+MAX_SANDBOX_JS = 8000
 
 
-def is_allowed_image_url(url: str) -> bool:
-    """Verifica se uma URL de imagem atende às regras da Seção 6 da spec."""
+def _env_hosts() -> set[str]:
+    raw = os.getenv("INTELLIGENT_UI_IMAGE_HOSTS", "")
+    return {h.strip().lower() for h in raw.split(",") if h.strip()}
+
+
+def _env_allow_private() -> bool:
+    return os.getenv("INTELLIGENT_UI_ALLOW_PRIVATE_HTTP", "false").strip().lower() in ("true", "1", "yes", "on")
+
+
+def is_allowed_image_url(
+    url: str,
+    image_hosts: list[str] | set[str] | None = None,
+    allow_private_http: bool | None = None,
+) -> bool:
+    """Verifica se uma URL de imagem atende às regras da Seção 6 da spec.
+
+    ``image_hosts`` e ``allow_private_http`` vêm da configuração efetiva do turno
+    (painel admin > ``.env``). Quando ``None``, cai no ambiente — mantém os
+    chamadores antigos funcionando.
+    """
     if not isinstance(url, str):
         return False
     url = url.strip()
@@ -55,14 +79,17 @@ def is_allowed_image_url(url: str) -> bool:
     if scheme not in ("http", "https") or not host:
         return False
 
-    allowed_hosts_env = os.getenv("INTELLIGENT_UI_IMAGE_HOSTS", "")
-    allowed_hosts = {h.strip().lower() for h in allowed_hosts_env.split(",") if h.strip()}
+    allowed_hosts = (
+        {str(h).strip().lower() for h in image_hosts if str(h).strip()}
+        if image_hosts is not None
+        else _env_hosts()
+    )
 
     if host in allowed_hosts:
         return True
 
     # Checagem de IP privado / rede local
-    allow_private = os.getenv("INTELLIGENT_UI_ALLOW_PRIVATE_HTTP", "false").lower() in ("true", "1", "yes")
+    allow_private = bool(allow_private_http) if allow_private_http is not None else _env_allow_private()
     is_private_target = False
 
     if host.endswith(".local") or host == "localhost":
@@ -155,7 +182,11 @@ def _validate_progress(block: dict[str, Any]) -> dict[str, Any] | None:
     return out
 
 
-def _validate_card(block: dict[str, Any]) -> dict[str, Any] | None:
+def _validate_card(
+    block: dict[str, Any],
+    image_hosts: list[str] | None = None,
+    allow_private_http: bool | None = None,
+) -> dict[str, Any] | None:
     title = block.get("title")
     if not isinstance(title, str) or not title.strip():
         title = "Informações"
@@ -190,7 +221,7 @@ def _validate_card(block: dict[str, Any]) -> dict[str, Any] | None:
         url = image.get("url")
         alt = image.get("alt")
         if isinstance(url, str) and isinstance(alt, str) and (1 <= len(alt) <= 120):
-            if is_allowed_image_url(url):
+            if is_allowed_image_url(url, image_hosts, allow_private_http):
                 out["image"] = {"url": url.strip(), "alt": alt.strip()}
 
     return out
@@ -203,9 +234,11 @@ def _validate_chart(block: dict[str, Any]) -> dict[str, Any] | None:
     else:
         title = title.strip()[:80]
 
-    kind = str(block.get("kind", "bar")).lower()
+    # `kind` ausente vira `bar` (tolerância); `kind` escrito e fora da união é
+    # descartado — desenhar "pizza" como barra seria um visual errado, pior que nenhum.
+    kind = str(block.get("kind") or "bar").lower().strip()
     if kind not in ("bar", "line", "compare"):
-        kind = "bar"
+        return None
 
     x_key = block.get("x_key") or "x"
     if not isinstance(x_key, str) or not (1 <= len(x_key) <= 40):
@@ -339,7 +372,7 @@ def _validate_controls(block: dict[str, Any]) -> dict[str, Any] | None:
     seen_field_ids = set()
     select_fields = []
 
-    for idx, f in enumerate(fields[:6]):
+    for idx, f in enumerate(fields[:MAX_CONTROL_FIELDS]):
         if not isinstance(f, dict):
             continue
         f_id = f.get("id")
@@ -419,14 +452,14 @@ def _validate_controls(block: dict[str, Any]) -> dict[str, Any] | None:
         if isinstance(tmpl, str) and (1 <= len(tmpl) <= 200) and isinstance(formula, str) and (1 <= len(formula) <= 300):
             clean_computed = {"template": tmpl, "formula": formula}
 
-    # action
+    # action — obrigatória e fechada (spec 4.4): nome fora da lista descarta o bloco.
     action = block.get("action")
     if not isinstance(action, dict):
-        action = {"name": "send_message", "template": "Atualizar"}
+        return None
 
     action_name = action.get("name")
     if action_name not in ("send_message", "set_model"):
-        action_name = "send_message"
+        return None
 
     # Validação de placeholders em send_message
     clean_action: dict[str, Any] = {"name": action_name}
@@ -464,14 +497,15 @@ def _validate_controls(block: dict[str, Any]) -> dict[str, Any] | None:
 def _validate_sandbox(block: dict[str, Any]) -> dict[str, Any] | None:
     title = str(block.get("title") or "Simulação").strip()[:80]
     html = block.get("html")
-    if not isinstance(html, str) or not (1 <= len(html) <= 20000):
+    if not isinstance(html, str) or not (1 <= len(html) <= MAX_SANDBOX_HTML):
         return None
 
     initial_height = block.get("initial_height")
-    if isinstance(initial_height, int) and 120 <= initial_height <= 800:
-        h = initial_height
-    else:
-        h = 300
+    try:
+        h_num = int(round(float(initial_height))) if initial_height is not None else None
+    except (TypeError, ValueError):
+        h_num = None
+    h = h_num if h_num is not None and 120 <= h_num <= 800 else 300
 
     out: dict[str, Any] = {
         "id": block.get("id") or "sandbox_1",
@@ -483,20 +517,31 @@ def _validate_sandbox(block: dict[str, Any]) -> dict[str, Any] | None:
     }
 
     css = block.get("css")
-    if isinstance(css, str) and len(css) <= 20000:
+    if isinstance(css, str) and len(css) <= MAX_SANDBOX_CSS:
         out["css"] = css
 
     js = block.get("js")
-    if isinstance(js, str) and len(js) <= 30000:
+    if isinstance(js, str) and len(js) <= MAX_SANDBOX_JS:
         out["js"] = js
 
     return out
 
 
-def validate_envelope(raw: str | dict[str, Any]) -> dict[str, Any] | None:
+def validate_envelope(
+    raw: str | dict[str, Any],
+    *,
+    image_hosts: list[str] | None = None,
+    allow_private_http: bool | None = None,
+) -> dict[str, Any] | None:
     """Valida um JSON bruto ou dicionário com o envelope nexus-ui/1.
 
     Retorna o dicionário sanitizado {"v": 1, "blocks": [...]} ou None se inválido.
+
+    Tolerâncias deliberadas (documentadas na spec, seção 4, "Tolerâncias"):
+    envelope sem ``v`` ou bloco solto sem envelope; bloco sem ``type`` inferido
+    pelos campos; ``id`` ausente/duplicado gerado; títulos e labels padrão.
+    Rejeições estritas: ``v`` presente e diferente de 1; ``kind`` de chart fora
+    da união; ação de controls ausente ou fora de ``send_message``/``set_model``.
     """
     if isinstance(raw, str):
         if len(raw) > MAX_RAW_JSON_LENGTH:
@@ -511,6 +556,11 @@ def validate_envelope(raw: str | dict[str, Any]) -> dict[str, Any] | None:
         return None
 
     if not isinstance(data, dict):
+        return None
+
+    # `v` escrito e diferente de 1 é outro contrato: envelope inteiro descartado.
+    # `v` ausente é tolerado (assume 1).
+    if "v" in data and data.get("v") not in (1, "1"):
         return None
 
     # Normalização de bloco único ou envelope sem "v"
@@ -578,7 +628,7 @@ def validate_envelope(raw: str | dict[str, Any]) -> dict[str, Any] | None:
         if b_type == "progress":
             validated = _validate_progress(item)
         elif b_type == "card":
-            validated = _validate_card(item)
+            validated = _validate_card(item, image_hosts, allow_private_http)
         elif b_type == "chart":
             validated = _validate_chart(item)
         elif b_type == "controls":

@@ -778,7 +778,28 @@
     "imageGenStepsHint": "Para Flux-1-Schnell, 4 passos é o equilíbrio ideal entre qualidade e velocidade (~1-3s). Máximo 8.",
     "imageGenDailyCap": "Limite Diário por Usuário",
     "imageGenDailyCapHint": "Protege contra estouro de quota em contas compartilhadas.",
-    "imageGenDimensionsInfo": "Resolução padrão: 1024x1024px · Formato de saída: PNG · Armazenamento local no Nexus."
+    "imageGenDimensionsInfo": "Resolução padrão: 1024x1024px · Formato de saída: PNG · Armazenamento local no Nexus.",
+    "intelligentUiTitle": "Interface Inteligente",
+    "intelligentUiDesc": "Barras de progresso, cartões, gráficos, controles e micro-ferramentas desenhados pelo próprio app a partir de dados estruturados da IA. A prosa continua completa sem eles.",
+    "intelligentUiEnable": "Ativar blocos visuais nas respostas",
+    "intelligentUiEnableDesc": "Desligado, o chat fica idêntico ao de antes: sem catálogo no prompt, sem extração e sem blocos na bolha.",
+    "intelligentUiImageHosts": "Hosts confiáveis para imagens dos cartões",
+    "intelligentUiImageHostsHint": "Separe por vírgula. Anexos do próprio app sempre passam. Qualquer outro https fora desta lista é removido do cartão (a IA não escolhe a lista).",
+    "intelligentUiPrivateHttp": "Permitir http:// em IP da rede local / .local",
+    "intelligentUiPrivateHttpDesc": "Para fotos de câmera, NAS ou impressora 3D da casa (10.x, 192.168.x, 172.16-31.x, *.local).",
+    "intelligentUiSourceInfo": "Valor atual",
+    "intelligentUiSourceDb": "definido neste painel",
+    "intelligentUiSourceEnv": "vindo do .env do servidor",
+    "intelligentUiSourceDefault": "padrão (nunca configurado)",
+    "intelligentUiSourceHint": "Depois de salvar aqui, o .env deixa de ser lido para estas opções.",
+    "intelligentUiSaveError": "Não foi possível salvar. Tente novamente.",
+    "intelligentUiStatsTitle": "Desde o último restart",
+    "intelligentUiStatsRefresh": "Atualizar",
+    "intelligentUiStatsOffered": "Catálogo oferecido",
+    "intelligentUiStatsProduced": "Modelo respondeu com fence",
+    "intelligentUiStatsValid": "Envelopes válidos",
+    "intelligentUiStatsDropped": "Blocos descartados",
+    "intelligentUiStatsReasons": "Motivos"
   },
   "memory": {
     "useMemoryGlobal": "Memória nas conversas (padrão: ligada)",
@@ -1012,7 +1033,9 @@
     "controlsError": "Erro ao processar ação.",
     "exportStandalone": "Baixar HTML",
     "exportTooltip": "Baixar ferramenta interativa em arquivo autônomo",
-    "computedResult": "Resultado"
+    "computedResult": "Resultado",
+    "modelNotInList": "Esse modelo não está na sua lista.",
+    "controlsDone": "Enviado"
   },
   "proactive": {
     "bubbleBadge": "Assistente proativo",

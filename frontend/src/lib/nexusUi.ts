@@ -20,6 +20,12 @@ const SELECT_VALUE_REGEX = /^[a-zA-Z0-9._-]{1,64}$/
 const PLACEHOLDER_REGEX = /\{([a-zA-Z0-9_]+)\}/g
 
 const MAX_BLOCKS = 4
+// Espelham backend/ui_blocks/validate.py — mudar lá e aqui juntos (spec, seção 4).
+const MAX_RAW_JSON_LENGTH = 16000
+const MAX_CONTROL_FIELDS = 4
+const MAX_SANDBOX_HTML = 12000
+const MAX_SANDBOX_CSS = 4000
+const MAX_SANDBOX_JS = 8000
 
 /**
  * Validação rigorosa de URLs de imagens conforme a Seção 6 da spec.
@@ -203,8 +209,13 @@ function validateCard(item: Record<string, unknown>): CardBlock | null {
 
 function validateChart(item: Record<string, unknown>): ChartBlock | null {
   const title = typeof item.title === 'string' && item.title.trim() ? item.title.trim().slice(0, 80) : 'Gráfico Comparativo'
-  let kind = String(item.kind || 'bar').toLowerCase() as 'bar' | 'line' | 'compare'
-  if (!['bar', 'line', 'compare'].includes(kind)) kind = 'bar'
+  // kind ausente → 'bar'; kind presente mas desconhecido → bloco descartado (como no Python)
+  if (item.kind !== undefined && item.kind !== null && typeof item.kind !== 'string') return null
+  let kind = (typeof item.kind === 'string' && item.kind.trim() ? item.kind.trim().toLowerCase() : 'bar') as
+    | 'bar'
+    | 'line'
+    | 'compare'
+  if (!['bar', 'line', 'compare'].includes(kind)) return null
 
   const xKey = typeof item.x_key === 'string' && item.x_key.trim() ? item.x_key.trim().slice(0, 40) : 'x'
   if (!Array.isArray(item.series) || item.series.length === 0) return null
@@ -327,7 +338,7 @@ function validateControls(item: Record<string, unknown>): ControlsBlock | null {
   const seenIds = new Set<string>()
   const selectFields: string[] = []
 
-  for (let idx = 0; idx < item.fields.slice(0, 6).length; idx++) {
+  for (let idx = 0; idx < item.fields.slice(0, MAX_CONTROL_FIELDS).length; idx++) {
     const f = item.fields[idx] as Record<string, unknown>
     if (!f || typeof f !== 'object') continue
 
@@ -399,14 +410,19 @@ function validateControls(item: Record<string, unknown>): ControlsBlock | null {
     }
   }
 
-  const act = (item.action || {}) as Record<string, unknown>
-  const actionName = act.name === 'set_model' ? 'set_model' : 'send_message'
+  // action é obrigatória e só aceita os dois nomes do contrato; sem inventar
+  // template ("Enviar dados") — o Python descarta e o TS tem de descartar igual.
+  if (!item.action || typeof item.action !== 'object' || Array.isArray(item.action)) return null
+  const act = item.action as Record<string, unknown>
+  if (act.name !== 'send_message' && act.name !== 'set_model') return null
+  const actionName = act.name
   const outAction: ControlsBlock['action'] = {
     name: actionName,
   }
 
   if (actionName === 'send_message') {
-    const tmpl = typeof act.template === 'string' ? act.template : 'Enviar dados'
+    if (typeof act.template !== 'string' || !act.template.trim()) return null
+    const tmpl = act.template
     const placeholders = Array.from(tmpl.matchAll(PLACEHOLDER_REGEX)).map((m) => m[1])
     const validKeys = new Set(seenIds)
     if (cleanComputed) validKeys.add('resultado')
@@ -432,26 +448,31 @@ function validateControls(item: Record<string, unknown>): ControlsBlock | null {
   return out
 }
 
+/** Altura inicial do sandbox: aceita número ou string numérica, arredonda, 120..800, senão 300. */
+function normalizeSandboxHeight(raw: unknown): number {
+  const n = typeof raw === 'number' ? raw : typeof raw === 'string' && raw.trim() ? Number(raw) : NaN
+  if (!Number.isFinite(n)) return 300
+  const h = Math.round(n)
+  return h >= 120 && h <= 800 ? h : 300
+}
+
 function validateSandbox(item: Record<string, unknown>): SandboxBlock | null {
   const title = typeof item.title === 'string' && item.title.trim() ? item.title.trim().slice(0, 80) : 'Simulação'
-  if (typeof item.html !== 'string' || item.html.length < 1 || item.html.length > 20000) return null
+  if (typeof item.html !== 'string' || item.html.length < 1 || item.html.length > MAX_SANDBOX_HTML) return null
 
   const out: SandboxBlock = {
     id: (item.id as string) || 'sandbox_1',
     type: 'sandbox',
     title,
     html: item.html,
-    initial_height:
-      typeof item.initial_height === 'number' && item.initial_height >= 120 && item.initial_height <= 800
-        ? item.initial_height
-        : 300,
+    initial_height: normalizeSandboxHeight(item.initial_height),
     standalone_download: item.standalone_download !== false,
   }
 
-  if (typeof item.css === 'string' && item.css.length <= 20000) {
+  if (typeof item.css === 'string' && item.css.length <= MAX_SANDBOX_CSS) {
     out.css = item.css
   }
-  if (typeof item.js === 'string' && item.js.length <= 30000) {
+  if (typeof item.js === 'string' && item.js.length <= MAX_SANDBOX_JS) {
     out.js = item.js
   }
 
@@ -466,7 +487,7 @@ export function parseUiEnvelope(raw: unknown): UiEnvelope | null {
   let data: Record<string, unknown>
 
   if (typeof raw === 'string') {
-    if (raw.length > 16000) return null
+    if (raw.length > MAX_RAW_JSON_LENGTH) return null
     try {
       data = JSON.parse(raw)
     } catch {
@@ -487,6 +508,8 @@ export function parseUiEnvelope(raw: unknown): UiEnvelope | null {
     }
   }
 
+  // v ausente → assume 1 (tolerância); v presente e diferente de 1 → outro contrato, rejeita
+  if ('v' in data && data.v !== 1 && data.v !== '1') return null
   data.v = 1
 
   const cleanBlocks: UiBlock[] = []
@@ -537,44 +560,16 @@ export function parseUiEnvelope(raw: unknown): UiEnvelope | null {
 /**
  * Remove blocos nexus-ui e chart fences do texto para exibição limpa em Markdown.
  */
+/**
+ * Remove os fences nexus-ui da prosa para exibição (o envelope já veio do servidor).
+ * Mesmas âncoras do extrator Python (backend/ui_blocks/extract.py): a abertura
+ * tem de estar no início da linha; menção inline a ```nexus-ui na prosa não é fence.
+ */
 export function stripUiFences(text: string): string {
   if (!text) return ''
   return text
-    .replace(/```(?:nexus-ui(?:\/1)?|nexus)\s*[\s\S]*?```/g, '')
-    .replace(/```(?:chart|ui)\s*\{[\s\S]*?\}\s*```/g, '')
-    .replace(/```(?:nexus-ui(?:\/1)?|nexus)[\s\S]*$/g, '')
+    .replace(/^[ \t]{0,3}```(?:nexus-ui(?:\/1)?|nexus)[ \t]*\r?\n[\s\S]*?\r?\n[ \t]{0,3}```[ \t]*$/gm, '')
+    .replace(/^[ \t]{0,3}```(?:chart|ui)[ \t]*\r?\n\s*\{[\s\S]*?\}\s*\r?\n[ \t]{0,3}```[ \t]*$/gm, '')
+    .replace(/^[ \t]{0,3}```(?:nexus-ui(?:\/1)?|nexus)[ \t]*(?:\r?\n[\s\S]*)?$/gm, '')
     .trim()
-}
-
-/**
- * Extrai e valida envelopes client-side a partir do texto caso o backend não tenha enviado ui_blocks.
- */
-export function extractClientUi(text: string): { envelope: UiEnvelope | null; cleanText: string } {
-  if (!text) return { envelope: null, cleanText: text || '' }
-
-  // 1. Padrão primário: ```nexus-ui
-  const nexusRegex = /```(?:nexus-ui(?:\/1)?|nexus)\s*([\s\S]*?)```/g
-  const matches = Array.from(text.matchAll(nexusRegex))
-  if (matches.length > 0) {
-    const lastMatch = matches[matches.length - 1]
-    const rawJson = lastMatch[1].trim()
-    const envelope = parseUiEnvelope(rawJson)
-    if (envelope) {
-      return { envelope, cleanText: stripUiFences(text) }
-    }
-  }
-
-  // 2. Padrão alternativo: ```chart { ... }
-  const chartRegex = /```(?:chart|ui)\s*(\{[\s\S]*?\})\s*```/g
-  const chartMatches = Array.from(text.matchAll(chartRegex))
-  if (chartMatches.length > 0) {
-    const lastMatch = chartMatches[chartMatches.length - 1]
-    const rawJson = lastMatch[1].trim()
-    const envelope = parseUiEnvelope(rawJson)
-    if (envelope) {
-      return { envelope, cleanText: stripUiFences(text) }
-    }
-  }
-
-  return { envelope: null, cleanText: text }
 }

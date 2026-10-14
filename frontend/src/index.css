@@ -11978,3 +11978,29 @@ html[data-theme="light"] .model-option-provider-tag {
 @media (prefers-reduced-motion: reduce) {
   .rankings-view .spin { animation: none; }
 }
+
+/* ── Intelligent UI (blocos nexus-ui/1 na bolha) ─────────────────────────────
+   Spec §7: prefers-reduced-motion = barra sem animação, step com corte seco. */
+.nexus-ui-progress-fill {
+  transition: width 0.4s ease;
+}
+
+.nexus-ui-skeleton {
+  animation: nexus-ui-skeleton-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes nexus-ui-skeleton-pulse {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 0.35; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nexus-ui-progress-fill,
+  .nexus-ui-container * {
+    transition: none !important;
+  }
+
+  .nexus-ui-skeleton {
+    animation: none;
+  }
+}

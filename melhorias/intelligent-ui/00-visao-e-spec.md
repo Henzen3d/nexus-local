@@ -77,6 +77,25 @@ Limites do envelope, iguais no backend e no frontend:
 - Bloco inválido: descartar o bloco. Os válidos permanecem.
 - Fence sem fechar no `stream_end`: descartar o fence, não pintar JSON parcial.
 - Mais de um fence: usar só o último. Os anteriores saem da prosa e não viram bloco.
+- Fence só conta com a abertura no início da linha (até 3 espaços) e o fechamento ``` sozinho na linha. Menção inline a ```` ```nexus-ui ```` no meio de uma frase não é fence e não some da prosa. Mesma regra em `extract.py` e em `stripUiFences`.
+
+**Tolerâncias do validador** (iguais em `backend/ui_blocks/validate.py` e `frontend/src/lib/nexusUi.ts`; os testes `test_ui_blocks.py` e `nexusUi.test.ts` cobrem a paridade):
+
+| Situação | Tratamento | Motivo |
+|---|---|---|
+| `v` ausente | assume 1 | modelo pequeno esquece o campo |
+| `v` presente e ≠ 1 (inclusive `null`) | envelope inteiro descartado | outro contrato |
+| Bloco solto sem envelope, ou `blocks` como objeto | embrulha em `{"v":1,"blocks":[…]}` | idem |
+| `type` ausente | inferido pelos campos (`steps`/`value+max` → progress, `kind+series` → chart, `fields` → controls, `html` → sandbox, `facts`/`body`/`title` → card) | idem |
+| `id` ausente, inválido ou repetido | gerado (`tipo_n`) | id é só âncora de render |
+| `label`/`title` ausente | texto padrão | não vale perder o bloco por isso |
+| `chart.kind` ausente | `bar` | padrão razoável |
+| `chart.kind` fora de `bar`/`line`/`compare` | **bloco descartado** | não existe gráfico "parecido"; a prosa segue |
+| `controls.action` ausente ou `name` fora de `send_message`/`set_model` | **bloco descartado** | nunca inventar um envio |
+| `send_message` sem `template` | **bloco descartado** | idem |
+| `controls.fields` com mais de 4 | corta nos 4 primeiros; placeholder que aponta para campo cortado invalida o bloco | teto da spec (4.4) |
+| `sandbox.html` > 12000, `css` > 4000, `js` > 8000 | html estoura → bloco fora; css/js estouram → campo fora | caber nos 16000 do fence com folga |
+| `sandbox.initial_height` string numérica/decimal | arredonda; fora de 120–800 → 300 | tolerância de tipo |
 
 A prosa tem de fazer sentido sem os blocos. Bloco é complemento. Se o dado importante só existir no JSON, o turno falhou o critério de aceite, mesmo com o widget bonito.
 
@@ -231,6 +250,8 @@ CREATE TABLE IF NOT EXISTS message_ui_blocks (
 );
 ```
 
+Um envelope por mensagem, de propósito. Se um dia o host gravar blocos próprios na mesma mensagem (hoje `ui_progress` só vive no socket e no estado do frontend, que mescla host primeiro e modelo depois), a regra é mesclar no mesmo envelope — não abrir uma segunda linha nem trocar a chave para `(message_id, source)`. Rebuild de tabela no SQLite por um caso que ainda não existe não compensa.
+
 `payload` é o envelope já validado, `{"v":1,"blocks":[...]}`. Não é o fence cru.
 
 `messages.content` guarda a prosa com o fence removido. Se a remoção falhar, grava a prosa e não grava bloco. Nunca grava o JSON dentro de `content`.
@@ -238,7 +259,7 @@ CREATE TABLE IF NOT EXISTS message_ui_blocks (
 Eventos, acrescentados em `WSMessage` (`frontend/src/types.ts`):
 
 - `stream_end` ganha `ui_blocks?: UiEnvelope | null`.
-- `ui_progress`: `{ type: 'ui_progress'; block: ProgressBlock }`. Só o servidor emite. Substitui o bloco de mesmo `id` na mensagem em stream. Não vem do modelo no meio dos tokens.
+- `ui_progress`: `{ type: 'ui_progress'; block: ProgressBlock }`. Só o servidor emite. Substitui o bloco de mesmo `id` na mensagem em stream. Não vem do modelo no meio dos tokens. No frontend, durante o stream a mensagem do assistente ainda não existe em `messages`: o bloco fica em `streamingUiBlocks` (desenhado na `StreamingBubble`) e entra na mensagem no `finalizeStream`, antes dos blocos do modelo. Fora do stream, atualiza a última mensagem **do assistente** — nunca a bolha do usuário.
 
 Ao recarregar a conversa, a API de mensagens devolve `ui_blocks` junto da mensagem. O frontend valida de novo. Payload inválido no banco: mostrar só a prosa.
 
@@ -255,12 +276,12 @@ O browser busca a imagem. O backend não faz proxy na v1. Proxy de URL inventada
 Fonte confiável, só estas:
 
 1. Arquivo local do app: URL relativa que começa com `/`, ou URL absoluta cujo host é o host da página. Anexos já servidos pelo Nexus entram aqui (`file_url` / `thumbnail_url` do próprio backend).
-2. Host remoto listado em `INTELLIGENT_UI_IMAGE_HOSTS` (lista separada por vírgula, padrão vazia). O modelo não escolhe a lista.
-3. `http` em IP privado (10/8, 172.16/12, 192.168/16, 127/8) ou sufixo `.local`, somente se `INTELLIGENT_UI_ALLOW_PRIVATE_HTTP=true`. Padrão `false`. Foto de ESP32 na rede de casa exige essa flag, ou um upload como anexo. Não fica aberta por padrão.
+2. Host remoto listado em `image_hosts` da configuração efetiva (painel admin ou, enquanto ninguém salvou lá, `INTELLIGENT_UI_IMAGE_HOSTS`; lista separada por vírgula, padrão vazia). O modelo não escolhe a lista.
+3. `http` em IP privado (10/8, 172.16/12, 192.168/16, 127/8) ou sufixo `.local`, somente se `allow_private_http` estiver ligado (painel ou `INTELLIGENT_UI_ALLOW_PRIVATE_HTTP=true`). Padrão `false`. Foto de ESP32 na rede de casa exige essa flag, ou um upload como anexo. Não fica aberta por padrão.
 
 Recusar sempre: comprimento acima de 2048, userinfo (`user:pass@`), `javascript:`, `data:`, `blob:`, `file:`, e qualquer `https` cujo host não esteja na lista nem seja o host da página.
 
-O backend tira a imagem do bloco se a URL falhar. O cartão permanece. O frontend repete a checagem antes do `<img>`, com `window.location.host` e a lista que o servidor já usa. A lista não vem do modelo.
+O backend tira a imagem do bloco se a URL falhar. O cartão permanece. O frontend repete a checagem antes do `<img>`, com `window.location.host` e a lista que o servidor já usa (ela chega por `GET /api/intelligent-ui/config`, carregada no boot e guardada no store). A lista não vem do modelo.
 
 No `<img>`: `referrerPolicy="no-referrer"`, `loading="lazy"`, `alt` do contrato, largura máxima da bolha. Falha de carga: sumir a imagem, ficar o cartão.
 
@@ -306,29 +327,29 @@ Texto fixo, arquivo futuro `backend/ui_blocks/catalog.txt`. Injeção só quando
 
 Heurístico, case insensitive, na última mensagem do usuário. Ligar o catálogo se qualquer item bater:
 
-- regex: `gráfico|grafico|compar|versus|\bvs\b|etapa|progresso|escolh|selecion|cartão|cartao|imagem|foto|indicador|barra|calcul|simul`
+- regex: `gráfico|grafico|compar|versus|\bvs\b|etapa|progresso|escolh|selecion|cartão|cartao|imagem|foto|indicador|barra|calcul|simul` — cada radical ancorado no início de palavra (`\b`), com exclusões para `compartilhar`/`comparecer`, `simultâneo`, `embarrar`/`barraco`, `cartaz`/`cartucho` (ver `should_offer.py`). Disparo à toa custa ~280 tokens de catálogo e convida widget onde cabia prosa.
 - ou três ou mais números e uma destas palavras: `custo`, `tempo`, `modelo`, `%`, `taxa`, `valor`
 
 Turno que não bater: sem catálogo, sem cobrança de token extra, sem widget de modelo. Bloco de host (Fusion, busca, upload) não depende deste heurístico.
 
-Texto do catálogo, copiar literal na implementação. O bloco usa quatro crases para o fence interno não fechar o externo.
+**Medição.** Cada turno com a flag ligada registra uma linha de log `intelligent_ui turn offered=… produced=… valid=… blocks=in/out dropped=… reason=…` e alimenta contadores de processo (`backend/ui_blocks/telemetry.py`): oferecido, produzido (fence fechado), produzido sem oferta, válido, blocos entrados/saídos e motivo do descarte (`no_fence`, `invalid_json`, `rejected_envelope`, `empty_after_validation`). `GET /api/intelligent-ui/stats` (admin) devolve o snapshot, que o painel mostra abaixo das opções. É a resposta operacional para "vale a pena manter ligado?": oferta alta com produção baixa pede ajuste do catálogo; produção alta com validade baixa pede olhar os motivos. Zera no restart; sem tabela de propósito.
+
+Texto do catálogo, copiar literal na implementação (`backend/ui_blocks/catalog.txt`; o teste `test_catalogo_cabe_no_teto_e_tem_as_regras_da_spec` confere o teto e as linhas obrigatórias). O exemplo concreto de `chart` e a regra "use SEMPRE o nome de fence" entraram porque modelos pequenos escreviam ```` ```chart ```` solto. O bloco usa quatro tis para o fence interno não fechar o externo.
 
 ~~~~
-Se um visual ajudar, anexe um único fence no final, depois da prosa. A prosa tem de bastar sozinha.
+Se um visual ajudar, anexe UM único fence ```nexus-ui no final, depois da prosa. A prosa tem de bastar sozinha; sem visual útil, não gere fence.
 
 ```nexus-ui
-{"v":1,"blocks":[]}
+{"v":1,"blocks":[{"type":"chart","title":"Título","kind":"bar","x_key":"x","series":[{"key":"y","label":"Rótulo"}],"rows":[{"x":"Item","y":10}]}]}
 ```
 
-Máximo 4 blocos. Tipos: progress, card, chart, controls, sandbox.
-progress: label, value, max, steps com state pending|active|done|error.
-card: title, body, image com url e alt, facts com label e value.
-chart: kind bar|line|compare, x_key, series, rows numéricas. Sem cor.
-controls: fields text|select|number|range, computed opcional e uma action.
-action send_message usa template com {id_do_campo}.
-action set_model usa field do select. Não invente id de modelo.
-sandbox: title, initial_height, html, css, js, standalone_download (para simulações/calculadoras dinâmicas isoladas).
-Não escreva HTML na bolha principal. URL de imagem só se for arquivo do app ou host da lista confiável. Sem visual, sem fence.
+Máximo 4 blocos. Tipos no campo "type":
+- progress: label, value, max, steps com label e state pending|active|done|error.
+- card: title, body, facts (lista de {label, value}), image opcional com url e alt. URL de imagem só se for arquivo do app ou host da lista confiável.
+- chart: kind bar|line|compare, x_key, series (key e label), rows numéricas. Sem cor.
+- controls: title, submit_label, fields (text|select|number|range, máximo 4), computed opcional e uma action: send_message usa template com {id_do_campo}; set_model usa field do select e não invente id de modelo.
+- sandbox: title, initial_height, html, css, js, standalone_download (simulação interativa isolada).
+Regras: use SEMPRE o nome de fence ```nexus-ui, nunca ```chart ou ```card. Não escreva HTML na bolha principal.
 ~~~~
 
 O fence de exemplo dentro do catálogo é texto de instrução, não um bloco a renderizar. O extrator só olha a resposta do assistente, não o system prompt.
@@ -345,7 +366,8 @@ Não criar um app paralelo.
 | Chat WS | `backend/routers/chat.py` | Extrair fence antes de persistir. |
 | Persistência | `backend/orchestration/persist_turn.py` | Gravar prosa limpa. Insert do payload na tabela nova. |
 | Schema | `backend/database.py` | `CREATE TABLE message_ui_blocks` dentro de `init_db`. |
-| Flag | `.env.example` | `INTELLIGENT_UI_ENABLED=false`. Ausente significa falso. |
+| Flag | `.env.example` + `backend/ui_blocks/config.py` | `INTELLIGENT_UI_ENABLED=false` é só o valor inicial. Ausente significa falso. A tabela singleton `intelligent_ui_config` (salva por `POST /api/intelligent-ui/config`, admin, em Configurações → Ferramentas → Interface Inteligente) manda sobre o `.env` assim que existe uma linha; vale no turno seguinte, sem restart. Com a flag desligada o turno é idêntico ao de antes do recurso: sem catálogo no prompt, sem extração do fence (o texto fica intacto, fence vira bloco de código), sem linha em `message_ui_blocks`, sem `ui_blocks` no `stream_end`, e o `DynamicRenderer` devolve `null` mesmo que exista payload antigo. Em modo voz o catálogo nunca entra. |
+| Config | `backend/routers/intelligent_ui.py`, `frontend/src/components/IntelligentUiSettings.tsx`, `frontend/src/ui/hooks/useIntelligentUi.ts` | `GET` para qualquer usuário autenticado (o frontend precisa da flag e dos hosts), `POST` só admin. O frontend não reparseia o markdown: o envelope vem sempre do servidor. |
 
 Módulo novo, separado do resto da UI. O esboço da nota era `src/ui/`. No repo o caminho real é `frontend/src/ui/`. Nomes dos cartões seguem a nota. `ControlsCard` entra com formulários e calculadoras reativas. `SandboxCard` para ferramentas dinâmicas da Fase 7.
 

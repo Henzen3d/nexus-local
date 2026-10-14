@@ -16,7 +16,8 @@ import { AIMetadataDisplay } from './AIMetadataDisplay'
 import { playSpeech, useTtsPlay } from '../lib/ttsPlayer'
 import { AutoRouteBadge } from './AutoRouteBadge'
 import { DynamicRenderer } from '../ui/DynamicRenderer'
-import { stripUiFences, extractClientUi } from '../lib/nexusUi'
+import { stripUiFences } from '../lib/nexusUi'
+import { useIntelligentUiEnabled } from '../ui/hooks/useIntelligentUi'
 import { ExecutionSequence } from './ExecutionSequence'
 import { mergeProcessTree } from '../lib/processTree'
 import { SourceShelf } from './SourceShelf'
@@ -390,20 +391,20 @@ export function MessageBubble({ message }: Props) {
   // A flag de thinking agora é fornecida diretamente pelo adapter
   const isThinking = message.role === 'assistant' && (parsedResponse.isThinking ?? false)
 
-  // Intelligent UI: resolve envelope via message.ui_blocks ou fallback client-side a partir do texto
+  // Intelligent UI: o envelope vem SEMPRE do servidor (stream_end / GET da conversa),
+  // já validado e gravado em message_ui_blocks. Sem reparse do markdown no cliente.
+  // Com a flag desligada o texto fica intacto: um fence eventual aparece como
+  // bloco de código, exatamente como antes do recurso existir.
+  const intelligentUiEnabled = useIntelligentUiEnabled()
   const { effectiveUiEnvelope, textWithoutUi } = React.useMemo(() => {
-    if (message.ui_blocks) {
-      return {
-        effectiveUiEnvelope: message.ui_blocks,
-        textWithoutUi: stripUiFences(answer),
-      }
+    if (!intelligentUiEnabled) {
+      return { effectiveUiEnvelope: null, textWithoutUi: answer }
     }
-    const extracted = extractClientUi(answer)
     return {
-      effectiveUiEnvelope: extracted.envelope,
-      textWithoutUi: extracted.cleanText,
+      effectiveUiEnvelope: message.ui_blocks ?? null,
+      textWithoutUi: stripUiFences(answer),
     }
-  }, [message.ui_blocks, answer])
+  }, [intelligentUiEnabled, message.ui_blocks, answer])
 
   const cleanedContent = cleanContentForArtifacts(textWithoutUi, artifacts)
 
@@ -723,6 +724,8 @@ export function StreamingBubble({ content }: { content: string }) {
   const selectedProviderId = useStore((s) => s.selectedProviderId)
   const processSteps = useStore((s) => s.processSteps)
   const processStartedAt = useStore((s) => s.processStartedAt)
+  // Blocos do host (ui_progress) chegados durante o stream — spec §3/§5
+  const streamingUiBlocks = useStore((s) => s.streamingUiBlocks)
 
   // Obtém o adaptador e normaliza a resposta de stream em tempo real (Fase 7.4)
   const adapter = AdapterRegistry.getAdapter(selectedModelId, selectedProviderId)
@@ -742,7 +745,9 @@ export function StreamingBubble({ content }: { content: string }) {
   // Componente de cursor piscando — só exibe fora do ThinkingBlock
   const showCursor = !isThinking
 
-  const streamText = stripUiFences(deferredResponse)
+  // Durante o stream, esconde o fence parcial só com a flag ligada (ver MessageBubble acima)
+  const streamUiEnabled = useIntelligentUiEnabled()
+  const streamText = streamUiEnabled ? stripUiFences(deferredResponse) : deferredResponse
 
   // A fase de preparação ativa (busca web / thinking) termina assim que os primeiros tokens
   // da resposta final começam a ser gerados.
@@ -792,6 +797,9 @@ export function StreamingBubble({ content }: { content: string }) {
         {showCursor && (
           <span className="streaming-cursor" aria-hidden="true">▍</span>
         )}
+
+        {/* Progresso do host durante o turno (Fusion, busca, upload). O renderer já respeita a flag. */}
+        {streamingUiBlocks && <DynamicRenderer envelope={streamingUiBlocks} />}
       </div>
     </div>
   )

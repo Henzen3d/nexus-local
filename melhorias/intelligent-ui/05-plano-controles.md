@@ -10,7 +10,7 @@
 
 **Spec:** `melhorias/intelligent-ui/00-visao-e-spec.md` seção 4.4.
 
-**Estado (auditoria 2026-10-14):** implementado nas Tasks 1, 2 e 4. Task 3 (`set_model`) está parcial: o clique só chama `selectModel` se o id existir em `models` (seguro), mas o `<select>` ainda mostra as options escritas pelo modelo em vez da lista do store, o bloco não some com `models` vazio e não há mensagem de erro curta.
+**Estado (correções 2026-10-14):** implementado nas Tasks 1–4. `set_model` agora lista `models` do store (valor interno `provider_id::id`, rótulo `display_name · provider_name`), pré-seleciona o modelo atual, some com `models` vazio e mostra `intelligentUi.modelNotInList` se o id não existir. Também: `text` com `maxLength=200`, `number`/`range` cortados em `[min, max]`, `label htmlFor`/`id`, `aria-live` no resultado calculado, `role="alert"` no erro, seletores pontuais do store (sem re-render por token).
 
 ## Global Constraints
 
@@ -67,7 +67,7 @@
 
 - [ ] **Step 1: Teste.** Options do JSON são ignoradas. A lista visível é a do store. Id `nao-existe` não chama `selectModel`. *(**Pendente.** Sem teste; e a lista visível ainda é a do JSON.)*
 
-- [ ] **Step 2: Implementar.** Se `models` estiver vazio, não renderizar o bloco `set_model`. *(**Parcial.** Feito: `models.find(m => m.id === valor)` e só então `selectModel(matched.id, matched.provider_id)`. Falta: preencher o `<select>` com `models` do store ignorando `field.options`, ocultar o bloco com `models` vazio e mostrar `intelligentUi.controlsError` quando o id não existir.)*
+- [x] **Step 2: Implementar.** Se `models` estiver vazio, não renderizar o bloco `set_model`. *(Feito 2026-10-14 em `ControlsCard.tsx`: `<select>` preenchido com `models` do store (options do JSON ignoradas), `return null` com lista vazia, `intelligentUi.modelNotInList` quando o id não bate.)*
 
 - [ ] **Step 3: Commit** `feat: controle troca modelo só entre os já habilitados` *(Aguarda o Step 2.)*
 

@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Artifact, Conversation, ConversationDetail, Message, Model, CacheStats, CacheSettings, FusionStatusEntry, Attachment, LibraryItem, WebSearchSource, AutoRouteDecisionInfo, UiEnvelope, ProgressBlock, ProcessStep, ProactiveInsight, ProactiveAckAction, ProactiveChannelHint, ProactiveExpandMode, ProactiveSettings, ToastItem } from '../types'
+import type { Artifact, Conversation, ConversationDetail, Message, Model, CacheStats, CacheSettings, FusionStatusEntry, Attachment, LibraryItem, WebSearchSource, AutoRouteDecisionInfo, UiEnvelope, ProgressBlock, IntelligentUiConfig, ProcessStep, ProactiveInsight, ProactiveAckAction, ProactiveChannelHint, ProactiveExpandMode, ProactiveSettings, ToastItem } from '../types'
 import { api } from '../api/client'
 import i18n, { detectInitialLocale } from '../i18n'
 import { effectivePreferredModel } from '../lib/modelSelection'
@@ -193,6 +193,14 @@ interface AppState {
   processSteps: ProcessStep[]
   processStartedAt: number | null
   lastCacheHit: { type: string; similarity: number } | null
+
+  // Intelligent UI (blocos nexus-ui/1 na bolha)
+  /** null = ainda não carregado. Enquanto null, nada é renderizado (ausente = desligado). */
+  intelligentUiConfig: IntelligentUiConfig | null
+  loadIntelligentUiConfig: () => Promise<void>
+  setIntelligentUiConfig: (cfg: IntelligentUiConfig | null) => void
+  /** Blocos do host (`ui_progress`) recebidos durante o stream; viram parte da mensagem no finalizeStream. */
+  streamingUiBlocks: UiEnvelope | null
 
   // Model selection
   models: Model[]
@@ -426,6 +434,27 @@ function _proactiveNotifyElsewhere(insight: ProactiveInsight) {
   })
 }
 
+/** Substitui o bloco de mesmo id ou acrescenta até o teto de 4 (spec §5, `ui_progress`). */
+function upsertUiBlock(env: UiEnvelope | null, block: ProgressBlock): UiEnvelope {
+  const blocks = [...(env?.blocks ?? [])]
+  const idx = blocks.findIndex((b) => b.id === block.id)
+  if (idx >= 0) blocks[idx] = block
+  else if (blocks.length < 4) blocks.push(block)
+  return { v: 1, blocks }
+}
+
+/** Host primeiro, modelo depois; id repetido fica com o do host; teto de 4. */
+function mergeUiEnvelopes(host: UiEnvelope | null, model?: UiEnvelope | null): UiEnvelope | null {
+  if (!host?.blocks.length) return model ?? null
+  const seen = new Set<string>()
+  const blocks = [...host.blocks, ...(model?.blocks ?? [])].filter((b) => {
+    if (seen.has(b.id)) return false
+    seen.add(b.id)
+    return true
+  })
+  return { v: 1, blocks: blocks.slice(0, 4) }
+}
+
 export const useStore = create<AppState>((set, get) => ({
   token: typeof window !== 'undefined' ? localStorage.getItem('nexuslocal_token') : null,
   user: typeof window !== 'undefined' ? (() => {
@@ -541,6 +570,8 @@ export const useStore = create<AppState>((set, get) => ({
   pendingInsights: [],
   proactiveSettings: null,
   composerPrefill: null,
+  intelligentUiConfig: null,
+  streamingUiBlocks: null,
   models: [],
   selectedModelId: typeof window !== 'undefined' ? readPersistedModelSelection().modelId : null,
   selectedProviderId: typeof window !== 'undefined' ? readPersistedModelSelection().providerId : null,
@@ -628,6 +659,7 @@ export const useStore = create<AppState>((set, get) => ({
         activeConversation: conv,
         messages: conv.messages,
         streamingContent: '',
+        streamingUiBlocks: null,
         processSteps: [],
         processStartedAt: null,
         activeArtifact: null,
@@ -653,6 +685,7 @@ export const useStore = create<AppState>((set, get) => ({
       activeConversation: null,
       messages: [],
       streamingContent: '',
+      streamingUiBlocks: null,
       isStreaming: false,
       processSteps: [],
       processStartedAt: null,
@@ -1215,7 +1248,7 @@ export const useStore = create<AppState>((set, get) => ({
     processDurationMs?: number,
     serverSteps?: ProcessStep[]
   ) => {
-    const { streamingContent, selectedModelId, models, lastAutoRouteDecision, processSteps, processStartedAt } = get()
+    const { streamingContent, selectedModelId, models, lastAutoRouteDecision, processSteps, processStartedAt, streamingUiBlocks } = get()
     const resolvedModelId = lastAutoRouteDecision?.chosen_model_id || selectedModelId
     const activeModel = models.find((m) => m.id === resolvedModelId)
     const clientSteps = processSteps
@@ -1260,7 +1293,8 @@ export const useStore = create<AppState>((set, get) => ({
       process_duration_ms: processDurationMs ?? (processStartedAt ? Date.now() - processStartedAt : undefined),
       was_fallback: wasFallback,
       auto_route: lastAutoRouteDecision,
-      ui_blocks: uiBlocks,
+      // Blocos do host (ui_progress) primeiro, depois os do modelo; teto de 4, id único
+      ui_blocks: mergeUiEnvelopes(streamingUiBlocks, uiBlocks),
       // Popula os metadados do artifact no objeto de mensagem para que o badge seja exibido
       ...(artifactMeta
         ? { artifact_id: artifactMeta.id, artifact_type: artifactMeta.type, artifact_title: artifactMeta.title }
@@ -1270,6 +1304,7 @@ export const useStore = create<AppState>((set, get) => ({
     set((s) => ({
       messages: [...s.messages, msg],
       streamingContent: '',
+      streamingUiBlocks: null,
       isStreaming: false,
       processSteps: [],
       processStartedAt: null,
@@ -1279,20 +1314,17 @@ export const useStore = create<AppState>((set, get) => ({
 
   handleUiProgress: (block: ProgressBlock) => {
     set((s) => {
+      // Durante o stream a mensagem do assistente ainda não existe em `messages`
+      // (a última é a do usuário): o bloco do host fica num buffer próprio e é
+      // mesclado no finalizeStream. Fora do stream, atualiza a última mensagem
+      // do assistente — nunca uma bolha do usuário.
+      if (s.isStreaming) {
+        return { streamingUiBlocks: upsertUiBlock(s.streamingUiBlocks, block) }
+      }
       const msgs = [...s.messages]
-      const lastIdx = msgs.length - 1
-      if (lastIdx >= 0) {
-        const lastMsg = { ...msgs[lastIdx] }
-        const currentEnv = lastMsg.ui_blocks || { v: 1 as const, blocks: [] }
-        const blocks = [...currentEnv.blocks]
-        const existingIdx = blocks.findIndex((b) => b.id === block.id)
-        if (existingIdx >= 0) {
-          blocks[existingIdx] = block
-        } else if (blocks.length < 4) {
-          blocks.push(block)
-        }
-        lastMsg.ui_blocks = { v: 1, blocks }
-        msgs[lastIdx] = lastMsg
+      for (let i = msgs.length - 1; i >= 0; i--) {
+        if (msgs[i].role !== 'assistant') continue
+        msgs[i] = { ...msgs[i], ui_blocks: upsertUiBlock(msgs[i].ui_blocks ?? null, block) }
         return { messages: msgs }
       }
       return {}
@@ -1308,6 +1340,17 @@ export const useStore = create<AppState>((set, get) => ({
   })),
 
   setLastCacheHit: (hit) => set({ lastCacheHit: hit }),
+
+  loadIntelligentUiConfig: async () => {
+    try {
+      const cfg = await api.getIntelligentUiConfig()
+      set({ intelligentUiConfig: cfg })
+    } catch {
+      // Backend antigo ou erro de rede: trata como desligado (ausente = falso).
+      set({ intelligentUiConfig: { enabled: false, image_hosts: [], allow_private_http: false, source: 'default' } })
+    }
+  },
+  setIntelligentUiConfig: (cfg) => set({ intelligentUiConfig: cfg }),
 
   loadModels: async () => {
     const models = await api.getModels()

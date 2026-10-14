@@ -10,7 +10,7 @@
 
 **Spec:** `melhorias/intelligent-ui/00-visao-e-spec.md`
 
-**Estado (auditoria 2026-10-14):** implementado, com uma pendência na Task 4 (a flag não desliga extração/persistência). Evidência: `backend/ui_blocks/{validate,extract}.py`, `backend/tests/test_ui_blocks.py` (15 passed), `frontend/src/lib/nexusUi.ts` + `nexusUi.test.ts` (passa com `node --experimental-strip-types --test`).
+**Estado (correções 2026-10-14):** implementado, Task 4 fechada. A flag passou a desligar catálogo, extração, persistência, `stream_end.ui_blocks` e render (`backend/ui_blocks/config.py` lê painel > `.env` uma vez por turno; `DynamicRenderer`/`MessageBubble` consultam `useIntelligentUiEnabled()`). Evidência: `backend/tests/test_ui_blocks.py` (23 passed), `backend/tests/test_intelligent_ui_turn.py` (5 passed, turno WS com flag off/on), `frontend/src/lib/nexusUi.test.ts` (15 passed).
 
 ## Global Constraints
 
@@ -133,15 +133,15 @@ Fence aberto: remover o pedaço aberto da prosa visível e não devolver envelop
 - Consumes: `extract_ui`
 - Produces: se a flag estiver true, `stream_end.ui_blocks` carrega o envelope ou null. Se false, o campo não é enviado e o fence, se aparecer, permanece no texto como hoje (não extrair com a flag off, para não mudar comportamento).
 
-- [ ] **Step 1: Teste da flag off.** Resposta com fence é persistida intacta. Sem linha em `message_ui_blocks`. *(**Pendente.** Não há teste e o comportamento atual é o oposto: `extract_ui` roda em todo turno, independentemente da flag — `backend/routers/chat.py`, bloco "extração de fence antes de persistir".)*
+- [x] **Step 1: Teste da flag off.** Resposta com fence é persistida intacta. Sem linha em `message_ui_blocks`. *(`test_flag_desligada_turno_identico_ao_chat_sem_o_recurso` em `backend/tests/test_intelligent_ui_turn.py`: `content == resposta do modelo` com fence, `message_ui_blocks` vazia, `stream_end` sem `ui_blocks`, catálogo ausente do system prompt.)*
 
-- [ ] **Step 2: Teste da flag on.** `content` gravado sem fence. Linha na tabela com `source='model'`. `stream_end` inclui `ui_blocks`. *(**Parcial.** O fluxo existe em `chat.py` → `save_assistant_message` + `save_ui_blocks(source="model")` + `stream_end_payload["ui_blocks"]`, mas sem teste de integração do turno; só `save_ui_blocks` é coberto por `test_recuperacao_ui_blocks_em_conversa`.)*
+- [x] **Step 2: Teste da flag on.** `content` gravado sem fence. Linha na tabela com `source='model'`. `stream_end` inclui `ui_blocks`. *(`test_flag_ligada_extrai_grava_e_devolve_no_stream_end`: prosa limpa, linha `source='model'`, `stream_end.ui_blocks`, e `GET /api/conversations/{id}` devolve o mesmo envelope.)*
 
-- [ ] **Step 3: Implementar o mínimo.** Ler a flag uma vez por turno. Não injetar catálogo nesta task. *(**Parcial.** Hoje a flag `INTELLIGENT_UI_ENABLED` controla apenas a injeção do catálogo. Extração, gravação em `message_ui_blocks`, envio de `stream_end.ui_blocks` e a renderização no frontend acontecem com a flag ausente ou `false`. Para fechar o plano é preciso condicionar `extract_ui` à flag no backend e `DynamicRenderer`/`extractClientUi` no frontend.)*
+- [x] **Step 3: Implementar o mínimo.** Ler a flag uma vez por turno. Não injetar catálogo nesta task. *(`_run_turn` em `chat.py` chama `get_intelligent_ui_config()` uma vez e usa `intelligent_ui_enabled` para catálogo e extração; `ui_envelope=None` com flag desligada faz `save_ui_blocks` e `stream_end.ui_blocks` não acontecerem. Frontend: `DynamicRenderer` devolve `null` sem flag, `MessageBubble` deixou de reparsear o markdown (`extractClientUi` removido) e só chama `stripUiFences` com a flag ligada.)*
 
 - [x] **Step 4: Acrescentar o tipo em `WSMessage` e em `Message`, sem usar na bolha.** *(`frontend/src/types.ts`: `UiEnvelope`, `UiBlock`, `Message.ui_blocks`, `stream_end.ui_blocks`, evento `ui_progress`. `.env.example` tem as três variáveis com padrão desligado.)*
 
-- [ ] **Step 5: Commit** `feat: persistir ui_blocks atrás de flag desligada` *(Aguarda os steps 1–3.)*
+- [x] **Step 5: Commit** `feat: persistir ui_blocks atrás de flag desligada` *(Entregue no PR do bloco 1 das correções, junto com a configuração pelo painel.)*
 
 ### Task 5: Validador TypeScript espelhado
 

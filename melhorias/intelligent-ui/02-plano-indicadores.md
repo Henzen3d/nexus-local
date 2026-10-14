@@ -10,7 +10,7 @@
 
 **Spec:** `melhorias/intelligent-ui/00-visao-e-spec.md` seções 4.1, 5 e 7.
 
-**Estado (auditoria 2026-10-14):** implementado. Pendências: testes de render/store e o gate da flag no `DynamicRenderer` (constraint "Flag off: retorna null" não é respeitada — o renderer não consulta a flag).
+**Estado (correções 2026-10-14):** implementado. Gate da flag fechado (`DynamicRenderer` devolve `null` sem `intelligentUiConfig.enabled`); `Suspense` com skeleton que reserva a altura do bloco (Zero CLS); `prefers-reduced-motion` em `index.css`. Pendência: testes de render/store dos cartões.
 
 ## Global Constraints
 

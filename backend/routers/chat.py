@@ -42,6 +42,8 @@ from backend.orchestration.persist_turn import (
     save_process_steps,
     verify_conversation_owner,
 )
+from backend.ui_blocks.config import get_intelligent_ui_config
+from backend.ui_blocks.telemetry import intelligent_ui_telemetry
 from backend.ui_blocks.extract import extract_ui
 from backend.ui_blocks.should_offer import should_offer_ui
 from backend.orchestration.resolve_request import resolve_and_stream
@@ -574,17 +576,32 @@ async def _run_turn(
             "4. Vá direto ao ponto central para permitir que a conversa continue dinâmica e sem pausas longas."
         )
 
+    # ── Intelligent UI: configuração efetiva do turno (painel admin > .env) ─
+    # Lida uma vez e usada tanto na oferta do catálogo quanto na extração do
+    # fence. Com a flag desligada o turno é idêntico ao chat sem o recurso:
+    # sem catálogo, sem extração, sem `ui_blocks` (critérios de aceite, "Flag").
+    try:
+        iui_cfg = await get_intelligent_ui_config(db)
+    except Exception as e:
+        logger.error("Erro ao ler configuração do Intelligent UI:", exc_info=e)
+        from backend.ui_blocks.config import IntelligentUiConfig
+        iui_cfg = IntelligentUiConfig()
+    intelligent_ui_enabled = bool(iui_cfg.enabled)
+
     # ── Intelligent UI: oferta de catálogo condicional (Spec Seção 8) ───
-    if os.getenv("INTELLIGENT_UI_ENABLED", "false").lower() in ("true", "1", "yes"):
-        if should_offer_ui(user_message):
-            try:
-                cat_file = Path(__file__).resolve().parent.parent / "ui_blocks" / "catalog.txt"
-                if cat_file.exists():
-                    cat_content = cat_file.read_text(encoding="utf-8")
-                    if (len(cat_content) / 4) <= 400:
-                        system_instruction += "\n\n" + cat_content
-            except Exception as e:
-                logger.error("Erro ao carregar catálogo Intelligent UI:", exc_info=e)
+    # Em modo voz a resposta vai para TTS: um fence JSON contradiz as
+    # diretrizes de fala curta e nunca seria lido, então não oferecemos.
+    intelligent_ui_offered = False
+    if intelligent_ui_enabled and not voice_mode and should_offer_ui(user_message):
+        try:
+            cat_file = Path(__file__).resolve().parent.parent / "ui_blocks" / "catalog.txt"
+            if cat_file.exists():
+                cat_content = cat_file.read_text(encoding="utf-8")
+                if (len(cat_content) / 4) <= 400:
+                    system_instruction += "\n\n" + cat_content
+                    intelligent_ui_offered = True
+        except Exception as e:
+            logger.error("Erro ao carregar catálogo Intelligent UI:", exc_info=e)
 
     # ── Poda do histórico ao orçamento de entrada do modelo ─────────
     # Antes, a conversa inteira era enviada a cada turno: conversas longas
@@ -639,7 +656,26 @@ async def _run_turn(
     full_response, cache_hit, model_id, provider_id = result
 
     # ── Intelligent UI: extração de fence antes de persistir ──────────
-    full_response, ui_envelope = extract_ui(full_response)
+    # Só com a flag ligada. Desligada, o texto é persistido intacto (um fence
+    # eventual aparece como bloco de código, como antes do recurso existir).
+    ui_envelope = None
+    if intelligent_ui_enabled:
+        raw_model_text = full_response
+        full_response, ui_envelope = extract_ui(
+            full_response,
+            image_hosts=iui_cfg.image_hosts,
+            allow_private_http=iui_cfg.allow_private_http,
+        )
+        try:
+            intelligent_ui_telemetry.record_turn(
+                offered=intelligent_ui_offered,
+                text=raw_model_text,
+                envelope=ui_envelope,
+                voice_mode=voice_mode,
+                request_id=req_ctx.request_id,
+            )
+        except Exception as e:  # telemetria nunca derruba o turno
+            logger.debug("intelligent_ui telemetry falhou: {}", e)
 
     # ── Persist assistant message ───────────────────────────────────
     assistant_msg_id = await save_assistant_message(

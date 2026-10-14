@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { isAllowedImageUrl, parseUiEnvelope } from './nexusUi.ts'
+import { isAllowedImageUrl, parseUiEnvelope, stripUiFences } from './nexusUi.ts'
 
 test('rejeita versao errada', () => {
   assert.equal(parseUiEnvelope('{"v":2,"blocks":[]}'), null)
@@ -113,4 +113,80 @@ test('sandbox com initial_height', () => {
   if (out?.blocks[0]?.type === 'sandbox') {
     assert.equal(out.blocks[0].initial_height, 400)
   }
+})
+
+// ── Paridade TS ↔ Python (backend/ui_blocks/validate.py) ─────────────────────
+
+test('v ausente assume 1; v null ou string estranha rejeita', () => {
+  assert.notEqual(parseUiEnvelope({ blocks: [{ id: 'p', type: 'progress', label: 'A', value: 1, max: 2 }] }), null)
+  assert.notEqual(parseUiEnvelope({ v: '1', blocks: [{ id: 'p', type: 'progress', label: 'A', value: 1, max: 2 }] }), null)
+  assert.equal(parseUiEnvelope({ v: null, blocks: [{ id: 'p', type: 'progress', label: 'A', value: 1, max: 2 }] }), null)
+  assert.equal(parseUiEnvelope({ v: 'x', blocks: [{ id: 'p', type: 'progress', label: 'A', value: 1, max: 2 }] }), null)
+})
+
+test('chart: kind ausente vira bar, kind invalido descarta o bloco', () => {
+  const rows = [{ x: 'a', y: 1 }, { x: 'b', y: 2 }]
+  const series = [{ key: 'y', label: 'Y' }]
+  const semKind = parseUiEnvelope({ v: 1, blocks: [{ id: 'c', type: 'chart', title: 'T', x_key: 'x', series, rows }] })
+  assert.equal(semKind?.blocks[0]?.type, 'chart')
+  if (semKind?.blocks[0]?.type === 'chart') assert.equal(semKind.blocks[0].kind, 'bar')
+  const pizza = parseUiEnvelope({ v: 1, blocks: [{ id: 'c', type: 'chart', kind: 'pie', title: 'T', x_key: 'x', series, rows }] })
+  assert.equal(pizza, null)
+})
+
+test('controls: action obrigatoria, nomes estritos, sem template inventado, maximo 4 campos', () => {
+  const fields = [{ id: 'a', kind: 'number' }, { id: 'b', kind: 'number' }]
+  const base = { id: 'ctrl', type: 'controls', title: 'T', fields }
+  assert.equal(parseUiEnvelope({ v: 1, blocks: [base] }), null, 'sem action')
+  assert.equal(parseUiEnvelope({ v: 1, blocks: [{ ...base, action: { name: 'open_url', template: 'x' } }] }), null, 'action desconhecida')
+  assert.equal(parseUiEnvelope({ v: 1, blocks: [{ ...base, action: { name: 'send_message' } }] }), null, 'send_message sem template')
+  assert.equal(parseUiEnvelope({ v: 1, blocks: [{ ...base, action: { name: 'set_model' } }] }), null, 'set_model sem select')
+
+  const seis = Array.from({ length: 6 }, (_, i) => ({ id: `f${i + 1}`, kind: 'number' }))
+  const out = parseUiEnvelope({
+    v: 1,
+    blocks: [{ ...base, fields: seis, action: { name: 'send_message', template: 'Soma {f1} {f4}' } }],
+  })
+  assert.equal(out?.blocks[0]?.type, 'controls')
+  if (out?.blocks[0]?.type === 'controls') {
+    assert.equal(out.blocks[0].fields.length, 4)
+    assert.deepEqual(out.blocks[0].fields.map((f) => f.id), ['f1', 'f2', 'f3', 'f4'])
+  }
+  // placeholder apontando para campo cortado (5º) invalida o bloco
+  assert.equal(
+    parseUiEnvelope({ v: 1, blocks: [{ ...base, fields: seis, action: { name: 'send_message', template: '{f5}' } }] }),
+    null
+  )
+})
+
+test('sandbox: limites 12000/4000/8000 e altura tolerante', () => {
+  const ok = parseUiEnvelope({ v: 1, blocks: [{ id: 's', type: 'sandbox', html: '<p>x</p>', initial_height: '350.4' }] })
+  assert.equal(ok?.blocks[0]?.type, 'sandbox')
+  if (ok?.blocks[0]?.type === 'sandbox') assert.equal(ok.blocks[0].initial_height, 350)
+  const alta = parseUiEnvelope({ v: 1, blocks: [{ id: 's', type: 'sandbox', html: '<p>x</p>', initial_height: 9000 }] })
+  if (alta?.blocks[0]?.type === 'sandbox') assert.equal(alta.blocks[0].initial_height, 300)
+
+  const htmlGrande = parseUiEnvelope({ v: 1, blocks: [{ id: 's', type: 'sandbox', html: 'x'.repeat(12001) }] })
+  assert.equal(htmlGrande, null)
+  const cssGrande = parseUiEnvelope({
+    v: 1,
+    blocks: [{ id: 's', type: 'sandbox', html: '<p>x</p>', css: 'a'.repeat(4001), js: 'b'.repeat(8001) }],
+  })
+  assert.equal(cssGrande?.blocks[0]?.type, 'sandbox')
+  if (cssGrande?.blocks[0]?.type === 'sandbox') {
+    assert.equal(cssGrande.blocks[0].css, undefined)
+    assert.equal(cssGrande.blocks[0].js, undefined)
+  }
+})
+
+test('stripUiFences: remove fence no inicio da linha, preserva mencao inline', () => {
+  const comFence = 'Prosa.\n\n```nexus-ui\n{"v":1,"blocks":[]}\n```'
+  assert.equal(stripUiFences(comFence), 'Prosa.')
+  const inline = 'Use o fence ```nexus-ui no final, assim: ```nexus-ui {...} ``` e pronto.'
+  assert.equal(stripUiFences(inline), inline)
+  const indentado = 'Texto.\n   ```nexus-ui\n{"v":1,"blocks":[]}\n   ```'
+  assert.equal(stripUiFences(indentado), 'Texto.')
+  // fence aberto durante o stream some; menção inline não
+  assert.equal(stripUiFences('Texto.\n```nexus-ui\n{"v":1,"blo'), 'Texto.')
+  assert.equal(stripUiFences('falando de ```nexus-ui no meio'), 'falando de ```nexus-ui no meio')
 })

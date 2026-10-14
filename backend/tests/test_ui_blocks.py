@@ -199,6 +199,68 @@ def test_should_offer_ui_triggers():
     assert should_offer_ui("10, 20 e 30 gatos correram") is False
 
 
+def test_should_offer_ui_sem_falsos_positivos_por_radical():
+    # Palavras comuns que contêm os radicais da spec mas não pedem visual
+    assert should_offer_ui("compartilhe o link do documento comigo") is False
+    assert should_offer_ui("preciso comparecer na reunião amanhã") is False
+    assert should_offer_ui("rode as duas tarefas simultaneamente") is False
+    assert should_offer_ui("o barraco embarrou com a chuva") is False
+    assert should_offer_ui("imprima o cartaz e troque o cartucho") is False
+    assert should_offer_ui("qual a diferença entre simulação e simultaneidade?") is True  # 'simulação' vale
+    # Formas legítimas continuam disparando
+    assert should_offer_ui("faça um comparativo entre as opções") is True
+    assert should_offer_ui("simule o financiamento em 36 vezes") is True
+    assert should_offer_ui("quais etapas faltam?") is True
+    assert should_offer_ui("mostra a foto da placa") is True
+    assert should_offer_ui("cálculo do IMC") is True
+    assert should_offer_ui("GPT-4o vs Claude") is True
+    # Números com palavra de medida colada em outra palavra não contam
+    assert should_offer_ui("1, 2 e 3 contratempos no modelito") is False
+
+
+def test_catalogo_cabe_no_teto_e_tem_as_regras_da_spec():
+    from pathlib import Path
+
+    text = (Path(__file__).resolve().parent.parent / "ui_blocks" / "catalog.txt").read_text(encoding="utf-8")
+    assert len(text) / 4 <= 400, "catálogo estourou os 400 tokens estimados (spec §8)"
+    for frase in (
+        "Máximo 4 blocos",
+        "Sem cor",
+        "{id_do_campo}",
+        "não invente id de modelo",
+        "URL de imagem só se for arquivo do app ou host da lista confiável",
+        "Não escreva HTML na bolha principal",
+        "```nexus-ui",
+        "pending|active|done|error",
+        "bar|line|compare",
+        "text|select|number|range",
+    ):
+        assert frase in text, f"catálogo sem a linha: {frase}"
+    # Sanidade: o exemplo do catálogo é um envelope válido (modelo que copiar acerta),
+    # e as menções inline a ```nexus-ui na prosa do catálogo não são tratadas como fence.
+    _clean, envelope = extract_ui(text)
+    assert envelope is not None and envelope["blocks"][0]["type"] == "chart"
+    assert "use SEMPRE o nome de fence ```nexus-ui" in _clean
+
+
+def test_mencao_inline_a_fence_nao_e_fence():
+    text = "Peça ao modelo para usar o fence ```nexus-ui no final, assim: ```nexus-ui {...} ``` e pronto."
+    prose, env = extract_ui(text)
+    assert env is None
+    assert prose == text  # prosa intacta: nada foi engolido
+
+    # Abertura precisa estar no início da linha; indentação de até 3 espaços vale
+    indented = '   ```nexus-ui\n{"v":1,"blocks":[{"id":"p","type":"progress","label":"A","value":1,"max":2}]}\n   ```'
+    prose, env = extract_ui("Texto.\n\n" + indented)
+    assert env is not None and prose == "Texto."
+
+    # Fence aberto em streaming só conta no início da linha
+    prose, env = extract_ui("falando de ```nexus-ui no meio da frase")
+    assert env is None and prose == "falando de ```nexus-ui no meio da frase"
+    prose, env = extract_ui("Texto.\n```nexus-ui\n{\"v\":1,\"blo")
+    assert env is None and prose == "Texto."
+
+
 # ─── Isolamento de Banco de Dados para Tabela Nova ───────────────────────────
 
 @pytest.mark.asyncio
@@ -277,3 +339,163 @@ async def test_recuperacao_ui_blocks_em_conversa():
             except OSError:
                 pass
 
+
+
+# ─── Contrato estrito (alinhado à spec 00-visao-e-spec.md, seção 4) ──────────
+
+_VALID_PROGRESS = {"id": "seo", "type": "progress", "label": "A", "value": 1, "max": 2}
+
+
+def test_v_diferente_de_1_descarta_envelope_mesmo_com_bloco_valido():
+    assert validate_envelope({"v": 2, "blocks": [dict(_VALID_PROGRESS)]}) is None
+    # `v` ausente é tolerado
+    assert validate_envelope({"blocks": [dict(_VALID_PROGRESS)]}) is not None
+
+
+def test_chart_kind_invalido_descarta_o_bloco():
+    pizza = {
+        "v": 1,
+        "blocks": [{
+            "id": "c", "type": "chart", "kind": "pizza", "x_key": "x",
+            "series": [{"key": "y"}], "rows": [{"x": "a", "y": 1}],
+        }],
+    }
+    assert validate_envelope(pizza) is None
+    # `kind` ausente assume `bar`
+    sem_kind = {"v": 1, "blocks": [{"id": "c", "type": "chart", "x_key": "x", "series": [{"key": "y"}], "rows": [{"x": "a", "y": 1}]}]}
+    out = validate_envelope(sem_kind)
+    assert out is not None and out["blocks"][0]["kind"] == "bar"
+
+
+def test_controls_acao_desconhecida_ou_ausente_descarta_o_bloco():
+    base = {"id": "k", "type": "controls", "fields": [{"id": "n", "kind": "text", "label": "N"}]}
+    assert validate_envelope({"v": 1, "blocks": [dict(base, action={"name": "run_shell", "template": "x"})]}) is None
+    assert validate_envelope({"v": 1, "blocks": [dict(base)]}) is None
+    ok = validate_envelope({"v": 1, "blocks": [dict(base, action={"name": "send_message", "template": "Nota: {n}"})]})
+    assert ok is not None and ok["blocks"][0]["action"]["name"] == "send_message"
+
+
+def test_controls_corta_em_quatro_fields():
+    fields = [{"id": f"f{i}", "kind": "text", "label": "F"} for i in range(6)]
+    out = validate_envelope({"v": 1, "blocks": [{"id": "k", "type": "controls", "fields": fields, "action": {"name": "send_message", "template": "ok"}}]})
+    assert out is not None
+    assert len(out["blocks"][0]["fields"]) == 4
+
+
+def test_sandbox_initial_height_float_e_limites():
+    out = validate_envelope({"v": 1, "blocks": [{"id": "s", "type": "sandbox", "title": "T", "html": "<div>x</div>", "initial_height": 340.0}]})
+    assert out is not None and out["blocks"][0]["initial_height"] == 340
+    out = validate_envelope({"v": 1, "blocks": [{"id": "s", "type": "sandbox", "title": "T", "html": "<div>x</div>", "initial_height": 9999}]})
+    assert out["blocks"][0]["initial_height"] == 300
+
+
+def test_filtro_de_imagem_usa_parametros_antes_do_ambiente(monkeypatch):
+    monkeypatch.delenv("INTELLIGENT_UI_IMAGE_HOSTS", raising=False)
+    monkeypatch.delenv("INTELLIGENT_UI_ALLOW_PRIVATE_HTTP", raising=False)
+    # Sem env e sem parâmetros: recusa
+    assert is_allowed_image_url("https://cdn.exemplo.com/a.jpg") is False
+    assert is_allowed_image_url("http://192.168.0.20/foto.jpg") is False
+    # Parâmetros explícitos (config do painel) liberam
+    assert is_allowed_image_url("https://cdn.exemplo.com/a.jpg", ["cdn.exemplo.com"], False) is True
+    assert is_allowed_image_url("http://192.168.0.20/foto.jpg", [], True) is True
+    # Parâmetro explícito vazio NÃO cai no env
+    monkeypatch.setenv("INTELLIGENT_UI_IMAGE_HOSTS", "cdn.exemplo.com")
+    assert is_allowed_image_url("https://cdn.exemplo.com/a.jpg", [], False) is False
+    assert is_allowed_image_url("https://cdn.exemplo.com/a.jpg") is True
+    # extract_ui repassa os parâmetros
+    text = 'Veja.\n\n```nexus-ui\n{"v":1,"blocks":[{"id":"c","type":"card","title":"X","image":{"url":"https://img.casa.lan/a.jpg","alt":"foto"}}]}\n```'
+    _, env_default = extract_ui(text)
+    _, env_param = extract_ui(text, image_hosts=["img.casa.lan"], allow_private_http=False)
+    assert "image" not in env_default["blocks"][0]
+    assert env_param["blocks"][0]["image"]["url"] == "https://img.casa.lan/a.jpg"
+
+
+# ─── Configuração em runtime (painel admin > .env > padrão) ──────────────────
+
+def test_normalize_hosts_limpa_esquema_porta_caminho_e_duplicados():
+    from backend.ui_blocks.config import normalize_hosts
+
+    assert normalize_hosts("https://CDN.Exemplo.com:8443/pasta, cdn.exemplo.com, user:pw@img.casa.lan/x?y") == [
+        "cdn.exemplo.com",
+        "img.casa.lan",
+    ]
+    assert normalize_hosts(["192.168.0.20", "", "nao vale!", "ok.local"]) == ["192.168.0.20", "ok.local"]
+    assert normalize_hosts(None) == []
+
+
+@pytest.mark.asyncio
+async def test_config_env_vale_ate_alguem_salvar_no_painel(monkeypatch):
+    import aiosqlite
+    from backend import database as dbmod
+    from backend.ui_blocks.config import get_intelligent_ui_config, update_intelligent_ui_config
+
+    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+        temp_db_path = f.name
+    original = dbmod.DB_PATH
+    try:
+        dbmod.DB_PATH = temp_db_path
+        await dbmod.init_db()
+        async with aiosqlite.connect(temp_db_path) as db:
+            # 1) sem linha e sem env → desligado
+            monkeypatch.delenv("INTELLIGENT_UI_ENABLED", raising=False)
+            monkeypatch.delenv("INTELLIGENT_UI_IMAGE_HOSTS", raising=False)
+            monkeypatch.delenv("INTELLIGENT_UI_ALLOW_PRIVATE_HTTP", raising=False)
+            cfg = await get_intelligent_ui_config(db)
+            assert cfg.enabled is False and cfg.image_hosts == [] and cfg.source == "default"
+
+            # 2) env liga → vale
+            monkeypatch.setenv("INTELLIGENT_UI_ENABLED", "true")
+            monkeypatch.setenv("INTELLIGENT_UI_IMAGE_HOSTS", "cdn.exemplo.com")
+            cfg = await get_intelligent_ui_config(db)
+            assert cfg.enabled is True and cfg.image_hosts == ["cdn.exemplo.com"] and cfg.source == "env"
+
+            # 3) painel salva → tabela passa a mandar, mesmo com env dizendo o contrário
+            saved = await update_intelligent_ui_config(db, {"enabled": False, "image_hosts": "img.casa.lan"})
+            assert saved.enabled is False and saved.image_hosts == ["img.casa.lan"] and saved.source == "db"
+            monkeypatch.setenv("INTELLIGENT_UI_ENABLED", "true")
+            cfg = await get_intelligent_ui_config(db)
+            assert cfg.enabled is False and cfg.source == "db"
+
+            # 4) merge: só o campo enviado muda
+            saved = await update_intelligent_ui_config(db, {"allow_private_http": True})
+            assert saved.allow_private_http is True and saved.image_hosts == ["img.casa.lan"] and saved.enabled is False
+    finally:
+        dbmod.DB_PATH = original
+        if os.path.exists(temp_db_path):
+            try:
+                os.remove(temp_db_path)
+            except OSError:
+                pass
+
+
+# ─── Telemetria ──────────────────────────────────────────────────────────────
+
+def test_telemetria_motivos_de_descarte():
+    from backend.ui_blocks.telemetry import IntelligentUiTelemetry, inspect_fence
+
+    t = IntelligentUiTelemetry()
+    ok = '```nexus-ui\n{"v":1,"blocks":[{"id":"p","type":"progress","label":"A","value":1,"max":2},{"id":"x","type":"chart","kind":"pie"}]}\n```'
+    # Oferecido, produzido, válido, 1 bloco caiu
+    s = t.record_turn(offered=True, text="Oi.\n\n" + ok, envelope=validate_envelope('{"v":1,"blocks":[{"id":"p","type":"progress","label":"A","value":1,"max":2}]}'))
+    assert s["produced"] and s["valid"] and s["blocks_in"] == 2 and s["blocks_out"] == 1 and s["blocks_dropped"] == 1
+    # Oferecido, sem fence → no_fence
+    s = t.record_turn(offered=True, text="Só prosa.", envelope=None)
+    assert s["reason"] == "no_fence"
+    # Não oferecido e sem fence → caminho normal, não conta como descarte
+    t.record_turn(offered=False, text="Só prosa.", envelope=None)
+    # JSON quebrado
+    s = t.record_turn(offered=True, text="x\n```nexus-ui\n{\"v\":1,\n```", envelope=None)
+    assert s["reason"] == "invalid_json"
+    # v≠1: JSON ok, envelope rejeitado inteiro
+    s = t.record_turn(offered=True, text='x\n```nexus-ui\n{"v":2,"blocks":[{"type":"progress","label":"A","value":1,"max":2}]}\n```', envelope=None)
+    assert s["reason"] == "empty_after_validation"  # havia blocos; o validador zerou
+    s = t.record_turn(offered=True, text='x\n```nexus-ui\n{"v":1,"blocks":[]}\n```', envelope=None)
+    assert s["reason"] == "rejected_envelope"
+
+    snap = t.snapshot()
+    assert snap["turns"] == 6 and snap["offered"] == 5 and snap["produced"] == 4 and snap["valid"] == 1
+    assert snap["discarded"] == {"no_fence": 1, "invalid_json": 1, "rejected_envelope": 1, "empty_after_validation": 1}
+    assert snap["rates"]["valid_given_produced"] == 0.25
+
+    assert inspect_fence("sem nada")["found"] is False
+    assert inspect_fence('```chart\n{"kind":"bar","series":[]}\n```')["alt_fence"] is True
