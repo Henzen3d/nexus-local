@@ -79,13 +79,14 @@ async def _get_family_for_model(
 
     family_id = row[0]
 
-    # Busca todos os membros da família (incluindo o modelo original)
+    # Busca todos os membros da família cujo modelo e provedor estejam habilitados
     async with db.execute(
         """
         SELECT mfm.model_id, m.provider_id, mfm.fallback_order
         FROM model_family_members mfm
         JOIN models m ON m.id = mfm.model_id
-        WHERE mfm.family_id = ? AND m.enabled = 1
+        JOIN providers p ON p.id = m.provider_id
+        WHERE mfm.family_id = ? AND m.enabled = 1 AND p.enabled = 1
         ORDER BY mfm.fallback_order ASC
         """,
         (family_id,)
@@ -105,6 +106,7 @@ async def _get_next_best_ranked_model(
     no ranking geral, excluindo os modelos e famílias especificados.
 
     Tier 2: fallback para fora da família, baseado em nexuslocal_score.
+    Garante que tanto o modelo (m.enabled = 1) quanto o provedor (p.enabled = 1) estejam ativos.
     """
     # Constrói lista de exclusão por família (model_ids dos membros das famílias excluídas)
     family_excluded_model_ids: list[str] = []
@@ -117,14 +119,16 @@ async def _get_next_best_ranked_model(
 
     all_excluded = set(exclude_model_ids) | set(family_excluded_model_ids)
 
-    # Query: modelos habilitados com registro de ranking, não esgotados, não excluídos
+    # Query: modelos e provedores habilitados com registro de ranking, não esgotados, não excluídos
     async with db.execute(
         """
         SELECT m.id, m.provider_id, m.display_name, r.nexuslocal_score
         FROM models m
+        JOIN providers p ON p.id = m.provider_id
         JOIN model_rankings r ON r.model_id = m.id
         LEFT JOIN model_quota_status q ON q.model_id = m.id
         WHERE m.enabled = 1
+          AND p.enabled = 1
           AND (q.status IS NULL OR q.status = 'available')
         ORDER BY r.nexuslocal_score DESC
         """
@@ -173,6 +177,36 @@ async def resolve_model_with_failover(
     if exclude_model_ids and requested_model_id in exclude_model_ids:
         force_skip = True
 
+    # ── Verificação de integridade e ativação (modelo E provedor) ────────────
+    async with db.execute(
+        """
+        SELECT m.enabled, p.enabled, m.provider_id, m.display_name
+        FROM models m
+        JOIN providers p ON p.id = m.provider_id
+        WHERE m.id = ?
+        """,
+        (requested_model_id,),
+    ) as cur:
+        model_row = await cur.fetchone()
+
+    provider_id = None
+    display_name = None
+    skip_reason = failover_reason
+
+    if not model_row:
+        if not failover_enabled:
+            raise NoAvailableModelError(
+                f"Modelo '{requested_model_id}' não encontrado no banco de dados."
+            )
+        force_skip = True
+        skip_reason = "model_not_found"
+    else:
+        m_enabled, p_enabled, provider_id, display_name = model_row
+        if not m_enabled or not p_enabled:
+            force_skip = True
+            skip_reason = "provider_disabled" if not p_enabled else "model_disabled"
+            failover_reason = skip_reason
+
     # ── Verificação do modelo solicitado ─────────────────────────────────────
     quota = await get_quota_status(requested_model_id, db)
 
@@ -196,14 +230,6 @@ async def resolve_model_with_failover(
             )
 
         # Caminho feliz — sem failover
-        try:
-            provider_id = await _get_provider_id(requested_model_id, db)
-            display_name = await _get_display_name(requested_model_id, db)
-        except ValueError:
-            raise NoAvailableModelError(
-                f"Modelo '{requested_model_id}' não encontrado no banco de dados."
-            )
-
         return ResolvedModel(
             model_id=requested_model_id,
             provider_id=provider_id,
@@ -212,14 +238,16 @@ async def resolve_model_with_failover(
             original_model_id=requested_model_id,
         )
 
-    # Modelo esgotado — verificar se failover está habilitado
+    # Modelo esgotado ou desabilitado — verificar se failover está habilitado
     if not failover_enabled:
+        status_label = skip_reason if force_skip else quota["status"]
         raise NoAvailableModelError(
-            f"Modelo '{requested_model_id}' está indisponível e failover automático está desabilitado."
+            f"Modelo '{requested_model_id}' está indisponível ({status_label}) e failover automático está desabilitado."
         )
 
+    status_label = skip_reason if force_skip else quota["status"]
     logger.warning(
-        f"Modelo '{requested_model_id}' está {quota['status']}. "
+        f"Modelo '{requested_model_id}' está {status_label}. "
         f"Iniciando cascata de failover..."
     )
 

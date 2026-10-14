@@ -111,6 +111,7 @@ async def stream_from_llm(
     full_response = ""
     vision_relay_retry_done = False
     attempted_model_ids: set[str] = set()
+    stream_started = False
 
     while attempt < _MAX_FAILOVER_ATTEMPTS and not success:
         attempt += 1
@@ -150,15 +151,23 @@ async def stream_from_llm(
             provider = await get_provider(current_provider_id, db, user_id=user_id)
             model_name = await get_model_name(current_model_id, db)
         except ValueError as e:
-            await ws.send_json({"type": "error", "message": str(e)})
-            return None
+            logger.warning(
+                "Falha ao carregar provedor '%s' para modelo '%s': %s. Acionando failover...",
+                current_provider_id, current_model_id, e
+            )
+            attempted_model_ids.add(current_model_id)
+            if attempt >= _MAX_FAILOVER_ATTEMPTS:
+                await ws.send_json({"type": "error", "message": str(e)})
+                return None
+            continue
 
-        if attempt == 1:
+        if not stream_started:
             await ws.send_json({
                 "type": "stream_start",
                 "conversation_id": conversation_id,
                 "from_cache": False,
             })
+            stream_started = True
 
         # Consulta capacidades de reasoning do modelo selecionado/resolvido
         async with db.execute(
@@ -419,12 +428,21 @@ async def stream_from_llm(
                         "Vision Relay fallback falhou após recusa de imagem",
                         exc_info=True,
                     )
+            from backend.database import check_and_deactivate_model
+            await check_and_deactivate_model(current_model_id, error_msg, db)
+
+            if not first_token_received and attempt < _MAX_FAILOVER_ATTEMPTS:
+                logger.warning(
+                    "Erro antes do primeiro token no modelo '%s' (provedor '%s'): %s. Tentando próximo modelo...",
+                    current_model_id, current_provider_id, error_msg,
+                )
+                attempted_model_ids.add(current_model_id)
+                continue
+
             await ws.send_json({
                 "type": "error",
                 "message": f"Erro ao chamar modelo: {error_msg}",
             })
-            from backend.database import check_and_deactivate_model
-            await check_and_deactivate_model(current_model_id, error_msg, db)
             return None
 
     if not success:

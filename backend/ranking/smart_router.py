@@ -532,8 +532,12 @@ async def select_best_model(
         _MODEL_CACHE = models_data
         _MODEL_CACHE_TIME = now
 
-    # Quota is volatile state; keep it live even while the slower catalog/ranking
-    # join is cached. This avoids routing for up to 30s using stale availability.
+    # Quota e ativação de provedores são estados voláteis; mantê-los em tempo real mesmo
+    # enquanto o join do catálogo/ranking está em cache (TTL 30s).
+    async with db.execute("SELECT id FROM providers WHERE enabled = 1") as cur:
+        enabled_provider_ids = {row[0] for row in await cur.fetchall()}
+    models_data = [m for m in models_data if m["provider_id"] in enabled_provider_ids]
+
     async with db.execute("SELECT model_id, status FROM model_quota_status") as cur:
         quota_status_by_model = {row[0]: row[1] for row in await cur.fetchall()}
     for model in models_data:
