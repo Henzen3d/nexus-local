@@ -421,5 +421,3 @@ async def test_token_bucket_hysteresis():
     assert stats["chat"]["count"] >= 1
     assert "llm_ttfb" in stats["chat"]["avg_phase_latencies_ms"]
     print("  [OK] Passou! Histerese de Sticky Routing e métricas não-bloqueantes validadas.")
-
-
