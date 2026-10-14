@@ -6,8 +6,8 @@ Use este arquivo para marcar o progresso. Cada item tem o mesmo ID usado no docu
 
 | Fase | Documento | Estimativa | Pré-requisito | Status |
 |---|---|---|---|---|
-| F1 Spike do detector | `02-fase-1-spike-detector.md` | 4 h | — | ⏳ |
-| F2 Núcleo do pipeline | `03-fase-2-nucleo-pipeline.md` | 10 h | F1 go | ⏸️ |
+| F1 Spike do detector | `02-fase-1-spike-detector.md` | 4 h | — | 🟡 código pronto · porteiro GO · classificador aguarda medição local |
+| F2 Núcleo do pipeline | `03-fase-2-nucleo-pipeline.md` | 10 h | F1 go (métricas do classificador) | ⏸️ |
 | F3 Presença, fila e retorno | `04-fase-3-presenca-fila-retorno.md` | 10 h | F2 | ⏸️ |
 | F4 Controles e admin | `05-fase-4-controles-e-admin.md` | 6 h | F2, F3 | ⏸️ |
 | F5 Qualidade e rollout | `06-fase-5-qualidade-e-rollout.md` | 8 h + 1 semana | F1–F4 | ⏸️ |
@@ -20,36 +20,36 @@ Use este arquivo para marcar o progresso. Cada item tem o mesmo ID usado no docu
 ## 🔬 F1 — Spike do Detector (`02-fase-1-spike-detector.md`)
 
 **F1.1 Porteiro léxico**
-- [ ] **F1.1.1** `GateResult` em `backend/proactive/detector.py`
-- [ ] **F1.1.2** Léxico de emoção pt-BR / en-US / es-ES (gírias, emojis, exclamações)
-- [ ] **F1.1.3** Candidatos a entidade (capitalizadas, aspas, "X e Y", verbos de evento, datas, hashtags)
-- [ ] **F1.1.4** Regras de rejeição imediata (curta, pergunta direta, pedido de pesquisa, código, só emoção, turno com web search)
-- [ ] **F1.1.5** `gate()` pura e síncrona (< 1 ms)
-- [ ] **F1.1.6** Testes unitários por regra
+- [x] **F1.1.1** `GateResult` em `backend/proactive/detector.py`
+- [x] **F1.1.2** Léxico de emoção pt-BR / en-US / es-ES (gírias, emojis, exclamações)
+- [x] **F1.1.3** Candidatos a entidade (capitalizadas, aspas, "X e Y", verbos de evento, datas, hashtags)
+- [x] **F1.1.4** Regras de rejeição imediata (curta, pergunta direta, pedido de pesquisa, código, só emoção, turno com web search)
+- [x] **F1.1.5** `gate()` pura e síncrona (< 1 ms)
+- [x] **F1.1.6** Testes unitários por regra
 
 **F1.2 Classificador LLM**
-- [ ] **F1.2.1** `InterestSignal` (interest, topic, entities, entity_type, category, suggested_query, time_sensitive, emotion, language, reason)
-- [ ] **F1.2.2** Prompt JSON estrito em `prompts.py` (≤ 3 mensagens de contexto, 600 chars cada)
-- [ ] **F1.2.3** Parser tolerante fail-closed
-- [ ] **F1.2.4** Resolução do modelo utilitário (reuso de `_get_extractor_provider_and_model` / helper comum) + override `meta.proactive_detector_*`
-- [ ] **F1.2.5** `classify()` com `stream_chat`, `temperature=0`, timeout 8 s
-- [ ] **F1.2.6** Pós-regras: `private_person` ⇒ descarte; threshold; `suggested_query` fallback
-- [ ] **F1.2.7** Sensibilidade ⇒ threshold (0.8 / 0.7 / 0.6)
+- [x] **F1.2.1** `InterestSignal` (interest, topic, entities, entity_type, category, suggested_query, time_sensitive, emotion, language, reason)
+- [x] **F1.2.2** Prompt JSON estrito em `prompts.py` (≤ 3 mensagens de contexto, 600 chars cada)
+- [x] **F1.2.3** Parser tolerante fail-closed
+- [x] **F1.2.4** Resolução do modelo utilitário (reuso de `_get_extractor_provider_and_model` / helper comum) + override `meta.proactive_detector_*`
+- [x] **F1.2.5** `classify()` com `stream_chat`, `temperature=0`, timeout 8 s
+- [x] **F1.2.6** Pós-regras: `private_person` ⇒ descarte; threshold; `suggested_query` fallback
+- [x] **F1.2.7** Sensibilidade ⇒ threshold (0.8 / 0.7 / 0.6)
 
 **F1.3 Dataset gold**
-- [ ] **F1.3.1** `backend/tests/fixtures/proactive_gold.jsonl`
-- [ ] **F1.3.2** 30 positivas (10 eventos, 8 notícias, 6 produtos, 6 lugares; ≥ 6 em en/es)
-- [ ] **F1.3.3** 30 negativas-armadilha (pergunta, pedido de pesquisa, entidade sem emoção, emoção sem entidade, pessoa privada, código, desabafo sensível, sarcasmo)
-- [ ] **F1.3.4** Revisão humana dupla dos rótulos
+- [x] **F1.3.1** `backend/tests/fixtures/proactive_gold.jsonl`
+- [x] **F1.3.2** 30 positivas (10 eventos, 8 notícias, 6 produtos, 6 lugares; ≥ 6 em en/es)
+- [x] **F1.3.3** 30 negativas-armadilha (pergunta, pedido de pesquisa, entidade sem emoção, emoção sem entidade, pessoa privada, código, desabafo sensível, sarcasmo)
+- [ ] **F1.3.4** Revisão humana dupla dos rótulos (pendente — anotar divergências no campo `note`)
 
 **F1.4 Avaliação**
-- [ ] **F1.4.1** `scripts/proactive_eval.py` (porteiro; `--llm` com DB temporário)
-- [ ] **F1.4.2** Métricas: precisão, recall, F1, FP, matriz por categoria/idioma, latência, tokens
-- [ ] **F1.4.3** Varredura de threshold e default documentado
-- [ ] **F1.4.4** Testes `test_gold_gate_metrics` e `test_gold_llm_metrics` (skip sem provedor)
-- [ ] **F1.4.5** `resultados-spike-f1.md` com decisão **go/no-go**
+- [x] **F1.4.1** `scripts/proactive_eval.py` (porteiro; `--llm` com DB temporário)
+- [x] **F1.4.2** Métricas: precisão, recall, F1, FP, matriz por categoria/idioma, latência, tokens
+- [x] **F1.4.3** Varredura de threshold e default documentado
+- [x] **F1.4.4** Testes `test_gold_gate_metrics` e `test_gold_llm_metrics` (skip sem provedor)
+- [~] **F1.4.5** `resultados-spike-f1.md` com decisão **go/no-go** — porteiro GO; classificador: colar métricas após rodar `scripts/proactive_eval.py --llm` localmente
 
-**Aceite F1:** porteiro rejeita ≥ 70 % das negativas e perde ≤ 10 % das positivas · precisão ≥ 0,85 · FP ≤ 5 % · `private_person` 100 % descartado · p95 ≤ 4 s
+**Aceite F1:** porteiro rejeita ≥ 70 % das negativas e perde ≤ 10 % das positivas (**medido: 83,3 % / 0 %** ✅) · precisão ≥ 0,85 · FP ≤ 5 % · `private_person` 100 % descartado · p95 ≤ 4 s (classificador: pendente de execução local — ver [`resultados-spike-f1.md`](./resultados-spike-f1.md))
 
 ---
 

@@ -23,7 +23,6 @@ from backend.database import (
     MEMORY_INJECT_MAX_CHARS,
     MEMORY_INJECT_LIMIT,
 )
-from backend.providers.registry import get_provider, get_model_name
 from backend.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -757,39 +756,13 @@ async def _get_extractor_provider_and_model(db, fallback_provider_id: str, fallb
       1. Dedicated memory extractor (meta.memory_extractor_*)
       2. Enhancer config table (usually a small model)
       3. Current chat provider/model (last resort)
+
+    A cascata vive em ``backend/providers/utility_model.py`` (compartilhada com o
+    detector proativo); esta função é mantida como ponto de entrada histórico.
     """
-    # 1. Dedicated memory extractor settings (meta)
-    mem_provider = await _get_meta(db, "memory_extractor_provider_id")
-    mem_model = await _get_meta(db, "memory_extractor_model_id")
+    from backend.providers.utility_model import resolve_utility_model
 
-    if mem_provider and mem_model:
-        try:
-            provider = await get_provider(mem_provider, db, user_id=user_id)
-            model_name = await get_model_name(mem_model, db)
-            return provider, model_name, "memory_extractor"
-        except Exception:
-            pass
-
-    # 2. Enhancer settings (enhancer_config table — not meta)
-    try:
-        async with db.execute(
-            "SELECT enhancer_provider_id, enhancer_model_id FROM enhancer_config WHERE id = 1"
-        ) as cur:
-            row = await cur.fetchone()
-        if row and row[0] and row[1]:
-            try:
-                provider = await get_provider(row[0], db, user_id=user_id)
-                model_name = await get_model_name(row[1], db)
-                return provider, model_name, "enhancer"
-            except Exception:
-                pass
-    except Exception:
-        pass
-
-    # 3. Final fallback: same provider/model as the chat
-    provider = await get_provider(fallback_provider_id, db, user_id=user_id)
-    model_name = await get_model_name(fallback_model_id, db)
-    return provider, model_name, "chat_fallback"
+    return await resolve_utility_model(db, user_id, fallback_provider_id, fallback_model_id)
 
 
 async def extract_user_memory_background(

@@ -24,6 +24,7 @@ melhorias/
 │   ├── 00-visao-geral-v2.md    # Visão ajustada ao código, decisões de produto, fases
 │   ├── 01-decisao-entrega-e-presenca.md # Toast × bolha × cartão de retorno × push; presença; contratos
 │   ├── 02-fase-1-spike-detector.md
+│   ├── resultados-spike-f1.md  # Resultados do spike F1: métricas do porteiro, comandos do classificador, go/no-go
 │   ├── 03-fase-2-nucleo-pipeline.md
 │   ├── 04-fase-3-presenca-fila-retorno.md
 │   ├── 05-fase-4-controles-e-admin.md
