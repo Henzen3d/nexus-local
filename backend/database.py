@@ -1947,6 +1947,9 @@ async def _migrate_proactive_schema(db: aiosqlite.Connection) -> None:
         ("emotion", "TEXT"),
         # F4: "Quero saber mais" / "Me conta aqui" (métrica know_more, sem alterar o status)
         ("know_more_at", "TEXT"),
+        # F5.2.4: custo estimado (chars/4) do detector + síntese, para o dashboard admin
+        ("tokens_in", "INTEGER"),
+        ("tokens_out", "INTEGER"),
     ]:
         try:
             await db.execute(f"SELECT {col_name} FROM proactive_insights LIMIT 1")

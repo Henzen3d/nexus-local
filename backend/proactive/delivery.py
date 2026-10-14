@@ -205,7 +205,7 @@ def insight_public_dict(insight: dict, *, message_id: Optional[str] = None) -> d
 
 async def load_insight(db: Any, insight_id: str) -> Optional[dict]:
     async with db.execute(
-        f"SELECT {', '.join(INSIGHT_COLUMNS)} FROM proactive_insights WHERE id = ?",
+        f"SELECT {', '.join(INSIGHT_COLUMNS)} FROM proactive_insights WHERE id = ?",  # nosec B608 — SQL montado só com constantes do código; valores sempre parametrizados
         (insight_id,),
     ) as cur:
         row = await cur.fetchone()
@@ -221,7 +221,7 @@ async def load_pending(db: Any, user_id: str, *, limit: int = 3) -> list[dict]:
             WHERE user_id = ? AND status = 'ready' AND delivered_message_id IS NULL
               AND (expires_at IS NULL OR expires_at >= datetime('now'))
             ORDER BY COALESCE(ready_at, created_at) ASC, rowid ASC
-            LIMIT ?""",
+            LIMIT ?""",  # nosec B608 — SQL montado só com constantes do código; valores sempre parametrizados
         (user_id, max(0, int(limit))),
     ) as cur:
         rows = await cur.fetchall()
@@ -235,7 +235,7 @@ async def attach_origin_titles(db: Any, insights: list[dict]) -> list[dict]:
         return insights
     placeholders = ",".join("?" for _ in ids)
     async with db.execute(
-        f"SELECT id, title FROM conversations WHERE id IN ({placeholders})", tuple(ids)
+        f"SELECT id, title FROM conversations WHERE id IN ({placeholders})", tuple(ids)  # nosec B608 — SQL montado só com constantes do código; valores sempre parametrizados
     ) as cur:
         titles = {r[0]: r[1] for r in await cur.fetchall()}
     for i in insights:

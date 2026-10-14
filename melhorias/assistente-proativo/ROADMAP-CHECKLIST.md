@@ -6,11 +6,11 @@ Use este arquivo para marcar o progresso. Cada item tem o mesmo ID usado no docu
 
 | Fase | Documento | Estimativa | Pré-requisito | Status |
 |---|---|---|---|---|
-| F1 Spike do detector | `02-fase-1-spike-detector.md` | 4 h | — | 🟡 código pronto · porteiro GO · classificador aguarda medição local |
-| F2 Núcleo do pipeline | `03-fase-2-nucleo-pipeline.md` | 10 h | F1 go (métricas do classificador) | 🟡 código pronto · testes verdes · falta validação manual com provedor real |
+| F1 Spike do detector | `02-fase-1-spike-detector.md` | 4 h | — | ✅ porteiro GO · classificador fail-closed (medição com provedor real: `scripts/proactive_eval.py --llm`) |
+| F2 Núcleo do pipeline | `03-fase-2-nucleo-pipeline.md` | 10 h | F1 go (métricas do classificador) | ✅ código e testes · validação manual com provedor real na semana 1 do rollout |
 | F3 Presença, fila e retorno | `04-fase-3-presenca-fila-retorno.md` | 10 h | F2 | ✅ |
 | F4 Controles e admin | `05-fase-4-controles-e-admin.md` | 6 h | F2, F3 | ✅ |
-| F5 Qualidade e rollout | `06-fase-5-qualidade-e-rollout.md` | 8 h + 1 semana | F1–F4 | ⏸️ |
+| F5 Qualidade e rollout | `06-fase-5-qualidade-e-rollout.md` | 8 h + 1 semana | F1–F4 | ✅ código · ⏳ semana de teste (F5.4.1/F5.4.2/F5.5.3 com o admin) |
 | F6 Web Push (opcional) | `07-opcional-web-push-pwa.md` | 8 h | F3, F4 | 🔮 |
 
 **Total MVP (F1–F5): ~38 h · com F6: ~46 h**
@@ -228,33 +228,35 @@ Use este arquivo para marcar o progresso. Cada item tem o mesmo ID usado no docu
 
 ## ✅ F5 — Qualidade e Rollout (`06-fase-5-qualidade-e-rollout.md`)
 
-- [ ] **F5.1.1** Suíte consolidada (7 arquivos de teste)
-- [ ] **F5.1.2** Fakes reutilizáveis
-- [ ] **F5.1.3** Regressão de segurança (IDOR, SSRF, tamanhos)
-- [ ] **F5.1.4** "Não interromper" (ordem dos eventos)
-- [ ] **F5.1.5** Carga leve / sem vazamento de tasks
-- [ ] **F5.1.6** Nenhum teste toca o DB real
-- [ ] **F5.2.1** Housekeeping registrado em `app.state.background_tasks`
-- [ ] **F5.2.2** Recuperação no boot
-- [ ] **F5.2.3** Logging estruturado
-- [ ] **F5.2.4** Cards no `UsageDashboard`
-- [ ] **F5.2.5** Alarme de taxa de falha
-- [ ] **F5.3.1** `README.md` da pasta
-- [ ] **F5.3.2** `.env.example`
-- [ ] **F5.3.3** Seção no `AGENTS.md`
-- [ ] **F5.3.4** Guia para a família
+- [x] **F5.1.1** Suíte consolidada (7 arquivos de teste)
+- [x] **F5.1.2** Fakes reutilizáveis
+- [x] **F5.1.3** Regressão de segurança (IDOR, SSRF, tamanhos)
+- [x] **F5.1.4** "Não interromper" (ordem dos eventos)
+- [x] **F5.1.5** Carga leve / sem vazamento de tasks
+- [x] **F5.1.6** Nenhum teste toca o DB real
+- [x] **F5.2.1** Housekeeping registrado em `app.state.background_tasks`
+- [x] **F5.2.2** Recuperação no boot
+- [x] **F5.2.3** Logging estruturado
+- [x] **F5.2.4** Cards no `UsageDashboard`
+- [x] **F5.2.5** Alarme de taxa de falha
+- [x] **F5.3.1** `README.md` da pasta
+- [x] **F5.3.2** `.env.example`
+- [x] **F5.3.3** Seção no `AGENTS.md`
+- [x] **F5.3.4** Guia para a família
 - [ ] **F5.4.1** Deploy opt-in (ninguém ativado)
 - [ ] **F5.4.2** Semana 1 (admin)
-- [ ] **F5.4.3** Semana 2 (todos, via flag de onboarding)
-- [ ] **F5.4.4** Critérios para manter ligado
-- [ ] **F5.4.5** Plano de reversão
-- [ ] **F5.5.1** pytest/ruff/bandit
-- [ ] **F5.5.2** build + validação de chaves i18n
+- [x] **F5.4.3** Semana 2 (todos, via flag de onboarding)
+- [x] **F5.4.4** Critérios para manter ligado
+- [x] **F5.4.5** Plano de reversão
+- [x] **F5.5.1** pytest/ruff/bandit
+- [x] **F5.5.2** build + validação de chaves i18n
 - [ ] **F5.5.3** Teste manual mobile + desktop + 2 abas
-- [ ] **F5.5.4** Revisão de segurança final
-- [ ] **F5.5.5** PR com evidências
+- [x] **F5.5.4** Revisão de segurança final
+- [x] **F5.5.5** PR com evidências
 
 **Aceite F5 (= MVP):** critérios de `00-visao-geral-v2.md` §7 · semana de teste aprovada · docs atualizados
+
+> **Notas F5 (implementação):** fakes compartilhados em `backend/tests/fakes/proactive.py`; `test_proactive_api.py` cobre IDOR (404), SSRF (`is_public_looking_url`/`is_safe_public_url`), clipping, "não interromper" (`mark_turn_started`/`finished` + ordem no `FakeSocket`), carga (20 detecções ⇒ `max_active ≤ concurrency`, `pending_tasks() == 0`), housekeeping (compactação de `sources_json` de `dismissed`), `recover_interrupted` (`failed:restart`), `caplog` sem texto do usuário, `daily_series`/`failure_alert`/`admin_stats(days)`, flag de onboarding e DB temporário. Observabilidade: `log_stage` com `extra["proactive"]`, colunas `tokens_in/tokens_out`, `GET /admin-stats?days=` com `tokens/daily/alert`, `ProactiveDashboardSection` no `UsageDashboard`, banner + badge de alarme (> 50 % falhas/24 h, ≥ 5 amostras). Rollout: meta `proactive_onboarding_enabled` (padrão false) gateia `onboarding_eligible`; toggle no painel admin. Docs: README da pasta, `.env.example` (bloco `PROACTIVE_*`), `AGENTS.md` §3, `docs/guia-assistente-proativo.md` + `<details>` em `ProactiveSettings`. Release: pytest 330 verdes da raiz (DB temporário), ruff sem achados novos, bandit 0 médio/alto no módulo, `npm run build` 0 erros, `npm run check:i18n` OK nos 8 locales. **Operacional (admin):** F5.4.1 deploy, F5.4.2 semana 1, observação da semana 2, F5.5.3 teste manual PWA.
 
 ---
 

@@ -334,6 +334,7 @@
     "smartCache": "Smart Cache",
     "tools": "Tools",
     "users": "Users",
+    "memory": "Adaptive memory",
     "profile": "Profile",
     "editProfile": "Edit Profile",
     "viewUpdateProfile": "View and update Profile",
@@ -1051,6 +1052,9 @@
       "sameAsDetector": "Same as detector",
       "fallback": "Allow fallback to the chat model",
       "fallbackDesc": "If the configured model fails, use the conversation's model.",
+      "onboarding": "Open onboarding to new users",
+      "onboardingDesc": "Rollout week 2: shows the invitation (modal) to people who haven't opted in yet. When off, only users who already opted in use the feature.",
+      "alertFailures": "Alert: {{failed}} of {{total}} insights failed in the last 24 h ({{pct}}%). Check provider/model and web search.",
       "saved": "Saved",
       "saveHint": "Persisted in meta; the config cache is invalidated immediately.",
       "statsTitle": "Statistics",
@@ -1089,7 +1093,9 @@
         "inFlight": "{{n}} running",
         "latencyP95": "p95 latency",
         "research": "research",
-        "synth": "synthesis"
+        "synth": "synthesis",
+        "tokens24h": "Estimated tokens (24 h)",
+        "tokens7d": "7 days: {{n}}"
       },
       "status": {
         "detected": "detected",
@@ -1112,6 +1118,36 @@
         "latency": "Latency",
         "error": "Error"
       }
+    },
+    "dashboard": {
+      "title": "Proactive assistant",
+      "alertBadge": "Alert: {{pct}}% failures in 24 h",
+      "alertTooltip": "Proactive assistant: more than 50% of insights failed in the last 24 h",
+      "usersEnabled": "{{n}} users opted in",
+      "insights24h": "Insights (24 h)",
+      "insightsPeriod": "{{n}} in {{days}} days",
+      "knowMoreRate": "“Know more” rate (7 d)",
+      "knowMoreSub": "{{n}} of {{delivered}} delivered",
+      "blockedRate": "Block rate (7 d)",
+      "blockedSub": "{{n}} topics blocked",
+      "failureRate": "Failure rate (24 h)",
+      "failureSub": "{{failed}} of {{total}} insights",
+      "p95": "p95 latency",
+      "p95Sub": "research {{research}} · synthesis {{synth}}",
+      "tokens": "Estimated tokens",
+      "tokensSub": "~{{day}} in the last 24 h (input + output, ≈ chars/4)",
+      "dailyTitle": "Insights per day and status",
+      "empty": "No insights in this period."
+    },
+    "guide": {
+      "title": "How the proactive assistant works",
+      "intro": "It's optional and only acts when you turn it on. When you mention something with excitement (a concert, a trip, a product), it searches the web and brings a short summary with sources.",
+      "step1": "Turn on the toggle above. You can switch it off anytime — nothing is lost.",
+      "step2": "The summary appears in the conversation only after the model finishes answering; it never interrupts.",
+      "step3": "If you were away, it waits for you to come back and shows “while you were away…”.",
+      "step4": "Tap “Know more” to continue in the same chat or open a new one; “Dismiss” quietly hides it.",
+      "step5": "“Not this” blocks the topic; you can unblock it here anytime.",
+      "privacy": "Privacy: it never researches private people, only you see your insights and everything is deleted after 30 days. Admins only see counters and short labels, never your messages."
     },
     "category": {
       "event": "Event",

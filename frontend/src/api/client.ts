@@ -598,7 +598,10 @@ export const api = {
     const qs = q.toString()
     return fetchJSON<import('../types').ProactiveLogsResponse>(`/proactive/logs${qs ? `?${qs}` : ''}`)
   },
-  getProactiveAdminStats: () => fetchJSON<import('../types').ProactiveAdminStats>('/proactive/admin-stats'),
+  getProactiveAdminStats: (days?: number) =>
+    fetchJSON<import('../types').ProactiveAdminStats>(
+      `/proactive/admin-stats${days ? `?days=${encodeURIComponent(String(days))}` : ''}`,
+    ),
   // F3 — fila de pendentes (boot) e "Me conta aqui"
   getProactivePending: () =>
     fetchJSON<{ insights: import('../types').ProactiveInsight[] }>('/proactive/pending'),

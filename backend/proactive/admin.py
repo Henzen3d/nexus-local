@@ -17,6 +17,12 @@ logger = get_logger(__name__)
 TOPIC_LABEL_MAX = 60
 LOGS_MAX_LIMIT = 200
 STATS_WINDOWS = {"24h": "-1 day", "7d": "-7 days"}
+#: F5.2.4 — série diária do dashboard (``?days=``), limitada a 90 dias
+DAILY_MAX_DAYS = 90
+DAILY_DEFAULT_DAYS = 7
+#: F5.2.5 — alarme simples: ``failed / total > 50 %`` nas últimas 24 h (com amostra mínima)
+ALERT_FAILURE_RATIO = 0.5
+ALERT_MIN_SAMPLES = 5
 ALL_STATUSES = ("detected", "researching", "ready", "delivered", "seen", "dismissed", "blocked", "expired", "failed")
 
 
@@ -135,7 +141,7 @@ async def list_logs(
             return {"rows": [], "total": 0, "limit": limit, "offset": offset, "status": status}
         where = "WHERE i.status = ?"
         params.append(status)
-    async with db.execute(f"SELECT COUNT(*) FROM proactive_insights i {where}", tuple(params)) as cur:
+    async with db.execute(f"SELECT COUNT(*) FROM proactive_insights i {where}", tuple(params)) as cur:  # nosec B608 — SQL montado só com constantes do código; valores sempre parametrizados
         total = int((await cur.fetchone())[0] or 0)
     async with db.execute(
         f"""SELECT i.id, i.created_at, u.username, i.category, i.topic, i.confidence, i.status, i.channel,
@@ -145,7 +151,7 @@ async def list_logs(
             LEFT JOIN users u ON u.id = i.user_id
             {where}
             ORDER BY i.created_at DESC, i.rowid DESC
-            LIMIT ? OFFSET ?""",
+            LIMIT ? OFFSET ?""",  # nosec B608 — SQL montado só com constantes do código; valores sempre parametrizados
         (*params, limit, offset),
     ) as cur:
         rows = await cur.fetchall()
@@ -195,8 +201,68 @@ async def _window_counts(db: Any, modifier: str) -> dict[str, Any]:
     }
 
 
-async def admin_stats(db: Any) -> dict[str, Any]:
-    """F4.4.3 — contadores por status (24 h / 7 d), taxas e p95 das latências."""
+async def daily_series(db: Any, days: int = DAILY_DEFAULT_DAYS) -> list[dict[str, Any]]:
+    """F5.2.4 — insights por dia e por status (UTC), últimos ``days`` dias, com
+    tokens estimados; dias sem dados aparecem zerados para o gráfico não "pular"."""
+    days = max(1, min(int(days or DAILY_DEFAULT_DAYS), DAILY_MAX_DAYS))
+    rows_by_day: dict[str, dict[str, Any]] = {}
+    async with db.execute(
+        """SELECT date(created_at) AS day, status, COUNT(*),
+                  SUM(COALESCE(tokens_in, 0)), SUM(COALESCE(tokens_out, 0)),
+                  SUM(CASE WHEN know_more_at IS NOT NULL THEN 1 ELSE 0 END)
+           FROM proactive_insights
+           WHERE created_at >= datetime('now', ?)
+           GROUP BY day, status ORDER BY day""",
+        (f"-{days - 1} days",),
+    ) as cur:
+        for day, status, count, tin, tout, know_more in await cur.fetchall():
+            entry = rows_by_day.setdefault(day, {"day": day, "total": 0, "know_more": 0, "tokens_in": 0,
+                                                 "tokens_out": 0, **{s: 0 for s in ALL_STATUSES}})
+            if status in entry:
+                entry[status] = int(count or 0)
+            entry["total"] += int(count or 0)
+            entry["know_more"] += int(know_more or 0)
+            entry["tokens_in"] += int(tin or 0)
+            entry["tokens_out"] += int(tout or 0)
+    from datetime import datetime, timedelta, timezone
+
+    today = datetime.now(timezone.utc).date()
+    series = []
+    for offset in range(days - 1, -1, -1):
+        day = (today - timedelta(days=offset)).isoformat()
+        series.append(rows_by_day.get(day) or {"day": day, "total": 0, "know_more": 0, "tokens_in": 0,
+                                               "tokens_out": 0, **{s: 0 for s in ALL_STATUSES}})
+    return series
+
+
+async def _token_totals(db: Any, modifier: str) -> dict[str, int]:
+    async with db.execute(
+        """SELECT SUM(COALESCE(tokens_in, 0)), SUM(COALESCE(tokens_out, 0)), COUNT(*)
+           FROM proactive_insights WHERE created_at >= datetime('now', ?)""",
+        (modifier,),
+    ) as cur:
+        tin, tout, count = await cur.fetchone()
+    return {"tokens_in": int(tin or 0), "tokens_out": int(tout or 0), "insights": int(count or 0)}
+
+
+def failure_alert(window_24h: dict[str, Any]) -> dict[str, Any]:
+    """F5.2.5 — ``failed / total > 50 %`` nas últimas 24 h (≥ 5 insights) ⇒ ``active``."""
+    total = int(window_24h.get("total") or 0)
+    failed = int((window_24h.get("by_status") or {}).get("failed") or 0)
+    ratio = round(failed / total, 3) if total else None
+    return {
+        "active": bool(total >= ALERT_MIN_SAMPLES and ratio is not None and ratio > ALERT_FAILURE_RATIO),
+        "failed": failed,
+        "total": total,
+        "ratio": ratio,
+        "threshold": ALERT_FAILURE_RATIO,
+        "min_samples": ALERT_MIN_SAMPLES,
+    }
+
+
+async def admin_stats(db: Any, *, days: int = DAILY_DEFAULT_DAYS) -> dict[str, Any]:
+    """F4.4.3 — contadores por status (24 h / 7 d), taxas e p95 das latências.
+    F5.2.4/F5.2.5 — série diária (``days``), tokens estimados e alarme de falhas."""
     windows = {name: await _window_counts(db, modifier) for name, modifier in STATS_WINDOWS.items()}
 
     async with db.execute(
@@ -239,6 +305,7 @@ async def admin_stats(db: Any) -> dict[str, Any]:
     except Exception:  # pragma: no cover — métricas de runtime são best-effort
         runtime = {"tasks_in_flight": 0, "presence": {}}
 
+    tokens = {name: await _token_totals(db, modifier) for name, modifier in STATS_WINDOWS.items()}
     return {
         "windows": windows,
         "latency": latency,
@@ -246,4 +313,8 @@ async def admin_stats(db: Any) -> dict[str, Any]:
         "pending_now": pending_now,
         "blocklist_size": blocklist_size,
         "runtime": runtime,
+        "tokens": tokens,
+        "days": max(1, min(int(days or DAILY_DEFAULT_DAYS), DAILY_MAX_DAYS)),
+        "daily": await daily_series(db, days),
+        "alert": failure_alert(windows["24h"]),
     }

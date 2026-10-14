@@ -426,6 +426,25 @@ async def recover_interrupted_dreams():
         logger.error("[Dream Startup Recovery] Erro ao recuperar sonhos interrompidos:", exc_info=e)
 
 
+async def recover_interrupted_proactive():
+    """F5.2.2: insights ``detected|researching`` de antes do restart viram
+    ``failed:restart`` (as tasks morreram com o processo). Padrão de
+    ``recover_interrupted_dreams``: best-effort, nunca impede o boot."""
+    from backend.database import get_db
+    from backend.proactive.service import recover_interrupted
+
+    try:
+        db = await get_db()
+        try:
+            recovered = await recover_interrupted(db)
+        finally:
+            await db.close()
+        if recovered:
+            logger.warning("[Proactive Startup Recovery] %d insight(s) interrompido(s) marcados como failed:restart", recovered)
+    except Exception as e:
+        logger.error("[Proactive Startup Recovery] erro ao recuperar insights interrompidos:", exc_info=e)
+
+
 @app.on_event("startup")
 async def startup():
     await init_db()
@@ -442,6 +461,7 @@ async def startup():
     except Exception as _ie:
         logger.warning("[SQLite Boot] Não foi possível rodar integrity_check: %s", _ie)
     await recover_interrupted_dreams()
+    await recover_interrupted_proactive()
     logger.info("NexusLocal iniciado - banco de dados pronto.")
     # Warm-up embedder before accepting heavy traffic (background task still lets HTTP start)
     # As referências ficam em app.state para os jobs não serem coletados pelo GC

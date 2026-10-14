@@ -6699,6 +6699,17 @@ html[data-theme="light"] .sidebar[data-open="false"] .new-chat-btn {
   color: var(--on-dark);
 }
 
+/* F5.2.5 — ponto de alarme no item de menu (assistente proativo com muitas falhas) */
+.settings-menu-badge.alert {
+  width: 8px;
+  height: 8px;
+  margin-left: auto;
+  border-radius: 50%;
+  background: var(--error, #c64545);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--error, #c64545) 30%, transparent);
+  flex-shrink: 0;
+}
+
 .settings-menu-item.active {
   background: var(--surface-dark-elevated);
   color: var(--on-dark);
@@ -11605,6 +11616,30 @@ html[data-theme="light"] .model-option-provider-tag {
   gap: 28px;
   width: 100%;
 }
+/* F5.3.4 — guia curto dentro das preferências */
+.proactive-guide {
+  margin-top: 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: var(--surface-soft);
+  font-size: 13px;
+  color: var(--ink);
+}
+.proactive-guide summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  list-style: none;
+}
+.proactive-guide summary::-webkit-details-marker { display: none; }
+.proactive-guide[open] summary { margin-bottom: 8px; }
+.proactive-guide p { margin: 6px 0; color: var(--muted); }
+.proactive-guide ol { margin: 6px 0 6px 18px; padding: 0; display: grid; gap: 4px; }
+.proactive-guide-privacy { font-size: 12px; }
+
 .proactive-field-help {
   font-size: 12px;
   color: var(--muted);
@@ -11789,6 +11824,22 @@ html[data-theme="light"] .model-option-provider-tag {
   color: var(--ink);
   font-family: inherit;
 }
+/* F5.2.5 — alarme de falhas (failed/total > 50 % em 24 h) */
+.proactive-admin-alert {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md, 10px);
+  border: 1px solid color-mix(in srgb, var(--error, #e5484d) 45%, transparent);
+  background: color-mix(in srgb, var(--error, #e5484d) 12%, var(--surface, transparent));
+  color: var(--error, #e5484d);
+  font-size: 13px;
+  font-weight: 500;
+}
+.proactive-admin-alert svg { flex-shrink: 0; }
+
 .proactive-admin-cards {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));

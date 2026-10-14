@@ -778,6 +778,9 @@
       "sameAsDetector": "Wie der Detektor",
       "fallback": "Fallback auf das Chat-Modell erlauben",
       "fallbackDesc": "Wenn das konfigurierte Modell fehlschlägt, das Modell der Unterhaltung verwenden.",
+      "onboarding": "Onboarding für neue Nutzer freigeben",
+      "onboardingDesc": "Rollout-Woche 2: zeigt die Einladung (Modal) allen, die noch nicht aktiviert haben. Ausgeschaltet nutzen nur Nutzer mit bestehendem Opt-in die Funktion.",
+      "alertFailures": "Alarm: {{failed}} von {{total}} Insights sind in den letzten 24 h fehlgeschlagen ({{pct}} %). Anbieter/Modell und Websuche prüfen.",
       "saved": "Gespeichert",
       "saveHint": "In meta gespeichert; der Konfigurations-Cache wird sofort invalidiert.",
       "statsTitle": "Statistiken",
@@ -816,7 +819,9 @@
         "inFlight": "{{n}} laufend",
         "latencyP95": "Latenz p95",
         "research": "Recherche",
-        "synth": "Synthese"
+        "synth": "Synthese",
+        "tokens24h": "Geschätzte Tokens (24 h)",
+        "tokens7d": "7 Tage: {{n}}"
       },
       "status": {
         "detected": "erkannt",
@@ -839,6 +844,36 @@
         "latency": "Latenz",
         "error": "Fehler"
       }
+    },
+    "dashboard": {
+      "title": "Proaktiver Assistent",
+      "alertBadge": "Alarm: {{pct}} % Fehler in 24 h",
+      "alertTooltip": "Proaktiver Assistent: mehr als 50 % der Insights sind in den letzten 24 h fehlgeschlagen",
+      "usersEnabled": "{{n}} Nutzer mit Opt-in",
+      "insights24h": "Insights (24 h)",
+      "insightsPeriod": "{{n}} in {{days}} Tagen",
+      "knowMoreRate": "„Mehr erfahren“-Quote (7 T)",
+      "knowMoreSub": "{{n}} von {{delivered}} zugestellt",
+      "blockedRate": "Blockierquote (7 T)",
+      "blockedSub": "{{n}} Themen blockiert",
+      "failureRate": "Fehlerquote (24 h)",
+      "failureSub": "{{failed}} von {{total}} Insights",
+      "p95": "p95-Latenz",
+      "p95Sub": "Recherche {{research}} · Synthese {{synth}}",
+      "tokens": "Geschätzte Tokens",
+      "tokensSub": "~{{day}} in den letzten 24 h (Ein- + Ausgabe, ≈ Zeichen/4)",
+      "dailyTitle": "Insights pro Tag und Status",
+      "empty": "Keine Insights im Zeitraum."
+    },
+    "guide": {
+      "title": "So funktioniert der proaktive Assistent",
+      "intro": "Er ist optional und wird nur aktiv, wenn du ihn einschaltest. Wenn du etwas begeistert erwähnst (ein Konzert, eine Reise, ein Produkt), sucht er im Web und bringt eine kurze Zusammenfassung mit Quellen.",
+      "step1": "Schalte den Schalter oben ein. Du kannst ihn jederzeit ausschalten – nichts geht verloren.",
+      "step2": "Die Zusammenfassung erscheint erst, wenn die Antwort des Modells fertig ist; sie unterbricht nie.",
+      "step3": "Warst du weg, wartet er auf deine Rückkehr und zeigt „während du weg warst…“.",
+      "step4": "Tippe auf „Mehr erfahren“, um im selben Chat weiterzumachen oder einen neuen zu öffnen; „Ausblenden“ versteckt es still.",
+      "step5": "„Das nicht“ blockiert das Thema; hier kannst du es jederzeit wieder freigeben.",
+      "privacy": "Datenschutz: Er recherchiert nie Privatpersonen, nur du siehst deine Insights und alles wird nach 30 Tagen gelöscht. Admins sehen nur Zähler und kurze Labels, nie deine Nachrichten."
     },
     "category": {
       "event": "Veranstaltung",

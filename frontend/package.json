@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "test": "node --experimental-strip-types --test src/lib/*.test.ts"
+    "test": "node --experimental-strip-types --test src/lib/*.test.ts",
+    "check:i18n": "node scripts/check-i18n.mjs proactive",
+    "check:i18n:all": "node scripts/check-i18n.mjs"
   },
   "dependencies": {
     "@types/recharts": "^1.8.29",

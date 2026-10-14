@@ -20,6 +20,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import logging
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -41,6 +42,34 @@ from backend.proactive.detector import (
 logger = get_logger(__name__)
 
 STATUS_STAGE = "proactive_status"
+
+#: F5.2.1 — ``sources_json`` de insights ``dismissed`` fica só com as URLs
+COMPACT_DISMISSED_AFTER_HOURS = 1
+
+
+def log_stage(
+    event: str,
+    *,
+    insight_id: Optional[str] = None,
+    stage: str = "",
+    latency_ms: Optional[float] = None,
+    level: int = logging.INFO,
+    **fields: Any,
+) -> None:
+    """Log estruturado por etapa (F5.2.3).
+
+    Sempre com ``insight_id``/``stage``/``latency_ms`` em ``extra`` (e no texto,
+    para o formatter padrão), **nunca** com o texto do usuário, o tópico ou a
+    síntese — só identificadores, códigos e números.
+    """
+    extra = {
+        "insight_id": insight_id,
+        "stage": stage,
+        "latency_ms": None if latency_ms is None else int(latency_ms),
+        **{k: (round(v, 1) if isinstance(v, float) else v) for k, v in fields.items()},
+    }
+    parts = [f"{k}={v}" for k, v in extra.items() if v is not None]
+    logger.log(level, "[Proactive] %s %s", event, " ".join(parts), extra={"proactive": extra})
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Tasks em voo e turnos ativos
@@ -415,14 +444,64 @@ async def run_housekeeping(db: Any) -> dict[str, int]:
     placeholders = ",".join("?" for _ in TERMINAL_STATUSES)
     cur = await db.execute(
         f"""DELETE FROM proactive_insights
-            WHERE status IN ({placeholders}) AND created_at < datetime('now', ?)""",
+            WHERE status IN ({placeholders}) AND created_at < datetime('now', ?)""",  # nosec B608 — SQL montado só com constantes do código; valores sempre parametrizados
         (*TERMINAL_STATUSES, f"-{PURGE_AFTER_DAYS} days"),
     )
     purged = cur.rowcount or 0
     await db.commit()
-    if expired or stuck or purged:
-        logger.info("[Proactive] housekeeping: expired=%d stuck=%d purged=%d", expired, stuck, purged)
-    return {"expired": expired, "stuck": stuck, "purged": purged}
+    compacted = await compact_dismissed_sources(db)
+    if expired or stuck or purged or compacted:
+        log_stage("housekeeping", stage="housekeeping", expired=expired, stuck=stuck, purged=purged,
+                  compacted=compacted)
+    return {"expired": expired, "stuck": stuck, "purged": purged, "compacted": compacted}
+
+
+async def compact_dismissed_sources(db: Any, *, after_hours: int = COMPACT_DISMISSED_AFTER_HOURS) -> int:
+    """F5.2.1: insights ``dismissed`` guardam só as URLs das fontes (sem título,
+    trecho nem texto lido) — o usuário já disse que não quer; o que fica serve
+    apenas para auditoria/ranking. Idempotente: linhas já compactas são puladas."""
+    async with db.execute(
+        """SELECT id, sources_json FROM proactive_insights
+           WHERE status = 'dismissed' AND sources_json IS NOT NULL AND sources_json <> ''
+             AND created_at < datetime('now', ?)""",
+        (f"-{after_hours} hours",),
+    ) as cur:
+        rows = await cur.fetchall()
+    compacted = 0
+    for insight_id, raw in rows:
+        try:
+            sources = json.loads(raw)
+        except (TypeError, ValueError):
+            sources = []
+        if not isinstance(sources, list):
+            sources = []
+        urls = [{"url": str(item.get("url") or "")} for item in sources
+                if isinstance(item, dict) and item.get("url")]
+        if all(isinstance(item, dict) and set(item.keys()) == {"url"} for item in sources) and len(urls) == len(sources):
+            continue  # já compacto
+        await db.execute(
+            "UPDATE proactive_insights SET sources_json = ? WHERE id = ?",
+            (json.dumps(urls, ensure_ascii=False), insight_id),
+        )
+        compacted += 1
+    if compacted:
+        await db.commit()
+    return compacted
+
+
+async def recover_interrupted(db: Any) -> int:
+    """F5.2.2: no boot, insights ``detected|researching`` de antes do restart
+    nunca vão terminar (as tasks morreram com o processo) ⇒ ``failed:restart``.
+    Padrão de ``recover_interrupted_dreams``."""
+    cur = await db.execute(
+        """UPDATE proactive_insights SET status = 'failed', error_code = 'restart'
+           WHERE status IN ('detected', 'researching')"""
+    )
+    recovered = cur.rowcount or 0
+    await db.commit()
+    if recovered:
+        log_stage("recovered_after_restart", stage="startup", level=logging.WARNING, recovered=recovered)
+    return recovered
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -466,7 +545,7 @@ async def _update_insight(db: Any, insight_id: str, **fields: Any) -> None:
         return
     assignments = ", ".join(f"{key} = ?" for key in fields)
     await db.execute(
-        f"UPDATE proactive_insights SET {assignments} WHERE id = ?",
+        f"UPDATE proactive_insights SET {assignments} WHERE id = ?",  # nosec B608 — SQL montado só com constantes do código; valores sempre parametrizados
         (*fields.values(), insight_id),
     )
     await db.commit()
@@ -582,15 +661,20 @@ async def run_pipeline(
                 )
             except asyncio.TimeoutError:
                 await _fail_insight(db, holder.insight_id, "timeout")
-                logger.warning("[Proactive] pipeline excedeu %.0fs (conv=%s)", config.total_timeout_s, conversation_id)
+                log_stage("pipeline_timeout", insight_id=holder.insight_id, stage="pipeline",
+                          latency_ms=config.total_timeout_s * 1000, level=logging.WARNING,
+                          conversation_id=conversation_id, error_code="timeout")
                 return PipelineResult("failed", "timeout", insight_id=holder.insight_id, status="failed")
     except asyncio.CancelledError:
         # Desligado pelo usuário/admin no meio do caminho (F4.1.5 / F4.4.4)
         await _fail_insight(db, holder.insight_id, "cancelled")
+        log_stage("pipeline_cancelled", insight_id=holder.insight_id, stage="pipeline",
+                  conversation_id=conversation_id, error_code="cancelled")
         raise
     except Exception as exc:
         await _fail_insight(db, holder.insight_id, f"error:{type(exc).__name__}")
-        logger.warning("[Proactive] pipeline falhou (conv=%s): %s", conversation_id, exc)
+        log_stage("pipeline_error", insight_id=holder.insight_id, stage="pipeline", level=logging.WARNING,
+                  conversation_id=conversation_id, error_code=f"error:{type(exc).__name__}")
         return PipelineResult("failed", f"error:{type(exc).__name__}", insight_id=holder.insight_id, status="failed")
     finally:
         if own_db:
@@ -654,6 +738,8 @@ async def _run_stages(
         return PipelineResult("classify", "category_disabled", signal=signal)
     latency_detect_ms = (time.perf_counter() - started) * 1000
     detector_label = f"{source}:{model_name}"
+    tokens_in = meta.prompt_chars // 4
+    tokens_out = meta.response_chars // 4
 
     # ── 2. Limites ──────────────────────────────────────────────────────
     topic_hash = compute_topic_hash(signal.topic, signal.entities)
@@ -667,6 +753,10 @@ async def _run_stages(
         latency_detect_ms=latency_detect_ms,
     )
     holder.set(insight_id)
+    await _update_insight(db, insight_id, tokens_in=tokens_in, tokens_out=tokens_out)
+    log_stage("detected", insight_id=insight_id, stage="detect", latency_ms=latency_detect_ms,
+              category=signal.category, confidence=round(float(signal.interest or 0.0), 2),
+              detector=detector_label)
 
     # ── 3. Pesquisa ─────────────────────────────────────────────────────
     await _update_insight(db, insight_id, status="researching")
@@ -680,8 +770,11 @@ async def _run_stages(
     if not research.ok:
         code = research.error or "no_results"
         await _fail_insight(db, insight_id, code)
-        logger.info("[Proactive] pesquisa sem resultado (%s) para %r", code, signal.topic)
+        log_stage("research_failed", insight_id=insight_id, stage="research", latency_ms=research.elapsed_ms,
+                  level=logging.WARNING, error_code=code)
         return PipelineResult("research", code, insight_id=insight_id, status="failed", signal=signal)
+    log_stage("researched", insight_id=insight_id, stage="research", latency_ms=research.elapsed_ms,
+              sources=len(research.sources), cache_hit=research.cache_hit)
 
     # ── 4. Síntese ──────────────────────────────────────────────────────
     await _notify_status(user_id, conversation_id, "synthesizing")
@@ -691,9 +784,13 @@ async def _run_stages(
         )
     except synthesizer.NoSynthModel:
         await _fail_insight(db, insight_id, "no_synth_model")
+        log_stage("synth_failed", insight_id=insight_id, stage="synth", level=logging.WARNING,
+                  error_code="no_synth_model")
         return PipelineResult("synth", "no_synth_model", insight_id=insight_id, status="failed", signal=signal)
     except Exception as exc:
         await _fail_insight(db, insight_id, f"synth_model:{type(exc).__name__}")
+        log_stage("synth_failed", insight_id=insight_id, stage="synth", level=logging.WARNING,
+                  error_code=f"synth_model:{type(exc).__name__}")
         return PipelineResult("synth", "synth_model_error", insight_id=insight_id, status="failed", signal=signal)
 
     synthesis = await synthesizer.synthesize(
@@ -701,9 +798,21 @@ async def _run_stages(
         user_message=user_message, timeout=config.synth_timeout_s, now=now, model_source=synth_source,
     )
     synth_label = await synthesizer.model_label(db, synth_source, synth_model, model_id)
+    tokens_in += synthesis.prompt_chars // 4
+    tokens_out += synthesis.response_chars // 4
+    await _record_benchmark(
+        detector_label, synth_label, success=synthesis.ok,
+        latency_ms=latency_detect_ms + research.elapsed_ms + synthesis.latency_ms,
+        tokens_in=tokens_in, tokens_out=tokens_out,
+        phases={"detect": latency_detect_ms, "research": research.elapsed_ms, "synth": synthesis.latency_ms},
+        error=synthesis.error,
+    )
     if not synthesis.ok:
-        await _update_insight(db, insight_id, synth_model=synth_label, latency_synth_ms=int(synthesis.latency_ms))
+        await _update_insight(db, insight_id, synth_model=synth_label, latency_synth_ms=int(synthesis.latency_ms),
+                              tokens_in=tokens_in, tokens_out=tokens_out)
         await _fail_insight(db, insight_id, synthesis.error or "synth_parse")
+        log_stage("synth_failed", insight_id=insight_id, stage="synth", latency_ms=synthesis.latency_ms,
+                  level=logging.WARNING, error_code=synthesis.error or "synth_parse")
         return PipelineResult("synth", synthesis.error or "synth_parse", insight_id=insight_id,
                               status="failed", signal=signal)
 
@@ -727,23 +836,63 @@ async def _run_stages(
         follow_ups_json=json.dumps(synthesis.follow_ups, ensure_ascii=False),
         synth_model=synth_label,
         latency_synth_ms=int(synthesis.latency_ms),
+        tokens_in=tokens_in,
+        tokens_out=tokens_out,
         expires_at=expires_at,
         ready_at=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),  # mesma base de datetime('now')
     )
+    log_stage("ready", insight_id=insight_id, stage="synth", latency_ms=synthesis.latency_ms,
+              total_ms=latency_detect_ms + research.elapsed_ms + synthesis.latency_ms,
+              tokens_in=tokens_in, tokens_out=tokens_out, synth=synth_label)
     expired = await enforce_pending_limit(db, user_id, config.max_pending, keep_id=insight_id)
     if expired:
-        logger.info("[Proactive] %d insight(s) pendente(s) expirado(s) por limite", len(expired))
+        log_stage("pending_limit", insight_id=insight_id, stage="deliver", expired=len(expired))
 
     # ── 5. Entrega ──────────────────────────────────────────────────────
     insight_row = await delivery.load_insight(db, insight_id)
     if insight_row is None:
         return PipelineResult("ready", "ready", insight_id=insight_id, status="ready", signal=signal)
     outcome = await delivery.deliver(insight_row, db)
+    log_stage("delivery", insight_id=insight_id, stage="deliver", channel=outcome.channel or "pending",
+              reason=outcome.reason or None)
     if outcome.channel:
         return PipelineResult("delivered", outcome.reason or "delivered", insight_id=insight_id,
                               status="delivered", channel=outcome.channel,
                               message_id=outcome.message_id, signal=signal)
     return PipelineResult("ready", outcome.reason or "pending", insight_id=insight_id, status="ready", signal=signal)
+
+
+async def _record_benchmark(
+    detector_label: str,
+    synth_label: str,
+    *,
+    success: bool,
+    latency_ms: float,
+    tokens_in: int,
+    tokens_out: int,
+    phases: dict[str, float],
+    error: str = "",
+) -> None:
+    """F5.2.4: custo/latência no ``task_benchmark_manager`` (em memória, não bloqueia)."""
+    try:
+        from backend.metrics import task_benchmark_manager
+
+        provider_id, _, model_id = (synth_label or detector_label or "").partition("/")
+        await task_benchmark_manager.record_task_async(
+            task_type="proactive",
+            latency_ms=latency_ms,
+            model_id=model_id or synth_label or detector_label,
+            provider_id=provider_id or "proactive",
+            success=success,
+            calls_made=2,
+            tokens_input=tokens_in,
+            tokens_output=tokens_out,
+            errors=[error] if error else None,
+            phase_latencies={k: round(v, 1) for k, v in phases.items()},
+            persist_to_disk=False,
+        )
+    except Exception as exc:  # pragma: no cover — telemetria nunca derruba o pipeline
+        logger.debug("[Proactive] benchmark não registrado: %s", exc)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

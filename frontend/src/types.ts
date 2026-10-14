@@ -207,6 +207,8 @@ export interface ProactiveAdminConfig {
   synth_timeout_s: number
   expiry_news_hours: number
   expiry_default_days: number
+  /** F5.4.3 — libera o modal de onboarding para quem ainda não ativou (meta `proactive_onboarding_enabled`) */
+  onboarding_enabled: boolean
   limits?: Record<string, [number, number]>
   kill_switch?: { cancelled: number; expired: number }
 }
@@ -252,9 +254,39 @@ export interface ProactiveStatsWindow {
   failure_rate: number | null
 }
 
-/** F4.4.3 */
+/** F5.2.4 — um dia (UTC) da série do dashboard; dias sem dados vêm zerados */
+export interface ProactiveDailyPoint extends Record<ProactiveStatus, number> {
+  day: string
+  total: number
+  know_more: number
+  tokens_in: number
+  tokens_out: number
+}
+
+/** F5.2.4 — tokens estimados (chars/4) por janela */
+export interface ProactiveTokenTotals {
+  tokens_in: number
+  tokens_out: number
+  insights: number
+}
+
+/** F5.2.5 — alarme `failed/total > threshold` nas últimas 24 h (com amostra mínima) */
+export interface ProactiveFailureAlert {
+  active: boolean
+  failed: number
+  total: number
+  ratio: number | null
+  threshold: number
+  min_samples: number
+}
+
+/** F4.4.3 (+ F5.2.4/F5.2.5: `tokens`, `daily`, `alert`) */
 export interface ProactiveAdminStats {
   windows: { '24h': ProactiveStatsWindow; '7d': ProactiveStatsWindow }
+  tokens?: { '24h': ProactiveTokenTotals; '7d': ProactiveTokenTotals }
+  daily?: ProactiveDailyPoint[]
+  days?: number
+  alert?: ProactiveFailureAlert
   latency: {
     samples: number
     detect_p50_ms: number | null

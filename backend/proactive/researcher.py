@@ -11,6 +11,7 @@ Nunca levanta exceção para o chamador: falhas viram ``ResearchResult.error``
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import json
 import re
 import time
@@ -114,6 +115,41 @@ def canonical_url(url: str) -> str:
         path = path[:-1]
     return urlunsplit(("https" if parts.scheme in ("http", "https") else parts.scheme,
                        host, path, urlencode(query, doseq=True), ""))
+
+
+_PRIVATE_HOST_SUFFIXES = (".local", ".internal", ".localhost", ".lan", ".home", ".arpa")
+
+
+def is_public_looking_url(url: str) -> bool:
+    """Pré-filtro anti-SSRF **sem DNS** (F5.1.3): só ``http(s)`` e nunca hosts
+    locais nem IPs literais privados/loopback/link-local/reservados.
+
+    O Deep Reader (``fetch_page_content``) ainda resolve o DNS e revalida cada
+    redirect; aqui a fonte nem entra na lista de resultados (nem como snippet),
+    então um resultado de busca apontando para ``http://10.0.0.5`` ou
+    ``http://169.254.169.254`` jamais chega ao modelo nem à UI.
+    """
+    try:
+        parts = urlsplit((url or "").strip())
+    except ValueError:
+        return False
+    if parts.scheme not in ("http", "https"):
+        return False
+    host = (parts.hostname or "").strip().lower()
+    if not host:
+        return False
+    if host == "localhost" or host.endswith(_PRIVATE_HOST_SUFFIXES):
+        return False
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return True  # nome de domínio: a checagem com DNS fica para o reader
+    if ip.version == 6 and ip.ipv4_mapped is not None:
+        ip = ip.ipv4_mapped
+    return not (
+        ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast
+        or ip.is_reserved or ip.is_unspecified
+    )
 
 
 def domain_of(url: str) -> str:
@@ -265,7 +301,7 @@ def merge_results(raw_results: Sequence[Sequence[dict]], entity_tokens: Sequence
     for results in raw_results:
         for item in results or []:
             url = str((item or {}).get("url") or "").strip()
-            if not url.lower().startswith(("http://", "https://")):
+            if not is_public_looking_url(url):
                 continue
             key = canonical_url(url)
             if key in seen:

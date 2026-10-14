@@ -140,12 +140,25 @@ async def test_settings_payload_partial_update_and_onboarding():
         await pconfig.upsert_user_settings(db, user, enabled=False)
     finally:
         await db.close()
+    # F5.4.3 — rollout gradual: sem a flag do admin o modal não aparece, mesmo elegível
+    data = client.get("/api/proactive/settings", headers=h).json()
+    assert data["conversation_count"] == 3 and data["onboarding_eligible"] is False
+    db = await get_db()
+    try:
+        await pconfig.save_admin_config(db, {"onboarding_enabled": True})
+    finally:
+        await db.close()
     data = client.get("/api/proactive/settings", headers=h).json()
     assert data["conversation_count"] == 3 and data["onboarding_eligible"] is True
     r = client.post("/api/proactive/settings/onboarding-seen", headers=h)
     assert r.status_code == 200 and r.json()["onboarding_seen_at"] and r.json()["enabled"] is False
     data = client.get("/api/proactive/settings", headers=h).json()
     assert data["onboarding_seen_at"] and data["onboarding_eligible"] is False and data["enabled"] is False
+    db = await get_db()
+    try:
+        await pconfig.save_admin_config(db, {"onboarding_enabled": False})  # banco compartilhado
+    finally:
+        await db.close()
 
 
 # ─────────────────────────────────────────────────────────────────────────────

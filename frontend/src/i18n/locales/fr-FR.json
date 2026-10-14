@@ -778,6 +778,9 @@
       "sameAsDetector": "Même que le détecteur",
       "fallback": "Autoriser le repli vers le modèle de la conversation",
       "fallbackDesc": "Si le modèle configuré échoue, utiliser le modèle de la conversation.",
+      "onboarding": "Ouvrir l'onboarding aux nouveaux utilisateurs",
+      "onboardingDesc": "Semaine 2 du déploiement : affiche l'invitation (modale) à ceux qui n'ont pas encore activé. Désactivé, seuls ceux qui ont déjà opté utilisent la fonction.",
+      "alertFailures": "Alerte : {{failed}} insights sur {{total}} ont échoué ces dernières 24 h ({{pct}} %). Vérifiez fournisseur/modèle et la recherche web.",
       "saved": "Enregistré",
       "saveHint": "Persisté dans meta ; le cache de configuration est invalidé immédiatement.",
       "statsTitle": "Statistiques",
@@ -816,7 +819,9 @@
         "inFlight": "{{n}} en cours",
         "latencyP95": "Latence p95",
         "research": "recherche",
-        "synth": "synthèse"
+        "synth": "synthèse",
+        "tokens24h": "Tokens estimés (24 h)",
+        "tokens7d": "7 jours : {{n}}"
       },
       "status": {
         "detected": "détecté",
@@ -839,6 +844,36 @@
         "latency": "Latence",
         "error": "Erreur"
       }
+    },
+    "dashboard": {
+      "title": "Assistant proactif",
+      "alertBadge": "Alerte : {{pct}} % d'échecs en 24 h",
+      "alertTooltip": "Assistant proactif : plus de 50 % des insights ont échoué ces dernières 24 h",
+      "usersEnabled": "{{n}} utilisateurs ayant opté",
+      "insights24h": "Insights (24 h)",
+      "insightsPeriod": "{{n}} en {{days}} jours",
+      "knowMoreRate": "Taux « en savoir plus » (7 j)",
+      "knowMoreSub": "{{n}} sur {{delivered}} livrés",
+      "blockedRate": "Taux de blocage (7 j)",
+      "blockedSub": "{{n}} sujets bloqués",
+      "failureRate": "Taux d'échec (24 h)",
+      "failureSub": "{{failed}} sur {{total}} insights",
+      "p95": "Latence p95",
+      "p95Sub": "recherche {{research}} · synthèse {{synth}}",
+      "tokens": "Tokens estimés",
+      "tokensSub": "~{{day}} ces dernières 24 h (entrée + sortie, ≈ caractères/4)",
+      "dailyTitle": "Insights par jour et statut",
+      "empty": "Aucun insight sur la période."
+    },
+    "guide": {
+      "title": "Comment fonctionne l'assistant proactif",
+      "intro": "Il est facultatif et n'agit que si vous l'activez. Quand vous évoquez quelque chose avec enthousiasme (un concert, un voyage, un produit), il cherche sur le web et apporte un court résumé avec ses sources.",
+      "step1": "Activez le bouton ci-dessus. Vous pouvez le désactiver à tout moment, sans rien perdre.",
+      "step2": "Le résumé n'apparaît dans la conversation qu'une fois la réponse du modèle terminée ; il n'interrompt jamais.",
+      "step3": "Si vous étiez absent, il attend votre retour et affiche « pendant votre absence… ».",
+      "step4": "Touchez « En savoir plus » pour continuer dans la même conversation ou en ouvrir une nouvelle ; « Ignorer » le masque discrètement.",
+      "step5": "« Pas ça » bloque le sujet ; vous pouvez le débloquer ici quand vous voulez.",
+      "privacy": "Confidentialité : il ne recherche jamais de personnes privées, vous seul voyez vos insights et tout est supprimé après 30 jours. Les administrateurs ne voient que des compteurs et de courts libellés, jamais vos messages."
     },
     "category": {
       "event": "Événement",
