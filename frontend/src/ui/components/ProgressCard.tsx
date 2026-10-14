@@ -53,12 +53,12 @@ export function ProgressCard({ block }: Props) {
         }}
       >
         <div
+          className="nexus-ui-progress-fill"
           style={{
             width: `${percent}%`,
             height: '100%',
             backgroundColor: 'var(--primary)',
             borderRadius: '3px',
-            transition: 'width 0.4s ease',
           }}
         />
       </div>

@@ -1027,7 +1027,9 @@
     "controlsError": "Error executing action.",
     "exportStandalone": "Download HTML",
     "exportTooltip": "Download standalone interactive tool",
-    "computedResult": "Result"
+    "computedResult": "Result",
+    "modelNotInList": "That model is not in your list.",
+    "controlsDone": "Sent"
   },
   "proactive": {
     "bubbleBadge": "Proactive assistant",

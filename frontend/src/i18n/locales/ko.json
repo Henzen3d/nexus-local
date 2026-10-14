@@ -646,6 +646,18 @@
     "intelligentUiSourceHint": "여기서 저장하면 이 옵션들은 더 이상 .env 에서 읽히지 않습니다.",
     "intelligentUiSaveError": "저장할 수 없습니다. 다시 시도하세요."
   },
+  "intelligentUi": {
+    "progressOf": "{{max}} 중 {{current}}",
+    "imageLoadError": "이미지를 불러올 수 없습니다.",
+    "controlsSubmitDefault": "실행",
+    "controlsSelectPlaceholder": "옵션 선택",
+    "controlsError": "작업 처리 중 오류가 발생했습니다.",
+    "exportStandalone": "HTML 다운로드",
+    "exportTooltip": "대화형 도구를 독립 파일로 다운로드",
+    "computedResult": "결과",
+    "modelNotInList": "해당 모델은 목록에 없습니다.",
+    "controlsDone": "전송됨"
+  },
   "memory": {
     "useMemoryGlobal": "대화 메모리 (기본: 켜짐)",
     "useMemoryGlobalDesc": "기본으로 켜짐: 지금 묻는 내용과 이미 학습한 내용을 연결합니다. 과거 메모리 없이 대화하려면 여기서 끄세요.",

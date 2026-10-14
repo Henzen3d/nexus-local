@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { lazy, Suspense, useEffect, useRef } from 'react'
 import { X, AlertCircle, CheckCircle, Info, Sparkles } from 'lucide-react'
 import type { ToastItem } from './types'
 import { useTranslation } from 'react-i18next'
@@ -6,7 +6,9 @@ import { useStore } from './store/useStore'
 import { usePWAStore } from './store/pwaStore'
 import { Sidebar } from './components/Sidebar'
 import { ChatWindow } from './components/ChatWindow'
-import { AdminPanel } from './components/AdminPanel'
+// AdminPanel puxa recharts (UsageDashboard/RankingsView). Lazy para a lib sair do
+// chunk do chat — assim só ChartCard (também lazy) e o admin pagam por ela.
+const AdminPanel = lazy(() => import('./components/AdminPanel').then((m) => ({ default: m.AdminPanel })))
 import { ArtifactPanel } from './components/ArtifactPanel'
 import { ConversationsPanel } from './components/ConversationsPanel'
 import { ArtifactsPanel } from './components/ArtifactsPanel'
@@ -226,7 +228,11 @@ export default function App() {
         {view === 'library' && <LibraryPanel />}
         {hasArtifact && <ArtifactPanel />}
       </div>
-      {view === 'admin' && <AdminPanel />}
+      {view === 'admin' && (
+        <Suspense fallback={null}>
+          <AdminPanel />
+        </Suspense>
+      )}
       <PwaInstallBanner />
       <Toast />
       <MemoryOnboarding />

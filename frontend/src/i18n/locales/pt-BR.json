@@ -1026,7 +1026,9 @@
     "controlsError": "Erro ao processar ação.",
     "exportStandalone": "Baixar HTML",
     "exportTooltip": "Baixar ferramenta interativa em arquivo autônomo",
-    "computedResult": "Resultado"
+    "computedResult": "Resultado",
+    "modelNotInList": "Esse modelo não está na sua lista.",
+    "controlsDone": "Enviado"
   },
   "proactive": {
     "bubbleBadge": "Assistente proativo",

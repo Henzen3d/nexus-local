@@ -897,7 +897,9 @@
     "controlsError": "Error al ejecutar la acción.",
     "exportStandalone": "Descargar HTML",
     "exportTooltip": "Descargar herramienta interactiva independiente",
-    "computedResult": "Resultado"
+    "computedResult": "Resultado",
+    "modelNotInList": "Ese modelo no está en tu lista.",
+    "controlsDone": "Enviado"
   },
   "proactive": {
     "bubbleBadge": "Asistente proactivo",

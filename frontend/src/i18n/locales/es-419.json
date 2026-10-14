@@ -646,6 +646,18 @@
     "intelligentUiSourceHint": "Después de guardar aquí, el .env deja de leerse para estas opciones.",
     "intelligentUiSaveError": "No se pudo guardar. Inténtalo de nuevo."
   },
+  "intelligentUi": {
+    "progressOf": "{{current}} de {{max}}",
+    "imageLoadError": "No se pudo cargar la imagen.",
+    "controlsSubmitDefault": "Ejecutar",
+    "controlsSelectPlaceholder": "Selecciona una opción",
+    "controlsError": "Error al procesar la acción.",
+    "exportStandalone": "Descargar HTML",
+    "exportTooltip": "Descargar la herramienta interactiva como archivo independiente",
+    "computedResult": "Resultado",
+    "modelNotInList": "Ese modelo no está en tu lista.",
+    "controlsDone": "Enviado"
+  },
   "memory": {
     "useMemoryGlobal": "Memoria en las conversaciones (predeterminado: activada)",
     "useMemoryGlobalDesc": "Activada por defecto: correlaciona lo que preguntas con lo ya aprendido. Desactívala aquí si quieres chats sin memoria del pasado.",

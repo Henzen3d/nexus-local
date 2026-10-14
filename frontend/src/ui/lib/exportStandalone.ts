@@ -3,7 +3,7 @@
  * Empacota HTML, CSS, JS e Design Tokens em um único arquivo .html autônomo.
  */
 
-import { getThemeTokensCss, PRE_STYLED_CONTROLS_CSS } from '../themeBridge'
+import { getThemeBridgeCss, PRE_STYLED_CONTROLS_CSS, SANDBOX_IMPORTMAP } from '../themeBridge.ts'
 
 function escapeScriptClose(code: string): string {
   return code.replace(/<\/script/gi, '<\\/script')
@@ -27,10 +27,14 @@ export function assembleStandaloneHtml(
   bodyHtml: string,
   css = '',
   js = '',
-  isDark = true
+  isDark = true,
+  lang = 'pt-BR'
 ): string {
   const safeTitle = title || 'nexus-interactive-tool'
-  const themeCss = getThemeTokensCss(isDark)
+  // Os dois temas vão no arquivo: data-theme fixa o tema de quando foi baixado,
+  // e quem abrir pode trocar editando o atributo (ou removê-lo para seguir o sistema).
+  const themeCss = getThemeBridgeCss()
+  const safeLang = /^[a-zA-Z]{2,3}(-[a-zA-Z0-9]{2,8})*$/.test(lang) ? lang : 'pt-BR'
 
   const scriptBlock = js
     ? `<script>
@@ -41,21 +45,12 @@ ${escapeScriptClose(js)}
     : ''
 
   return `<!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="${safeLang}" data-theme="${isDark ? 'dark' : 'light'}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${escapeHtml(safeTitle)}</title>
-  <script type="importmap">
-  {
-    "imports": {
-      "three": "https://esm.sh/three",
-      "gsap": "https://esm.sh/gsap",
-      "d3": "https://esm.sh/d3",
-      "chart.js": "https://esm.sh/chart.js"
-    }
-  }
-  </script>
+  <script type="importmap">${JSON.stringify(SANDBOX_IMPORTMAP)}</script>
   <style>
 ${escapeStyleClose(themeCss)}
 ${escapeStyleClose(PRE_STYLED_CONTROLS_CSS)}
@@ -83,9 +78,10 @@ export function downloadStandaloneHtml(
   html: string,
   css = '',
   js = '',
-  isDark = true
+  isDark = true,
+  lang = 'pt-BR'
 ): void {
-  const completeHtml = assembleStandaloneHtml(title, html, css, js, isDark)
+  const completeHtml = assembleStandaloneHtml(title, html, css, js, isDark, lang)
   const blob = new Blob([completeHtml], { type: 'text/html;charset=utf-8' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')

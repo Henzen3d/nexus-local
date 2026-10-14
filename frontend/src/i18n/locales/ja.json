@@ -646,6 +646,18 @@
     "intelligentUiSourceHint": "ここで保存すると、これらの項目は .env から読み込まれなくなります。",
     "intelligentUiSaveError": "保存できませんでした。もう一度お試しください。"
   },
+  "intelligentUi": {
+    "progressOf": "{{max}} 中 {{current}}",
+    "imageLoadError": "画像を読み込めませんでした。",
+    "controlsSubmitDefault": "実行",
+    "controlsSelectPlaceholder": "オプションを選択",
+    "controlsError": "アクションの処理中にエラーが発生しました。",
+    "exportStandalone": "HTMLをダウンロード",
+    "exportTooltip": "インタラクティブツールを単体ファイルとしてダウンロード",
+    "computedResult": "結果",
+    "modelNotInList": "そのモデルはリストにありません。",
+    "controlsDone": "送信済み"
+  },
   "memory": {
     "useMemoryGlobal": "会話のメモリ（デフォルト: オン）",
     "useMemoryGlobalDesc": "デフォルトでオン：過去に学んだ内容と現在の質問を関連付けます。過去メモリなしの会話にする場合はここでオフに。",

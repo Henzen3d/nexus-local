@@ -646,6 +646,18 @@
     "intelligentUiSourceHint": "Nach dem Speichern hier wird die .env für diese Optionen nicht mehr gelesen.",
     "intelligentUiSaveError": "Speichern fehlgeschlagen. Bitte erneut versuchen."
   },
+  "intelligentUi": {
+    "progressOf": "{{current}} von {{max}}",
+    "imageLoadError": "Bild konnte nicht geladen werden.",
+    "controlsSubmitDefault": "Ausführen",
+    "controlsSelectPlaceholder": "Option wählen",
+    "controlsError": "Aktion konnte nicht verarbeitet werden.",
+    "exportStandalone": "HTML herunterladen",
+    "exportTooltip": "Interaktives Tool als eigenständige Datei herunterladen",
+    "computedResult": "Ergebnis",
+    "modelNotInList": "Dieses Modell ist nicht in deiner Liste.",
+    "controlsDone": "Gesendet"
+  },
   "memory": {
     "useMemoryGlobal": "Gedächtnis in Gesprächen (Standard: an)",
     "useMemoryGlobalDesc": "Standardmäßig an: korreliert aktuelle Fragen mit bereits Gelerntem. Hier ausschalten für Chats ohne Vergangenheitsspeicher.",

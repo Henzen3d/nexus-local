@@ -646,6 +646,18 @@
     "intelligentUiSourceHint": "Après enregistrement ici, le .env n'est plus lu pour ces options.",
     "intelligentUiSaveError": "Enregistrement impossible. Réessayez."
   },
+  "intelligentUi": {
+    "progressOf": "{{current}} sur {{max}}",
+    "imageLoadError": "Impossible de charger l'image.",
+    "controlsSubmitDefault": "Exécuter",
+    "controlsSelectPlaceholder": "Choisissez une option",
+    "controlsError": "Erreur lors du traitement de l'action.",
+    "exportStandalone": "Télécharger le HTML",
+    "exportTooltip": "Télécharger l'outil interactif en fichier autonome",
+    "computedResult": "Résultat",
+    "modelNotInList": "Ce modèle n'est pas dans votre liste.",
+    "controlsDone": "Envoyé"
+  },
   "memory": {
     "useMemoryGlobal": "Mémoire dans les conversations (par défaut : activée)",
     "useMemoryGlobalDesc": "Activée par défaut : corrèle vos questions avec ce qui a déjà été appris. Désactivez ici pour des chats sans mémoire du passé.",

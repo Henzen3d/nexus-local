@@ -45,10 +45,10 @@ Ordem de execução: 01, depois 02, 03, 04, 05. O 06 acompanha cada fase, não e
 | 1 | 01-plano-fundacao | Implementada | `backend/ui_blocks/validate.py`, `extract.py`, `config.py`; tabelas `message_ui_blocks` e `intelligent_ui_config` em `database.py`; `save_ui_blocks` em `persist_turn.py`; `routers/intelligent_ui.py`; `frontend/src/lib/nexusUi.ts`, `ui/hooks/useIntelligentUi.ts`, `components/IntelligentUiSettings.tsx`. Flag fecha o recurso inteiro; teste de turno em `tests/test_intelligent_ui_turn.py`. |
 | 2 | 02-plano-indicadores | Implementada | `ProgressCard.tsx`, `ChecklistCard.tsx`, `DynamicRenderer.tsx`, `handleUiProgress` no store, `should_offer.py`, `catalog.txt`, gate em `chat.py`. |
 | 3 | 03-plano-cartoes-imagens | Implementada | `ImageCard.tsx`, `isAllowedImageUrl` nos dois lados; hosts e flag privada chegam ao frontend por `GET /api/intelligent-ui/config`. Falta só teste de render do cartão. |
-| 4 | 04-plano-graficos | Implementada, 1 pendência | `ChartCard.tsx` (bar/line/compare, tabela sr-only). Pendência: `recharts` ainda no chunk principal via `AdminPanel` estático. |
-| 5 | 05-plano-controles | Implementada, `set_model` parcial | `ControlsCard.tsx`, `lib/safeMath.ts`. Pendência: select de `set_model` usa options do modelo, não `models` do store. |
+| 4 | 04-plano-graficos | Implementada | `ChartCard.tsx` (bar/line/compare, tabela sr-only). `AdminPanel` lazy em `App.tsx`: `recharts` em chunk próprio, fora do chat. |
+| 5 | 05-plano-controles | Implementada | `ControlsCard.tsx`, `lib/safeMath.ts`. `set_model` lista `models` do store, some com lista vazia, erro curto para id desconhecido; a11y (`htmlFor`, `aria-live`, `role=alert`), `maxLength` 200, clamp de número/range. |
 | 6 | 06-criterios-aceite | 37 de 44 itens atendidos | Bloqueadores para ligar em produção listados no topo do arquivo. |
-| 7 | 09-plano-sandbox-e-exportacao | Implementada, sem testes | `SandboxCard.tsx`, `themeBridge.ts`, `lib/exportStandalone.ts`. Desvio: `importmap` para `esm.sh`. |
+| 7 | 09-plano-sandbox-e-exportacao | Implementada | `SandboxCard.tsx`, `themeBridge.ts`, `hooks/useResolvedTheme.ts`, `lib/exportStandalone.ts` + testes de função pura. Tema reativo por `postMessage`, CSP `default-src 'none'` (esm.sh só para módulos), `lang` do i18n. |
 
 Testes que passam: `backend/tests/test_ui_blocks.py` (15), `frontend/src/lib/nexusUi.test.ts` (7), `frontend/src/ui/lib/safeMath.test.ts` (4). `tsc` e `vite build` limpos. Não há testes de render dos componentes.
 
