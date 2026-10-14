@@ -482,6 +482,43 @@ export interface AutoRouterPreviewResult {
   catalog_size: number
 }
 
+/** Linha de GET /api/ranking (Configurações → Rankings de Modelos). */
+export interface RankingEntry {
+  model_id: string
+  quality_score: number
+  popularity_rank: number | null
+  internal_usage_count: number
+  nexuslocal_score: number
+  quality_contribution: number
+  popularity_contribution: number
+  usage_contribution: number
+  popularity_normalized: number
+  usage_normalized: number
+  /** 'curated' (model_rankings.json) | 'heuristic' (família/geração, mesma base do roteador) */
+  source: string
+  display_name?: string | null
+  provider_id?: string | null
+  provider_name?: string | null
+  is_free?: boolean | null
+  is_local?: boolean | null
+  available?: boolean | null
+  unavailable_reason?: 'provider_disabled' | 'model_disabled' | 'missing_key' | 'unconfirmed_free' | string | null
+  size_label?: 'nano' | 'small' | 'medium' | 'large' | 'frontier' | string | null
+  tags?: string[]
+}
+
+export interface RankingSyncResult {
+  status: string
+  models?: number
+  curated?: number
+  heuristic?: number
+  matched_popularity?: number
+  openrouter_models?: number
+  popularity_refreshed?: boolean
+  updated_scores?: number
+  message?: string
+}
+
 
 export interface Conversation {
   id: string

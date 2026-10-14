@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
-import { Award, Sliders, Search, BarChart3, HelpCircle, Save, Star, ChevronDown, ChevronUp } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { Award, Sliders, Search, BarChart3, Save, Star, ChevronDown, ChevronUp, RefreshCw, Brain, Code2, Eye, EyeOff, HardDrive } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { api } from '../api/client'
 import { useStore } from '../store/useStore'
+import type { RankingEntry } from '../types'
 import {
   BarChart,
   Bar,
@@ -13,15 +14,31 @@ import {
   ResponsiveContainer,
 } from 'recharts'
 
+type RankingScope = 'available' | 'all'
+
+interface EnrichedRanking extends RankingEntry {
+  rank: number
+  display_name: string
+  provider_name: string
+  tags: string[]
+  available: boolean
+}
+
+const SIZE_ORDER: Record<string, number> = { nano: 0, small: 1, medium: 2, large: 3, frontier: 4 }
+
 export function RankingsView() {
   const { t } = useTranslation()
-  const { models, loadModels } = useStore()
-  const [rankings, setRankings] = useState<any[]>([])
+  const { models, loadModels, user } = useStore()
+  const isAdmin = user?.role === 'admin'
+  const [rankings, setRankings] = useState<RankingEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [savingWeights, setSavingWeights] = useState(false)
   const [weightsSaved, setWeightsSaved] = useState(false)
   const [showAll, setShowAll] = useState(false)
+  const [scope, setScope] = useState<RankingScope>('available')
+  const [syncing, setSyncing] = useState(false)
+  const [syncMessage, setSyncMessage] = useState<string | null>(null)
   
   // Weights state (for calibration card)
   const [weights, setWeights] = useState({
@@ -31,11 +48,11 @@ export function RankingsView() {
     max_expected_usage: 500,
   })
 
-  const loadData = async () => {
+  const loadData = async (nextScope: RankingScope = scope) => {
     try {
       setLoading(true)
       const [ranksData, weightsData] = await Promise.all([
-        api.getRankings(),
+        api.getRankings(nextScope),
         api.getRankingWeights()
       ])
       setRankings(ranksData || [])
@@ -50,29 +67,45 @@ export function RankingsView() {
   }
 
   useEffect(() => {
-    loadData()
-  }, [])
+    loadData(scope)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scope])
 
-  // Lookup model display details from store models
-  const enrichedRankings = rankings.map((r, index) => {
+  // Provedor/nome vêm do backend; o catálogo da store é só fallback para respostas antigas
+  const enrichedRankings: EnrichedRanking[] = useMemo(() => rankings.map((r, index) => {
     const detail = models.find((m) => m.id === r.model_id)
     return {
       ...r,
       rank: index + 1,
-      display_name: detail ? detail.display_name : r.model_id,
-      provider_name: detail ? detail.provider_name : 'Local / Outro',
+      display_name: r.display_name || detail?.display_name || r.model_id,
+      provider_name: r.provider_name || detail?.provider_name || r.provider_id || t('rankingsView.unknownProvider'),
+      tags: r.tags || [],
+      available: r.available !== false,
     }
-  })
+  }), [rankings, models, t])
 
   // Filter rankings based on search query
-  const filteredRankings = enrichedRankings.filter((r) =>
-    r.display_name.toLowerCase().includes(search.toLowerCase()) ||
-    r.provider_name.toLowerCase().includes(search.toLowerCase()) ||
-    r.model_id.toLowerCase().includes(search.toLowerCase())
-  )
+  const filteredRankings = enrichedRankings.filter((r) => {
+    const q = search.toLowerCase()
+    return (
+      r.display_name.toLowerCase().includes(q) ||
+      r.provider_name.toLowerCase().includes(q) ||
+      r.model_id.toLowerCase().includes(q)
+    )
+  })
 
   // Limit display to top 6 by default
   const displayedRankings = showAll ? filteredRankings : filteredRankings.slice(0, 6)
+
+  // Faixa real dos scores (para barras relativas e eixo do gráfico)
+  const scoreValues = enrichedRankings.map((r) => r.nexuslocal_score)
+  const minScore = scoreValues.length ? Math.min(...scoreValues) : 0
+  const maxScore = scoreValues.length ? Math.max(...scoreValues) : 100
+  const availableCount = enrichedRankings.filter((r) => r.available).length
+  const relativeWidth = (score: number) => {
+    if (maxScore - minScore < 0.5) return 100
+    return Math.max(6, Math.round(((score - minScore) / (maxScore - minScore)) * 100))
+  }
 
   // Top 10 for the chart
   const chartData = enrichedRankings.slice(0, 10).map((r) => ({
@@ -80,6 +113,41 @@ export function RankingsView() {
     score: parseFloat(r.nexuslocal_score.toFixed(1)),
     provider: r.provider_name,
   }))
+  const chartMin = chartData.length ? Math.min(...chartData.map((d) => d.score)) : 0
+  const chartMax = chartData.length ? Math.max(...chartData.map((d) => d.score)) : 100
+  const chartDomain: [number, number] = [
+    Math.max(0, Math.floor(chartMin - 8)),
+    Math.min(100, Math.ceil(chartMax + 2)),
+  ]
+
+  const sizeLabel = (size?: string | null) => (size && size in SIZE_ORDER ? t(`rankingsView.size.${size}`) : null)
+  const reasonLabel = (reason?: string | null) => {
+    switch (reason) {
+      case 'provider_disabled': return t('rankingsView.reason.providerDisabled')
+      case 'model_disabled': return t('rankingsView.reason.modelDisabled')
+      case 'missing_key': return t('rankingsView.reason.missingKey')
+      case 'unconfirmed_free': return t('rankingsView.reason.unconfirmedFree')
+      default: return t('rankingsView.unavailable')
+    }
+  }
+  const sourceLabel = (source?: string) =>
+    source === 'curated' ? t('rankingsView.sourceCurated') : t('rankingsView.sourceHeuristic')
+
+  const handleSyncNow = async () => {
+    try {
+      setSyncing(true)
+      setSyncMessage(null)
+      const res = await api.syncRankings()
+      setSyncMessage(t('rankingsView.syncDone', { models: res.models ?? 0, matched: res.matched_popularity ?? 0 }))
+      await Promise.all([loadData(scope), loadModels()])
+    } catch (err) {
+      console.error(err)
+      setSyncMessage(t('rankingsView.syncFailed'))
+    } finally {
+      setSyncing(false)
+      setTimeout(() => setSyncMessage(null), 6000)
+    }
+  }
 
   const handleSaveWeights = async () => {
     try {
@@ -92,7 +160,7 @@ export function RankingsView() {
       await loadModels()
       
       // Recarrega a tabela de rankings local
-      const ranksData = await api.getRankings()
+      const ranksData = await api.getRankings(scope)
       setRankings(ranksData || [])
     } catch (err) {
       console.error(err)
@@ -116,14 +184,62 @@ export function RankingsView() {
     <div className="rankings-view" style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
       
       {/* Title & Banner */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-        <Award size={22} className="text-primary" />
-        <div>
-          <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 600, color: 'var(--ink)' }}>{t('rankingsView.title')}</h3>
-          <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted)' }}>
-            {t('rankingsView.desc')}
-          </p>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <Award size={22} className="text-primary" />
+          <div>
+            <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 600, color: 'var(--ink)' }}>{t('rankingsView.title')}</h3>
+            <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted)' }}>
+              {t('rankingsView.desc')}
+            </p>
+          </div>
         </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: 'var(--muted)', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={scope === 'all'}
+              onChange={(e) => setScope(e.target.checked ? 'all' : 'available')}
+              style={{ accentColor: 'var(--primary)' }}
+            />
+            {t('rankingsView.showUnavailable')}
+          </label>
+          {isAdmin && (
+            <button
+              onClick={handleSyncNow}
+              disabled={syncing}
+              title={t('rankingsView.syncNowHint')}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 10px',
+                borderRadius: 'var(--radius-md)', border: '1px solid var(--hairline)',
+                background: 'var(--surface-soft)', color: 'var(--ink)', fontSize: '12px',
+                cursor: syncing ? 'wait' : 'pointer', opacity: syncing ? 0.7 : 1,
+              }}
+            >
+              <RefreshCw size={13} className={syncing ? 'spin' : ''} />
+              {syncing ? t('rankingsView.syncing') : t('rankingsView.syncNow')}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Resumo da faixa de scores */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', fontSize: '12px', color: 'var(--muted)' }}>
+        <span>
+          {t('rankingsView.summary', {
+            count: availableCount,
+            min: minScore.toFixed(1),
+            max: maxScore.toFixed(1),
+          })}
+        </span>
+        {scope === 'all' && enrichedRankings.length > availableCount && (
+          <span style={{ padding: '2px 8px', borderRadius: '999px', background: 'rgba(138, 138, 138, 0.12)', fontSize: '11px' }}>
+            {t('rankingsView.unavailableCount', { count: enrichedRankings.length - availableCount })}
+          </span>
+        )}
+        {syncMessage && (
+          <span style={{ color: 'var(--primary)', fontWeight: 500 }}>{syncMessage}</span>
+        )}
       </div>
 
       {/* Main Grid: Left (Table), Right (Chart + Calibration) */}
@@ -183,7 +299,9 @@ export function RankingsView() {
                 {filteredRankings.length === 0 ? (
                   <tr>
                     <td colSpan={6} style={{ textAlign: 'center', padding: '32px', color: 'var(--muted-soft)' }}>
-                      {t('rankingsView.noModelsMatched')}
+                      {enrichedRankings.length === 0 && scope === 'available'
+                        ? t('rankingsView.noAvailableModels')
+                        : t('rankingsView.noModelsMatched')}
                     </td>
                   </tr>
                 ) : (
@@ -208,22 +326,34 @@ export function RankingsView() {
                       rankColor = '#b45309'
                     }
 
-                    // Score tier color
+                    // Cor por força relativa (posição na faixa real de scores)
+                    const strength = relativeWidth(r.nexuslocal_score)
                     let scoreColor = 'var(--muted)'
                     let scoreBg = 'rgba(138, 138, 138, 0.06)'
-                    if (r.nexuslocal_score >= 80) {
+                    let barColor = 'var(--muted-soft)'
+                    if (strength >= 67) {
                       scoreColor = 'var(--primary)'
                       scoreBg = 'rgba(204, 120, 92, 0.08)'
-                    } else if (r.nexuslocal_score >= 70) {
+                      barColor = 'var(--primary)'
+                    } else if (strength >= 34) {
                       scoreColor = 'var(--cyan)'
                       scoreBg = 'rgba(93, 184, 166, 0.08)'
+                      barColor = 'var(--cyan)'
                     }
+                    const isReasoning = r.tags.some((tag) => tag.startsWith('reasoning:'))
+                    const size = sizeLabel(r.size_label)
 
                     return (
                       <tr 
                         key={r.model_id} 
-                        style={{ borderBottom: '1px solid var(--hairline)', color: 'var(--ink)', transition: 'background 0.1s' }}
+                        style={{
+                          borderBottom: '1px solid var(--hairline)',
+                          color: 'var(--ink)',
+                          transition: 'background 0.1s',
+                          opacity: r.available ? 1 : 0.55,
+                        }}
                         className="ranking-row"
+                        title={r.available ? undefined : reasonLabel(r.unavailable_reason)}
                       >
                         {/* Position */}
                         <td style={{ padding: '12px 10px', fontWeight: 600 }}>
@@ -245,14 +375,26 @@ export function RankingsView() {
                         
                         {/* Model / Provider */}
                         <td style={{ padding: '12px 10px' }}>
-                          <div style={{ fontWeight: 600, color: 'var(--ink)' }}>{r.display_name}</div>
-                          <div style={{ fontSize: '11px', color: 'var(--muted)', textTransform: 'capitalize' }}>
-                            {r.provider_name}
+                          <div style={{ fontWeight: 600, color: 'var(--ink)', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                            <span>{r.display_name}</span>
+                            {!r.available && (
+                              <span className="ranking-chip ranking-chip--warn">
+                                <EyeOff size={9} /> {reasonLabel(r.unavailable_reason)}
+                              </span>
+                            )}
+                          </div>
+                          <div style={{ fontSize: '11px', color: 'var(--muted)', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginTop: '2px' }}>
+                            <span>{r.provider_name}</span>
+                            {size && <span className="ranking-chip">{size}</span>}
+                            {isReasoning && <span className="ranking-chip"><Brain size={9} /> {t('rankingsView.tagReasoning')}</span>}
+                            {r.tags.includes('coder') && <span className="ranking-chip"><Code2 size={9} /> {t('rankingsView.tagCoder')}</span>}
+                            {r.tags.includes('vision') && <span className="ranking-chip"><Eye size={9} /> {t('rankingsView.tagVision')}</span>}
+                            {r.is_local && <span className="ranking-chip"><HardDrive size={9} /> {t('rankingsView.tagLocal')}</span>}
                           </div>
                         </td>
 
                         {/* Quality Score */}
-                        <td style={{ padding: '12px 10px', textAlign: 'center', color: 'var(--body)' }}>
+                        <td style={{ padding: '12px 10px', textAlign: 'center', color: 'var(--body)' }} title={sourceLabel(r.source)}>
                           {r.quality_score?.toFixed(0) || '-'}
                           <div style={{ fontSize: '9.5px', color: 'var(--muted-soft)' }}>
                             +{r.quality_contribution.toFixed(1)}
@@ -276,7 +418,7 @@ export function RankingsView() {
                         </td>
 
                         {/* Score */}
-                        <td style={{ padding: '12px 10px', textAlign: 'right', fontWeight: 700 }}>
+                        <td style={{ padding: '12px 10px', textAlign: 'right', fontWeight: 700, minWidth: '96px' }}>
                           <span style={{ 
                             padding: '3px 8px', 
                             borderRadius: '4px', 
@@ -286,6 +428,12 @@ export function RankingsView() {
                           }}>
                             {r.nexuslocal_score.toFixed(1)}
                           </span>
+                          <div
+                            aria-hidden
+                            style={{ marginTop: '6px', height: '4px', borderRadius: '2px', background: 'var(--hairline)', overflow: 'hidden' }}
+                          >
+                            <div style={{ width: `${strength}%`, height: '100%', background: barColor, borderRadius: '2px', marginLeft: 'auto' }} />
+                          </div>
                         </td>
                       </tr>
                     )
@@ -344,12 +492,13 @@ export function RankingsView() {
             <h4 style={{ margin: '0 0 16px 0', fontSize: '14px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
               <BarChart3 size={14} className="text-primary" /> {t('rankingsView.top10ChartTitle')}
             </h4>
+            <p style={{ margin: '-10px 0 12px 0', fontSize: '11px', color: 'var(--muted-soft)' }}>{t('rankingsView.chartHint')}</p>
             <div style={{ height: '240px', width: '100%' }}>
               {chartData.length > 0 ? (
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={chartData} layout="vertical" margin={{ top: 5, right: 15, left: 10, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--hairline)" horizontal={false} />
-                    <XAxis type="number" stroke="var(--muted)" fontSize={11} domain={[0, 100]} />
+                    <XAxis type="number" stroke="var(--muted)" fontSize={11} domain={chartDomain} allowDecimals={false} />
                     <YAxis 
                       dataKey="name" 
                       type="category" 

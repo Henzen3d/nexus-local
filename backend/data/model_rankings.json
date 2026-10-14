@@ -1,21 +1,28 @@
 {
-  "version": "2026-07",
+  "version": "2026-10",
+  "_doc": [
+    "Curadoria local de QUALIDADE (0-100) por nome de modelo normalizado (backend/ranking/sources.py:normalize_model_key).",
+    "A correspondencia e EXATA apos a normalizacao: 'deepseek-r1' casa 'deepseek/deepseek-r1:free' mas NAO 'deepseek-r1-distill-llama-70b'.",
+    "A base para todos os outros modelos e a heuristica de familia/geracao em backend/ranking/model_profile.py (_QUALITY_TABLE),",
+    "a mesma usada pelo Roteador Inteligente - mantenha estes valores na mesma escala (fronteira ~90-95, grandes ~80-88, pequenos ~55-70).",
+    "popularity_rank e apenas um fallback usado quando o OpenRouter nao lista o modelo (null = sem dado)."
+  ],
   "rankings": {
-    "deepseek-r1": { "quality_score": 98, "popularity_rank": 1 },
-    "qwen-2.5-coder-32b": { "quality_score": 94, "popularity_rank": 3 },
-    "qwq-32b": { "quality_score": 93, "popularity_rank": 5 },
-    "deepseek-v3": { "quality_score": 92, "popularity_rank": 4 },
-    "deepseek-r1-distill-qwen-32b": { "quality_score": 92, "popularity_rank": 6 },
-    "deepseek-coder": { "quality_score": 90, "popularity_rank": 8 },
-    "gpt-4o": { "quality_score": 89, "popularity_rank": 9 },
-    "gemini-2.0-flash": { "quality_score": 88, "popularity_rank": 2 },
-    "llama-3.3-70b": { "quality_score": 85, "popularity_rank": 7 },
-    "mistral-large": { "quality_score": 84, "popularity_rank": 10 },
-    "qwen-2.5-72b": { "quality_score": 83, "popularity_rank": 11 },
-    "llama-3.2-11b-vision": { "quality_score": 83, "popularity_rank": 13 },
-    "gemma3-27b": { "quality_score": 81, "popularity_rank": 12 },
-    "gpt-4o-mini": { "quality_score": 79, "popularity_rank": 14 },
-    "llama-3.1-8b": { "quality_score": 75, "popularity_rank": 15 },
-    "llama-3.2-3b": { "quality_score": 72, "popularity_rank": 16 }
+    "deepseek-r1": { "quality_score": 90, "popularity_rank": null },
+    "deepseek-v3": { "quality_score": 86, "popularity_rank": null },
+    "deepseek-r1-distill-qwen-32b": { "quality_score": 78, "popularity_rank": null },
+    "deepseek-coder": { "quality_score": 70, "popularity_rank": null },
+    "qwen-2.5-coder-32b": { "quality_score": 79, "popularity_rank": null },
+    "qwen-2.5-72b": { "quality_score": 80, "popularity_rank": null },
+    "qwq-32b": { "quality_score": 80, "popularity_rank": null },
+    "gpt-4o": { "quality_score": 86, "popularity_rank": null },
+    "gpt-4o-mini": { "quality_score": 76, "popularity_rank": null },
+    "gemini-2.0-flash": { "quality_score": 82, "popularity_rank": null },
+    "llama-3.3-70b": { "quality_score": 80, "popularity_rank": null },
+    "llama-3.2-11b-vision": { "quality_score": 66, "popularity_rank": null },
+    "llama-3.1-8b": { "quality_score": 66, "popularity_rank": null },
+    "llama-3.2-3b": { "quality_score": 56, "popularity_rank": null },
+    "mistral-large": { "quality_score": 80, "popularity_rank": null },
+    "gemma3-27b": { "quality_score": 76, "popularity_rank": null }
   }
 }

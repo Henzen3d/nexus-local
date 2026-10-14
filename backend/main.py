@@ -180,6 +180,13 @@ async def run_day_reset_job():
             logger.error("Error in day reset job", exc_info=e)
 
 
+async def run_ranking_sync_job():
+    """Sincroniza o ranking de modelos (qualidade determinística + popularidade OpenRouter)
+    ~45 s após o boot (depois do auto-sync de provedores) e a cada 24 h."""
+    from backend.ranking.sync import start_periodic_sync_job
+    await start_periodic_sync_job(interval_hours=24.0, initial_delay_s=45.0)
+
+
 async def run_free_registry_sync_job():
     from backend.database import get_db
     from backend.free_registry.sync import sync_free_registry
@@ -474,6 +481,7 @@ async def startup():
         run_minute_reset_job(),
         run_day_reset_job(),
         run_free_registry_sync_job(),
+        run_ranking_sync_job(),
         run_memory_idle_extraction_job(),
         run_dream_consolidation_job(),
         run_project_memory_synthesis_job(),

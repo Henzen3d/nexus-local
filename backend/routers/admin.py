@@ -241,20 +241,14 @@ async def sync_provider_models(provider_id: str, db, custom_api_key: str = None)
         (f"last_sync_{provider_id}", _dt.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"))
     )
 
-    # Auto-seed model_rankings for missing models
-    import random
+    # Semeia model_rankings para modelos novos com qualidade DETERMINÍSTICA
+    # (curadoria local ou heurística de família — a mesma base do roteador).
+    # Antes (≤ 2026-10) eram sorteados valores aleatórios ('auto-seed'), o que
+    # deixava o ranking plano e poluía a escolha do Roteador Inteligente.
     from backend.ranking.scorer import compute_all_scores, persist_scores
-    async with db.execute("SELECT id FROM models WHERE id NOT IN (SELECT model_id FROM model_rankings)") as cur:
-        missing_models = await cur.fetchall()
-    
-    if missing_models:
-        for (m_id,) in missing_models:
-            q_score = random.uniform(60, 99)
-            p_rank = random.randint(1, 100)
-            await db.execute(
-                "INSERT INTO model_rankings (model_id, quality_score, popularity_rank, source) VALUES (?, ?, ?, 'auto-seed')",
-                (m_id, q_score, p_rank)
-            )
+    from backend.ranking.sync import seed_missing_rankings
+    seeded = await seed_missing_rankings(db)
+    if seeded:
         # Recalculate scores
         scored_models = await compute_all_scores(db)
         await persist_scores(db, scored_models)
@@ -385,11 +379,8 @@ async def list_all_models(current_user: dict = Depends(get_current_user)):
 
         # Chave utilizável: pessoal, provedores gratuitos compartilhados (OrcaRouter, Bynara),
         # ollama, ou provedor gratuito com chave global configurada.
-        key_condition = """(
-            (k.api_key IS NOT NULL AND k.api_key != '') OR
-            p.id IN ('ollama', 'orcarouter', 'bynara') OR
-            (p.is_free = 1 AND p.api_key IS NOT NULL AND TRIM(p.api_key) != '')
-        )"""
+        # Regra compartilhada com GET /api/ranking (backend/ranking/availability.py).
+        from backend.ranking.availability import USABLE_KEY_CONDITION_SQL as key_condition
 
         query = f"""SELECT m.id, m.display_name, m.context_length,
                       p.id as provider_id, p.name as provider_name,

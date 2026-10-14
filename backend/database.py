@@ -1869,7 +1869,20 @@ async def init_db():
 
         await claim_global_provider_keys(db)
         await seed_reasoning_controls(db)
-        logger.error("[OK] Ranking & Failover & Reasoning tables: initialized")
+
+        # ── Rankings determinísticos (2026-10) ──────────────────────────────
+        # Linhas legadas de model_rankings ('auto-seed' aleatórias e curadoria
+        # 2024-25) são substituídas pela qualidade heurística/curada atual.
+        # Idempotente: só há trabalho na primeira execução após o upgrade.
+        try:
+            from backend.ranking.sync import migrate_legacy_rankings
+            migrated = await migrate_legacy_rankings(db)
+            if migrated:
+                logger.info("[database migration] model_rankings: %d registros semeados/normalizados (base determinística)", migrated)
+        except Exception as e:
+            logger.error("[database migration] erro ao normalizar model_rankings: %s", e)
+
+        logger.info("[OK] Ranking & Failover & Reasoning tables: initialized")
 
 
 PROACTIVE_META_DEFAULTS: dict[str, str] = {

@@ -1,4 +1,4 @@
-import type { Conversation, ConversationDetail, Model, Provider, CacheStats, CacheSettings, CacheEntry, EnhancerConfig, FusionConfig, Artifact, Attachment, LibraryItem, VisionRelayConfig, WebSearchConfig, WebSearchLog, AutoRouterPreviewResult } from '../types'
+import type { Conversation, ConversationDetail, Model, Provider, CacheStats, CacheSettings, CacheEntry, EnhancerConfig, FusionConfig, Artifact, Attachment, LibraryItem, VisionRelayConfig, WebSearchConfig, WebSearchLog, AutoRouterPreviewResult, RankingEntry, RankingSyncResult } from '../types'
 
 export interface UserProfileApi {
   user_id?: string
@@ -341,7 +341,9 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(data)
     }),
-  getRankings: () => fetchJSON<any[]>('/ranking'),
+  getRankings: (scope: 'available' | 'all' = 'available') =>
+    fetchJSON<RankingEntry[]>(`/ranking?scope=${scope}`),
+  syncRankings: () => fetchJSON<RankingSyncResult>('/ranking/sync', { method: 'POST' }),
 
   // Memory
   getUserMemory: () => fetchJSON<any[]>('/memory'),

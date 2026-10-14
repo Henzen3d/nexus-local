@@ -21,6 +21,8 @@ Este diretório contém todo o planejamento, arquitetura, contratos de dados, fl
    * Checklist passo a passo dividido em 5 fases sequenciais para guiar a implementação prática sem retrabalho.
 7. **[06. Diagnóstico e Calibração 2026](06-diagnostico-e-calibracao-2026.md)**
    * Por que o Auto escolhia sempre o mesmo modelo, perfil heurístico de capacidades (`model_profile.py`), seleção por *fit*, sticky condicionado, esforço adaptativo e o modo "Testar o roteador".
+8. **[07. Rankings de Modelos 2026](07-rankings-de-modelos-2026.md)**
+   * Fim do ranking aleatório (`auto-seed`): qualidade determinística (curadoria + heurística do perfil), popularidade OpenRouter casada por nome normalizado, visão por disponibilidade (sem provedores expirados nem modelos de imagem) e sync no boot/24 h.
 
 ---
 
