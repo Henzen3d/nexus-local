@@ -695,7 +695,12 @@
     "tableShowAll": "すべて表示 ({{count}})",
     "tableShowLess": "折りたたむ",
     "tableOthers": "その他",
-    "pieTotal": "合計"
+    "pieTotal": "合計",
+    "optionsSingleHint": "オプションをタップして回答",
+    "optionsMultipleHint": "1つ以上のオプションを選択して送信",
+    "optionsOther": "その他の回答...",
+    "optionsSubmit": "回答を送信",
+    "optionsAnswered": "回答済み: {{choice}}"
   },
   "memory": {
     "useMemoryGlobal": "会話のメモリ（デフォルト: オン）",

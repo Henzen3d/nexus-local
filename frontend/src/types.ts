@@ -347,7 +347,9 @@ export type UiBlockType =
   | 'progress'
   | 'card'
   | 'chart'
+  | 'table'
   | 'controls'
+  | 'options'
   | 'sandbox'
   | 'metric'
   | 'callout'
@@ -497,12 +499,32 @@ export interface FollowUpBlock {
   items: string[]
 }
 
+export interface OptionItem {
+  value: string
+  label: string
+  description?: string
+}
+
+export interface OptionsBlock {
+  id: string
+  type: 'options'
+  question: string
+  mode?: 'single' | 'multiple'
+  options: OptionItem[]
+  allow_other?: boolean
+  action: {
+    name: 'send_message'
+    template: string
+  }
+}
+
 export type UiBlock =
   | ProgressBlock
   | CardBlock
   | ChartBlock
   | TableBlock
   | ControlsBlock
+  | OptionsBlock
   | SandboxBlock
   | MetricBlock
   | CalloutBlock

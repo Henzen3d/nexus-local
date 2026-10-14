@@ -771,3 +771,98 @@ def test_table_gatilhos_should_offer():
     assert "table" in select_modules("Confira a planilha de gastos")
     assert "chart" in select_modules("Desenhe um gráfico de pizza da distribuição")
     assert "chart" in select_modules("Gráfico de rosca dos custos")
+
+
+def test_options_valido_single():
+    raw = {
+        "type": "options",
+        "question": "Qual estilo de viagem combina mais com você?",
+        "mode": "single",
+        "options": [
+            {"value": "praia", "label": "Praia e descanso", "description": "Litoral"},
+            {"value": "trilha", "label": "Natureza e trilhas"},
+            {"value": "cidade", "label": "Cidade e cultura"},
+        ],
+        "allow_other": True,
+        "action": {"name": "send_message", "template": "Prefiro: {choice}"},
+    }
+    out = validate_envelope(raw)
+    assert out is not None
+    b = out["blocks"][0]
+    assert b["type"] == "options"
+    assert b["question"] == "Qual estilo de viagem combina mais com você?"
+    assert b["mode"] == "single"
+    assert len(b["options"]) == 3
+    assert b["options"][0]["value"] == "praia"
+    assert b["options"][0]["description"] == "Litoral"
+    assert b["allow_other"] is True
+    assert b["action"] == {"name": "send_message", "template": "Prefiro: {choice}"}
+
+
+def test_options_valido_multiple_e_limites():
+    raw = {
+        "type": "options",
+        "question": "Selecione as tecnologias que você domina:",
+        "mode": "multiple",
+        "options": [{"value": f"tech_{i}", "label": f"Tech {i}"} for i in range(10)],  # Corta em 6
+        "action": {"name": "send_message", "template": "Domino: {choice}"},
+    }
+    out = validate_envelope(raw)
+    assert out is not None
+    b = out["blocks"][0]
+    assert b["mode"] == "multiple"
+    assert len(b["options"]) == 6
+
+
+def test_options_auto_healing():
+    raw = {
+        "question": "Escolha uma cor:",
+        "mode": "invalido",  # Cai para "single"
+        "options": [
+            {"value": "!!!invalido!!!", "label": "Azul"},  # Auto-heal value
+            {"label": "Vermelho"},  # Sem value -> gera opt_2
+        ],
+        "action": {"name": "send_message", "template": "Cor: {choice}"},
+    }
+    out = validate_envelope(raw)
+    assert out is not None
+    b = out["blocks"][0]
+    assert b["type"] == "options"
+    assert b["mode"] == "single"
+    assert b["options"][0]["value"] == "opt_1"
+    assert b["options"][1]["value"] == "opt_2"
+
+
+def test_options_rejeita_invalido():
+    # Menos de 2 opções
+    assert validate_envelope({
+        "type": "options",
+        "question": "Pergunta?",
+        "options": [{"value": "1", "label": "Um"}],
+        "action": {"name": "send_message", "template": "{choice}"},
+    }) is None
+
+    # Sem {choice} no template
+    assert validate_envelope({
+        "type": "options",
+        "question": "Pergunta?",
+        "options": [{"value": "1", "label": "Um"}, {"value": "2", "label": "Dois"}],
+        "action": {"name": "send_message", "template": "Sem placeholder"},
+    }) is None
+
+    # Action diferente de send_message
+    assert validate_envelope({
+        "type": "options",
+        "question": "Pergunta?",
+        "options": [{"value": "1", "label": "Um"}, {"value": "2", "label": "Dois"}],
+        "action": {"name": "set_model", "field": "m"},
+    }) is None
+
+
+def test_options_gatilhos_should_offer():
+    from backend.ui_blocks.should_offer import select_modules, should_offer_ui
+
+    assert should_offer_ui("Qual das opções você prefere?")
+    assert "options" in select_modules("Qual das opções você prefere?")
+    assert "options" in select_modules("Escolha uma alternativa para o projeto")
+    assert "options" in select_modules("Participe da enquete sobre o layout")

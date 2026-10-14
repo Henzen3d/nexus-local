@@ -411,3 +411,128 @@ test('chart: pie agrupa excedente em Outros e suporta stacked, unit e labels', (
     assert.equal(parsedStacked.blocks[0].y_label, 'Peso')
   }
 })
+
+test('options: valida single, multiple, allow_other, limites e action com {choice}', () => {
+  const raw = {
+    v: 1,
+    blocks: [
+      {
+        id: 'opt_1',
+        type: 'options',
+        question: 'Qual o destino da sua viagem?',
+        mode: 'single',
+        options: [
+          { value: 'praia', label: 'Praia e Sol', description: 'Litoral' },
+          { value: 'serra', label: 'Serra e Frio' },
+          { value: 'campo', label: 'Campo e Natureza' },
+        ],
+        allow_other: true,
+        action: { name: 'send_message', template: 'Destino escolhido: {choice}' },
+      },
+    ],
+  }
+  const parsed = parseUiEnvelope(raw)
+  assert.notEqual(parsed, null)
+  if (parsed?.blocks[0]?.type === 'options') {
+    const b = parsed.blocks[0]
+    assert.equal(b.question, 'Qual o destino da sua viagem?')
+    assert.equal(b.mode, 'single')
+    assert.equal(b.options.length, 3)
+    assert.equal(b.options[0].value, 'praia')
+    assert.equal(b.options[0].description, 'Litoral')
+    assert.equal(b.allow_other, true)
+    assert.equal(b.action.template, 'Destino escolhido: {choice}')
+  }
+
+  // Multiple e limite de 6 opções
+  const manyOpts = {
+    v: 1,
+    blocks: [
+      {
+        type: 'options',
+        question: 'Selecione suas preferências:',
+        mode: 'multiple',
+        options: Array.from({ length: 10 }, (_, i) => ({ value: `v_${i}`, label: `Opção ${i}` })),
+        action: { name: 'send_message', template: 'Preferências: {choice}' },
+      },
+    ],
+  }
+  const parsedMany = parseUiEnvelope(manyOpts)
+  assert.notEqual(parsedMany, null)
+  if (parsedMany?.blocks[0]?.type === 'options') {
+    assert.equal(parsedMany.blocks[0].mode, 'multiple')
+    assert.equal(parsedMany.blocks[0].options.length, 6)
+  }
+})
+
+test('options: rejeições estritas, auto-healing e inferência', () => {
+  // Menos de 2 opções -> rejeita
+  assert.equal(
+    parseUiEnvelope({
+      v: 1,
+      blocks: [
+        {
+          type: 'options',
+          question: 'Q?',
+          options: [{ value: 'a', label: 'A' }],
+          action: { name: 'send_message', template: '{choice}' },
+        },
+      ],
+    }),
+    null
+  )
+
+  // Sem {choice} no template -> rejeita
+  assert.equal(
+    parseUiEnvelope({
+      v: 1,
+      blocks: [
+        {
+          type: 'options',
+          question: 'Q?',
+          options: [{ value: 'a', label: 'A' }, { value: 'b', label: 'B' }],
+          action: { name: 'send_message', template: 'Sem token' },
+        },
+      ],
+    }),
+    null
+  )
+
+  // Action inválida -> rejeita
+  assert.equal(
+    parseUiEnvelope({
+      v: 1,
+      blocks: [
+        {
+          type: 'options',
+          question: 'Q?',
+          options: [{ value: 'a', label: 'A' }, { value: 'b', label: 'B' }],
+          action: { name: 'set_model', field: 'f' },
+        },
+      ],
+    }),
+    null
+  )
+
+  // Inferência automática e auto-healing de values
+  const inferred = parseUiEnvelope({
+    v: 1,
+    blocks: [
+      {
+        question: 'Qual cor?',
+        mode: 'desconhecido',
+        options: [
+          { label: 'Azul' },
+          { value: 'vermelho', label: 'Vermelho' },
+        ],
+        action: { name: 'send_message', template: 'Cor: {choice}' },
+      },
+    ],
+  })
+  assert.notEqual(inferred, null)
+  if (inferred?.blocks[0]?.type === 'options') {
+    assert.equal(inferred.blocks[0].mode, 'single')
+    assert.equal(inferred.blocks[0].options[0].value, 'opt_1')
+    assert.equal(inferred.blocks[0].options[1].value, 'vermelho')
+  }
+})

@@ -20,13 +20,14 @@ SIGNATURES = {
     'chart': 'chart: kind bar|line|compare|pie, x_key, series[{key,label}], rows[]',
     'table': 'table: columns[{key,label,kind?,unit?}], rows[]',
     'controls': 'controls: fields[], action{name:send_message|set_model,template?|field?}',
+    'options': 'options: question, options[{value,label}], action{name:send_message,template}',
     'sandbox': 'sandbox: title, html, css?, js?',
     'metric': 'metric: items[{label,value}]',
     'callout': 'callout: body, kind info|success|warning|danger',
     'follow_up': 'follow_up: items[string]',
 }
-REQUIRED = {'chart': 'series', 'table': 'columns', 'controls': 'fields', 'sandbox': 'html',
-            'metric': 'items', 'callout': 'body', 'follow_up': 'items'}
+REQUIRED = {'chart': 'series', 'table': 'columns', 'controls': 'fields', 'options': 'question',
+            'sandbox': 'html', 'metric': 'items', 'callout': 'body', 'follow_up': 'items'}
 
 
 def ui_error(code: str, block_id: str = '', path: str = '', hint: str = '') -> dict:
@@ -102,6 +103,12 @@ def validate_with_diagnostics(raw: Any, **kwargs) -> dict:
                 code, path = 'invalid_action', 'action.name'
             elif kind == 'controls':
                 code, path = 'invalid_action', 'action'
+            elif kind == 'options' and (not isinstance(block.get('action'), dict) or block['action'].get('name') != 'send_message'):
+                code, path = 'invalid_action', 'action.name'
+            elif kind == 'options' and (not isinstance(block.get('action', {}).get('template'), str) or '{choice}' not in block['action']['template']):
+                code, path = 'invalid_action', 'action.template'
+            elif kind == 'options' and (not block.get('options') or len(block.get('options', [])) < 2):
+                code, path = 'missing_required', 'options'
             elif kind == 'sandbox' and isinstance(block.get('html'), str) and len(block['html']) > 12000:
                 code, path = 'limit_exceeded', 'html'
             elif kind == 'chart' and (not block.get('rows')) and not (isinstance(block.get('series'), list) and block['series'] and isinstance(block['series'][0], dict) and 'rows' in block['series'][0]):

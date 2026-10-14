@@ -1065,7 +1065,12 @@
     "tableShowAll": "Show all ({{count}})",
     "tableShowLess": "Show less",
     "tableOthers": "Others",
-    "pieTotal": "Total"
+    "pieTotal": "Total",
+    "optionsSingleHint": "Tap an option to answer",
+    "optionsMultipleHint": "Select one or more options and send",
+    "optionsOther": "Other answer...",
+    "optionsSubmit": "Send answer",
+    "optionsAnswered": "Answered: {{choice}}"
   },
   "proactive": {
     "bubbleBadge": "Proactive assistant",

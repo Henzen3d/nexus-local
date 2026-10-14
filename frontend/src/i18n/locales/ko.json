@@ -695,7 +695,12 @@
     "tableShowAll": "전체 보기 ({{count}})",
     "tableShowLess": "간략히 보기",
     "tableOthers": "기타",
-    "pieTotal": "합계"
+    "pieTotal": "합계",
+    "optionsSingleHint": "옵션을 탭하여 답변",
+    "optionsMultipleHint": "하나 이상의 옵션을 선택하고 전송",
+    "optionsOther": "기타 답변...",
+    "optionsSubmit": "답변 전송",
+    "optionsAnswered": "답변됨: {{choice}}"
   },
   "memory": {
     "useMemoryGlobal": "대화 메모리 (기본: 켜짐)",

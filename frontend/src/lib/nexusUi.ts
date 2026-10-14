@@ -12,6 +12,8 @@ import type {
   FollowUpBlock,
   MetricBlock,
   MetricItem,
+  OptionItem,
+  OptionsBlock,
   ProgressBlock,
   SandboxBlock,
   TableBlock,
@@ -713,6 +715,57 @@ function validateFollowUp(item: Record<string, unknown>): FollowUpBlock | null {
   return { id: (item.id as string) || 'follow_up_1', type: 'follow_up', items: cleanItems }
 }
 
+function validateOptions(item: Record<string, unknown>): OptionsBlock | null {
+  const question = cleanText(item.question, 1, 160)
+  if (question === null) return null
+  if (!Array.isArray(item.options)) return null
+
+  const cleanOpts: OptionItem[] = []
+  const seenValues = new Set<string>()
+
+  for (let idx = 0; idx < item.options.slice(0, 6).length; idx++) {
+    const raw = item.options[idx]
+    if (!raw || typeof raw !== 'object') continue
+    const r = raw as Record<string, unknown>
+    let val = typeof r.value === 'string' ? r.value.trim() : ''
+    if (!val || !SELECT_VALUE_REGEX.test(val)) {
+      val = `opt_${idx + 1}`
+    }
+    if (seenValues.has(val)) continue
+    const label = cleanText(r.label ?? val, 1, 60)
+    if (label === null) continue
+    seenValues.add(val)
+    const opt: OptionItem = { value: val, label }
+    const desc = cleanText(r.description, 1, 100)
+    if (desc !== null) opt.description = desc
+    cleanOpts.push(opt)
+  }
+
+  if (cleanOpts.length < 2) return null
+
+  const rawMode = String(item.mode || 'single').trim().toLowerCase()
+  const mode: 'single' | 'multiple' = rawMode === 'multiple' ? 'multiple' : 'single'
+
+  const action = item.action as Record<string, unknown> | undefined
+  if (!action || typeof action !== 'object') return null
+  if (String(action.name || '').trim() !== 'send_message') return null
+  const template = cleanText(action.template, 1, 300)
+  if (template === null || !template.includes('{choice}')) return null
+
+  const out: OptionsBlock = {
+    id: (item.id as string) || 'options_1',
+    type: 'options',
+    question,
+    mode,
+    options: cleanOpts,
+    action: { name: 'send_message', template },
+  }
+  if (Boolean(item.allow_other)) {
+    out.allow_other = true
+  }
+  return out
+}
+
 /**
  * Bloco sem `type`: inferido pelos campos, na mesma ordem do Python (spec §4).
  * `items` de textos → follow_up; `items` de {label, value} → metric; `kind` de
@@ -723,6 +776,7 @@ function inferType(obj: Record<string, unknown>): string | null {
   if (obj.columns && obj.rows) return 'table'
   if (obj.steps || (obj.value !== undefined && obj.max !== undefined)) return 'progress'
   if (obj.fields) return 'controls'
+  if (typeof obj.question === 'string' && Array.isArray(obj.options)) return 'options'
   if (obj.html) return 'sandbox'
   if (Array.isArray(obj.items) && obj.items.length > 0) {
     if (obj.items.every((x) => typeof x === 'string')) return 'follow_up'
@@ -805,6 +859,7 @@ export function parseUiEnvelope(raw: unknown): UiEnvelope | null {
     else if (bType === 'chart') validated = validateChart(obj)
     else if (bType === 'table') validated = validateTable(obj)
     else if (bType === 'controls') validated = validateControls(obj)
+    else if (bType === 'options') validated = validateOptions(obj)
     else if (bType === 'sandbox') validated = validateSandbox(obj)
     else if (bType === 'metric') validated = validateMetric(obj)
     else if (bType === 'callout') validated = validateCallout(obj)
@@ -867,13 +922,14 @@ const UI_SIGNATURES: Record<string, string> = {
   chart: 'chart: kind bar|line|compare|pie, x_key, series[{key,label}], rows[]',
   table: 'table: columns[{key,label,kind?,unit?}], rows[]',
   controls: 'controls: fields[], action{name:send_message|set_model,template?|field?}',
+  options: 'options: question, options[{value,label}], action{name:send_message,template}',
   sandbox: 'sandbox: title, html, css?, js?',
   metric: 'metric: items[{label,value}]',
   callout: 'callout: body, kind info|success|warning|danger',
   follow_up: 'follow_up: items[string]',
 }
 const UI_REQUIRED: Record<string, string> = {
-  chart: 'series', table: 'columns', controls: 'fields', sandbox: 'html', metric: 'items', callout: 'body', follow_up: 'items',
+  chart: 'series', table: 'columns', controls: 'fields', options: 'question', sandbox: 'html', metric: 'items', callout: 'body', follow_up: 'items',
 }
 export function parseUiEnvelopeWithDiagnostics(raw: unknown, imageHosts: string[] = [], allowPrivateHttp = false): { envelope: UiEnvelope | null; errors: UiError[]; dropped: number } {
   const result: { envelope: UiEnvelope | null; errors: UiError[]; dropped: number } = { envelope: null, errors: [], dropped: 0 }
@@ -921,6 +977,9 @@ export function parseUiEnvelopeWithDiagnostics(raw: unknown, imageHosts: string[
       if (required && (value === undefined || value === null || value === '' || (Array.isArray(value) && !value.length))) { code = 'missing_required'; path = required }
       else if (kind === 'controls' && (!action || !['send_message', 'set_model'].includes(String(action.name)))) { code = 'invalid_action'; path = 'action.name' }
       else if (kind === 'controls') { code = 'invalid_action'; path = 'action' }
+      else if (kind === 'options' && (!action || String(action.name) !== 'send_message')) { code = 'invalid_action'; path = 'action.name' }
+      else if (kind === 'options' && (typeof action?.template !== 'string' || !action.template.includes('{choice}'))) { code = 'invalid_action'; path = 'action.template' }
+      else if (kind === 'options' && (!Array.isArray(block.options) || block.options.length < 2)) { code = 'missing_required'; path = 'options' }
       else if (kind === 'sandbox' && typeof block.html === 'string' && block.html.length > MAX_SANDBOX_HTML) { code = 'limit_exceeded'; path = 'html' }
       else if (kind === 'chart' && (!block.rows || (Array.isArray(block.rows) && !block.rows.length)) && !(Array.isArray(block.series) && block.series[0] && typeof block.series[0] === 'object' && 'rows' in block.series[0])) { code = 'missing_required'; path = 'rows' }
       else if (kind === 'table' && (!block.rows || (Array.isArray(block.rows) && !block.rows.length))) { code = 'missing_required'; path = 'rows' }

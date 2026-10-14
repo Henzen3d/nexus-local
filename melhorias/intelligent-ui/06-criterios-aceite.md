@@ -127,3 +127,18 @@ Pizza, vídeo, proxy de imagem, widget dentro do cache semântico e Thesys não 
 - [x] Prevenção de Layout Shift (Zero CLS): `DynamicRenderer` exibe esqueleto com altura reservada correspondente ao `pendingType` antes mesmo do bloco fechar.
 - [x] Integração completa no `StreamingBubble`: `scanPartialEnvelope(deferredResponse)` mesclado com blocos do host via `mergeUiEnvelopes`, sem exibir fences parciais na resposta markdown (`stripUiFences`).
 - [x] Testes automatizados: testes unitários de autômato e propriedade em `nexusUiStream.test.ts` e testes de UI de componentes em `scripts/tests/stream.ui.tsx`, integrados ao runner `npm test`.
+
+## Plano 12 — passo 7, enquetes e alternativas (`options`) (2026-10-14)
+
+- [x] Contrato `options`: `question` (1 a 160 caracteres), `options` (2 a 6 itens, cada qual com `label` de 1 a 80 caracteres e `description` opcional até 160), `mode: "single" | "multiple"` (padrão `"single"`), `allow_other: boolean` (padrão `false`), `action: { type: "send_message", text_template: string }` onde `text_template` obrigatoriamente contém o placeholder `{choice}`.
+- [x] Validação e auto-healing espelhados Python/TS: preenchimento automático de `value` omitido a partir de `id` ou `label`; rejeição estrita se menos de 2 ou mais de 6 opções; rejeição se `text_template` não contiver `{choice}`; subteto estrito de no máximo 1 bloco `options` por envelope.
+- [x] Inferência de bloco sem `type`: objeto com `question` e `options` é inferido de forma determinística como bloco `options`.
+- [x] Catálogo modular e gatilhos: módulo compacto `backend/ui_blocks/catalog_modules/options.txt` (170 caracteres / ~43 tokens) adicionado; gatilhos em `should_offer.py` cobrindo termos de escolha, seleção, enquete e alternativas.
+- [x] Componente React `OptionsCard`: casca `UiCard` acessível, layout em grade responsiva `.nexus-ui-options__grid` com cards selecionáveis `.nexus-ui-option-card`.
+- [x] Envio por gesto explícito do usuário:
+  - No modo `single` sem `allow_other`: toque direto em uma opção despacha a resposta imediatamente pelo `onSendMessage`.
+  - No modo `multiple` ou ao utilizar `allow_other`: botão primário "Enviar resposta" exige confirmação explícita do usuário.
+- [x] Bloqueio e estado pós-submissão: uma vez enviada a resposta, as opções ficam travadas (`data-submitted="true"`), com badge de check exibindo a escolha (`optionsAnswered`).
+- [x] Respeito à transmissão de stream: prop `streaming?: boolean` desabilita interações prematuras antes do envelope fechar.
+- [x] i18n completo: 5 novas chaves (`optionsSingleHint`, `optionsMultipleHint`, `optionsOther`, `optionsSubmit`, `optionsAnswered`) rigorosamente traduzidas em todos os 8 idiomas (47 chaves totais em `intelligentUi`).
+- [x] Testes de paridade e UI: 5 novos testes em `test_ui_blocks.py`, testes unitários em `nexusUi.test.ts`, e testes com `react-test-renderer` em `scripts/tests/options.ui.tsx` cobrindo envio imediato, múltipla seleção, campo outro e stream.

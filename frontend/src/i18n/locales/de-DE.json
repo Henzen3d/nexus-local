@@ -695,7 +695,12 @@
     "tableShowAll": "Alle anzeigen ({{count}})",
     "tableShowLess": "Weniger anzeigen",
     "tableOthers": "Andere",
-    "pieTotal": "Gesamt"
+    "pieTotal": "Gesamt",
+    "optionsSingleHint": "Tippen Sie auf eine Option zum Antworten",
+    "optionsMultipleHint": "Wählen Sie eine oder mehrere Optionen aus und senden Sie",
+    "optionsOther": "Andere Antwort...",
+    "optionsSubmit": "Antwort senden",
+    "optionsAnswered": "Beantwortet: {{choice}}"
   },
   "memory": {
     "useMemoryGlobal": "Gedächtnis in Gesprächen (Standard: an)",

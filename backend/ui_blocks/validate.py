@@ -804,6 +804,69 @@ def _validate_follow_up(block: dict[str, Any]) -> dict[str, Any] | None:
     }
 
 
+def _validate_options(block: dict[str, Any]) -> dict[str, Any] | None:
+    """`options` (plano 12 §2.5): 2 a 6 escolhas clicáveis para uma pergunta."""
+    question = _clean_text(block.get("question"), 1, 160)
+    if question is None:
+        return None
+
+    raw_options = block.get("options")
+    if not isinstance(raw_options, list):
+        return None
+
+    clean_options: list[dict[str, Any]] = []
+    seen_values: set[str] = set()
+
+    for idx, opt in enumerate(raw_options[:6]):
+        if not isinstance(opt, dict):
+            continue
+        raw_val = opt.get("value")
+        val = str(raw_val).strip() if raw_val is not None else ""
+        if not val or not SELECT_VALUE_REGEX.match(val):
+            val = f"opt_{idx+1}"
+        if val in seen_values:
+            continue
+        label = _clean_text(opt.get("label", val), 1, 60)
+        if label is None:
+            continue
+        seen_values.add(val)
+        clean_opt: dict[str, Any] = {"value": val, "label": label}
+        desc = _clean_text(opt.get("description"), 1, 100)
+        if desc is not None:
+            clean_opt["description"] = desc
+        clean_options.append(clean_opt)
+
+    if len(clean_options) < 2:
+        return None
+
+    raw_mode = str(block.get("mode") or "single").strip().lower()
+    mode = raw_mode if raw_mode in ("single", "multiple") else "single"
+
+    # Ação obrigatória: send_message com {choice} no template
+    raw_action = block.get("action")
+    if not isinstance(raw_action, dict):
+        return None
+    act_name = str(raw_action.get("name") or "").strip()
+    if act_name != "send_message":
+        return None
+    template = _clean_text(raw_action.get("template"), 1, 300)
+    if template is None or "{choice}" not in template:
+        return None
+
+    out: dict[str, Any] = {
+        "id": block.get("id") or "options_1",
+        "type": "options",
+        "question": question,
+        "mode": mode,
+        "options": clean_options,
+        "action": {"name": "send_message", "template": template},
+    }
+    if bool(block.get("allow_other", False)):
+        out["allow_other"] = True
+
+    return out
+
+
 def _infer_type(item: dict[str, Any]) -> str | None:
     """Bloco sem `type`: inferido pelos campos, na mesma ordem do frontend (spec §4).
 
@@ -819,6 +882,8 @@ def _infer_type(item: dict[str, Any]) -> str | None:
         return "progress"
     if "fields" in item:
         return "controls"
+    if "question" in item and "options" in item:
+        return "options"
     if "html" in item:
         return "sandbox"
     items = item.get("items")
@@ -933,6 +998,8 @@ def validate_envelope(
             validated = _validate_table(item)
         elif b_type == "controls":
             validated = _validate_controls(item)
+        elif b_type == "options":
+            validated = _validate_options(item)
         elif b_type == "sandbox":
             validated = _validate_sandbox(item)
         elif b_type == "metric":

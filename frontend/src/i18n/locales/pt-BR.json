@@ -1064,7 +1064,12 @@
     "tableShowAll": "Mostrar todas ({{count}})",
     "tableShowLess": "Mostrar menos",
     "tableOthers": "Outros",
-    "pieTotal": "Total"
+    "pieTotal": "Total",
+    "optionsSingleHint": "Toque em uma opção para responder",
+    "optionsMultipleHint": "Selecione uma ou mais opções e envie",
+    "optionsOther": "Outra resposta...",
+    "optionsSubmit": "Enviar resposta",
+    "optionsAnswered": "Respondido: {{choice}}"
   },
   "proactive": {
     "bubbleBadge": "Assistente proativo",

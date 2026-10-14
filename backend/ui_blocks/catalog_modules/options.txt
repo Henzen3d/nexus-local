@@ -1,0 +1,1 @@
+options: question (1-160), options 2 a 6 [{value, label, description opcional}], mode single (padrão) ou multiple, allow_other opcional, action: send_message com template contendo {choice}.

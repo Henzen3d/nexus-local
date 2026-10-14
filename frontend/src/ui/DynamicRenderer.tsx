@@ -11,6 +11,7 @@ const ControlsCard = React.lazy(() => import('./components/ControlsCard'))
 const SandboxCard = React.lazy(() => import('./components/SandboxCard'))
 const MetricCard = React.lazy(() => import('./components/MetricCard'))
 const TableCard = React.lazy(() => import('./components/TableCard'))
+const OptionsCard = React.lazy(() => import('./components/OptionsCard'))
 const CalloutCard = React.lazy(() => import('./components/CalloutCard'))
 const FollowUpCard = React.lazy(() => import('./components/FollowUpCard'))
 
@@ -53,6 +54,10 @@ function reservedHeight(block: { type: string; [k: string]: any }): number {
     case 'table': {
       const rowCount = Array.isArray(block.rows) ? block.rows.length : 4
       return 56 + 36 * Math.min(rowCount, 11)
+    }
+    case 'options': {
+      const count = Array.isArray(block.options) ? block.options.length : 3
+      return 56 + Math.ceil(count / 2) * 58
     }
     case 'callout': {
       const len = typeof block.body === 'string' ? block.body.length : 60
@@ -131,6 +136,10 @@ export function DynamicRenderer({ envelope, streaming, pendingType, onRuntimeErr
 
           if (block.type === 'table') {
             return <TableCard key={block.id} block={block} />
+          }
+
+          if (block.type === 'options') {
+            return <OptionsCard key={block.id} block={block} streaming={streaming} />
           }
 
           if (block.type === 'callout') {
