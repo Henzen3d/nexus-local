@@ -159,3 +159,78 @@ async def test_stream_from_llm_cascades_on_empty_model_response(setup_resilience
             full_response, resolved_mid, resolved_pid = res
             assert "Resposta válida do modelo reserva" in full_response
             assert resolved_mid == "model_fallback"
+
+
+@pytest.mark.asyncio
+async def test_load_history_strips_thinking_and_reflection_tags(setup_resilience_db):
+    """Garante que tags <think> e <reflection> do assistente em turnos anteriores sejam removidas do histórico."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        conv_id = "test_strip_thinking_conv"
+        await db.execute(
+            "INSERT INTO conversations (id, user_id, title, model_id, provider_id) VALUES (?, 'user1', 'Test', 'model_fail', 'prov_test')",
+            (conv_id,),
+        )
+        # Turno 1 com tags de reflexão e pensamento do Beam / DeepSeek
+        await db.execute("INSERT INTO messages (id, conversation_id, role, content) VALUES ('m_strip_1', ?, 'user', 'Pergunta 1')", (conv_id,))
+        await db.execute(
+            "INSERT INTO messages (id, conversation_id, role, content) VALUES ('m_strip_2', ?, 'assistant', '<reflection>pensando sobre a velocidade...</reflection>\n<think>mais pensamentos</think>\n\nResposta limpa 1')",
+            (conv_id,),
+        )
+        # Turno 2
+        await db.execute("INSERT INTO messages (id, conversation_id, role, content) VALUES ('m_strip_3', ?, 'user', 'Pergunta 2')", (conv_id,))
+        await db.commit()
+
+        history, _, _ = await load_history(
+            db=db,
+            conversation_id=conv_id,
+            user_msg_id="m_strip_3",
+            attachments_by_msg={},
+            extracted_text_by_id={},
+            model_supports_vision=False,
+            web_search_used=False,
+            search_results=[],
+            web_search_query="",
+            search_config=None,
+            format_search_results_fn=None,
+            user_id="user1",
+            user_query="Pergunta 2",
+        )
+
+        assistant_msgs = [m for m in history if m["role"] == "assistant"]
+        assert len(assistant_msgs) == 1
+        assert "<reflection>" not in assistant_msgs[0]["content"]
+        assert "<think>" not in assistant_msgs[0]["content"]
+        assert assistant_msgs[0]["content"] == "Resposta limpa 1"
+
+
+@pytest.mark.asyncio
+async def test_stream_from_llm_sends_error_when_all_failovers_exhausted(setup_resilience_db):
+    """Garante que, se todos os modelos elegíveis falharem (vazio ou erro), um erro explícito é emitido ao WebSocket."""
+    mock_ws = AsyncMock()
+
+    class AlwaysEmptyProvider:
+        async def stream_chat(self, **kwargs):
+            if False:
+                yield "never"
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        with patch("backend.orchestration.resolve_request.get_provider") as mock_gp:
+            mock_gp.return_value = AlwaysEmptyProvider()
+
+            res = await stream_from_llm(
+                ws=mock_ws,
+                db=db,
+                conversation_id="conv-all-empty",
+                user_id="user1",
+                model_id="model_fail",
+                provider_id="prov_test",
+                history=[{"role": "user", "content": "teste"}],
+            )
+
+            assert res is None
+            # Verifica que ws.send_json recebeu ao menos um evento de erro
+            calls = [call.args[0] for call in mock_ws.send_json.call_args_list if call.args]
+            error_events = [c for c in calls if c.get("type") == "error"]
+            assert len(error_events) >= 1
+            assert "erro" in error_events[-1]["message"].lower() or "resposta" in error_events[-1]["message"].lower()
+

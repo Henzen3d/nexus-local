@@ -89,6 +89,7 @@
     "enhanceTitle": "Prompt mit KI verbessern ✨",
     "enhanceNotConfigured": "Enhancer in den Einstellungen konfigurieren",
     "enhanceError": "Prompt-Verbesserung fehlgeschlagen",
+    "streamTimeout": "Antwort-Zeitüberschreitung. Das Modell hat nicht geantwortet.",
     "inputHint": "Modelle können Fehler machen. Wichtige Informationen prüfen.",
     "searchingWeb": "Websuche nach: „{{query}}“...",
     "thinking": "Denke nach...",

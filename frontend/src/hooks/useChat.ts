@@ -28,6 +28,34 @@ function buildWsUrl(token: string | null | undefined): string {
 export function useChat() {
   const wsRef = useRef<WebSocket | null>(null)
   const isGeneratingRef = useRef(false)
+  const watchdogTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const clearWatchdog = useCallback(() => {
+    if (watchdogTimerRef.current != null) {
+      clearTimeout(watchdogTimerRef.current)
+      watchdogTimerRef.current = null
+    }
+  }, [])
+
+  const resetWatchdog = useCallback(() => {
+    clearWatchdog()
+    if (!isGeneratingRef.current) return
+    watchdogTimerRef.current = setTimeout(() => {
+      if (!isGeneratingRef.current) return
+      isGeneratingRef.current = false
+      const s = useStore.getState()
+      if (s.isStreaming || s.fusionActive) {
+        s.setStreaming(false)
+        s.setFusionActive(false)
+        const timeoutMsg = i18n.t('chat.streamTimeout', {
+          defaultValue: 'Tempo limite de resposta excedido. O modelo não respondeu.',
+        })
+        s.showToast(timeoutMsg, 'error')
+        s.addErrorMessage(timeoutMsg)
+      }
+    }, 90000)
+  }, [clearWatchdog])
+
   const {
     activeConversationId,
     selectedModelId,
@@ -160,12 +188,15 @@ export function useChat() {
           s.setConversationCreated(msg.conversation_id, msg.title)
           break
         case 'stream_start':
+          resetWatchdog()
           s.beginProcess(i18n.t('chat.processThinking'))
           break
         case 'token':
+          resetWatchdog()
           s.appendToken(msg.content)
           break
         case 'stream_end':
+          clearWatchdog()
           isGeneratingRef.current = false
           s.setFusionActive(false)
           s.finalizeStream(
@@ -198,6 +229,7 @@ export function useChat() {
           s.setAutoRouteDecision(msg)
           break
         case 'failover_notice':
+          resetWatchdog()
           s.showToast(
             `Failover: ${msg.original_model} esgotado. Alternando para ${msg.fallback_model}...`,
             'info'
@@ -289,6 +321,7 @@ export function useChat() {
           break
         }
         case 'error':
+          clearWatchdog()
           if (!isGeneratingRef.current) return
           isGeneratingRef.current = false
           console.error('[WS error]', msg.message)
@@ -350,6 +383,7 @@ export function useChat() {
       }
 
       ws.onclose = (ev) => {
+        clearWatchdog()
         clearHeartbeat()
         isGeneratingRef.current = false
         if (wsRef.current === ws) wsRef.current = null
@@ -403,6 +437,7 @@ export function useChat() {
 
     return () => {
       disposed = true
+      clearWatchdog()
       clearRetry()
       clearHeartbeat()
       window.removeEventListener('online', onOnline)
@@ -425,6 +460,7 @@ export function useChat() {
   }, [token, resendPresence])
 
   const stopStream = useCallback(() => {
+    clearWatchdog()
     isGeneratingRef.current = false
     const s = useStore.getState()
     if (!s.isStreaming && !s.fusionActive) return
@@ -491,6 +527,7 @@ export function useChat() {
       }
 
       isGeneratingRef.current = true
+      resetWatchdog()
 
       // displayText: versão curta exibida no chat (ex: "✏️ Dashboard: adicionar dark mode")
       // text: prompt completo enviado ao modelo (inclui conteúdo do artifact)

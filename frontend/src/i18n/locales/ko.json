@@ -89,6 +89,7 @@
     "enhanceTitle": "AI로 프롬프트 개선 ✨",
     "enhanceNotConfigured": "설정에서 인핸서를 구성하세요",
     "enhanceError": "프롬프트 개선 실패",
+    "streamTimeout": "응답 시간이 초과되었습니다. 모델이 응답하지 않았습니다.",
     "inputHint": "모델은 실수할 수 있습니다. 중요한 정보는 확인하세요.",
     "searchingWeb": "웹 검색 중: \"{{query}}\"...",
     "thinking": "생각 중...",

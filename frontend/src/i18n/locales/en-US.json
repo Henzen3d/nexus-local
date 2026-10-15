@@ -95,6 +95,7 @@
     "enhanceTitle": "Enhance prompt with AI",
     "enhanceNotConfigured": "Set up the Enhancer in Settings → Tools",
     "enhanceError": "Could not enhance the prompt. Try again or send without enhancing.",
+    "streamTimeout": "Response timed out. The model did not respond.",
     "inputHint": "Models can be wrong. Double-check important facts before you rely on them.",
     "plusMenu": "Actions and tools",
     "addFiles": "Add files or photos",

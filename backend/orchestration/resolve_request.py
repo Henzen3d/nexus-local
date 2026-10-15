@@ -267,7 +267,7 @@ async def stream_from_llm(
                     return None
                 continue
 
-            STREAM_TTFT_TIMEOUT_SECONDS = 8.0
+            STREAM_TTFT_TIMEOUT_SECONDS = 25.0
             stream_start_time = time.perf_counter()
             first_token_received = False
             token_buffer: list[str] = []
@@ -284,7 +284,7 @@ async def stream_from_llm(
             try:
                 stream_iter = provider.stream_chat(model=model_name, messages=history, **stream_kwargs).__aiter__()
 
-                # Aguarda o primeiro token com prazo limite de TTFT (8s)
+                # Aguarda o primeiro token com prazo limite de TTFT (25s para acomodar prefill/reasoning)
                 try:
                     first_token = await asyncio.wait_for(
                         stream_iter.__anext__(),
@@ -296,6 +296,7 @@ async def stream_from_llm(
                     token_str = str(first_token)
                     full_response += token_str
                     token_buffer.append(token_str)
+                    await flush_tokens()
                 except (asyncio.TimeoutError, TimeoutError):
                     logger.warning(
                         "TTFT Timeout (%ss excedido) no provedor '%s' (modelo '%s'). Acionando failover cascade precoce.",
@@ -307,10 +308,28 @@ async def stream_from_llm(
                         await stream_iter.aclose()
                     except Exception:
                         pass
+                    if attempt >= _MAX_FAILOVER_ATTEMPTS:
+                        await ws.send_json({
+                            "type": "error",
+                            "message": f"Tempo limite de resposta excedido ({int(STREAM_TTFT_TIMEOUT_SECONDS)}s) no modelo '{current_model_id}'.",
+                        })
+                        return None
                     continue
 
                 # Consome o restante do stream com micro-lotes de coalescência (~35ms ou 8 tokens)
-                async for token in stream_iter:
+                # e guarda timeout entre tokens para não travar conexões abandonadas
+                while True:
+                    try:
+                        token = await asyncio.wait_for(stream_iter.__anext__(), timeout=35.0)
+                    except StopAsyncIteration:
+                        break
+                    except (asyncio.TimeoutError, TimeoutError):
+                        logger.warning(
+                            "Timeout entre tokens (35s) no provedor '%s' (modelo '%s'). Finalizando stream.",
+                            current_provider_id, current_model_id,
+                        )
+                        break
+
                     token_str = str(token)
                     full_response += token_str
                     token_buffer.append(token_str)
@@ -327,6 +346,12 @@ async def stream_from_llm(
                     current_model_id, current_provider_id,
                 )
                 attempted_model_ids.add(current_model_id)
+                if attempt >= _MAX_FAILOVER_ATTEMPTS:
+                    await ws.send_json({
+                        "type": "error",
+                        "message": f"O modelo '{current_model_id}' não retornou nenhuma resposta após o failover.",
+                    })
+                    return None
                 continue
 
             await mark_model_success(current_model_id, db)
@@ -374,13 +399,13 @@ async def stream_from_llm(
             await token_bucket_manager.on_rate_limit(current_provider_id)
             attempted_model_ids.add(current_model_id)
             await mark_model_exhausted(current_model_id, db, e.retry_after, str(e))
-            if attempt == _MAX_FAILOVER_ATTEMPTS:
+            if attempt >= _MAX_FAILOVER_ATTEMPTS:
                 await ws.send_json({
                     "type": "error",
                     "message": "Limite de tentativas de failover excedido. O modelo está esgotado.",
                 })
-            else:
-                continue
+                return None
+            continue
         except Exception as e:
             error_msg = str(e)
             # Rede de segurança HTTP 400 com termos de reasoning:
@@ -469,6 +494,14 @@ async def stream_from_llm(
             return None
 
     if not success or not full_response.strip():
+        logger.warning(
+            "stream_from_llm encerrou sem sucesso após %s tentativas para conversa '%s'.",
+            attempt, conversation_id,
+        )
+        await ws.send_json({
+            "type": "error",
+            "message": "Não foi possível obter resposta de nenhum dos modelos disponíveis. Tente novamente mais tarde.",
+        })
         return None
 
     return full_response, model_id, provider_id

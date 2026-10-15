@@ -724,6 +724,10 @@ async def _run_turn(
             "Resposta do assistente vazia na conversa '%s'; mensagem nula não será persistida.",
             conversation_id,
         )
+        await ws.send_json({
+            "type": "error",
+            "message": "A resposta do modelo foi vazia.",
+        })
         return
 
     assistant_msg_id = await save_assistant_message(
