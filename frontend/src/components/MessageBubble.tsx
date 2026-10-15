@@ -353,7 +353,11 @@ interface Props {
   message: Message
 }
 
-export function MessageBubble({ message }: Props) {
+export const MessageBubble = React.memo(function MessageBubble({ message }: Props) {
+  if ((globalThis as { __NEXUS_RENDER_PROBE__?: boolean }).__NEXUS_RENDER_PROBE__ === true) {
+    const probe = globalThis as { __NEXUS_BUBBLE_RENDERS__?: number }
+    probe.__NEXUS_BUBBLE_RENDERS__ = (probe.__NEXUS_BUBBLE_RENDERS__ ?? 0) + 1
+  }
   const { t } = useTranslation()
   const [copied, setCopied] = useState(false)
   const ttsPlay = useTtsPlay()
@@ -723,7 +727,7 @@ export function MessageBubble({ message }: Props) {
       </div>
     </div>
   )
-}
+})
 
 // ─── StreamingBubble ───────────────────────────────────────────────────────────
 
