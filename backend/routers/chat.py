@@ -646,8 +646,22 @@ async def _run_turn(
         )
         if trimmed_count:
             req_ctx.set_memo("history_trimmed", trimmed_count)
+            await ws.send_json({
+                "type": "history_trimmed",
+                "removed": trimmed_count,
+                "kept": len(history),
+                "reason": "budget",
+            })
     except Exception:
         logger.warning("Falha ao podar histórico; enviando completo", exc_info=True)
+        from backend.orchestration.context_window import history_after_trim_failure
+        history = history_after_trim_failure(history)
+        await ws.send_json({
+            "type": "history_trimmed",
+            "removed": "unknown",
+            "kept": len(history),
+            "reason": "trim_failed",
+        })
 
     history = [{"role": "system", "content": system_instruction}] + history
 
