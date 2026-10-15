@@ -81,6 +81,24 @@ Siga este processo de raciocínio internamente, mas NÃO exponha essas etapas na
 Retorne apenas a resposta final em Markdown, direto ao usuário."""
 
 
+JUDGE_BLOCK_MAX_CHARS = 4000
+JUDGE_START_RATIO = 0.65  # fração do limite reservada ao início
+JUDGE_TRUNCATION_MARK = "\n…[truncado para o Juiz]"
+
+
+def cap_judge_block(text: str, limit: int = JUDGE_BLOCK_MAX_CHARS) -> str:
+    body = text or ""
+    if len(body) <= limit:
+        return body
+    start_chars = int(limit * JUDGE_START_RATIO)  # ~2600
+    end_chars = limit - start_chars - len(JUDGE_TRUNCATION_MARK)  # ~1385
+    return body[:start_chars] + JUDGE_TRUNCATION_MARK + body[-end_chars:]
+
+
+def judge_timeout_action(full_response: str) -> str:
+    return "persist" if (full_response or "").strip() else "error"
+
+
 async def _detectar_claims_verificaveis(
     provider_juiz, judge_model_name: str, pergunta: str, respostas_validas: list
 ) -> list[str]:
@@ -111,6 +129,7 @@ query de busca curta e direta para verificar o fato. Exemplo:
         async for token in provider_juiz.stream_chat(
             model=judge_model_name,
             messages=[{"role": "user", "content": prompt_deteccao}],
+            max_tokens=256,
         ):
             resposta += str(token)
 
@@ -508,7 +527,7 @@ async def executar_fusion(
         return f"--- RESPOSTA: {r['model_id']} ---"
 
     blocos = "\n\n".join([
-        f"{_cabecalho_resposta(r)}\n{r['response']}"
+        f"{_cabecalho_resposta(r)}\n{cap_judge_block(r['response'])}"
         for r in respostas_validas
     ])
 
@@ -600,8 +619,20 @@ async def executar_fusion(
         await asyncio.wait_for(_stream_juiz(), timeout=TIMEOUT_JUIZ)
 
     except asyncio.TimeoutError:
-        await websocket.send_json({"type": "error", "message": "Timeout no modelo Juiz."})
-        return
+        logger.error(
+            "Fusion: timeout do juiz (%ss) conversation=%s judge=%s",
+            TIMEOUT_JUIZ, conversation_id, judge_model_id,
+        )
+        if judge_timeout_action(full_response) == "error":
+            await websocket.send_json({
+                "type": "error",
+                "message": f"O juiz do Fusion excedeu o tempo limite ({TIMEOUT_JUIZ}s). Tente novamente.",
+            })
+            return
+        await websocket.send_json({
+            "type": "fusion_status",
+            "message": f"Juiz interrompido no limite de {TIMEOUT_JUIZ}s. Resposta parcial salva.",
+        })
     except Exception as e:
         error_msg = str(e)
         await check_and_deactivate_model(judge_model_id, error_msg)
