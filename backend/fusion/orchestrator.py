@@ -126,6 +126,7 @@ query de busca curta e direta para verificar o fato. Exemplo:
         async for token in provider_juiz.stream_chat(
             model=judge_model_name,
             messages=[{"role": "user", "content": prompt_deteccao}],
+            max_tokens=256,
         ):
             resposta += str(token)
 
@@ -523,7 +524,7 @@ async def executar_fusion(
         return f"--- RESPOSTA: {r['model_id']} ---"
 
     blocos = "\n\n".join([
-        f"{_cabecalho_resposta(r)}\n{r['response']}"
+        f"{_cabecalho_resposta(r)}\n{cap_judge_block(r['response'])}"
         for r in respostas_validas
     ])
 
@@ -615,8 +616,20 @@ async def executar_fusion(
         await asyncio.wait_for(_stream_juiz(), timeout=TIMEOUT_JUIZ)
 
     except asyncio.TimeoutError:
-        await websocket.send_json({"type": "error", "message": "Timeout no modelo Juiz."})
-        return
+        logger.error(
+            "Fusion: timeout do juiz (180s) conversation=%s judge=%s",
+            conversation_id, judge_model_id,
+        )
+        if judge_timeout_action(full_response) == "error":
+            await websocket.send_json({
+                "type": "error",
+                "message": "O juiz do Fusion excedeu o tempo limite (180s). Tente novamente.",
+            })
+            return
+        await websocket.send_json({
+            "type": "fusion_status",
+            "message": "Juiz interrompido no limite de 180s. Resposta parcial salva.",
+        })
     except Exception as e:
         error_msg = str(e)
         await check_and_deactivate_model(judge_model_id, error_msg)

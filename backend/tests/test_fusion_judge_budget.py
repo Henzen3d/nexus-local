@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from backend.fusion.orchestrator import cap_judge_block, judge_timeout_action
 
 
@@ -21,3 +23,24 @@ def test_judge_timeout_persiste_se_houver_texto():
     assert judge_timeout_action("  resposta  ") == "persist"
     assert judge_timeout_action("   ") == "error"
     assert judge_timeout_action("") == "error"
+
+
+def test_join_do_juiz_nao_carrega_resposta_inteira():
+    respostas = [
+        {"model_id": "a", "response": "x" * 8000, "confidence": None},
+        {"model_id": "b", "response": "y" * 100, "confidence": None},
+    ]
+    blocos = "\n\n".join(
+        f"--- RESPOSTA: {r['model_id']} ---\n{cap_judge_block(r['response'])}"
+        for r in respostas
+    )
+    assert "x" * 4001 not in blocos
+    assert "yyyy" in blocos
+    assert blocos.count("…[truncado para o Juiz]") == 1
+
+
+def test_orchestrator_aplica_cap_no_join_do_juiz():
+    source = Path("backend/fusion/orchestrator.py").read_text(encoding="utf-8")
+    assert "cap_judge_block(r['response'])" in source
+    assert "judge_timeout_action(full_response)" in source
+    assert "max_tokens=256" in source
