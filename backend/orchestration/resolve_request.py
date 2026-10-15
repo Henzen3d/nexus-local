@@ -411,7 +411,7 @@ async def stream_from_llm(
             continue
         except Exception as e:
             error_msg = str(e)
-            next_failover_reason = getattr(e, "failover_reason", None) or "rate_limit"
+            next_failover_reason = getattr(e, "failover_reason", None) or "error"
             # Rede de segurança HTTP 400 com termos de reasoning:
             # Se a chamada falhou com erro citando parâmetros de reasoning, emite effort_dropped
             # com reason 'provider_rejected' e retenta UMA ÚNICA vez sem esforço, sem desativar o modelo.

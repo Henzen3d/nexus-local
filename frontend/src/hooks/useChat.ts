@@ -238,13 +238,36 @@ export function useChat() {
         case 'auto_route_decision':
           s.setAutoRouteDecision(msg)
           break
-        case 'failover_notice':
+        case 'failover_notice': {
           resetWatchdog()
+          const reasonKey = msg.reason || 'error'
+          const defaultReason = reasonKey === 'rate_limit'
+            ? 'esgotado'
+            : reasonKey === 'invalid_request'
+            ? 'requisição incompatível'
+            : reasonKey === 'upstream'
+            ? 'instabilidade no serviço'
+            : reasonKey === 'timeout'
+            ? 'tempo limite esgotado'
+            : reasonKey === 'connection'
+            ? 'falha de conexão'
+            : reasonKey === 'auth'
+            ? 'falha de autenticação'
+            : 'indisponível'
+          const reasonLabel = i18n.t(`chat.failoverReason.${reasonKey}`, {
+            defaultValue: defaultReason
+          })
           s.showToast(
-            `Failover: ${msg.original_model} esgotado. Alternando para ${msg.fallback_model}...`,
+            i18n.t('chat.failoverNotice', {
+              model: msg.original_model,
+              fallback: msg.fallback_model,
+              reason: reasonLabel,
+              defaultValue: `Failover: ${msg.original_model} (${reasonLabel}). Alternando para ${msg.fallback_model}...`
+            }),
             'info'
           )
           break
+        }
         case 'search_start':
           s.startProcessStep({
             id: 'web-search',

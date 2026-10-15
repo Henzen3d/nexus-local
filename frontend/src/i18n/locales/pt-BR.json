@@ -203,7 +203,21 @@
     "effortAutoHint": "Aplicado quando a IA escolhida suportar ajuste de raciocínio.",
     "effortDroppedFailover": "O modelo reserva não suporta controle de esforço; resposta gerada no padrão.",
     "effortDroppedUnsupported": "O modelo selecionado não suporta controle de esforço.",
-    "effortDroppedProvider": "O provedor rejeitou o parâmetro de esforço; retentando sem ele."
+    "effortDroppedProvider": "O provedor rejeitou o parâmetro de esforço; retentando sem ele.",
+    "failoverNotice": "Failover: {{model}} ({{reason}}). Alternando para {{fallback}}...",
+    "failoverReason": {
+      "invalid_request": "requisição incompatível",
+      "auth": "falha de autenticação",
+      "rate_limit": "esgotado",
+      "upstream": "instabilidade no serviço",
+      "timeout": "tempo limite esgotado",
+      "connection": "falha de conexão",
+      "model_disabled": "modelo desativado",
+      "provider_disabled": "provedor desativado",
+      "missing_key": "chave não configurada",
+      "preemptive_quota": "limite de cota próximo",
+      "error": "indisponível"
+    }
   },
   "sidebar": {
     "newChat": "Nova conversa",

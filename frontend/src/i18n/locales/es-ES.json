@@ -186,7 +186,21 @@
     "effortAutoHint": "Se aplica cuando la IA seleccionada admita ajuste de razonamiento.",
     "effortDroppedFailover": "El modelo de respaldo no admite control de esfuerzo; respuesta generada por defecto.",
     "effortDroppedUnsupported": "El modelo seleccionado no admite control de esfuerzo de razonamiento.",
-    "effortDroppedProvider": "El proveedor rechazó el parámetro de esfuerzo; reintentando sin él."
+    "effortDroppedProvider": "El proveedor rechazó el parámetro de esfuerzo; reintentando sin él.",
+    "failoverNotice": "Failover: {{model}} ({{reason}}). Cambiando a {{fallback}}...",
+    "failoverReason": {
+      "invalid_request": "solicitud incompatible",
+      "auth": "fallo de autenticación",
+      "rate_limit": "agotado",
+      "upstream": "inestabilidad del servicio",
+      "timeout": "tiempo de espera agotado",
+      "connection": "fallo de conexión",
+      "model_disabled": "modelo desactivado",
+      "provider_disabled": "proveedor desactivado",
+      "missing_key": "clave no configurada",
+      "preemptive_quota": "límite de cuota cercano",
+      "error": "no disponible"
+    }
   },
   "sidebar": {
     "newChat": "Nueva conversación",

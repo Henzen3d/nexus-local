@@ -203,7 +203,21 @@
     "effortAutoHint": "Applied whenever the selected AI supports reasoning controls.",
     "effortDroppedFailover": "The fallback model does not support reasoning control; generated with default settings.",
     "effortDroppedUnsupported": "The selected model does not support reasoning effort control.",
-    "effortDroppedProvider": "Provider rejected reasoning parameter; retrying without it."
+    "effortDroppedProvider": "Provider rejected reasoning parameter; retrying without it.",
+    "failoverNotice": "Failover: {{model}} ({{reason}}). Switching to {{fallback}}...",
+    "failoverReason": {
+      "invalid_request": "incompatible request",
+      "auth": "authentication failure",
+      "rate_limit": "exhausted",
+      "upstream": "upstream service issue",
+      "timeout": "request timed out",
+      "connection": "connection failure",
+      "model_disabled": "model disabled",
+      "provider_disabled": "provider disabled",
+      "missing_key": "missing API key",
+      "preemptive_quota": "near quota limit",
+      "error": "unavailable"
+    }
   },
   "sidebar": {
     "newChat": "New conversation",

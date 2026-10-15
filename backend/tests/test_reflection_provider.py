@@ -10,12 +10,15 @@ from __future__ import annotations
 
 import json
 
+import httpx
 import pytest
 
 from backend.providers.base import OpenAICompatProvider
 from backend.providers.reflection import (
     IncompleteStreamError,
+    ProviderConnectionError,
     ProviderHTTPError,
+    ProviderTimeoutError,
     ReflectionProvider,
     prepare_reflection_messages,
     strip_provider_private_fields,
@@ -113,11 +116,12 @@ class _CM:
 
 
 class FakeResponse:
-    def __init__(self, status_code=200, body=b"", headers=None, lines=None):
+    def __init__(self, status_code=200, body=b"", headers=None, lines=None, line_error=None):
         self.status_code = status_code
         self.headers = headers or {}
         self._body = body if isinstance(body, bytes) else body.encode()
         self._lines = lines or []
+        self._line_error = line_error
 
     async def aread(self):
         return self._body
@@ -125,6 +129,8 @@ class FakeResponse:
     async def aiter_lines(self):
         for line in self._lines:
             yield line
+        if self._line_error:
+            raise self._line_error
 
 
 class FakeClient:
@@ -134,11 +140,17 @@ class FakeClient:
 
     def stream(self, method, url, headers=None, json=None):
         self.calls.append({"stream": True, "url": url, "json": json, "headers": headers})
-        return _CM(self.responses.pop(0))
+        item = self.responses.pop(0)
+        if isinstance(item, Exception):
+            raise item
+        return _CM(item)
 
     async def post(self, url, headers=None, json=None):
         self.calls.append({"stream": False, "url": url, "json": json, "headers": headers})
-        return self.responses.pop(0)
+        item = self.responses.pop(0)
+        if isinstance(item, Exception):
+            raise item
+        return item
 
 
 def _provider(responses, sleep=None):
@@ -350,3 +362,228 @@ async def test_openai_compat_does_not_send_private_reasoning_field():
     assert "reasoning_content" not in sent
     assert sent["content"] == "ok"
     assert parts == ["ok"]
+
+
+@pytest.mark.asyncio
+async def test_multi_turn_consecutive_streaming():
+    """Valida 3 turnos seguidos em streaming garantindo que cada turno assistant envia reasoning_content."""
+    provider = _provider([
+        # Turno 1
+        FakeResponse(lines=_sse(
+            {"choices": [{"delta": {"reasoning_content": "Pensei 1"}}]},
+            {"choices": [{"delta": {"content": "Resposta 1"}}]},
+        )),
+        # Turno 2
+        FakeResponse(lines=_sse(
+            {"choices": [{"delta": {"reasoning_content": "Pensei 2"}}]},
+            {"choices": [{"delta": {"content": "Resposta 2"}}]},
+        )),
+        # Turno 3
+        FakeResponse(lines=_sse(
+            {"choices": [{"delta": {"reasoning_content": "Pensei 3"}}]},
+            {"choices": [{"delta": {"content": "Resposta 3"}}]},
+        )),
+    ])
+
+    from backend.orchestration.handle_attachments import load_history
+    from backend.providers.reflection import reflection_history_extra
+
+    # Simula Turno 1
+    t1_text, calls = await _collect(provider, [{"role": "user", "content": "Pergunta 1"}])
+    assert t1_text == "<think>Pensei 1</think>Resposta 1"
+
+    # Simula Turno 2
+    extra1 = reflection_history_extra(t1_text, "reflection")
+    history_turn2 = [
+        {"role": "user", "content": "Pergunta 1"},
+        {"role": "assistant", "content": "Resposta 1", **extra1},
+        {"role": "user", "content": "Pergunta 2"},
+    ]
+    t2_text, calls = await _collect(provider, history_turn2)
+    assert t2_text == "<think>Pensei 2</think>Resposta 2"
+    # Valida payload do Turno 2 enviado para a API
+    sent_msgs_t2 = calls[1]["json"]["messages"]
+    assert sent_msgs_t2[1]["reasoning_content"] == "Pensei 1"
+    assert sent_msgs_t2[1]["content"] == "Resposta 1"
+    assert "<think>" not in sent_msgs_t2[1]["content"]
+
+    # Simula Turno 3
+    extra2 = reflection_history_extra(t2_text, "reflection")
+    history_turn3 = [
+        {"role": "user", "content": "Pergunta 1"},
+        {"role": "assistant", "content": "Resposta 1", **extra1},
+        {"role": "user", "content": "Pergunta 2"},
+        {"role": "assistant", "content": "Resposta 2", **extra2},
+        {"role": "user", "content": "Pergunta 3"},
+    ]
+    t3_text, calls = await _collect(provider, history_turn3)
+    assert t3_text == "<think>Pensei 3</think>Resposta 3"
+    # Valida payload do Turno 3 enviado para a API
+    sent_msgs_t3 = calls[2]["json"]["messages"]
+    assert sent_msgs_t3[1]["reasoning_content"] == "Pensei 1"
+    assert sent_msgs_t3[3]["reasoning_content"] == "Pensei 2"
+    assert sent_msgs_t3[3]["content"] == "Resposta 2"
+
+
+@pytest.mark.asyncio
+async def test_multi_turn_consecutive_non_streaming():
+    """Valida 3 turnos seguidos em modo não-streaming."""
+    provider = _provider([
+        FakeResponse(status_code=200, body=json.dumps({
+            "choices": [{"message": {"role": "assistant", "content": "Resp 1", "reasoning_content": "P1"}}]
+        })),
+        FakeResponse(status_code=200, body=json.dumps({
+            "choices": [{"message": {"role": "assistant", "content": "Resp 2", "reasoning_content": "P2"}}]
+        })),
+        FakeResponse(status_code=200, body=json.dumps({
+            "choices": [{"message": {"role": "assistant", "content": "Resp 3", "reasoning_content": "P3"}}]
+        })),
+    ])
+
+    # Turno 1
+    r1 = await provider.complete_chat("Beam-1.0-501B-A23B", [{"role": "user", "content": "Q1"}])
+    assert r1 == "Resp 1"
+    assert provider.last_reasoning_content == "P1"
+
+    # Turno 2
+    r2 = await provider.complete_chat("Beam-1.0-501B-A23B", [
+        {"role": "user", "content": "Q1"},
+        {"role": "assistant", "content": "Resp 1", "_nexus_reasoning": provider.last_reasoning_content},
+        {"role": "user", "content": "Q2"},
+    ])
+    assert r2 == "Resp 2"
+    assert provider.last_reasoning_content == "P2"
+    assert provider._client.calls[1]["json"]["messages"][1]["reasoning_content"] == "P1"
+
+    # Turno 3
+    r3 = await provider.complete_chat("Beam-1.0-501B-A23B", [
+        {"role": "user", "content": "Q1"},
+        {"role": "assistant", "content": "Resp 1", "_nexus_reasoning": "P1"},
+        {"role": "user", "content": "Q2"},
+        {"role": "assistant", "content": "Resp 2", "_nexus_reasoning": "P2"},
+        {"role": "user", "content": "Q3"},
+    ])
+    assert r3 == "Resp 3"
+    assert provider._client.calls[2]["json"]["messages"][3]["reasoning_content"] == "P2"
+
+
+@pytest.mark.asyncio
+async def test_timeout_retries_and_succeeds_non_streaming():
+    slept = []
+    async def record_sleep(s):
+        slept.append(s)
+
+    ok_body = json.dumps({"choices": [{"message": {"content": "ok", "reasoning_content": "r"}}]})
+    provider = _provider([
+        httpx.ReadTimeout("read timed out"),
+        FakeResponse(status_code=200, body=ok_body),
+    ], sleep=record_sleep)
+
+    result = await provider.complete_chat("Beam-1.0-501B-A23B", [{"role": "user", "content": "oi"}])
+    assert result == "ok"
+    assert len(provider._client.calls) == 2
+    assert len(slept) == 1
+
+
+@pytest.mark.asyncio
+async def test_timeout_exceeds_retry_limit_raises_timeout_error():
+    provider = _provider([
+        httpx.ReadTimeout("timed out 1"),
+        httpx.ReadTimeout("timed out 2"),
+        httpx.ReadTimeout("timed out 3"),
+    ])
+    with pytest.raises(ProviderTimeoutError) as exc:
+        await provider.complete_chat("Beam-1.0-501B-A23B", [{"role": "user", "content": "oi"}])
+    assert exc.value.status_code == 504
+    assert exc.value.failover_reason == "timeout"
+    assert exc.value.retryable is True
+    assert len(provider._client.calls) == 3
+
+
+@pytest.mark.asyncio
+async def test_stream_timeout_before_tokens_retries():
+    ok_response = FakeResponse(lines=_sse({"choices": [{"delta": {"content": "final"}}]}))
+    provider = _provider([
+        httpx.ConnectTimeout("connection timed out"),
+        ok_response,
+    ])
+    text, calls = await _collect(provider, [{"role": "user", "content": "oi"}])
+    assert text == "final"
+    assert len(calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_stream_timeout_after_tokens_raises_without_retry():
+    # Quando o stream já começou a emitir tokens para o usuário, não pode repetir do zero
+    interrupted_resp = FakeResponse(
+        lines=["data: " + json.dumps({"choices": [{"delta": {"content": "inicio"}}]})],
+        line_error=httpx.ReadTimeout("socket timed out mid-stream"),
+    )
+    provider = _provider([
+        interrupted_resp,
+        FakeResponse(lines=_sse({"choices": [{"delta": {"content": "repetido"}}]}))
+    ])
+    with pytest.raises(ProviderTimeoutError) as exc:
+        await _collect(provider, [{"role": "user", "content": "oi"}])
+    assert exc.value.status_code == 504
+    assert len(provider._client.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_network_disconnect_retries_and_succeeds():
+    slept = []
+    async def record_sleep(s):
+        slept.append(s)
+
+    ok_body = json.dumps({"choices": [{"message": {"content": "conectado", "reasoning_content": "r"}}]})
+    provider = _provider([
+        httpx.ConnectError("connection reset by peer"),
+        FakeResponse(status_code=200, body=ok_body),
+    ], sleep=record_sleep)
+
+    result = await provider.complete_chat("Beam-1.0-501B-A23B", [{"role": "user", "content": "oi"}])
+    assert result == "conectado"
+    assert len(provider._client.calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_stream_502_honors_retry_after():
+    slept = []
+    async def record_sleep(s):
+        slept.append(s)
+
+    provider = _provider([
+        FakeResponse(status_code=502, body=b"Bad Gateway", headers={"Retry-After": "4"}),
+        FakeResponse(lines=_sse({"choices": [{"delta": {"content": "recuperado"}}]}))
+    ], sleep=record_sleep)
+
+    text, calls = await _collect(provider, [{"role": "user", "content": "oi"}])
+    assert text == "recuperado"
+    assert len(calls) == 2
+    assert slept == [4]
+
+
+@pytest.mark.asyncio
+async def test_empty_choices_raises_upstream_error():
+    provider = _provider([
+        FakeResponse(status_code=200, body=json.dumps({"choices": []})),
+    ])
+    with pytest.raises(ProviderHTTPError) as exc:
+        await provider.complete_chat("Beam-1.0-501B-A23B", [{"role": "user", "content": "oi"}])
+    assert exc.value.failover_reason == "upstream"
+    assert exc.value.retryable is False
+
+
+@pytest.mark.asyncio
+async def test_auth_error_not_retryable():
+    provider = _provider([
+        FakeResponse(status_code=401, body=json.dumps({"error": {"message": "Invalid API Key"}})),
+        FakeResponse(status_code=200, body=b"{}"),
+    ])
+    with pytest.raises(ProviderHTTPError) as exc:
+        await provider.complete_chat("Beam-1.0-501B-A23B", [{"role": "user", "content": "oi"}])
+    assert exc.value.status_code == 401
+    assert exc.value.failover_reason == "auth"
+    assert exc.value.retryable is False
+    assert len(provider._client.calls) == 1
+

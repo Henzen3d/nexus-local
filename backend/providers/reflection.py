@@ -8,10 +8,13 @@ não há raciocínio capturado. HTTP 502/503 é falha upstream documentada.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 import time
 from typing import Any, AsyncIterator, Optional
+
+import httpx
 
 from backend.logging_config import get_logger
 from backend.orchestration.artifacts import strip_thinking_tags
@@ -50,13 +53,53 @@ class ProviderHTTPError(RuntimeError):
         retryable: bool = False,
         code: str | None = None,
         failover_reason: str = "error",
+        headers: Any = None,
     ):
         self.status_code = status_code
         self.request_id = request_id
         self.retryable = retryable
         self.code = code
         self.failover_reason = failover_reason
+        self.headers = headers
         super().__init__(f"Provider error {status_code}: {message}")
+
+
+class ProviderTimeoutError(ProviderHTTPError):
+    """Tempo limite esgotado em chamada upstream (timeout)."""
+
+    def __init__(
+        self,
+        message: str = "tempo limite esgotado (timeout)",
+        *,
+        request_id: str | None = None,
+    ):
+        super().__init__(
+            504,
+            message,
+            request_id=request_id,
+            retryable=True,
+            code="timeout",
+            failover_reason="timeout",
+        )
+
+
+class ProviderConnectionError(ProviderHTTPError):
+    """Falha de rede ou desconexão prematura com o provedor."""
+
+    def __init__(
+        self,
+        message: str = "falha de rede ou desconexão prematura",
+        *,
+        request_id: str | None = None,
+    ):
+        super().__init__(
+            502,
+            message,
+            request_id=request_id,
+            retryable=True,
+            code="connection_error",
+            failover_reason="connection",
+        )
 
 
 class IncompleteStreamError(ProviderHTTPError):
@@ -277,6 +320,7 @@ class ReflectionProvider(OpenAICompatProvider):
             retryable=retryable,
             code=code,
             failover_reason=_failover_reason(status_code),
+            headers=headers,
         )
 
     def _log_call(
@@ -304,7 +348,6 @@ class ReflectionProvider(OpenAICompatProvider):
         if self._sleep:
             await self._sleep(delay)
         else:
-            import asyncio
             await asyncio.sleep(delay)
 
     async def complete_chat(
@@ -335,9 +378,43 @@ class ReflectionProvider(OpenAICompatProvider):
         last_error: Exception | None = None
         for attempt in range(_MAX_TRANSIENT_RETRIES + 1):
             started = time.perf_counter()
-            async with self._open_client() as client:
-                response = await client.post(url, headers=self._headers(), json=payload)
-                body = await response.aread()
+            try:
+                async with self._open_client() as client:
+                    response = await client.post(url, headers=self._headers(), json=payload)
+                    body = await response.aread()
+            except (httpx.TimeoutException, asyncio.TimeoutError) as exc:
+                duration = time.perf_counter() - started
+                error = ProviderTimeoutError(str(exc))
+                self._log_call(
+                    status_code=504,
+                    model=payload.get("model", ""),
+                    stream=False,
+                    duration_s=duration,
+                    request_id=None,
+                    message=str(error),
+                )
+                last_error = error
+                if attempt >= _MAX_TRANSIENT_RETRIES or not self._can_retry(payload):
+                    raise error
+                await self._sleep_before_retry(attempt, {})
+                continue
+            except (httpx.NetworkError, ConnectionError) as exc:
+                duration = time.perf_counter() - started
+                error = ProviderConnectionError(str(exc))
+                self._log_call(
+                    status_code=502,
+                    model=payload.get("model", ""),
+                    stream=False,
+                    duration_s=duration,
+                    request_id=None,
+                    message=str(error),
+                )
+                last_error = error
+                if attempt >= _MAX_TRANSIENT_RETRIES or not self._can_retry(payload):
+                    raise error
+                await self._sleep_before_retry(attempt, {})
+                continue
+
             duration = time.perf_counter() - started
             if response.status_code == 200:
                 return body, response.headers
@@ -373,7 +450,12 @@ class ReflectionProvider(OpenAICompatProvider):
             ) from exc
         choices = data.get("choices") if isinstance(data, dict) else None
         if not choices:
-            raise ProviderHTTPError(200, "resposta sem choices", retryable=False)
+            raise ProviderHTTPError(
+                200,
+                "resposta sem choices",
+                retryable=False,
+                failover_reason="upstream",
+            )
         message = (choices[0] or {}).get("message") or {}
         reasoning = message.get("reasoning_content") or ""
         self.last_reasoning_content = reasoning if isinstance(reasoning, str) else str(reasoning)
@@ -432,10 +514,50 @@ class ReflectionProvider(OpenAICompatProvider):
                             yielded = True
                             yield token
                 return
-            except IncompleteStreamError:
+            except (httpx.TimeoutException, asyncio.TimeoutError) as exc:
+                if not yielded:
+                    error = ProviderTimeoutError(str(exc))
+                    self._log_call(
+                        status_code=504,
+                        model=model,
+                        stream=True,
+                        duration_s=time.perf_counter() - started,
+                        request_id=None,
+                        message=str(error),
+                    )
+                    if attempt >= _MAX_TRANSIENT_RETRIES or not self._can_retry(payload):
+                        raise error
+                    await self._sleep_before_retry(attempt, {})
+                else:
+                    raise ProviderTimeoutError(str(exc))
+            except (httpx.NetworkError, ConnectionError) as exc:
+                if not yielded:
+                    error = ProviderConnectionError(str(exc))
+                    self._log_call(
+                        status_code=502,
+                        model=model,
+                        stream=True,
+                        duration_s=time.perf_counter() - started,
+                        request_id=None,
+                        message=str(error),
+                    )
+                    if attempt >= _MAX_TRANSIENT_RETRIES or not self._can_retry(payload):
+                        raise error
+                    await self._sleep_before_retry(attempt, {})
+                else:
+                    raise ProviderConnectionError(str(exc))
+            except IncompleteStreamError as exc:
+                self._log_call(
+                    status_code=exc.status_code,
+                    model=model,
+                    stream=True,
+                    duration_s=time.perf_counter() - started,
+                    request_id=exc.request_id,
+                    message=str(exc),
+                )
                 if yielded or attempt >= _MAX_TRANSIENT_RETRIES or not self._can_retry(payload):
                     raise
-                await self._sleep_before_retry(attempt, {})
+                await self._sleep_before_retry(attempt, getattr(exc, "headers", None))
             except ProviderHTTPError as exc:
                 if (
                     yielded
@@ -444,7 +566,7 @@ class ReflectionProvider(OpenAICompatProvider):
                     or not self._can_retry(payload)
                 ):
                     raise
-                await self._sleep_before_retry(attempt, {})
+                await self._sleep_before_retry(attempt, getattr(exc, "headers", None))
             except RateLimitError:
                 raise
 
