@@ -51,11 +51,15 @@ def configure_logging(
         stream = sys.stderr
 
     if fmt is None:
-        fmt = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+        fmt = "%(asctime)s [%(levelname)s] %(name)s [%(filename)s:%(lineno)d]: %(message)s"
+        # Inclui user_id e conversation_id nos logs quando disponíveis
+        extra_fmt = " | user=%(user_id)s | conv=%(conversation_id)s"
+    else:
+        extra_fmt = ""
 
     # Handler para stdout/stderr (docker logs)
     stream_handler = logging.StreamHandler(stream)
-    stream_handler.setFormatter(logging.Formatter(fmt, datefmt="%Y-%m-%d %H:%M:%S"))
+    stream_handler.setFormatter(logging.Formatter(fmt + extra_fmt, datefmt="%Y-%m-%d %H:%M:%S"))
     root_logger.addHandler(stream_handler)
 
     # Handler para arquivo persistente (logs em disco)
@@ -65,7 +69,7 @@ def configure_logging(
             log_path.parent.mkdir(parents=True, exist_ok=True)
             file_handler = logging.FileHandler(log_path, encoding='utf-8')
             file_handler.setFormatter(logging.Formatter(
-                "%(asctime)s [%(levelname)s] %(name)s [%(filename)s:%(lineno)d]: %(message)s",
+                fmt + extra_fmt,
                 datefmt="%Y-%m-%d %H:%M:%S"
             ))
             root_logger.addHandler(file_handler)

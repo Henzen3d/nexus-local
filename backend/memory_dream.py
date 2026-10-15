@@ -898,7 +898,7 @@ async def apply_dream_operations(
         await refresh_memory_summaries(user_id, use_llm=False)
         await build_memory_fingerprint(user_id)
     except Exception as e:
-        logger.warning("[Dream] Erro ao recalcular resumos pós-aplicação: %s", e)
+        logger.warning("[Dream] Erro ao recalcular resumos pós-aplicação (user=%s): %s", user_id, e)
 
     return {
         "facts_merged": facts_merged_count,
