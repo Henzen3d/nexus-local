@@ -1,8 +1,8 @@
 # Plano 12 — Paridade com o Intelligent UI do ChatGPT
 
 **Data:** 2026-10-14
-**Estado:** em andamento. Passos 1 e 2 da seção 8 entregues em 2026-10-14 (`Origin` no WebSocket; blocos `metric`, `callout`, `follow_up`; teto 6 com subtetos; catálogo com os três tipos). Passo 3 entregue no PR #16 (catálogo modular por gatilho). Passo 4 entregue no PR #18 (laço de correção). Passo 5 implementado neste PR: bloco `table` e melhorias de `chart` (`pie`, `unit`, `stacked`, rótulos de eixo). O próximo passo é o 6 (12.5 render progressivo); a ordem da seção 8 vale.
-**Depende de:** Fases 1–7 e plano 11. A cena 2D/3D tem plano próprio (13).
+**Estado:** 100% concluído. Todos os 8 passos da seção 8 foram entregues e validados: Passo 1 (`Origin` no WebSocket), Passo 2 (blocos `metric`, `callout`, `follow_up`), Passo 3 (catálogo modular por gatilho), Passo 4 (laço de correção e diagnósticos), Passo 5 (bloco `table` e melhorias de `chart`), Passo 6 (render progressivo no stream), Passo 7 (bloco `options`) e Passo 8 (estado compartilhado e expressões seguras).
+**Depende de:** Fases 1–7 e plano 11. O plano 13 (cenas 2D/3D) também está 100% implementado e concluído.
 **Referências:** [10-referencias-answerui-openui-openwebui.md](10-referencias-answerui-openui-openwebui.md) (tabela de paridade na seção 1; mecanismos do OpenUI na seção 3; padrões do Open WebUI na seção 4).
 
 ## 0. Regra geral: tudo aditivo ao `nexus-ui/1`

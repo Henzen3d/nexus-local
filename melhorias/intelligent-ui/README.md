@@ -52,16 +52,20 @@ Ordem de execução: 01, depois 02, 03, 04, 05. O 06 acompanha cada fase, não e
 | 3 | 03-plano-cartoes-imagens | Implementada | `ImageCard.tsx`, `isAllowedImageUrl` nos dois lados; hosts e flag privada chegam ao frontend por `GET /api/intelligent-ui/config`. Falta só teste de render do cartão. |
 | 4 | 04-plano-graficos | Implementada | `ChartCard.tsx` (bar/line/compare, tabela sr-only). `AdminPanel` lazy em `App.tsx`: `recharts` em chunk próprio, fora do chat. |
 | 5 | 05-plano-controles | Implementada | `ControlsCard.tsx`, `lib/safeMath.ts`. `set_model` lista `models` do store, some com lista vazia, erro curto para id desconhecido; a11y (`htmlFor`, `aria-live`, `role=alert`), `maxLength` 200, clamp de número/range. |
-| 6 | 06-criterios-aceite | 37 de 44 itens atendidos | Bloqueadores para ligar em produção listados no topo do arquivo. |
+| 6 | 06-criterios-aceite | Critérios atendidos | Bloqueadores originais corrigidos (flag desliga recurso por completo, `set_model` consome store, hosts de imagem chegam ao cliente via API). Todos os critérios dos Planos 12 (passos 1 a 8) e 13 atendidos. |
 | 7 | 09-plano-sandbox-e-exportacao | Implementada | `SandboxCard.tsx`, `themeBridge.ts`, `hooks/useResolvedTheme.ts`, `lib/exportStandalone.ts` + testes de função pura. Tema reativo por `postMessage`, CSP `default-src 'none'` (esm.sh só para módulos), `lang` do i18n. |
+| 8 | 11-plano-camada-visual | Implementada | `UiCard.tsx` compartilhado por todos os cartões, design tokens do Nexus, números formatados por locale, ticks por altura, paleta harmônica, `prefers-reduced-motion`, alvos de 44px. |
+| 9 | 12-plano-paridade-intelligent-ui | 100% Concluída | Passos 1 a 8 concluídos: `Origin` no WS; blocos `metric`, `callout`, `follow_up`; bloco `table` (ordenação, tipos, CSV); bloco `options` (single/multiple/other, confirmação explícita); `chart` com `pie`, `stacked`, rótulos e unidade; catálogo modular por gatilho; laço "Pedir correção" e diagnósticos espelhados; render progressivo no stream (prefixo ⊆ final); estado compartilhado reativo (`useMessageUiStore`, safeMath com funções, DFS cíclico). |
+| 10 | 13-plano-cenas-2d-3d | 100% Concluída | Cenas interativas 2D/3D em sandbox isolado (`kind: "scene"`). Three.js isolado em bundle próprio (`public/scene/runtime.js`), CSP `default-src 'none'`, protocolo bidirecional tipado, `SceneCard` responsivo, `params` e `readout` reativos no store, Pausar/Continuar/Tela cheia/Baixar HTML, exportação standalone com runtime embutido, telemetria de cenas e 6 fixtures canônicas. |
 
-Testes que passam: `backend/tests/test_ui_blocks.py` (32), `backend/tests/test_ws_origin.py` (7), `frontend/src/lib/nexusUi.test.ts` (17), `frontend/src/ui/lib/safeMath.test.ts` (4), `frontend/src/ui/lib/chartFormat.test.ts` (14). `tsc` e `vite build` limpos. Não há testes de render dos componentes (só smoke de SSR manual; o `test:dom` com jsdom está previsto no plano 11 §4.5).
+Suíte de testes automatizados:
+- **Backend:** 529 passed, 1 skipped em `pytest` (`backend/tests/test_ui_blocks.py`, `test_ws_origin.py`, `test_ui_diagnostics.py`, `test_ui_expr.py`, `test_intelligent_ui_turn.py`, etc.).
+- **Frontend Unitários:** 134 passed, 0 failed em Node test runner (`nexusUi.test.ts`, `safeMath.test.ts`, `chartFormat.test.ts`, `nexusUiDiagnostics.test.ts`, `nexusUiStream.test.ts`, `exportStandalone.test.ts`, `themeBridge.test.ts`, etc.).
+- **Frontend UI / Render:** 12 passed, 0 failed com `react-test-renderer` (`correction.ui.tsx`, `table-chart.ui.tsx`, `stream.ui.tsx`, `options.ui.tsx`, `reactive.ui.tsx`, `scene.ui.tsx`).
+- **TypeScript:** `npx tsc --noEmit` limpo (0 erros).
+- **Compilação Vite:** `npm run build` limpo gerando PWA e bundles otimizados, com Three.js isolado estritamente em `public/scene/runtime.js` sem inflar o bundle principal da aplicação.
+- **Internacionalização:** 53 chaves em `intelligentUi` validadas em paridade estrita nos 8 locales (`pt-BR`, `en-US`, `es-ES`, `es-419`, `de-DE`, `fr-FR`, `ja`, `ko`).
+- **Formatação:** `git diff --check` 100% limpo.
 
-**Plano 12, passos 1 e 2 (2026-10-14):** checagem de `Origin` no handshake do WebSocket (`backend/ws_origin.py`, mesma lista do CORS) e três blocos novos, aditivos ao `nexus-ui/1`: `metric` (KPIs com delta e tendência), `callout` (aviso com tipo) e `follow_up` (sugestões clicáveis, sempre o último). Teto de blocos passou de 4 para 6 com subtetos (1 `sandbox`, 2 `chart`, 1 `follow_up`). Validadores espelhados com testes de paridade; cartões `MetricCard`, `CalloutCard`, `FollowUpCard`; catálogo com os três tipos (≈ 389 tokens). Próximo passo: catálogo modular (12.4), pré-requisito de `table`, `options` e `pie`.
-
-**Camada visual (plano 11, primeira fatia em 2026-10-14):** os seis cartões (`ProgressCard`, `ChecklistCard`, `ImageCard`, `ChartCard`, `ControlsCard`, `SandboxCard`) passaram a compartilhar `ui/components/UiCard.tsx` (cabeçalho, ícone, ações, rodapé, erro) e as classes `nexus-ui-*` do `index.css`, só com tokens do Nexus; números formatados por locale (`ui/lib/chartFormat.ts`), ticks por altura, paleta derivada de `--primary`, tooltip e legenda próprios, `prefers-reduced-motion` respeitado (`ui/hooks/useMotionAndViewport.ts`), sandbox monta só perto da vista e nunca desmonta, alvos de 44 px em toque. Dez chaves novas de i18n (`intelligentUi.*`) nos oito idiomas.
-
-Desvios de contrato adotados como "auto-healing" nos dois validadores (fora da spec, mas simétricos): `v` é forçado para 1; bloco sem `type` é inferido pelos campos; `kind` inválido de chart vira `bar`; `controls` aceita até 6 fields; fences ```` ```chart ````/```` ```ui ```` são aceitos como fallback. Assimetria conhecida: ação desconhecida em `controls` descarta o bloco no Python e vira `send_message` com template padrão no TS.
-
-Site em multi.mob.tec.br só muda após rebuild da imagem.
+Site em multi.mob.tec.br só muda após rebuild da imagem Docker mantendo a flag desligada por padrão.
 
