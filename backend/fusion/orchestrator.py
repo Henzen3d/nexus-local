@@ -81,6 +81,21 @@ Siga este processo de raciocínio internamente, mas NÃO exponha essas etapas na
 Retorne apenas a resposta final em Markdown, direto ao usuário."""
 
 
+JUDGE_BLOCK_MAX_CHARS = 4000
+JUDGE_TRUNCATION_MARK = "\n…[truncado para o Juiz]"
+
+
+def cap_judge_block(text: str, limit: int = JUDGE_BLOCK_MAX_CHARS) -> str:
+    body = text or ""
+    if len(body) <= limit:
+        return body
+    return body[:limit] + JUDGE_TRUNCATION_MARK
+
+
+def judge_timeout_action(full_response: str) -> str:
+    return "persist" if (full_response or "").strip() else "error"
+
+
 async def _detectar_claims_verificaveis(
     provider_juiz, judge_model_name: str, pergunta: str, respostas_validas: list
 ) -> list[str]:
