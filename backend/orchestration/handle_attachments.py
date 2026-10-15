@@ -235,9 +235,12 @@ async def load_history(
     for msg in messages_rows:
         msg_atts = attachments_by_msg.get(msg["id"], [])
         text_content = msg["content"]
-        # Descarta mensagens de assistente vazias (ex: falhas ou abortos anteriores) para não corromper o contexto
-        if msg["role"] == "assistant" and not (text_content and text_content.strip()):
-            continue
+        # Descarta mensagens de assistente vazias e limpa tags de raciocínio de turnos anteriores
+        if msg["role"] == "assistant":
+            from backend.orchestration.artifacts import strip_thinking_tags
+            text_content = strip_thinking_tags(text_content)
+            if not (text_content and text_content.strip()):
+                continue
         # Descarta mensagens de usuário vazias sem anexos (salvo a pergunta atual)
         if msg["role"] == "user" and not (text_content and text_content.strip()) and not msg_atts and msg["id"] != user_msg_id:
             continue

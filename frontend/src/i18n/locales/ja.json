@@ -89,6 +89,7 @@
     "enhanceTitle": "AI でプロンプトを改善 ✨",
     "enhanceNotConfigured": "設定でエンハンサーを構成してください",
     "enhanceError": "プロンプトの改善に失敗しました",
+    "streamTimeout": "応答がタイムアウトしました。モデルが応答しませんでした。",
     "inputHint": "モデルは誤る可能性があります。重要な情報は確認してください。",
     "searchingWeb": "ウェブ検索中: 「{{query}}」...",
     "thinking": "思考中...",

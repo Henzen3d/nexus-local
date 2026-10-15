@@ -94,10 +94,13 @@ def _extract_code_filename(body: str, lang: str, fallback_title: str) -> str:
 
 def strip_thinking_tags(content: str) -> str:
     """Remove blocos e tags de raciocínio (<think>...</think>, etc.)."""
-    if not content:
+    if not content or not isinstance(content, str):
         return ""
 
-    tags = ["think", "thinking", "reasoning", "analysis", "reflection", "assistant_thought"]
+    tags = [
+        "think", "thinking", "reasoning", "analysis", "reflection",
+        "assistant_thought", "thought", "redacted_reasoning", "redacted_thinking"
+    ]
     pattern = r"<(" + "|".join(tags) + r")(?:\s+[^>]*)?>[\s\S]*?</\1>"
     cleaned = re.sub(pattern, "", content, flags=re.IGNORECASE)
 

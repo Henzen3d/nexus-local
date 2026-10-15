@@ -89,6 +89,7 @@
     "enhanceTitle": "Améliorer le prompt avec l’IA ✨",
     "enhanceNotConfigured": "Configurez l'améliorateur dans les Paramètres",
     "enhanceError": "Échec de l'amélioration du prompt",
+    "streamTimeout": "Délai de réponse dépassé. Le modèle n'a pas répondu.",
     "inputHint": "Les modèles peuvent se tromper. Vérifiez les informations importantes.",
     "searchingWeb": "Recherche web pour : « {{query}} »...",
     "thinking": "Réflexion...",

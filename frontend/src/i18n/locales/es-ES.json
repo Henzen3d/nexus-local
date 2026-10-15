@@ -90,6 +90,7 @@
     "enhanceTitle": "Mejorar prompt con IA ✨",
     "enhanceNotConfigured": "Configura el Mejorador en Ajustes",
     "enhanceError": "Error al mejorar el prompt",
+    "streamTimeout": "Tiempo de respuesta excedido. El modelo no respondió.",
     "inputHint": "Los modelos pueden cometer errores. Comprueba la información importante.",
     "plusMenu": "Acciones y herramientas",
     "addFiles": "Añadir archivos o fotos",

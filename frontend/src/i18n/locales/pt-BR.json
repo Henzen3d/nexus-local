@@ -95,6 +95,7 @@
     "enhanceTitle": "Melhorar prompt com IA",
     "enhanceNotConfigured": "Configure o Melhorador em Configurações → Ferramentas",
     "enhanceError": "Não foi possível melhorar o prompt. Tente de novo ou envie sem melhorar.",
+    "streamTimeout": "Tempo limite de resposta excedido. O modelo não respondeu.",
     "inputHint": "Modelos podem errar. Confira fatos importantes antes de usar.",
     "plusMenu": "Ações e ferramentas",
     "addFiles": "Adicionar arquivos ou fotos",
