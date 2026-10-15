@@ -16,6 +16,7 @@ import { BottomSheet } from './ui/BottomSheet'
 import { useIsMobile } from '../hooks/useIsMobile'
 import { NexusLogoIcon } from './NexusLogoIcon'
 import { getTtsPrefs, onSpeechEnded, playSpeech } from '../lib/ttsPlayer'
+import { streamScrollBehavior } from '../lib/scrollPolicy'
 import { applyDecision, getTalk, noteSpeaking, onTtsEnded } from '../lib/talkLoop'
 import { AdapterRegistry } from '../adapters/AdapterRegistry'
 
@@ -392,7 +393,10 @@ export function ChatWindow() {
     const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < threshold
 
     if (isNearBottom && bottomSentinelRef.current) {
-      bottomSentinelRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' })
+      bottomSentinelRef.current.scrollIntoView({
+        behavior: streamScrollBehavior(Boolean(streamingContent)),
+        block: 'end',
+      })
     }
   }, [messages, streamingContent])
 

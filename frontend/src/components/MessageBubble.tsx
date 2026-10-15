@@ -358,7 +358,9 @@ export function MessageBubble({ message }: Props) {
   const [copied, setCopied] = useState(false)
   const ttsPlay = useTtsPlay()
   const lastCacheHit = useStore((s) => s.lastCacheHit)
-  const { setActiveArtifact, setArtifactPanelOpen, loadArtifactHistory } = useStore()
+  const setActiveArtifact = useStore((s) => s.setActiveArtifact)
+  const setArtifactPanelOpen = useStore((s) => s.setArtifactPanelOpen)
+  const loadArtifactHistory = useStore((s) => s.loadArtifactHistory)
 
   const copy = () => {
     navigator.clipboard.writeText(message.content)
