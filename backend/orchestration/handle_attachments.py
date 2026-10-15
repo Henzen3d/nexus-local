@@ -214,11 +214,11 @@ async def load_history(
     from backend.web_search import format_search_results as _fmt
     from backend.vision_relay.relay import describe_image_via_relay
 
-    # Carrega mensagens ordenadas
+    # Carrega mensagens ordenadas estritamente por timestamp e ordem de inserção (rowid)
     async with db.execute(
         """SELECT id, role, content FROM messages
            WHERE conversation_id = ?
-           ORDER BY created_at ASC""",
+           ORDER BY created_at ASC, rowid ASC""",
         (conversation_id,),
     ) as cur:
         messages_rows = [
@@ -235,6 +235,12 @@ async def load_history(
     for msg in messages_rows:
         msg_atts = attachments_by_msg.get(msg["id"], [])
         text_content = msg["content"]
+        # Descarta mensagens de assistente vazias (ex: falhas ou abortos anteriores) para não corromper o contexto
+        if msg["role"] == "assistant" and not (text_content and text_content.strip()):
+            continue
+        # Descarta mensagens de usuário vazias sem anexos (salvo a pergunta atual)
+        if msg["role"] == "user" and not (text_content and text_content.strip()) and not msg_atts and msg["id"] != user_msg_id:
+            continue
         if msg["id"] == user_msg_id and not question:
             question = text_content or ""
 
@@ -440,7 +446,7 @@ def trim_history_to_budget(
     """
     if not history:
         return history, 0
-    available = max(0, int(budget_tokens) - int(reserved_tokens))
+    available = max(1024, int(budget_tokens) - int(reserved_tokens))
     costs = [estimate_message_tokens(m) for m in history]
     if sum(costs) <= available:
         return history, 0
@@ -458,7 +464,7 @@ def trim_history_to_budget(
     kept.reverse()
     # Não começar o histórico com uma resposta do assistente órfã (alguns
     # provedores — Anthropic/Gemini — exigem que a primeira mensagem seja do usuário).
-    while len(kept) > 1 and kept[0].get("role") == "assistant":
+    while kept and kept[0].get("role") == "assistant":
         kept.pop(0)
     removed = len(history) - len(kept)
     if removed:

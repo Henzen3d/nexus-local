@@ -273,9 +273,9 @@ export function MessageInput({ onSend, onStop, isEmpty = false }: Props) {
   }
 
   const handleKey = (e: React.KeyboardEvent) => {
-    // Mobile: Enter insere quebra de linha normal; envio via botão de toque
-    if (isMobile) return
-    if (e.key === 'Enter' && !e.shiftKey) {
+    // Enter envia a mensagem; Shift+Enter insere quebra de linha normal.
+    // Ignora composição IME (acentos, CJK em composição).
+    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault()
       handleSend()
     }
@@ -443,7 +443,7 @@ export function MessageInput({ onSend, onStop, isEmpty = false }: Props) {
             }
             disabled={isStreaming || enhancing}
             rows={1}
-            enterKeyHint={isMobile ? 'enter' : 'send'}
+            enterKeyHint="send"
           />
 
           <div className="composer-actions-right">

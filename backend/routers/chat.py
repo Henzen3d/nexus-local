@@ -714,6 +714,13 @@ async def _run_turn(
             logger.debug("intelligent_ui telemetry falhou: {}", e)
 
     # ── Persist assistant message ───────────────────────────────────
+    if not full_response or not full_response.strip():
+        logger.warning(
+            "Resposta do assistente vazia na conversa '%s'; mensagem nula não será persistida.",
+            conversation_id,
+        )
+        return
+
     assistant_msg_id = await save_assistant_message(
         db, conversation_id, full_response, model_id, provider_id,
         relay_used, relay_model_id,

@@ -115,6 +115,7 @@ async def stream_from_llm(
 
     while attempt < _MAX_FAILOVER_ATTEMPTS and not success:
         attempt += 1
+        full_response = ""
 
         try:
             resolved = await resolve_model_with_failover(
@@ -144,6 +145,19 @@ async def stream_from_llm(
                     sys_content,
                 )
                 history[0]["content"] = sys_content
+
+            # Adapta o histórico para a janela de contexto do modelo reserva
+            try:
+                from backend.orchestration.handle_attachments import resolve_input_budget, trim_history_to_budget
+                from backend.projects.context_builder import estimate_tokens
+                fb_budget = await resolve_input_budget(db, resolved.model_id, resolved.provider_id)
+                sys_msg = history[0] if history and history[0].get("role") == "system" else None
+                msgs = history[1:] if sys_msg else history
+                reserved = estimate_tokens(sys_msg.get("content", "")) if sys_msg else 0
+                trimmed_msgs, _ = trim_history_to_budget(msgs, fb_budget, reserved_tokens=reserved)
+                history = ([sys_msg] if sys_msg else []) + trimmed_msgs
+            except Exception as fb_err:
+                logger.debug("Falha ao ajustar orçamento no failover: %s", fb_err)
 
         current_model_id = resolved.model_id
         current_provider_id = resolved.provider_id
@@ -307,6 +321,14 @@ async def stream_from_llm(
             except StopAsyncIteration:
                 await flush_tokens()
 
+            if not full_response.strip():
+                logger.warning(
+                    "Modelo '%s' (provedor '%s') não gerou nenhum token de resposta. Acionando failover cascade...",
+                    current_model_id, current_provider_id,
+                )
+                attempted_model_ids.add(current_model_id)
+                continue
+
             await mark_model_success(current_model_id, db)
             await record_request(current_model_id, db)
             success = True
@@ -446,7 +468,7 @@ async def stream_from_llm(
             })
             return None
 
-    if not success:
+    if not success or not full_response.strip():
         return None
 
     return full_response, model_id, provider_id

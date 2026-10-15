@@ -134,8 +134,8 @@ async def save_assistant_message(
         (assistant_msg_id, conversation_id, full_response, model_id, provider_id, relay_used, relay_model_id),
     )
     await db.execute(
-        "UPDATE conversations SET updated_at = datetime('now') WHERE id = ?",
-        (conversation_id,),
+        "UPDATE conversations SET updated_at = datetime('now'), model_id = ?, provider_id = ? WHERE id = ?",
+        (model_id, provider_id, conversation_id),
     )
     await db.commit()
     return assistant_msg_id
