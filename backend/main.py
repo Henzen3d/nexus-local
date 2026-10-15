@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from backend.logging_config import configure_logging, get_logger
-configure_logging()
+configure_logging(log_file="/app/logs/app.log")
 logger = get_logger(__name__)
 
 from backend.database import init_db
@@ -34,6 +34,7 @@ from backend.routers.image_gen import router as image_gen_router
 from backend.routers.proactive import router as proactive_router
 from backend.routers.intelligent_ui import router as intelligent_ui_router
 from backend.routers.push import router as push_router
+from backend.routers.logs import router as logs_router
 from backend.ws_origin import allowed_origins_from_env
 
 app = FastAPI(title="NexusLocal", version="1.0.0")
@@ -77,6 +78,7 @@ app.include_router(image_gen_router)
 app.include_router(proactive_router)
 app.include_router(intelligent_ui_router)
 app.include_router(push_router)
+app.include_router(logs_router)
 
 
 

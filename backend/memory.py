@@ -1408,7 +1408,7 @@ def build_memory_block(
         return ""
 
     lines = []
-    total_chars = len(profile_part) + len(summary_part)
+    total_chars = len(profile_part or "") + len(summary_part or "")
 
     identity_lines: list[str] = []
     family_lines: list[str] = []

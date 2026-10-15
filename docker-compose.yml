@@ -15,6 +15,7 @@ services:
       # Espelha o arquivo do banco de dados do Linux para dentro do container
       - ./backend/nexuslocal.db:/app/backend/nexuslocal.db
       - ./backend/storage:/app/backend/storage
+      - ./logs:/app/logs
       - fastembed_cache:/root/.cache/fastembed
     # NÃO declare JWT_SECRET em `environment` com ${JWT_SECRET}:
     # se a var não existir no host, o Compose injeta string vazia e

@@ -898,6 +898,7 @@ export type WSMessage =
   | { type: 'image_ready'; conversation_id: string; message_id: string; task_id: string; attachment: Attachment }
   | { type: 'image_failed'; conversation_id: string; message_id: string; task_id: string; error: string }
   | { type: 'effort_dropped'; reason: 'failover' | 'unsupported_model' | 'provider_rejected' | 'invalid_level' }
+  | { type: 'history_trimmed'; removed: number | string; kept: number; reason: 'budget' | 'trim_failed' }
   | { type: 'proactive_status'; conversation_id: string; stage: 'researching' | 'synthesizing' | string }
   | { type: 'proactive_insight'; insight: ProactiveInsight; channel_hint: ProactiveChannelHint }
   | { type: 'proactive_pending'; insights: ProactiveInsight[] }

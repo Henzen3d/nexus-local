@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import logging
 import sys
+from pathlib import Path
 from typing import Optional
 
 _LOGGER_NAME = "nexuslocal"
@@ -27,12 +28,17 @@ def configure_logging(
     level: int = logging.INFO,
     stream=None,
     fmt: Optional[str] = None,
+    log_file: Optional[str] = None,
 ) -> logging.Logger:
     """
     Configura (idempotentemente) o logger raiz "nexuslocal".
 
     Deve ser chamado uma vez no startup da aplicação (main.py).
     Chamadas subsequentes são no-op se já configurado.
+
+    Args:
+        log_file: Caminho opcional para arquivo de log persistente.
+                  Se informado, logs também são escritos no disco.
     """
     global _CONFIGURED
 
@@ -47,11 +53,26 @@ def configure_logging(
     if fmt is None:
         fmt = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
 
-    handler = logging.StreamHandler(stream)
-    handler.setFormatter(logging.Formatter(fmt, datefmt="%Y-%m-%d %H:%M:%S"))
+    # Handler para stdout/stderr (docker logs)
+    stream_handler = logging.StreamHandler(stream)
+    stream_handler.setFormatter(logging.Formatter(fmt, datefmt="%Y-%m-%d %H:%M:%S"))
+    root_logger.addHandler(stream_handler)
+
+    # Handler para arquivo persistente (logs em disco)
+    if log_file:
+        try:
+            log_path = Path(log_file)
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            file_handler = logging.FileHandler(log_path, encoding='utf-8')
+            file_handler.setFormatter(logging.Formatter(
+                "%(asctime)s [%(levelname)s] %(name)s [%(filename)s:%(lineno)d]: %(message)s",
+                datefmt="%Y-%m-%d %H:%M:%S"
+            ))
+            root_logger.addHandler(file_handler)
+        except Exception as e:
+            print(f"[LOG] Falha ao configurar arquivo de log: {e}", file=sys.stderr)
 
     root_logger.setLevel(level)
-    root_logger.addHandler(handler)
     root_logger.propagate = False
 
     _CONFIGURED = True
