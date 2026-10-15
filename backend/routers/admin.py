@@ -134,30 +134,24 @@ async def sync_provider_models(provider_id: str, db, custom_api_key: str = None)
         model_name = item["model_name"]
         context_length = item["context_length"]
         
-        # Override with registry context if it contains a larger value
+        # Override with registry context if it contains a larger value and is recent enough
         reg_ctx = None
+        verified_at = None
         if model_name in registry_models:
-            reg_ctx = registry_models[model_name].get("context_length")
+            reg = registry_models[model_name]
+            reg_ctx = reg.get("context_length")
+            verified_at = reg.get("verified_at")
         elif model_name.split('/')[-1] in registry_models:
-            reg_ctx = registry_models[model_name.split('/')[-1]].get("context_length")
-        else:
-            # Fallback heuristics for common model name patterns
-            name_lower = model_name.lower()
-            if "deepseek" in name_lower:
-                if any(x in name_lower for x in ["r1", "v3", "v4"]):
-                    reg_ctx = 131072
-                else:
-                    reg_ctx = 64000
-            elif "qwen" in name_lower:
-                if any(x in name_lower for x in ["qwen3", "qwen2.5"]):
-                    reg_ctx = 131072
-                else:
-                    reg_ctx = 32768
-            elif "llama-3" in name_lower or "llama-4" in name_lower:
-                reg_ctx = 131072
-            
-        if reg_ctx and reg_ctx > context_length:
-            context_length = reg_ctx
+            reg = registry_models[model_name.split('/')[-1]]
+            reg_ctx = reg.get("context_length")
+            verified_at = reg.get("verified_at")
+
+        from backend.orchestration.context_window import resolve_context_length
+        context_length = resolve_context_length(
+            api_context=context_length,
+            registry_ctx=reg_ctx,
+            verified_at=verified_at,
+        )
             
         db_model_id = f"{provider_id}/{model_name}"
         synced_ids.append(db_model_id)

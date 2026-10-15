@@ -15,6 +15,25 @@ from backend.logging_config import get_logger
 
 logger = get_logger(__name__)
 
+
+async def describe_or_placeholder(
+    img: dict, user_id: str, conversation_id: str | None
+) -> str:
+    """Chama o Vision Relay; em caso de falha, devolve placeholder."""
+    from backend.vision_relay.relay import describe_image_via_relay, image_placeholder
+    try:
+        res = await describe_image_via_relay(
+            img["storage_path"],
+            img["mime_type"],
+            img["file_hash"],
+            user_id=user_id,
+            conversation_id=conversation_id,
+        )
+        return res["description"]
+    except Exception:
+        logger.error("vision relay falhou para %s", img.get("filename"), exc_info=True)
+        return image_placeholder(img["filename"])
+
 _DOC_INJECT_MIN_CHARS = 6000
 _DOC_INJECT_MAX_CHARS = 24000
 
@@ -310,30 +329,13 @@ async def load_history(
                 # Vision Relay
                 image_descriptions: list[str] = []
                 for img in images:
-                    try:
-                        res = await describe_image_via_relay(
-                            img["storage_path"],
-                            img["mime_type"],
-                            img["file_hash"],
-                            user_id=user_id,
-                            conversation_id=conversation_id,
-                        )
-                        desc = res["description"]
-                        image_descriptions.append(
-                            f"[Descrição da imagem {img['filename']}]: {desc}"
-                        )
-                        if msg["id"] == user_msg_id:
-                            relay_used = 1
-                            relay_model_id = res["relay_model"]
-                    except Exception as e:
-                        logger.error(
-                            "Vision Relay falhou",
-                            extra={
-                                "filename": img.get("filename"),
-                                "conversation_id": conversation_id,
-                            },
-                        )
-                        raise e
+                    desc = await describe_or_placeholder(img, user_id, conversation_id)
+                    image_descriptions.append(
+                        f"[Descrição da imagem {img['filename']}]: {desc}"
+                    )
+                    if msg["id"] == user_msg_id and not desc.startswith("[Imagem"):
+                        relay_used = 1
+                        # relay_model_id não disponível via placeholder
 
                 if image_descriptions:
                     descriptions_block = "\n\n".join(image_descriptions)

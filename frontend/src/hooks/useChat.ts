@@ -305,6 +305,14 @@ export function useChat() {
         case 'fusion_refined_prompt':
           s.setFusionRefinedPrompt(msg.prompt)
           break
+        case 'history_trimmed':
+          s.showToast(
+            i18n.t('chat.historyTrimmed', {
+              defaultValue: 'Parte antiga da conversa ficou de fora para caber no modelo.',
+            }),
+            'info'
+          )
+          break
         case 'image_pending':
           s.handleImagePending(msg)
           break

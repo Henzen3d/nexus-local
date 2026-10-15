@@ -6,9 +6,25 @@ from pathlib import Path
 from backend.database import get_db, check_and_deactivate_model
 from backend.providers.registry import get_provider, get_model_name
 from backend.attachments.storage import get_absolute_path
+from backend.logging_config import get_logger
+
+logger = get_logger(__name__)
+
 
 class RelayError(Exception):
     pass
+
+
+RELAY_IMAGE_TIMEOUT_S = 25
+
+
+def vision_cache_key(file_hash: str, relay_model_id: str) -> str:
+    return f"{file_hash}:{relay_model_id}"
+
+
+def image_placeholder(filename: str) -> str:
+    return f"[Imagem {filename}: descrição indisponível]"
+
 
 async def get_vision_relay_config(db):
     async with db.execute(
@@ -38,8 +54,8 @@ _VISION_L1_TTL = 3600.0  # 1 hora
 _VISION_L1_MAX_ENTRIES = 512
 
 
-async def get_cached_description(file_hash: str, db) -> str | None:
-    key = file_hash
+async def get_cached_description(file_hash: str, relay_model: str, db) -> str | None:
+    key = vision_cache_key(file_hash, relay_model)
     now = time.monotonic()
     if key in _VISION_L1_CACHE:
         desc, ts = _VISION_L1_CACHE[key]
@@ -49,11 +65,11 @@ async def get_cached_description(file_hash: str, db) -> str | None:
         del _VISION_L1_CACHE[key]
 
     async with db.execute(
-        "SELECT description FROM vision_descriptions_cache WHERE file_hash = ?",
+        "SELECT description, relay_model FROM vision_descriptions_cache WHERE file_hash = ?",
         (file_hash,)
     ) as cur:
         row = await cur.fetchone()
-    if row and row[0]:
+    if row and row[0] and row[1] == relay_model:
         _VISION_L1_CACHE[key] = (row[0], now)
         _VISION_L1_CACHE.move_to_end(key)
         while len(_VISION_L1_CACHE) > _VISION_L1_MAX_ENTRIES:
@@ -69,7 +85,7 @@ def invalidate_vision_l1_cache() -> None:
 
 
 async def save_description_cache(file_hash: str, description: str, relay_model: str, db) -> None:
-    key = file_hash
+    key = vision_cache_key(file_hash, relay_model)
     _VISION_L1_CACHE[key] = (description, time.monotonic())
     _VISION_L1_CACHE.move_to_end(key)
     while len(_VISION_L1_CACHE) > _VISION_L1_MAX_ENTRIES:
@@ -100,7 +116,7 @@ async def describe_image_via_relay(
 
         # 1. Check cache
         if config["cache_descriptions"] and file_hash:
-            cached = await get_cached_description(file_hash, db)
+            cached = await get_cached_description(file_hash, config["relay_model_id"], db)
             if cached:
                 return {"description": cached, "relay_model": config["relay_model_id"], "from_cache": True}
 
@@ -138,16 +154,23 @@ async def describe_image_via_relay(
         ]
 
         # 4. Stream chat to accumulate description
-        chunks: list[str] = []
-        try:
-            async for chunk in provider.stream_chat(model=model_name, messages=messages, temperature=0.2):
+        async def _collect() -> str:
+            chunks: list[str] = []
+            async for chunk in provider.stream_chat(
+                model=model_name,
+                messages=messages,
+                temperature=0.2,
+            ):
                 chunks.append(chunk)
+            return "".join(chunks).strip()
+
+        try:
+            description = await asyncio.wait_for(_collect(), timeout=RELAY_IMAGE_TIMEOUT_S)
         except Exception as e:
             error_msg = str(e)
             await check_and_deactivate_model(final_model_id, error_msg, db)
             raise RelayError(f"Erro ao chamar modelo intérprete '{final_model_id}': {error_msg}")
 
-        description = "".join(chunks).strip()
         if not description:
             raise RelayError("O modelo intérprete retornou uma descrição vazia.")
 

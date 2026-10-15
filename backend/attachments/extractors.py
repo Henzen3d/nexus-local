@@ -78,7 +78,7 @@ async def _cached_pdf_text(file_hash: str) -> str | None:
         config = await get_vision_relay_config(db)
         if not config or not config.get("cache_descriptions"):
             return None
-        return await get_cached_description(file_hash, db)
+        return await get_cached_description(file_hash, config.get("relay_model_id", ""), db)
     finally:
         await db.close()
 

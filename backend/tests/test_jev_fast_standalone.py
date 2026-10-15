@@ -344,17 +344,17 @@ async def test_vision_relay_l1_cache(db: aiosqlite.Connection):
 
     # Salva descrição
     await save_description_cache(file_hash, desc, "gemini-2.0-flash", db)
-    assert file_hash in _VISION_L1_CACHE
+    assert f"{file_hash}:gemini-2.0-flash" in _VISION_L1_CACHE
 
     # Obtém do L1 (RAM)
     t0 = time.perf_counter()
-    retrieved = await get_cached_description(file_hash, db)
+    retrieved = await get_cached_description(file_hash, "gemini-2.0-flash", db)
     lat = (time.perf_counter() - t0) * 1000
 
     assert retrieved == desc
     async with db.execute("DELETE FROM vision_descriptions_cache"):
         await db.commit()
-    assert await get_cached_description(file_hash, db) == desc
+    assert await get_cached_description(file_hash, "gemini-2.0-flash", db) == desc
     # Restaura a linha para conferir o caminho de repopulação após invalidar.
     await save_description_cache(file_hash, desc, "gemini-2.0-flash", db)
 
@@ -363,9 +363,9 @@ async def test_vision_relay_l1_cache(db: aiosqlite.Connection):
     assert len(_VISION_L1_CACHE) == 0
 
     # Próxima leitura carrega do banco e repopula L1
-    retrieved_db = await get_cached_description(file_hash, db)
+    retrieved_db = await get_cached_description(file_hash, "gemini-2.0-flash", db)
     assert retrieved_db == desc
-    assert file_hash in _VISION_L1_CACHE
+    assert f"{file_hash}:gemini-2.0-flash" in _VISION_L1_CACHE
     print("  [OK] Passou! L1 LRU em RAM entregou descrição em < 1ms e invalidou perfeitamente.")
 
 
