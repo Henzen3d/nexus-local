@@ -269,7 +269,7 @@ interface AppState {
   startProcessStep: (step: ProcessStep) => void
   updateProcessStep: (id: string, update: Partial<Pick<ProcessStep, 'detail' | 'subSteps' | 'status'>>) => void
   uiCorrectionRequested: Record<string, boolean>
-  finalizeStream: (messageId: string, artifactMeta?: { id: string; type: string; title: string }, artifacts?: { id: string; type: string; title: string }[], relayUsed?: boolean, relayModel?: string | null, webSearchUsed?: boolean, webSearchQuery?: string, webSearchSources?: WebSearchSource[], wasFallback?: boolean, uiBlocks?: UiEnvelope | null, processDurationMs?: number, serverSteps?: ProcessStep[], uiErrors?: UiError[], uiDropped?: number) => void
+  finalizeStream: (messageId: string, artifactMeta?: { id: string; type: string; title: string }, artifacts?: { id: string; type: string; title: string }[], relayUsed?: boolean, relayModel?: string | null, webSearchUsed?: boolean, webSearchQuery?: string, webSearchSources?: WebSearchSource[], wasFallback?: boolean, uiBlocks?: UiEnvelope | null, processDurationMs?: number, serverSteps?: ProcessStep[], uiErrors?: UiError[], uiDropped?: number, finalModelId?: string | null, finalModelName?: string | null, finalProviderId?: string | null) => void
   handleUiProgress: (block: ProgressBlock) => void
   lastAutoRouteDecision: AutoRouteDecisionInfo | null
   setAutoRouteDecision: (decision: AutoRouteDecisionInfo | null) => void
@@ -1359,7 +1359,10 @@ export const useStore = create<AppState>((set, get) => ({
     processDurationMs?: number,
     serverSteps?: ProcessStep[],
     uiErrors?: UiError[],
-    uiDropped?: number
+    uiDropped?: number,
+    finalModelId?: string | null,
+    finalModelName?: string | null,
+    finalProviderId?: string | null
   ) => {
     const { streamingContent, selectedModelId, models, lastAutoRouteDecision, processSteps, processStartedAt, streamingUiBlocks } = get()
     const resolvedModelId = lastAutoRouteDecision?.chosen_model_id || selectedModelId
@@ -1393,10 +1396,20 @@ export const useStore = create<AppState>((set, get) => ({
       id: messageId,
       role: 'assistant',
       content: streamingContent,
-      model_id: resolvedModelId ?? undefined,
+      // O badge deve apontar o modelo que RESpondeu. Após failover o backend
+      // envia finalModel* (pós-failover); sem eles usa o modelo resolvido/solicitado.
+      model_id: (finalModelId || resolvedModelId) ?? undefined,
       created_at: new Date().toISOString(),
-      model_display_name: lastAutoRouteDecision?.chosen_model_name || activeModel?.display_name,
-      provider: lastAutoRouteDecision?.provider_id || activeModel?.provider_name,
+      model_display_name:
+        finalModelName ||
+        (finalModelId ? models.find((m) => m.id === finalModelId)?.display_name : undefined) ||
+        lastAutoRouteDecision?.chosen_model_name ||
+        activeModel?.display_name,
+      provider:
+        finalProviderId ||
+        (finalModelId ? models.find((m) => m.id === finalModelId)?.provider_name : undefined) ||
+        lastAutoRouteDecision?.provider_id ||
+        activeModel?.provider_name,
       relay_used: relayUsed,
       relay_model: relayModel,
       web_search_used: webSearchUsed,

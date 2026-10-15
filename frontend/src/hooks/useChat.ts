@@ -184,7 +184,10 @@ export function useChat() {
             msg.process_duration_ms,
             msg.process_steps,
             msg.ui_errors,
-            msg.ui_dropped
+            msg.ui_dropped,
+            msg.final_model_id,
+            msg.final_model_name,
+            msg.final_provider_id
           )
           s.loadConversations()
           break

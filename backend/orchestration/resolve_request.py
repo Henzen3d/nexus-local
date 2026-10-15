@@ -534,3 +534,36 @@ async def resolve_and_stream(
                            exc_info=True)
 
     return full_response, None, resolved_model_id, resolved_provider_id
+
+
+async def build_final_model_metadata(
+    db,
+    requested_model_id: str,
+    resolved_model_id: str,
+    resolved_provider_id: str,
+) -> dict:
+    """Campos do payload ``stream_end`` que identificam o modelo que RESpondeu
+    (pós-failover) — usado pelo badge de modelo da resposta no frontend.
+
+    ``was_fallback`` compara o modelo solicitado com o resolvido: diferente
+    significa que a cascata de failover trocou o modelo no meio do turno.
+    Nunca lança: falha de consulta degrada para o próprio id do modelo.
+    """
+    display_name: str | None = None
+    try:
+        async with db.execute(
+            "SELECT display_name, name FROM models WHERE id = ?",
+            (resolved_model_id,),
+        ) as cur:
+            row = await cur.fetchone()
+        if row:
+            display_name = row[0] or row[1]
+    except Exception:
+        display_name = None
+
+    return {
+        "was_fallback": resolved_model_id != requested_model_id,
+        "final_model_id": resolved_model_id,
+        "final_model_name": display_name or resolved_model_id,
+        "final_provider_id": resolved_provider_id,
+    }

@@ -47,7 +47,7 @@ from backend.ui_blocks.config import get_intelligent_ui_config
 from backend.ui_blocks.telemetry import intelligent_ui_telemetry
 from backend.ui_blocks.extract import extract_ui
 from backend.ui_blocks.catalog import MODULE_NAMES, build_catalog, compose_catalog
-from backend.orchestration.resolve_request import resolve_and_stream
+from backend.orchestration.resolve_request import resolve_and_stream, build_final_model_metadata
 from backend.web_search import (
     execute_agentic_search,
     format_search_results,
@@ -672,6 +672,11 @@ async def _run_turn(
     req_max_tokens = req.get("max_tokens")
     effective_max_tokens = int(req_max_tokens) if req_max_tokens else (220 if voice_mode else None)
 
+    # Modelo solicitado (pós auto-rota, pré-failover) — referência para o
+    # stream_end identificar se a resposta veio de outro modelo (failover).
+    requested_model_id = model_id
+    requested_provider_id = provider_id
+
     result = await resolve_and_stream(
         ws, db, conversation_id, user_id, model_id, provider_id,
         history, context_fingerprint, bypass_cache,
@@ -780,6 +785,11 @@ async def _run_turn(
         "source_count": len(web_search_sources),
         "phase_latencies": dict(req_ctx.phase_latencies),
     }
+    # Qual modelo RESpondeu de fato (pós-failover) — o badge da resposta no
+    # frontend usa estes campos em vez do modelo solicitado.
+    stream_end_payload.update(await build_final_model_metadata(
+        db, requested_model_id, model_id, requested_provider_id,
+    ))
     if ui_envelope:
         stream_end_payload["ui_blocks"] = ui_envelope
 
