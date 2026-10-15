@@ -365,7 +365,7 @@ export interface ProgressBlock {
   id: string
   type: 'progress'
   label: string
-  value?: number
+  value?: number | string
   max?: number
   steps?: ProgressStep[]
 }
@@ -442,13 +442,19 @@ export interface ControlAction {
   field?: string
 }
 
+export interface ControlComputed {
+  id?: string
+  template: string
+  formula: string
+}
+
 export interface ControlsBlock {
   id: string
   type: 'controls'
   title: string
   submit_label: string
   fields: ControlField[]
-  computed?: { template: string; formula: string }
+  computed?: ControlComputed | ControlComputed[]
   action: ControlAction
 }
 

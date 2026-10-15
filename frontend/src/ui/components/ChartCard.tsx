@@ -29,10 +29,13 @@ import {
   yAxisWidthFor,
   yDomainThroughZero,
 } from '../lib/chartFormat'
+import { evaluateExpression, isExpression } from '../lib/safeMath'
+import { useMessageUiStore } from '../state/messageUiState'
 import { UiCard, UiCardAction } from './UiCard'
 
 interface Props {
   block: ChartBlock
+  messageId?: string
 }
 
 const AXIS_STYLE = { fill: 'var(--muted)', fontSize: 11 }
@@ -123,39 +126,66 @@ function ChartLegendContent({ payload }: { payload?: { value?: string; color?: s
   )
 }
 
-export function ChartCard({ block }: Props) {
+export function ChartCard({ block, messageId }: Props) {
   const { t, i18n } = useTranslation()
   const { title, kind, x_key, series, rows, unit, x_label, y_label, stacked } = block
   const reducedMotion = useReducedMotion()
   const [copied, setCopied] = useState(false)
   const locale = i18n.resolvedLanguage || i18n.language || 'pt-BR'
 
+  const messageValues = useMessageUiStore((s) => (messageId ? s.states[messageId] : undefined))
+
+  const hasDynamicExpressions = useMemo(() => {
+    return (rows || []).some((r) => (series || []).some((s) => isExpression(r[s.key])))
+  }, [rows, series])
+
+  const resolvedRows = useMemo(() => {
+    if (!rows) return []
+    if (!hasDynamicExpressions) return rows
+    return rows.map((r) => {
+      const copy: Record<string, string | number> = { ...r }
+      for (const s of series || []) {
+        const val = r[s.key]
+        if (isExpression(val)) {
+          if (!messageValues) {
+            copy[s.key] = 0
+          } else {
+            const evaluated = evaluateExpression(val, messageValues)
+            copy[s.key] = evaluated !== null && Number.isFinite(evaluated) ? evaluated : 0
+          }
+        }
+      }
+      return copy
+    })
+  }, [rows, series, hasDynamicExpressions, messageValues])
+
   const keys = useMemo(() => (series || []).map((s) => s.key), [series])
   const isStacked = Boolean(kind === 'compare' && stacked)
   const colors = useMemo(() => seriesColors(keys.length), [keys.length])
-  const piePalette = useMemo(() => pieColors((rows || []).length), [(rows || []).length])
-  const extent = useMemo(() => yDomainThroughZero(rows || [], keys, isStacked), [rows, keys, isStacked])
+  const piePalette = useMemo(() => pieColors((resolvedRows || []).length), [(resolvedRows || []).length])
+  const extent = useMemo(() => yDomainThroughZero(resolvedRows || [], keys, isStacked), [resolvedRows, keys, isStacked])
   const yWidth = useMemo(() => yAxisWidthFor(extent, locale), [extent, locale])
   const ticks = tickCountFor(CHART_HEIGHT)
 
   const pieTotal = useMemo(() => {
-    if (kind !== 'pie' || !rows || !series || series.length === 0) return 0
+    if (kind !== 'pie' || !resolvedRows || !series || series.length === 0) return 0
     const sKey = series[0].key
-    return rows.reduce((acc, r) => acc + (Number(r[sKey]) || 0), 0)
-  }, [kind, rows, series])
+    return resolvedRows.reduce((acc, r) => acc + (Number(r[sKey]) || 0), 0)
+  }, [kind, resolvedRows, series])
 
   const yDomain: [number | 'auto', 'auto'] = [extent[0] < 0 ? 'auto' : 0, 'auto']
 
-  if (!rows || rows.length === 0 || !series || series.length === 0) {
+  if (!resolvedRows || resolvedRows.length === 0 || !series || series.length === 0) {
     return null
   }
 
   const multi = series.length > 1
   const fmt = (v: unknown) => formatNumber(v, locale)
-  const animate = !reducedMotion
+  // Desativa animação de atualização se vier de expressão dinâmica para não dançar a cada tecla
+  const animate = !reducedMotion && !hasDynamicExpressions
 
   const handleCopy = async () => {
-    const csv = chartToCsv(x_key, series, rows)
+    const csv = chartToCsv(x_key, series, resolvedRows)
     try {
       await navigator.clipboard.writeText(csv)
       setCopied(true)
@@ -226,7 +256,7 @@ export function ChartCard({ block }: Props) {
       return (
         <PieChart margin={{ top: 8, right: 8, bottom: 8, left: 8 }}>
           <Pie
-            data={rows}
+            data={resolvedRows}
             dataKey={sKey}
             nameKey={x_key}
             cx="50%"
@@ -236,7 +266,7 @@ export function ChartCard({ block }: Props) {
             paddingAngle={2}
             isAnimationActive={animate}
           >
-            {rows.map((_, index) => (
+            {resolvedRows.map((_, index) => (
               <Cell key={`cell-${index}`} fill={piePalette[index % piePalette.length]} />
             ))}
           </Pie>
@@ -251,7 +281,7 @@ export function ChartCard({ block }: Props) {
 
     if (kind === 'line') {
       return (
-        <LineChart data={rows} margin={margin}>
+        <LineChart data={resolvedRows} margin={margin}>
           {axes}
           {series.map((s, idx) => (
             <Line
@@ -273,7 +303,7 @@ export function ChartCard({ block }: Props) {
     // bar (1 série) e compare (barras agrupadas ou empilhadas)
     const drawn = kind === 'bar' ? series.slice(0, 1) : series
     return (
-      <BarChart data={rows} margin={margin} barCategoryGap="22%" barGap={3} maxBarSize={48}>
+      <BarChart data={resolvedRows} margin={margin} barCategoryGap="22%" barGap={3} maxBarSize={48}>
         {axes}
         {drawn.map((s, idx) => (
           <Bar
@@ -324,7 +354,7 @@ export function ChartCard({ block }: Props) {
           </tr>
         </thead>
         <tbody>
-          {rows.map((row, rIdx) => (
+          {resolvedRows.map((row, rIdx) => (
             <tr key={rIdx}>
               <td>{String(row[x_key])}</td>
               {series.map((s) => (

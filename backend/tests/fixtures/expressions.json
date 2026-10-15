@@ -1,0 +1,104 @@
+[
+  {
+    "expr": "={valor} * (1 + {taxa} / 100)",
+    "valid": true,
+    "variables": ["valor", "taxa"],
+    "sample_vars": { "valor": 1000, "taxa": 10 },
+    "expected_result": 1100
+  },
+  {
+    "expr": "=round(sqrt({x}) * {y}, 2)",
+    "valid": true,
+    "variables": ["x", "y"],
+    "sample_vars": { "x": 16, "y": 2.555 },
+    "expected_result": 10.22
+  },
+  {
+    "expr": "=pow({base}, 3) + abs({delta}) - floor({num}) + ceil({num}) + min({a}, {b}) + max({a}, {b})",
+    "valid": true,
+    "variables": ["base", "delta", "num", "a", "b"],
+    "sample_vars": { "base": 2, "delta": -5, "num": 3.7, "a": 10, "b": 20 },
+    "expected_result": 44
+  },
+  {
+    "expr": "={a} / {b}",
+    "valid": true,
+    "variables": ["a", "b"],
+    "sample_vars": { "a": 10, "b": 0 },
+    "expected_result": 0
+  },
+  {
+    "expr": "=min(10, 20, 5, 30)",
+    "valid": true,
+    "variables": [],
+    "sample_vars": {},
+    "expected_result": 5
+  },
+  {
+    "expr": "=max(10, 20, 5, 30)",
+    "valid": true,
+    "variables": [],
+    "sample_vars": {},
+    "expected_result": 30
+  },
+  {
+    "expr": "={a} * -2 + 5",
+    "valid": true,
+    "variables": ["a"],
+    "sample_vars": { "a": 4 },
+    "expected_result": -3
+  },
+  {
+    "expr": "={valor} ^ 2",
+    "valid": false,
+    "error": "invalid_operator",
+    "reason": "Operador ^ proibido para evitar ambiguidade"
+  },
+  {
+    "expr": "=unknownFunc({x})",
+    "valid": false,
+    "error": "unknown_function"
+  },
+  {
+    "expr": "=round({x})",
+    "valid": false,
+    "error": "invalid_arity",
+    "reason": "round exige 2 argumentos"
+  },
+  {
+    "expr": "=pow({x})",
+    "valid": false,
+    "error": "invalid_arity",
+    "reason": "pow exige 2 argumentos"
+  },
+  {
+    "expr": "=(1 + {x}",
+    "valid": false,
+    "error": "unbalanced_parentheses"
+  },
+  {
+    "expr": "=1 + {x})",
+    "valid": false,
+    "error": "unbalanced_parentheses"
+  },
+  {
+    "expr": "={INVALID-ID}",
+    "valid": false,
+    "error": "invalid_identifier"
+  },
+  {
+    "expr": "={x} + * 2",
+    "valid": false,
+    "error": "syntax_error"
+  },
+  {
+    "expr": "={x} {y}",
+    "valid": false,
+    "error": "syntax_error"
+  },
+  {
+    "expr": "",
+    "valid": false,
+    "error": "empty_expression"
+  }
+]

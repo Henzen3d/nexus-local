@@ -19,6 +19,7 @@ interface Props {
   envelope?: UiEnvelope | null
   streaming?: boolean
   pendingType?: string | null
+  messageId?: string
   onRuntimeError?: (title: string, message: string) => void
 }
 
@@ -87,7 +88,7 @@ function BlockSkeleton({ blocks }: { blocks: UiBlock[] }) {
   )
 }
 
-export function DynamicRenderer({ envelope, streaming, pendingType, onRuntimeError }: Props) {
+export function DynamicRenderer({ envelope, streaming, pendingType, messageId, onRuntimeError }: Props) {
   // Flag desligada (ou ainda não carregada): nada é pintado, mesmo com payload.
   const enabled = useIntelligentUiEnabled()
   if (!enabled || (!envelope && !pendingType)) return null
@@ -108,7 +109,7 @@ export function DynamicRenderer({ envelope, streaming, pendingType, onRuntimeErr
 
             return (
               <React.Fragment key={block.id}>
-                {hasValue && <ProgressCard block={block} />}
+                {hasValue && <ProgressCard block={block} messageId={messageId} />}
                 {hasSteps && <ChecklistCard block={block} />}
               </React.Fragment>
             )
@@ -119,11 +120,11 @@ export function DynamicRenderer({ envelope, streaming, pendingType, onRuntimeErr
           }
 
           if (block.type === 'chart') {
-            return <ChartCard key={block.id} block={block} />
+            return <ChartCard key={block.id} block={block} messageId={messageId} />
           }
 
           if (block.type === 'controls') {
-            return <ControlsCard key={block.id} block={block} streaming={streaming} />
+            return <ControlsCard key={block.id} block={block} streaming={streaming} messageId={messageId} />
           }
 
           if (block.type === 'sandbox') {
@@ -131,11 +132,11 @@ export function DynamicRenderer({ envelope, streaming, pendingType, onRuntimeErr
           }
 
           if (block.type === 'metric') {
-            return <MetricCard key={block.id} block={block} />
+            return <MetricCard key={block.id} block={block} messageId={messageId} />
           }
 
           if (block.type === 'table') {
-            return <TableCard key={block.id} block={block} />
+            return <TableCard key={block.id} block={block} messageId={messageId} />
           }
 
           if (block.type === 'options') {

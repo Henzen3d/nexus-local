@@ -1,4 +1,4 @@
-import React, { useId, useMemo, useState } from 'react'
+import React, { useEffect, useId, useMemo, useState } from 'react'
 import { Check } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useChatContext } from '../../context/ChatContext'
@@ -6,11 +6,13 @@ import { useStore } from '../../store/useStore'
 import type { ControlsBlock } from '../../types'
 import { formatNumber } from '../lib/chartFormat'
 import { evaluateSafeFormula } from '../lib/safeMath'
+import { useMessageUiStore } from '../state/messageUiState'
 import { UiCard } from './UiCard'
 
 interface Props {
   block: ControlsBlock
   streaming?: boolean
+  messageId?: string
 }
 
 /** Spec §4.4: `text` tem teto de 200 caracteres no cliente, declare o modelo ou não. */
@@ -28,9 +30,11 @@ function clampNumber(raw: number, min?: number, max?: number): number {
   return n
 }
 
-export function ControlsCard({ block, streaming }: Props) {
+export function ControlsCard({ block, streaming, messageId }: Props) {
   const { t, i18n } = useTranslation()
   const { sendMessage } = useChatContext()
+  const setUiValues = useMessageUiStore((s) => s.setUiValues)
+  const msgId = messageId || block.id
   // Seletores pontuais: a bolha não pode re-renderizar a cada token do store
   const models = useStore((s) => s.models)
   const selectModel = useStore((s) => s.selectModel)
@@ -74,20 +78,50 @@ export function ControlsCard({ block, streaming }: Props) {
   const [error, setError] = useState<string | null>(null)
   const isDisabled = submitted || Boolean(streaming)
 
-  // Cálculo reativo em tempo real
-  const computedResult = useMemo(() => {
-    if (!computed || !computed.formula) return null
-    const numericVars: Record<string, number> = {}
-    for (const [k, v] of Object.entries(formValues)) {
-      numericVars[k] = typeof v === 'number' ? v : parseFloat(String(v)) || 0
-    }
-    return evaluateSafeFormula(computed.formula, numericVars)
-  }, [computed, formValues])
+  // Normaliza computeds em lista
+  const computedsList = useMemo(() => {
+    if (!computed) return []
+    if (Array.isArray(computed)) return computed
+    return [computed]
+  }, [computed])
 
-  const computedBadgeText = useMemo(() => {
-    if (!computed || computedResult === null) return null
-    return computed.template.replace('{resultado}', String(computedResult))
-  }, [computed, computedResult])
+  // Cálculo reativo de computeds em tempo real (suporta encadeamento)
+  const computedResults = useMemo(() => {
+    if (computedsList.length === 0) return {}
+    const currentVars: Record<string, number> = {}
+    for (const [k, v] of Object.entries(formValues)) {
+      currentVars[k] = typeof v === 'number' ? v : parseFloat(String(v)) || 0
+    }
+    const res: Record<string, number | null> = {}
+    for (const comp of computedsList) {
+      const cId = comp.id || 'resultado'
+      const val = evaluateSafeFormula(comp.formula, currentVars)
+      res[cId] = val
+      if (val !== null) currentVars[cId] = val
+    }
+    return res
+  }, [computedsList, formValues])
+
+  // Publica valores no estado compartilhado da mensagem
+  useEffect(() => {
+    const toPublish: Record<string, number | string> = { ...formValues }
+    for (const [k, v] of Object.entries(computedResults)) {
+      if (v !== null && v !== undefined) toPublish[k] = v
+    }
+    setUiValues(msgId, toPublish)
+  }, [msgId, formValues, computedResults, setUiValues])
+
+  // Badges de computeds
+  const computedBadges = useMemo(() => {
+    return computedsList
+      .map((comp) => {
+        const cId = comp.id || 'resultado'
+        const resVal = computedResults[cId]
+        if (resVal === null || resVal === undefined) return null
+        return comp.template.replace(`{${cId}}`, String(resVal)).replace('{resultado}', String(resVal))
+      })
+      .filter(Boolean) as string[]
+  }, [computedsList, computedResults])
 
   // Spec §4.4: sem modelos na lista do usuário, o bloco set_model não aparece.
   if (isSetModel && models.length === 0) return null
@@ -107,8 +141,10 @@ export function ControlsCard({ block, streaming }: Props) {
       for (const [k, v] of Object.entries(formValues)) {
         msg = msg.split(`{${k}}`).join(String(v))
       }
-      if (computedResult !== null) {
-        msg = msg.split('{resultado}').join(String(computedResult))
+      for (const [k, v] of Object.entries(computedResults)) {
+        if (v !== null && v !== undefined) {
+          msg = msg.split(`{${k}}`).join(String(v)).split('{resultado}').join(String(v))
+        }
       }
       if (sendMessage) {
         sendMessage(msg)
@@ -147,15 +183,19 @@ export function ControlsCard({ block, streaming }: Props) {
       aria-describedby={error ? errorId : undefined}
       data-submitted={submitted || undefined}
       actions={
-        computed ? (
-          <span
-            className="nexus-ui-chip nexus-ui-chip--accent"
-            aria-live="polite"
-            aria-atomic="true"
-            data-empty={computedBadgeText ? undefined : 'true'}
-          >
-            {computedBadgeText ?? ' '}
-          </span>
+        computedBadges.length > 0 ? (
+          <div className="nexus-ui-controls__badges" style={{ display: 'flex', gap: 6 }}>
+            {computedBadges.map((badgeText, idx) => (
+              <span
+                key={idx}
+                className="nexus-ui-chip nexus-ui-chip--accent"
+                aria-live="polite"
+                aria-atomic="true"
+              >
+                {badgeText}
+              </span>
+            ))}
+          </div>
         ) : undefined
       }
       footer={

@@ -142,3 +142,17 @@ Pizza, vídeo, proxy de imagem, widget dentro do cache semântico e Thesys não 
 - [x] Respeito à transmissão de stream: prop `streaming?: boolean` desabilita interações prematuras antes do envelope fechar.
 - [x] i18n completo: 5 novas chaves (`optionsSingleHint`, `optionsMultipleHint`, `optionsOther`, `optionsSubmit`, `optionsAnswered`) rigorosamente traduzidas em todos os 8 idiomas (47 chaves totais em `intelligentUi`).
 - [x] Testes de paridade e UI: 5 novos testes em `test_ui_blocks.py`, testes unitários em `nexusUi.test.ts`, e testes com `react-test-renderer` em `scripts/tests/options.ui.tsx` cobrindo envio imediato, múltipla seleção, campo outro e stream.
+## Plano 12 — passo 8, estado compartilhado e expressões no safeMath (2026-10-15)
+
+- [x] Gramática matemática segura e estrita: gramática com operadores `+`, `-`, `*`, `/`, parênteses, números e variáveis `{id}` de até 32 caracteres alfanuméricos/underscore. Operador `^` expressamente proibido para evitar ambiguidades de precedência.
+- [x] Funções matemáticas permitidas: suporte canônico a `round(x, casas)`, `pow(x, y)`, `abs(x)`, `floor(x)`, `ceil(x)`, `sqrt(x)`, `min(...)`, `max(...)`. Aridade validada estaticamente nos validadores.
+- [x] Divisão por zero segura: expressões com divisão por zero avaliam para 0 sem lançar erros ou quebrar a interface.
+- [x] Fixtures compartilhadas e paridade Python/TS: `backend/tests/fixtures/expressions.json` com 17 casos canônicos lido e testado em paridade estrita nos dois ambientes (`test_ui_expr.py` e `safeMath.test.ts`).
+- [x] Ordenação topológica e detecção de ciclos: `check_dependency_cycles` analisa dependências entre computeds de `controls`, detecta dependências circulares com algoritmo DFS tricolor e retorna ordenação topológica para cálculo encadeado correto.
+- [x] Validação estática de variáveis contra o envelope: expressões em `metric`, `card`, `progress`, `table` e `chart` validadas estaticamente contra os IDs de campos e computeds conhecidos de blocos `controls` presentes no mesmo envelope.
+- [x] Detecção de colisão de campos de controles: dois blocos `controls` no mesmo envelope com IDs repetidos geram `duplicate_id` e o bloco conflitante é descartado.
+- [x] Store reativo isolado por mensagem: `useMessageUiStore` com escopo estrito por `messageId` (`states[messageId][fieldId]`), prevenindo vazamento de estado entre mensagens da conversa. Hook `useResolvedValue(messageId, rawValue)` memoizado para reavaliação instantânea.
+- [x] Interação em tempo real: alteração de sliders ou campos numéricos em `ControlsCard` recalcula e atualiza instantaneamente `MetricCard`, `ProgressCard`, células numéricas de `TableCard` e séries de `ChartCard`.
+- [x] Estabilidade visual e Zero CLS no Recharts: detecção de expressões dinâmicas em `ChartCard` forçando `isAnimationActive={false}` para eliminar saltos e animações acumuladas ao arrastar sliders.
+- [x] Acessibilidade: `ProgressCard` com expressão reativa mantém `aria-valuenow` numérico sincronizado com o valor calculado.
+- [x] Testes automatizados: 525 testes backend aprovados em pytest, 129 testes unitários frontend e teste de UI reativa real (`reactive.ui.tsx`) validando a cadeia interativa completa.

@@ -22,6 +22,11 @@ import type {
   UiBlock,
   UiEnvelope,
 } from '../types'
+import {
+  checkDependencyCycles,
+  isExpression,
+  validateExpression,
+} from '../ui/lib/safeMath.ts'
 
 const ID_REGEX = /^[a-z0-9_-]{1,32}$/
 const FIELD_ID_REGEX = /^[a-z0-9_]{1,32}$/
@@ -123,16 +128,24 @@ export function isAllowedImageUrl(
 function validateProgress(item: Record<string, unknown>): ProgressBlock | null {
   const label = typeof item.label === 'string' && item.label.trim() ? item.label.trim().slice(0, 80) : 'Progresso'
 
-  let cleanValue: number | undefined
+  let cleanValue: number | string | undefined
   let cleanMax: number | undefined
 
   if (item.value !== undefined && item.max !== undefined) {
-    const val = Number(item.value)
-    const mx = Number(item.max)
-    if (!Number.isNaN(val) && !Number.isNaN(mx) && Number.isFinite(val) && Number.isFinite(mx)) {
-      if (mx >= 1 && mx <= 1000 && val >= 0 && val <= mx) {
-        cleanValue = Math.round(val * 100) / 100
+    if (isExpression(item.value)) {
+      const mx = Number(item.max)
+      if (!Number.isNaN(mx) && Number.isFinite(mx) && mx >= 1 && mx <= 1000) {
+        cleanValue = String(item.value).trim().slice(0, 160)
         cleanMax = Math.round(mx * 100) / 100
+      }
+    } else {
+      const val = Number(item.value)
+      const mx = Number(item.max)
+      if (!Number.isNaN(val) && !Number.isNaN(mx) && Number.isFinite(val) && Number.isFinite(mx)) {
+        if (mx >= 1 && mx <= 1000 && val >= 0 && val <= mx) {
+          cleanValue = Math.round(val * 100) / 100
+          cleanMax = Math.round(mx * 100) / 100
+        }
       }
     }
   }
@@ -220,7 +233,10 @@ function validateCard(item: Record<string, unknown>): CardBlock | null {
       if (!f || typeof f !== 'object') continue
       const fact = f as Record<string, unknown>
       const label = String(fact.label || '').trim().slice(0, 40)
-      const val = String(fact.value || '').trim().slice(0, 40)
+      const valRaw = fact.value
+      const val = isExpression(valRaw)
+        ? String(valRaw).trim().slice(0, 160)
+        : String(valRaw || '').trim().slice(0, 40)
       if (label && val) {
         cleanFacts.push({ label, value: val })
       }
@@ -361,12 +377,18 @@ function validateChart(item: Record<string, unknown>): ChartBlock | null {
     let hasNum = false
 
     for (const sKey of seenKeys) {
-      const num = Number(row[sKey] ?? 0)
-      if (Number.isFinite(num)) {
-        rowObj[sKey] = num
+      const val = row[sKey]
+      if (isExpression(val)) {
+        rowObj[sKey] = String(val).trim().slice(0, 160)
         hasNum = true
       } else {
-        rowObj[sKey] = 0
+        const num = Number(val ?? 0)
+        if (Number.isFinite(num)) {
+          rowObj[sKey] = num
+          hasNum = true
+        } else {
+          rowObj[sKey] = 0
+        }
       }
     }
 
@@ -436,7 +458,9 @@ function validateTable(item: Record<string, unknown>): TableBlock | null {
     for (const col of cleanColumns) {
       const val = row[col.key]
       if (col.kind === 'number') {
-        if (typeof val === 'number' && Number.isFinite(val)) {
+        if (isExpression(val)) {
+          rowObj[col.key] = String(val).trim().slice(0, 160)
+        } else if (typeof val === 'number' && Number.isFinite(val)) {
           rowObj[col.key] = val
         } else {
           rowObj[col.key] = null
@@ -555,13 +579,32 @@ function validateControls(item: Record<string, unknown>): ControlsBlock | null {
   if (cleanFields.length === 0) return null
 
   let cleanComputed: ControlsBlock['computed'] | undefined
-  if (item.computed && typeof item.computed === 'object') {
-    const comp = item.computed as Record<string, unknown>
+  const compRaw = item.computed
+  const compList: Array<{ id: string; template: string; formula: string }> = []
+  let isLegacyDict = false
+  if (compRaw && typeof compRaw === 'object' && !Array.isArray(compRaw)) {
+    isLegacyDict = true
+    const comp = compRaw as Record<string, unknown>
     if (typeof comp.template === 'string' && typeof comp.formula === 'string') {
-      cleanComputed = {
-        template: comp.template.slice(0, 200),
-        formula: comp.formula.slice(0, 300),
+      const cId = typeof comp.id === 'string' && comp.id.trim() ? comp.id.trim().slice(0, 32) : 'resultado'
+      compList.push({ id: cId, template: comp.template.slice(0, 200), formula: comp.formula.slice(0, 300) })
+    }
+  } else if (Array.isArray(compRaw)) {
+    for (const c of compRaw.slice(0, 4)) {
+      if (c && typeof c === 'object') {
+        const comp = c as Record<string, unknown>
+        if (typeof comp.template === 'string' && typeof comp.formula === 'string') {
+          const cId = typeof comp.id === 'string' && comp.id.trim() ? comp.id.trim().slice(0, 32) : 'resultado'
+          compList.push({ id: cId, template: comp.template.slice(0, 200), formula: comp.formula.slice(0, 300) })
+        }
       }
+    }
+  }
+
+  if (compList.length > 0) {
+    const { valid } = checkDependencyCycles(compList, new Set(seenIds))
+    if (valid) {
+      cleanComputed = isLegacyDict ? compList[0] : compList
     }
   }
 
@@ -580,7 +623,13 @@ function validateControls(item: Record<string, unknown>): ControlsBlock | null {
     const tmpl = act.template
     const placeholders = Array.from(tmpl.matchAll(PLACEHOLDER_REGEX)).map((m) => m[1])
     const validKeys = new Set(seenIds)
-    if (cleanComputed) validKeys.add('resultado')
+    if (cleanComputed) {
+      if (Array.isArray(cleanComputed)) {
+        for (const c of cleanComputed) validKeys.add(c.id || 'resultado')
+      } else {
+        validKeys.add(cleanComputed.id || 'resultado')
+      }
+    }
     for (const ph of placeholders) {
       if (!validKeys.has(ph)) return null
     }
@@ -652,13 +701,14 @@ function validateMetric(item: Record<string, unknown>): MetricBlock | null {
     const label = cleanText(r.label, 1, 40)
     if (label === null) continue
     let value: number | string | null
-    if (typeof r.value === 'boolean') value = null
+    if (isExpression(r.value)) value = String(r.value).trim().slice(0, 160)
+    else if (typeof r.value === 'boolean') value = null
     else if (typeof r.value === 'number') value = Number.isFinite(r.value) ? r.value : null // NaN não vira texto
     else value = cleanText(r.value, 1, 24)
     if (value === null) continue
     const clean: MetricItem = { label, value }
     const unit = cleanText(r.unit, 1, 8)
-    if (unit !== null && typeof value === 'number') clean.unit = unit
+    if (unit !== null && (typeof value === 'number' || isExpression(value))) clean.unit = unit
     const delta = cleanText(r.delta, 1, 12)
     if (delta !== null) clean.delta = delta
     const trend = String(r.trend || '').trim().toLowerCase()
@@ -830,6 +880,7 @@ export function parseUiEnvelope(raw: unknown): UiEnvelope | null {
 
   let cleanBlocks: UiBlock[] = []
   const seenIds = new Set<string>()
+  const seenControlFieldIds = new Set<string>()
   const perType: Record<string, number> = {}
 
   for (let idx = 0; idx < (data.blocks as unknown[]).slice(0, MAX_BLOCKS).length; idx++) {
@@ -866,6 +917,16 @@ export function parseUiEnvelope(raw: unknown): UiEnvelope | null {
     else if (bType === 'follow_up') validated = validateFollowUp(obj)
 
     if (validated) {
+      if (bType === 'controls') {
+        const ctrlBlock = validated as ControlsBlock
+        const fIds = ctrlBlock.fields.map((f) => f.id)
+        if (fIds.some((id) => seenControlFieldIds.has(id))) {
+          // Rejeita o bloco duplicado (duplicate_id)
+          continue
+        }
+        for (const id of fIds) seenControlFieldIds.add(id)
+      }
+
       seenIds.add(bId)
       perType[bType] = (perType[bType] ?? 0) + 1
       cleanBlocks.push(validated)
@@ -873,6 +934,70 @@ export function parseUiEnvelope(raw: unknown): UiEnvelope | null {
   }
 
   if (cleanBlocks.length === 0) return null
+
+  // Coleta todos os IDs conhecidos de controls (fields + computeds) do envelope
+  const allControlIds = new Set<string>(seenControlFieldIds)
+  for (const b of cleanBlocks) {
+    if (b.type === 'controls') {
+      const comp = (b as ControlsBlock).computed
+      if (comp) {
+        if (Array.isArray(comp)) {
+          for (const c of comp) allControlIds.add(c.id || 'resultado')
+        } else {
+          allControlIds.add(comp.id || 'resultado')
+        }
+      }
+    }
+  }
+
+  // Validação pós-processamento de expressões contra IDs de controls do envelope
+  for (const b of cleanBlocks) {
+    if (b.type === 'metric') {
+      for (const it of b.items) {
+        if (isExpression(it.value)) {
+          const { valid } = validateExpression(it.value, allControlIds)
+          if (!valid) it.value = '—'
+        }
+      }
+    } else if (b.type === 'table') {
+      const numCols = new Set(b.columns.filter((c) => c.kind === 'number').map((c) => c.key))
+      for (const r of b.rows) {
+        for (const k of numCols) {
+          const val = r[k]
+          if (isExpression(val)) {
+            const { valid } = validateExpression(val, allControlIds)
+            if (!valid) r[k] = null
+          }
+        }
+      }
+    } else if (b.type === 'chart') {
+      const sKeys = new Set(b.series.map((s) => s.key))
+      for (const r of b.rows) {
+        for (const k of sKeys) {
+          const val = r[k]
+          if (isExpression(val)) {
+            const { valid } = validateExpression(val, allControlIds)
+            if (!valid) r[k] = 0
+          }
+        }
+      }
+    } else if (b.type === 'progress') {
+      if (isExpression(b.value)) {
+        const { valid } = validateExpression(b.value, allControlIds)
+        if (!valid) {
+          delete b.value
+          delete b.max
+        }
+      }
+    } else if (b.type === 'card' && b.facts) {
+      for (const f of b.facts) {
+        if (isExpression(f.value)) {
+          const { valid } = validateExpression(f.value, allControlIds)
+          if (!valid) f.value = '—'
+        }
+      }
+    }
+  }
 
   // `follow_up` é sempre o último bloco (plano 12 §2.3): se veio antes, vai para o fim.
   if (cleanBlocks.some((b) => b.type === 'follow_up') && cleanBlocks[cleanBlocks.length - 1].type !== 'follow_up') {
@@ -960,7 +1085,8 @@ export function parseUiEnvelopeWithDiagnostics(raw: unknown, imageHosts: string[
     if (typeof block.id === 'string') blockId = block.id
     const kind = String(block.type || inferType(block) || '').trim().toLowerCase()
     const hint = Object.prototype.hasOwnProperty.call(UI_SIGNATURES, kind) ? UI_SIGNATURES[kind] : ''
-    let code: UiErrorCode, path: string
+    let code: UiErrorCode = 'type_mismatch'
+    let path = 'type'
     if (!Object.prototype.hasOwnProperty.call(UI_SIGNATURES, kind)) { code = 'unknown_type'; path = 'type' }
     else if ((counts[kind] ?? 0) >= (MAX_BLOCKS_PER_TYPE[kind] ?? MAX_BLOCKS)) { code = 'limit_exceeded'; path = 'blocks' }
     else {
@@ -976,7 +1102,39 @@ export function parseUiEnvelopeWithDiagnostics(raw: unknown, imageHosts: string[
       const action = block.action as Record<string, unknown> | undefined
       if (required && (value === undefined || value === null || value === '' || (Array.isArray(value) && !value.length))) { code = 'missing_required'; path = required }
       else if (kind === 'controls' && (!action || !['send_message', 'set_model'].includes(String(action.name)))) { code = 'invalid_action'; path = 'action.name' }
-      else if (kind === 'controls') { code = 'invalid_action'; path = 'action' }
+      else if (kind === 'controls') {
+        const fields = Array.isArray(block.fields) ? block.fields : []
+        const fIds = fields.filter((f) => f && typeof f === 'object' && (f as Record<string, unknown>).id).map((f) => String((f as Record<string, unknown>).id))
+        if (fIds.length !== new Set(fIds).size) {
+          code = 'duplicate_id'
+          path = 'fields'
+        } else if (block.computed) {
+          const compRaw = block.computed
+          const compList: Array<{ id: string; formula: string }> = []
+          if (Array.isArray(compRaw)) {
+            for (const c of compRaw) {
+              if (c && typeof c === 'object') {
+                const rec = c as Record<string, unknown>
+                compList.push({ id: String(rec.id || 'resultado'), formula: String(rec.formula || '') })
+              }
+            }
+          } else if (typeof compRaw === 'object') {
+            const rec = compRaw as Record<string, unknown>
+            compList.push({ id: String(rec.id || 'resultado'), formula: String(rec.formula || '') })
+          }
+          const { valid: cycValid, error: cycErr } = checkDependencyCycles(compList, new Set(fIds))
+          if (!cycValid) {
+            code = cycErr === 'duplicate_id' ? 'duplicate_id' : 'invalid_expression'
+            path = 'computed'
+          } else {
+            code = 'invalid_action'
+            path = 'action'
+          }
+        } else {
+          code = 'invalid_action'
+          path = 'action'
+        }
+      }
       else if (kind === 'options' && (!action || String(action.name) !== 'send_message')) { code = 'invalid_action'; path = 'action.name' }
       else if (kind === 'options' && (typeof action?.template !== 'string' || !action.template.includes('{choice}'))) { code = 'invalid_action'; path = 'action.template' }
       else if (kind === 'options' && (!Array.isArray(block.options) || block.options.length < 2)) { code = 'missing_required'; path = 'options' }

@@ -3,10 +3,12 @@ import { Activity, Minus, TrendingDown, TrendingUp } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { MetricBlock, MetricItem } from '../../types'
 import { formatNumber } from '../lib/chartFormat'
+import { useResolvedValue } from '../state/messageUiState'
 import { UiCard } from './UiCard'
 
 interface Props {
   block: MetricBlock
+  messageId?: string
 }
 
 /**
@@ -15,7 +17,7 @@ interface Props {
  * dica embaixo). A cor do delta depende de `trend` × `good`: a direção boa é
  * `--success`, a ruim é `--error`, `flat` é neutro. Só tokens do Multi+.
  */
-export function MetricCard({ block }: Props) {
+export function MetricCard({ block, messageId }: Props) {
   const { t, i18n } = useTranslation()
   const locale = i18n.resolvedLanguage || i18n.language || 'pt-BR'
 
@@ -23,7 +25,7 @@ export function MetricCard({ block }: Props) {
     <UiCard className="nexus-ui-kpis" icon={<Activity size={16} />} title={block.title}>
       <dl className="nexus-ui-kpis__grid" data-count={block.items.length}>
         {block.items.map((item, idx) => (
-          <MetricTile key={idx} item={item} locale={locale} t={t} />
+          <MetricTile key={idx} item={item} locale={locale} t={t} messageId={messageId} />
         ))}
       </dl>
     </UiCard>
@@ -40,15 +42,22 @@ function MetricTile({
   item,
   locale,
   t,
+  messageId,
 }: {
   item: MetricItem
   locale: string
   t: (key: string, opts?: Record<string, unknown>) => string
+  messageId?: string
 }) {
-  const numeric = typeof item.value === 'number'
+  const resolvedValue = useResolvedValue(messageId, item.value)
+  const numeric = typeof resolvedValue === 'number'
   // Valor numérico formatado por locale; sem notação compacta para o KPI não virar "48 mil"
   // quando o modelo mandou 48200 (a tile tem espaço; o eixo do gráfico não tinha).
-  const valueText = numeric ? formatNumber(item.value, locale, false) : String(item.value)
+  const valueText = numeric
+    ? formatNumber(resolvedValue, locale, false)
+    : resolvedValue !== null && resolvedValue !== undefined
+      ? String(resolvedValue)
+      : '—'
   const tone = toneFor(item)
   const TrendIcon = item.trend === 'up' ? TrendingUp : item.trend === 'down' ? TrendingDown : Minus
   const trendLabel =

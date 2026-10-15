@@ -3,15 +3,18 @@ import { ArrowDown, ArrowUp, ArrowUpDown, Check, Copy } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { TableBlock, TableColumn } from '../../types'
 import { formatNumber, tableToCsv } from '../lib/chartFormat'
+import { evaluateExpression, isExpression } from '../lib/safeMath'
+import { useMessageUiStore } from '../state/messageUiState'
 import { UiCard, UiCardAction } from './UiCard'
 
 interface Props {
   block: TableBlock
+  messageId?: string
 }
 
 const COLLAPSED_ROW_LIMIT = 10
 
-export function TableCard({ block }: Props) {
+export function TableCard({ block, messageId }: Props) {
   const { t, i18n } = useTranslation()
   const { title, columns, rows, sort } = block
   const [copied, setCopied] = useState(false)
@@ -19,6 +22,8 @@ export function TableCard({ block }: Props) {
   const [sortKey, setSortKey] = useState<string>(sort?.key || '')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>(sort?.dir || 'asc')
   const locale = i18n.resolvedLanguage || i18n.language || 'pt-BR'
+
+  const messageValues = useMessageUiStore((s) => (messageId ? s.states[messageId] : undefined))
 
   const colMap = useMemo(() => {
     const map = new Map<string, TableColumn>()
@@ -28,10 +33,28 @@ export function TableCard({ block }: Props) {
     return map
   }, [columns])
 
+  const resolvedRows = useMemo(() => {
+    return rows.map((r) => {
+      const copy: Record<string, string | number | null> = { ...r }
+      for (const col of columns) {
+        const val = r[col.key]
+        if (isExpression(val)) {
+          if (!messageValues) {
+            copy[col.key] = '—'
+          } else {
+            const evaluated = evaluateExpression(val, messageValues)
+            copy[col.key] = evaluated !== null && Number.isFinite(evaluated) ? evaluated : '—'
+          }
+        }
+      }
+      return copy
+    })
+  }, [rows, columns, messageValues])
+
   const sortedRows = useMemo(() => {
-    if (!sortKey || !colMap.has(sortKey)) return rows
+    if (!sortKey || !colMap.has(sortKey)) return resolvedRows
     const col = colMap.get(sortKey)!
-    const copy = [...rows]
+    const copy = [...resolvedRows]
 
     copy.sort((a, b) => {
       const valA = a[sortKey]
@@ -55,7 +78,7 @@ export function TableCard({ block }: Props) {
     })
 
     return copy
-  }, [rows, sortKey, sortDir, colMap, locale])
+  }, [resolvedRows, sortKey, sortDir, colMap, locale])
 
   const visibleRows = useMemo(() => {
     if (sortedRows.length <= COLLAPSED_ROW_LIMIT || expanded) {
@@ -74,7 +97,7 @@ export function TableCard({ block }: Props) {
   }
 
   const handleCopy = async () => {
-    const csv = tableToCsv(columns, rows)
+    const csv = tableToCsv(columns, sortedRows)
     try {
       await navigator.clipboard.writeText(csv)
       setCopied(true)

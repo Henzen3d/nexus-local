@@ -11,8 +11,13 @@ import json
 import math
 import os
 import re
-from typing import Any
 from urllib.parse import urlparse
+
+from backend.ui_blocks.expr import (
+    check_dependency_cycles,
+    is_expression,
+    validate_expression,
+)
 
 ID_REGEX = re.compile(r"^[a-z0-9_-]{1,32}$")
 SELECT_VALUE_REGEX = re.compile(r"^[a-zA-Z0-9._-]{1,64}$")
@@ -145,15 +150,24 @@ def _validate_progress(block: dict[str, Any]) -> dict[str, Any] | None:
     clean_value = None
     clean_max = None
     if val is not None and mx is not None:
-        try:
-            val_f = float(val)
-            mx_f = float(mx)
-            if not (math.isnan(val_f) or math.isnan(mx_f) or math.isinf(val_f) or math.isinf(mx_f)):
-                if 1 <= mx_f <= 1000 and 0 <= val_f <= mx_f:
-                    clean_value = round(val_f, 2)
+        if is_expression(val):
+            try:
+                mx_f = float(mx)
+                if not (math.isnan(mx_f) or math.isinf(mx_f)) and 1 <= mx_f <= 1000:
+                    clean_value = str(val).strip()[:160]
                     clean_max = round(mx_f, 2)
-        except (ValueError, TypeError):
-            pass
+            except (ValueError, TypeError):
+                pass
+        else:
+            try:
+                val_f = float(val)
+                mx_f = float(mx)
+                if not (math.isnan(val_f) or math.isnan(mx_f) or math.isinf(val_f) or math.isinf(mx_f)):
+                    if 1 <= mx_f <= 1000 and 0 <= val_f <= mx_f:
+                        clean_value = round(val_f, 2)
+                        clean_max = round(mx_f, 2)
+            except (ValueError, TypeError):
+                pass
 
     steps = block.get("steps")
     clean_steps: list[dict[str, Any]] = []
@@ -235,7 +249,11 @@ def _validate_card(
             if not isinstance(f, dict):
                 continue
             f_label = str(f.get("label", "")).strip()[:40]
-            f_val = str(f.get("value", "")).strip()[:40]
+            val_raw = f.get("value", "")
+            if is_expression(val_raw):
+                f_val = str(val_raw).strip()[:160]
+            else:
+                f_val = str(val_raw).strip()[:40]
             if f_label and f_val:
                 clean_facts.append({"label": f_label, "value": f_val})
         if clean_facts:
@@ -386,15 +404,19 @@ def _validate_chart(block: dict[str, Any]) -> dict[str, Any] | None:
         has_any_num = False
         for s_key in seen_series_keys:
             val = r.get(s_key, 0)
-            try:
-                num = float(val)
-                if not (math.isnan(num) or math.isinf(num)):
-                    row_obj[s_key] = num
-                    has_any_num = True
-                else:
+            if is_expression(val):
+                row_obj[s_key] = str(val).strip()[:160]
+                has_any_num = True
+            else:
+                try:
+                    num = float(val)
+                    if not (math.isnan(num) or math.isinf(num)):
+                        row_obj[s_key] = num
+                        has_any_num = True
+                    else:
+                        row_obj[s_key] = 0.0
+                except (ValueError, TypeError):
                     row_obj[s_key] = 0.0
-            except (ValueError, TypeError):
-                row_obj[s_key] = 0.0
         if has_any_num:
             clean_rows.append(row_obj)
 
@@ -477,8 +499,11 @@ def _validate_table(block: dict[str, Any]) -> dict[str, Any] | None:
             kind = col["kind"]
             val = r.get(k)
             if kind == "number":
-                num = _finite_number(val)
-                row_obj[k] = num
+                if is_expression(val):
+                    row_obj[k] = str(val).strip()[:160]
+                else:
+                    num = _finite_number(val)
+                    row_obj[k] = num
             elif kind == "date":
                 if isinstance(val, str) and DATE_REGEX.match(val.strip()):
                     row_obj[k] = val.strip()
@@ -599,14 +624,31 @@ def _validate_controls(block: dict[str, Any]) -> dict[str, Any] | None:
     if not clean_fields:
         return None
 
-    # computed opcional
+    # computed opcional (dicionário legado ou lista de computeds)
     clean_computed = None
     computed = block.get("computed")
+    computed_list: list[dict[str, Any]] = []
+    is_legacy_dict = False
     if isinstance(computed, dict):
+        is_legacy_dict = True
         tmpl = computed.get("template")
         formula = computed.get("formula")
+        c_id = computed.get("id") or "resultado"
         if isinstance(tmpl, str) and (1 <= len(tmpl) <= 200) and isinstance(formula, str) and (1 <= len(formula) <= 300):
-            clean_computed = {"template": tmpl, "formula": formula}
+            computed_list.append({"id": c_id, "template": tmpl, "formula": formula})
+    elif isinstance(computed, list):
+        for c in computed[:4]:
+            if isinstance(c, dict):
+                c_id = str(c.get("id") or "resultado").strip()[:32]
+                c_tmpl = str(c.get("template") or f"{{{c_id}}}").strip()[:200]
+                c_formula = str(c.get("formula") or "").strip()[:300]
+                if c_id and c_tmpl and c_formula:
+                    computed_list.append({"id": c_id, "template": c_tmpl, "formula": c_formula})
+
+    if computed_list:
+        valid_cycles, _, _ = check_dependency_cycles(computed_list, set(seen_field_ids))
+        if valid_cycles:
+            clean_computed = computed_list[0] if is_legacy_dict else computed_list
 
     # action — obrigatória e fechada (spec 4.4): nome fora da lista descarta o bloco.
     action = block.get("action")
@@ -626,7 +668,11 @@ def _validate_controls(block: dict[str, Any]) -> dict[str, Any] | None:
         placeholders = PLACEHOLDER_REGEX.findall(tmpl)
         valid_keys = set(seen_field_ids)
         if clean_computed:
-            valid_keys.add("resultado")
+            if isinstance(clean_computed, dict):
+                valid_keys.add(clean_computed.get("id") or "resultado")
+            elif isinstance(clean_computed, list):
+                for c in clean_computed:
+                    valid_keys.add(c.get("id") or "resultado")
         for ph in placeholders:
             if ph not in valid_keys:
                 return None
@@ -718,8 +764,9 @@ def _validate_metric(block: dict[str, Any]) -> dict[str, Any] | None:
         if label is None:
             continue
         raw_value = raw.get("value")
-        value: int | float | str | None
-        if isinstance(raw_value, bool):
+        if is_expression(raw_value):
+            value = str(raw_value).strip()[:160]
+        elif isinstance(raw_value, bool):
             value = None
         elif isinstance(raw_value, (int, float)):
             value = _finite_number(raw_value)  # NaN/inf não vira texto "nan"
@@ -729,7 +776,7 @@ def _validate_metric(block: dict[str, Any]) -> dict[str, Any] | None:
             continue
         item: dict[str, Any] = {"label": label, "value": value}
         unit = _clean_text(raw.get("unit"), 1, 8)
-        if unit is not None and not isinstance(value, str):
+        if unit is not None and (not isinstance(value, str) or is_expression(value)):
             item["unit"] = unit
         delta = _clean_text(raw.get("delta"), 1, 12)
         if delta is not None:
@@ -962,6 +1009,7 @@ def validate_envelope(
     blocks_to_check = blocks_raw[:MAX_BLOCKS]
     clean_blocks: list[dict[str, Any]] = []
     seen_ids: set[str] = set()
+    seen_control_field_ids: set[str] = set()
     per_type: dict[str, int] = {}
 
     for idx, item in enumerate(blocks_to_check):
@@ -1010,12 +1058,73 @@ def validate_envelope(
             validated = _validate_follow_up(item)
 
         if validated is not None:
+            if b_type == "controls":
+                ctrl_f_ids = {f["id"] for f in validated.get("fields", [])}
+                if seen_control_field_ids.intersection(ctrl_f_ids):
+                    # Rejeita o bloco duplicado (duplicate_id)
+                    continue
+                seen_control_field_ids.update(ctrl_f_ids)
+
             seen_ids.add(b_id)
             per_type[b_type] = per_type.get(b_type, 0) + 1
             clean_blocks.append(validated)
 
     if not clean_blocks:
         return None
+
+    # Coleta todos os IDs conhecidos de controls (fields + computeds) do envelope
+    all_control_ids: set[str] = set(seen_control_field_ids)
+    for b in clean_blocks:
+        if b["type"] == "controls":
+            computed = b.get("computed")
+            if isinstance(computed, dict):
+                all_control_ids.add(computed.get("id") or "resultado")
+            elif isinstance(computed, list):
+                for c in computed:
+                    all_control_ids.add(c.get("id") or "resultado")
+
+    # Validação pós-processamento de expressões contra IDs de controls do envelope
+    for b in clean_blocks:
+        b_k = b["type"]
+        if b_k == "metric":
+            for it in b.get("items", []):
+                val = it.get("value")
+                if is_expression(val):
+                    valid, _, _ = validate_expression(val, all_control_ids)
+                    if not valid:
+                        it["value"] = "—"
+        elif b_k == "table":
+            num_cols = {c["key"] for c in b.get("columns", []) if c.get("kind") == "number"}
+            for r in b.get("rows", []):
+                for k in num_cols:
+                    val = r.get(k)
+                    if is_expression(val):
+                        valid, _, _ = validate_expression(val, all_control_ids)
+                        if not valid:
+                            r[k] = None
+        elif b_k == "chart":
+            s_keys = {s["key"] for s in b.get("series", [])}
+            for r in b.get("rows", []):
+                for k in s_keys:
+                    val = r.get(k)
+                    if is_expression(val):
+                        valid, _, _ = validate_expression(val, all_control_ids)
+                        if not valid:
+                            r[k] = 0.0
+        elif b_k == "progress":
+            val = b.get("value")
+            if is_expression(val):
+                valid, _, _ = validate_expression(val, all_control_ids)
+                if not valid:
+                    b.pop("value", None)
+                    b.pop("max", None)
+        elif b_k == "card":
+            for f in b.get("facts", []):
+                val = f.get("value")
+                if is_expression(val):
+                    valid, _, _ = validate_expression(val, all_control_ids)
+                    if not valid:
+                        f["value"] = "—"
 
     # `follow_up` é sempre o último bloco (plano 12 §2.3): se veio antes, vai para o fim.
     follow_ups = [b for b in clean_blocks if b["type"] == "follow_up"]

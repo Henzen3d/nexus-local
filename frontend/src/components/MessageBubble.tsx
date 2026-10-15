@@ -489,7 +489,7 @@ export function MessageBubble({ message }: Props) {
               )}
 
               {/* Intelligent UI: renderizador de blocos visuais e micro-ferramentas */}
-              {effectiveUiEnvelope && <DynamicRenderer envelope={effectiveUiEnvelope} onRuntimeError={handleRuntimeUiError} />}
+              {effectiveUiEnvelope && <DynamicRenderer envelope={effectiveUiEnvelope} messageId={message.id} onRuntimeError={handleRuntimeUiError} />}
               <CorrectionNotice messageId={message.id} errors={message.ui_errors} dropped={message.ui_dropped} runtime={runtimeUiError} />
 
               {artifacts.length > 0 && (
@@ -827,6 +827,7 @@ export function StreamingBubble({ content }: { content: string }) {
             envelope={streamEnvelope}
             streaming={true}
             pendingType={pendingBlockType}
+            messageId="__streaming__"
           />
         )}
       </div>

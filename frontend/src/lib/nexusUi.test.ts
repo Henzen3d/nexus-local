@@ -536,3 +536,151 @@ test('options: rejeições estritas, auto-healing e inferência', () => {
     assert.equal(inferred.blocks[0].options[1].value, 'vermelho')
   }
 })
+
+test('shared expressions and controls in envelope', () => {
+  const envelope = {
+    v: 1,
+    blocks: [
+      {
+        type: 'controls',
+        id: 'c1',
+        title: 'Simulador',
+        fields: [
+          { id: 'valor', kind: 'number', default: 1000 },
+          { id: 'taxa', kind: 'number', default: 10 },
+        ],
+        action: { name: 'send_message', template: 'Calcular {valor}' },
+      },
+      {
+        type: 'metric',
+        id: 'm1',
+        items: [
+          { label: 'Total', value: '={valor} * (1 + {taxa} / 100)', unit: 'R$' },
+          { label: 'Desconhecido', value: '={nao_existe} + 1' },
+        ],
+      },
+    ],
+  }
+  const validated = parseUiEnvelope(envelope)
+  assert.notEqual(validated, null)
+  const mBlock = validated?.blocks.find((b) => b.type === 'metric')
+  assert.notEqual(mBlock, undefined)
+  if (mBlock && mBlock.type === 'metric') {
+    assert.equal(mBlock.items[0].value, '={valor} * (1 + {taxa} / 100)')
+    assert.equal(mBlock.items[0].unit, 'R$')
+    assert.equal(mBlock.items[1].value, '—')
+  }
+})
+
+test('duplicate field id across controls drops second controls block', () => {
+  const envelope = {
+    v: 1,
+    blocks: [
+      {
+        type: 'controls',
+        id: 'c1',
+        fields: [{ id: 'campo_a', kind: 'number', label: 'A' }],
+        action: { name: 'send_message', template: '{campo_a}' },
+      },
+      {
+        type: 'controls',
+        id: 'c2',
+        fields: [{ id: 'campo_a', kind: 'number', label: 'B' }],
+        action: { name: 'send_message', template: '{campo_a}' },
+      },
+    ],
+  }
+  const validated = parseUiEnvelope(envelope)
+  assert.notEqual(validated, null)
+  assert.equal(validated?.blocks.filter((b) => b.type === 'controls').length, 1)
+})
+
+test('controls computed list and cycle detection', () => {
+  // Lista de computeds encadeada válida
+  const validEnv = {
+    v: 1,
+    blocks: [
+      {
+        type: 'controls',
+        fields: [{ id: 'preco', kind: 'number', label: 'Preço' }],
+        computed: [
+          { id: 'subtotal', template: 'Sub: {subtotal}', formula: '{preco} * 0.9' },
+          { id: 'total', template: 'Total: {total}', formula: '{subtotal} + 10' },
+        ],
+        action: { name: 'send_message', template: 'Resultado: {total}' },
+      },
+    ],
+  }
+  const res = parseUiEnvelope(validEnv)
+  assert.notEqual(res, null)
+  const ctrl = res?.blocks[0]
+  if (ctrl && ctrl.type === 'controls') {
+    assert(Array.isArray(ctrl.computed))
+    assert.equal(ctrl.computed.length, 2)
+  }
+
+  // Ciclo de computeds: descarta
+  const cycleEnv = {
+    v: 1,
+    blocks: [
+      {
+        type: 'controls',
+        fields: [{ id: 'preco', kind: 'number', label: 'Preço' }],
+        computed: [
+          { id: 'a', template: '{a}', formula: '{b} + 1' },
+          { id: 'b', template: '{b}', formula: '{a} * 2' },
+        ],
+        action: { name: 'send_message', template: '{a}' },
+      },
+    ],
+  }
+  const resCycle = parseUiEnvelope(cycleEnv)
+  assert.equal(resCycle, null)
+})
+
+test('table and chart expressions against control variables', () => {
+  const envelope = {
+    v: 1,
+    blocks: [
+      {
+        type: 'controls',
+        fields: [{ id: 'mult', kind: 'number', label: 'Mult' }],
+        action: { name: 'send_message', template: '{mult}' },
+      },
+      {
+        type: 'table',
+        columns: [
+          { key: 'item', label: 'Item' },
+          { key: 'valor', label: 'Valor', kind: 'number' },
+        ],
+        rows: [
+          { item: 'A', valor: '={mult} * 10' },
+          { item: 'B', valor: '={invalido} * 10' },
+        ],
+      },
+      {
+        type: 'chart',
+        kind: 'bar',
+        x_key: 'mes',
+        series: [{ key: 'vendas', label: 'Vendas' }],
+        rows: [
+          { mes: 'Jan', vendas: '={mult} * 5' },
+          { mes: 'Fev', vendas: '={invalido} + 1' },
+        ],
+      },
+    ],
+  }
+  const validated = parseUiEnvelope(envelope)
+  assert.notEqual(validated, null)
+  const tableB = validated?.blocks.find((b) => b.type === 'table')
+  if (tableB && tableB.type === 'table') {
+    assert.equal(tableB.rows[0].valor, '={mult} * 10')
+    assert.equal(tableB.rows[1].valor, null)
+  }
+
+  const chartB = validated?.blocks.find((b) => b.type === 'chart')
+  if (chartB && chartB.type === 'chart') {
+    assert.equal(chartB.rows[0].vendas, '={mult} * 5')
+    assert.equal(chartB.rows[1].vendas, 0)
+  }
+})

@@ -102,7 +102,22 @@ def validate_with_diagnostics(raw: Any, **kwargs) -> dict:
             elif kind == 'controls' and (not isinstance(block.get('action'), dict) or block['action'].get('name') not in ('send_message', 'set_model')):
                 code, path = 'invalid_action', 'action.name'
             elif kind == 'controls':
-                code, path = 'invalid_action', 'action'
+                fields = block.get('fields', [])
+                if isinstance(fields, list):
+                    f_ids = [f.get('id') for f in fields if isinstance(f, dict) and f.get('id')]
+                    if len(f_ids) != len(set(f_ids)):
+                        code, path = 'duplicate_id', 'fields'
+                    else:
+                        comp = block.get('computed')
+                        if comp:
+                            from backend.ui_blocks.expr import check_dependency_cycles
+                            comp_list = [comp] if isinstance(comp, dict) else (comp if isinstance(comp, list) else [])
+                            val_cyc, err_cyc, _ = check_dependency_cycles(comp_list, set(f_ids))
+                            if not val_cyc:
+                                code = 'duplicate_id' if err_cyc == 'duplicate_id' else 'invalid_expression'
+                                path = 'computed'
+                if not code:
+                    code, path = 'invalid_action', 'action'
             elif kind == 'options' and (not isinstance(block.get('action'), dict) or block['action'].get('name') != 'send_message'):
                 code, path = 'invalid_action', 'action.name'
             elif kind == 'options' and (not isinstance(block.get('action', {}).get('template'), str) or '{choice}' not in block['action']['template']):

@@ -866,3 +866,154 @@ def test_options_gatilhos_should_offer():
     assert "options" in select_modules("Qual das opções você prefere?")
     assert "options" in select_modules("Escolha uma alternativa para o projeto")
     assert "options" in select_modules("Participe da enquete sobre o layout")
+
+
+def test_shared_expressions_in_envelope():
+    from backend.ui_blocks.validate import validate_envelope
+
+    # Envelope com controls e metric usando expressão com variáveis de controls
+    envelope = {
+        "v": 1,
+        "blocks": [
+            {
+                "type": "controls",
+                "id": "c1",
+                "title": "Simulador",
+                "fields": [
+                    {"id": "valor", "kind": "number", "default": 1000},
+                    {"id": "taxa", "kind": "number", "default": 10},
+                ],
+                "action": {"name": "send_message", "template": "Calcular {valor}"},
+            },
+            {
+                "type": "metric",
+                "id": "m1",
+                "items": [
+                    {"label": "Total", "value": "={valor} * (1 + {taxa} / 100)", "unit": "R$"},
+                    {"label": "Desconhecido", "value": "={nao_existe} + 1"},
+                ],
+            },
+        ],
+    }
+    validated = validate_envelope(envelope)
+    assert validated is not None
+    m_block = [b for b in validated["blocks"] if b["type"] == "metric"][0]
+    # Expressão válida é preservada com sua unit
+    assert m_block["items"][0]["value"] == "={valor} * (1 + {taxa} / 100)"
+    assert m_block["items"][0]["unit"] == "R$"
+    # Expressão com variável desconhecida vira "—"
+    assert m_block["items"][1]["value"] == "—"
+
+
+def test_duplicate_field_id_across_controls_blocks():
+    from backend.ui_blocks.validate import validate_envelope
+
+    envelope = {
+        "v": 1,
+        "blocks": [
+            {
+                "type": "controls",
+                "id": "c1",
+                "title": "Form 1",
+                "fields": [{"id": "campo_a", "kind": "number"}],
+                "action": {"name": "send_message", "template": "{campo_a}"},
+            },
+            {
+                "type": "controls",
+                "id": "c2",
+                "title": "Form 2",
+                "fields": [{"id": "campo_a", "kind": "number"}],  # Duplicado!
+                "action": {"name": "send_message", "template": "{campo_a}"},
+            },
+        ],
+    }
+    validated = validate_envelope(envelope)
+    assert validated is not None
+    # Apenas o primeiro controls passa; o segundo é descartado por duplicate_id
+    assert len([b for b in validated["blocks"] if b["type"] == "controls"]) == 1
+
+
+def test_controls_computed_list_and_cycles():
+    from backend.ui_blocks.validate import validate_envelope
+
+    # Lista de computeds encadeada válida
+    valid_env = {
+        "v": 1,
+        "blocks": [
+            {
+                "type": "controls",
+                "fields": [{"id": "preco", "kind": "number"}],
+                "computed": [
+                    {"id": "subtotal", "template": "Sub: {subtotal}", "formula": "{preco} * 0.9"},
+                    {"id": "total", "template": "Total: {total}", "formula": "{subtotal} + 10"},
+                ],
+                "action": {"name": "send_message", "template": "Resultado: {total}"},
+            }
+        ],
+    }
+    res = validate_envelope(valid_env)
+    assert res is not None
+    assert len(res["blocks"][0]["computed"]) == 2
+
+    # Ciclo de computeds: computed é descartado e send_message com {total} falha
+    cycle_env = {
+        "v": 1,
+        "blocks": [
+            {
+                "type": "controls",
+                "fields": [{"id": "preco", "kind": "number"}],
+                "computed": [
+                    {"id": "a", "template": "{a}", "formula": "{b} + 1"},
+                    {"id": "b", "template": "{b}", "formula": "{a} * 2"},
+                ],
+                "action": {"name": "send_message", "template": "{a}"},
+            }
+        ],
+    }
+    res_cycle = validate_envelope(cycle_env)
+    assert res_cycle is None
+
+
+def test_table_and_chart_expressions():
+    from backend.ui_blocks.validate import validate_envelope
+
+    envelope = {
+        "v": 1,
+        "blocks": [
+            {
+                "type": "controls",
+                "fields": [{"id": "multiplicador", "kind": "number"}],
+                "action": {"name": "send_message", "template": "{multiplicador}"},
+            },
+            {
+                "type": "table",
+                "columns": [
+                    {"key": "item", "label": "Item"},
+                    {"key": "valor", "label": "Valor", "kind": "number"},
+                ],
+                "rows": [
+                    {"item": "A", "valor": "={multiplicador} * 10"},
+                    {"item": "B", "valor": "={invalido} * 10"},
+                ],
+            },
+            {
+                "type": "chart",
+                "kind": "bar",
+                "x_key": "mes",
+                "series": [{"key": "vendas", "label": "Vendas"}],
+                "rows": [
+                    {"mes": "Jan", "vendas": "={multiplicador} * 5"},
+                    {"mes": "Fev", "vendas": "={invalido} + 1"},
+                ],
+            },
+        ],
+    }
+    validated = validate_envelope(envelope)
+    assert validated is not None
+    table_b = [b for b in validated["blocks"] if b["type"] == "table"][0]
+    assert table_b["rows"][0]["valor"] == "={multiplicador} * 10"
+    assert table_b["rows"][1]["valor"] is None
+
+    chart_b = [b for b in validated["blocks"] if b["type"] == "chart"][0]
+    assert chart_b["rows"][0]["vendas"] == "={multiplicador} * 5"
+    assert chart_b["rows"][1]["vendas"] == 0.0
