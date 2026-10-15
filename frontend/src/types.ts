@@ -458,14 +458,36 @@ export interface ControlsBlock {
   action: ControlAction
 }
 
+export interface SceneParam {
+  id: string
+  label: string
+  kind: 'range' | 'number' | 'select'
+  min?: number
+  max?: number
+  step?: number
+  default: number | string
+  options?: { value: string; label: string }[]
+}
+
+export interface SceneReadout {
+  key: string
+  label: string
+  unit?: string
+}
+
 export interface SandboxBlock {
   id: string
   type: 'sandbox'
+  kind?: 'scene'
+  mode?: '3d' | '2d'
   title: string
   initial_height?: number
-  html: string
+  html?: string
   css?: string
   js?: string
+  code?: string
+  params?: SceneParam[]
+  readout?: SceneReadout[]
   standalone_download?: boolean
 }
 

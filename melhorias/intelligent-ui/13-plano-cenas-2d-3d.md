@@ -131,15 +131,15 @@ Cenas de aceite (cada uma < 60 linhas, escritas à mão e guardadas em `frontend
 
 ## 9. Critérios de aceite
 
-- [ ] Cena sem rede: com o navegador offline (depois do app carregado) as seis cenas rodam.
-- [ ] Código com `fetch`, `import`, `while`, `</script>` é recusado pelos dois validadores com o mesmo código de erro.
-- [ ] Nenhum `postMessage` fora do protocolo chega ao host (teste manda lixo e confere que nada muda).
-- [ ] Segundo `load` do iframe vira erro visível e não remonta.
-- [ ] `prefers-reduced-motion` → monta pausada; "Continuar" roda.
-- [ ] Rolar 2 telas para longe desmonta (contador de iframes na página volta); voltar remonta com os `params` atuais.
-- [ ] Erro de runtime mostra mensagem + "Pedir correção"; a mensagem enviada contém título e erro.
-- [ ] Exportação abre offline e funciona.
-- [ ] Bundle principal não cresce (comparar `dist/assets/*.js` antes/depois; `three` só em `scene/runtime.js`).
+- [x] Cena sem rede: com o navegador offline (depois do app carregado) as seis cenas rodam.
+- [x] Código com `fetch`, `import`, `while`, `</script>` é recusado pelos dois validadores com o mesmo código de erro.
+- [x] Nenhum `postMessage` fora do protocolo chega ao host (teste manda lixo e confere que nada muda).
+- [x] Segundo `load` do iframe vira erro visível e não remonta.
+- [x] `prefers-reduced-motion` → monta pausada; "Continuar" roda.
+- [x] Rolar 2 telas para longe desmonta (contador de iframes na página volta); voltar remonta com os `params` atuais.
+- [x] Erro de runtime mostra mensagem + "Pedir correção"; a mensagem enviada contém título e erro.
+- [x] Exportação abre offline e funciona.
+- [x] Bundle principal não cresce (comparar `dist/assets/*.js` antes/depois; `three` só em `scene/runtime.js`).
 
 ## 10. Riscos
 

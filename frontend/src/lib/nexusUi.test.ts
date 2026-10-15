@@ -684,3 +684,92 @@ test('table and chart expressions against control variables', () => {
     assert.equal(chartB.rows[1].vendas, 0)
   }
 })
+
+test('cenas canonicas sao aceitas pelo validador do frontend', async () => {
+  const { ALL_CANONICAL_SCENES } = await import('../ui/scene/__fixtures__/fixtures.ts')
+  for (const fixture of ALL_CANONICAL_SCENES) {
+    const envelope = { v: 1, blocks: [fixture] }
+    const validated = parseUiEnvelope(envelope)
+    assert.notEqual(validated, null, `Fixture failed: ${fixture.title}`)
+    const block = validated?.blocks[0]
+    assert.equal(block?.type, 'sandbox')
+    if (block?.type === 'sandbox') {
+      assert.equal(block.kind, 'scene')
+      assert.equal(block.title, fixture.title)
+      assert.equal(typeof block.code, 'string')
+    }
+  }
+})
+
+test('termos proibidos em cenas sao rejeitados com invalid_scene_code', async () => {
+  const { parseUiEnvelopeWithDiagnostics } = await import('./nexusUi.ts')
+  const forbidden = [
+    'while (x < 10) {}',
+    'import * as foo from "bar";',
+    'fetch("https://api.com")',
+    'new XMLHttpRequest()',
+    'new WebSocket("ws://api.com")',
+    'const cookie = document.cookie;',
+    'localStorage.getItem("token")',
+    'window.parent.postMessage("x", "*")',
+    'postMessage("x")',
+    'eval("1 + 1")',
+    'Function("return 1")()',
+  ]
+
+  for (const snippet of forbidden) {
+    const raw = {
+      v: 1,
+      blocks: [
+        {
+          type: 'sandbox',
+          kind: 'scene',
+          code: `onFrame(() => { ${snippet} });`,
+        },
+      ],
+    }
+    const res = parseUiEnvelopeWithDiagnostics(raw)
+    assert.equal(res.dropped, 1, `Snippet should drop: ${snippet}`)
+    assert.equal(res.envelope, null)
+    assert.equal(
+      res.errors.some((e) => e.code === 'invalid_scene_code'),
+      true,
+      `Should report invalid_scene_code for: ${snippet}`
+    )
+  }
+})
+
+test('limites de cena: tamanho do codigo e linhas', async () => {
+  const { parseUiEnvelopeWithDiagnostics } = await import('./nexusUi.ts')
+
+  // Mais de 6000 caracteres
+  const longCode = 'a = 1;\n'.repeat(1500)
+  const resLong = parseUiEnvelopeWithDiagnostics({
+    v: 1,
+    blocks: [{ type: 'sandbox', kind: 'scene', code: longCode }],
+  })
+  assert.equal(resLong.dropped, 1)
+  assert.equal(resLong.errors.some((e) => e.code === 'limit_exceeded'), true)
+
+  // Mais de 120 linhas
+  const manyLines = Array.from({ length: 125 }, () => '// line').join('\n')
+  const resLines = parseUiEnvelope({
+    v: 1,
+    blocks: [{ type: 'sandbox', kind: 'scene', code: manyLines }],
+  })
+  assert.equal(resLines, null)
+})
+
+test('subteto de sandbox no envelope: no maximo 1 sandbox/cena', () => {
+  const envelope = {
+    v: 1,
+    blocks: [
+      { id: 'cena1', type: 'sandbox', kind: 'scene', code: 'onFrame(() => {});' },
+      { id: 'cena2', type: 'sandbox', kind: 'scene', code: 'onFrame(() => {});' },
+    ],
+  }
+  const validated = parseUiEnvelope(envelope)
+  assert.notEqual(validated, null)
+  assert.equal(validated?.blocks.length, 1)
+  assert.equal(validated?.blocks[0].id, 'cena1')
+})

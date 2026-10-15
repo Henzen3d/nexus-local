@@ -34,6 +34,8 @@ free-api.md
 frontend/node_modules/
 node_modules/
 frontend/dist/
+frontend/public/scene/
+public/scene/
 
 # ── Ferramentas de agente / IA (uso interno de desenvolvimento) ───────────────
 .agent/

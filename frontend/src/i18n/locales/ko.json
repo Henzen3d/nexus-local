@@ -700,7 +700,13 @@
     "optionsMultipleHint": "하나 이상의 옵션을 선택하고 전송",
     "optionsOther": "기타 답변...",
     "optionsSubmit": "답변 전송",
-    "optionsAnswered": "답변됨: {{choice}}"
+    "optionsAnswered": "답변됨: {{choice}}",
+    "scenePause": "일시중지",
+    "scenePlay": "계속",
+    "sceneError": "장면 오류: {{message}}",
+    "sceneCorrectionPrompt": "\"{{title}}\" 장면을 수정해 주세요: 실패 이유: {{message}}. 동일한 sandbox kind scene 블록을 유지해 주세요.",
+    "sceneWebGlLost": "3D 그래픽 컨텍스트가 손실되었습니다.",
+    "sceneReadoutTitle": "장면 값"
   },
   "memory": {
     "useMemoryGlobal": "대화 메모리 (기본: 켜짐)",

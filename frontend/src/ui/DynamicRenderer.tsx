@@ -9,6 +9,7 @@ const ImageCard = React.lazy(() => import('./components/ImageCard'))
 const ChartCard = React.lazy(() => import('./components/ChartCard'))
 const ControlsCard = React.lazy(() => import('./components/ControlsCard'))
 const SandboxCard = React.lazy(() => import('./components/SandboxCard'))
+const SceneCard = React.lazy(() => import('./components/SceneCard'))
 const MetricCard = React.lazy(() => import('./components/MetricCard'))
 const TableCard = React.lazy(() => import('./components/TableCard'))
 const OptionsCard = React.lazy(() => import('./components/OptionsCard'))
@@ -47,7 +48,7 @@ function reservedHeight(block: { type: string; [k: string]: any }): number {
       return 128 + count * 62
     }
     case 'sandbox':
-      return (block.initial_height || 300) + 44
+      return (block.initial_height || (block.kind === 'scene' ? 320 : 300)) + 44
     case 'metric': {
       const itemsCount = Array.isArray(block.items) ? block.items.length : 2
       return (block.title ? 34 : 0) + 14 + 70 * (itemsCount > 2 ? 2 : 1)
@@ -128,6 +129,17 @@ export function DynamicRenderer({ envelope, streaming, pendingType, messageId, o
           }
 
           if (block.type === 'sandbox') {
+            if (block.kind === 'scene') {
+              return (
+                <SceneCard
+                  key={block.id}
+                  block={block}
+                  streaming={streaming}
+                  messageId={messageId}
+                  onRuntimeError={onRuntimeError}
+                />
+              )
+            }
             return <SandboxCard key={block.id} block={block} streaming={streaming} onRuntimeError={onRuntimeError} />
           }
 

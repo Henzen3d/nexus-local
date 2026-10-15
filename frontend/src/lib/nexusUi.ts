@@ -16,6 +16,8 @@ import type {
   OptionsBlock,
   ProgressBlock,
   SandboxBlock,
+  SceneParam,
+  SceneReadout,
   TableBlock,
   TableColumn,
   TableSort,
@@ -65,6 +67,26 @@ const CALLOUT_KIND_ALIASES: Record<string, CalloutBlock['kind']> = {
 const MAX_SANDBOX_HTML = 12000
 const MAX_SANDBOX_CSS = 4000
 const MAX_SANDBOX_JS = 8000
+
+export const MAX_SCENE_CODE = 6000
+export const MAX_SCENE_LINES = 120
+
+export const FORBIDDEN_SCENE_TERMS: readonly RegExp[] = [
+  /\bimport\b/,
+  /\bfetch\b/,
+  /\bXMLHttpRequest\b/,
+  /\bWebSocket\b/,
+  /\bdocument\.cookie\b/,
+  /\blocalStorage\b/,
+  /\bwindow\.parent\b/,
+  /\bpostMessage\b/,
+  /\beval\b/,
+  /\bFunction\s*\(/,
+  /\bwhile\b/,
+]
+
+const SCENE_KEY_REGEX = /^[a-z0-9_]{1,24}$/
+const SCENE_ID_REGEX = /^[a-zA-Z0-9_]{1,32}$/
 
 /**
  * Validação rigorosa de URLs de imagens conforme a Seção 6 da spec.
@@ -660,7 +682,160 @@ function normalizeSandboxHeight(raw: unknown): number {
   return h >= 120 && h <= 800 ? h : 300
 }
 
+function validateScene(item: Record<string, unknown>): SandboxBlock | null {
+  const title = cleanText(item.title, 1, 80) ?? 'Cena'
+  const code = item.code
+  if (typeof code !== 'string' || code.length < 1 || code.length > MAX_SCENE_CODE) return null
+  if (code.split(/\r?\n/).length > MAX_SCENE_LINES) return null
+
+  for (const pattern of FORBIDDEN_SCENE_TERMS) {
+    if (pattern.test(code)) return null
+  }
+
+  let mode = String(item.mode ?? '3d').trim().toLowerCase()
+  if (mode !== '2d' && mode !== '3d') {
+    mode = '3d'
+  }
+
+  const rawH = item.initial_height
+  let h = 320
+  if (rawH !== undefined && rawH !== null) {
+    const parsedH = Number(rawH)
+    if (Number.isFinite(parsedH)) {
+      const rounded = Math.round(parsedH)
+      if (rounded >= 160 && rounded <= 600) {
+        h = rounded
+      }
+    }
+  }
+
+  const out: SandboxBlock = {
+    id: (item.id as string) || 'scene_1',
+    type: 'sandbox',
+    kind: 'scene',
+    mode: mode as '2d' | '3d',
+    title,
+    code,
+    initial_height: h,
+    standalone_download: item.standalone_download !== false,
+  }
+
+  const rawParams = item.params
+  if (Array.isArray(rawParams)) {
+    const cleanParams: SceneParam[] = []
+    const seenParamIds = new Set<string>()
+
+    for (const p of rawParams.slice(0, 4)) {
+      if (!p || typeof p !== 'object' || Array.isArray(p)) continue
+      const pObj = p as Record<string, unknown>
+      const pId = pObj.id
+      if (typeof pId !== 'string' || !SCENE_ID_REGEX.test(pId) || seenParamIds.has(pId)) {
+        return null // id repetido ou inválido descarta o bloco
+      }
+      seenParamIds.add(pId)
+
+      const pKind = String(pObj.kind || 'range').trim().toLowerCase()
+      if (pKind !== 'range' && pKind !== 'number' && pKind !== 'select') continue
+
+      const pLabel = String(pObj.label ?? pId).trim().slice(0, 60)
+      const cleanP: SceneParam = {
+        id: pId,
+        label: pLabel,
+        kind: pKind as 'range' | 'number' | 'select',
+        default: 0,
+      }
+
+      const defVal = pObj.default
+      if (defVal === undefined || defVal === null) {
+        return null // default é obrigatório na cena
+      }
+
+      if (pKind === 'range' || pKind === 'number') {
+        let mn = Number(pObj.min ?? 0)
+        let mx = Number(pObj.max ?? 100)
+        if (!Number.isFinite(mn)) mn = 0
+        if (!Number.isFinite(mx)) mx = 100
+        if (mn >= mx) {
+          mn = 0
+          mx = 100
+        }
+        cleanP.min = mn
+        cleanP.max = mx
+
+        let step = Number(pObj.step ?? 1)
+        if (!Number.isFinite(step) || step <= 0) step = 1
+        cleanP.step = step
+
+        let numDef = Number(defVal)
+        if (!Number.isFinite(numDef) || numDef < mn || numDef > mx) {
+          numDef = mn
+        }
+        cleanP.default = numDef
+      } else if (pKind === 'select') {
+        const opts = pObj.options
+        if (!Array.isArray(opts) || opts.length < 2 || opts.length > 8) continue
+        const cleanOpts: { value: string; label: string }[] = []
+        const seenVals = new Set<string>()
+
+        for (const o of opts) {
+          if (!o || typeof o !== 'object' || Array.isArray(o)) continue
+          const opt = o as Record<string, unknown>
+          const v = String(opt.value ?? '').trim()
+          const l = String(opt.label ?? v).trim().slice(0, 40)
+          if (!v || seenVals.has(v)) continue
+          seenVals.add(v)
+          cleanOpts.push({ value: v, label: l })
+        }
+
+        if (cleanOpts.length < 2) continue
+        cleanP.options = cleanOpts
+
+        const strDef = String(defVal).trim()
+        cleanP.default = seenVals.has(strDef) ? strDef : cleanOpts[0].value
+      }
+
+      cleanParams.push(cleanP)
+    }
+
+    if (cleanParams.length > 0) {
+      out.params = cleanParams
+    }
+  }
+
+  const rawReadout = item.readout
+  if (Array.isArray(rawReadout)) {
+    const cleanReadout: SceneReadout[] = []
+    const seenReadoutKeys = new Set<string>()
+
+    for (const r of rawReadout.slice(0, 6)) {
+      if (!r || typeof r !== 'object' || Array.isArray(r)) continue
+      const rObj = r as Record<string, unknown>
+      const rKey = rObj.key
+      if (typeof rKey !== 'string' || !SCENE_KEY_REGEX.test(rKey) || seenReadoutKeys.has(rKey)) continue
+      seenReadoutKeys.add(rKey)
+
+      const rLabel = String(rObj.label ?? rKey).trim().slice(0, 40)
+      const cleanR: SceneReadout = { key: rKey, label: rLabel }
+      if (rObj.unit !== undefined && rObj.unit !== null) {
+        cleanR.unit = String(rObj.unit).trim().slice(0, 16)
+      }
+      cleanReadout.push(cleanR)
+    }
+
+    if (cleanReadout.length > 0) {
+      out.readout = cleanReadout
+    }
+  }
+
+  return out
+}
+
 function validateSandbox(item: Record<string, unknown>): SandboxBlock | null {
+  const kind = String(item.kind || '').trim().toLowerCase()
+  if (kind === 'scene' || ('code' in item && !('html' in item))) {
+    return validateScene(item)
+  }
+
   const title = typeof item.title === 'string' && item.title.trim() ? item.title.trim().slice(0, 80) : 'Simulação'
   if (typeof item.html !== 'string' || item.html.length < 1 || item.html.length > MAX_SANDBOX_HTML) return null
 
@@ -827,7 +1002,7 @@ function inferType(obj: Record<string, unknown>): string | null {
   if (obj.steps || (obj.value !== undefined && obj.max !== undefined)) return 'progress'
   if (obj.fields) return 'controls'
   if (typeof obj.question === 'string' && Array.isArray(obj.options)) return 'options'
-  if (obj.html) return 'sandbox'
+  if (obj.html || ('code' in obj && !('html' in obj))) return 'sandbox'
   if (Array.isArray(obj.items) && obj.items.length > 0) {
     if (obj.items.every((x) => typeof x === 'string')) return 'follow_up'
     if (obj.items.every((x) => x && typeof x === 'object' && 'label' in x && 'value' in x)) return 'metric'
@@ -1031,7 +1206,7 @@ export function stripUiFences(text: string): string {
 export const UI_ERROR_CODES = [
   'unknown_type', 'missing_required', 'type_mismatch', 'limit_exceeded',
   'invalid_action', 'invalid_expression', 'unsafe_url', 'duplicate_id',
-  'invalid_json', 'fence_unclosed', 'rejected_envelope',
+  'invalid_json', 'fence_unclosed', 'rejected_envelope', 'invalid_scene_code',
 ] as const
 export type UiErrorCode = typeof UI_ERROR_CODES[number]
 export interface UiError {
@@ -1048,7 +1223,7 @@ const UI_SIGNATURES: Record<string, string> = {
   table: 'table: columns[{key,label,kind?,unit?}], rows[]',
   controls: 'controls: fields[], action{name:send_message|set_model,template?|field?}',
   options: 'options: question, options[{value,label}], action{name:send_message,template}',
-  sandbox: 'sandbox: title, html, css?, js?',
+  sandbox: 'sandbox: title, html or kind:scene with code',
   metric: 'metric: items[{label,value}]',
   callout: 'callout: body, kind info|success|warning|danger',
   follow_up: 'follow_up: items[string]',
@@ -1097,7 +1272,8 @@ export function parseUiEnvelopeWithDiagnostics(raw: unknown, imageHosts: string[
         if (image && typeof image.url === 'string' && !isAllowedImageUrl(image.url, imageHosts, undefined, allowPrivateHttp)) error('unsafe_url', blockId, 'image.url', hint)
         return
       }
-      const required = UI_REQUIRED[kind]
+      const isScene = kind === 'sandbox' && (block.kind === 'scene' || ('code' in block && !('html' in block)))
+      const required = isScene ? 'code' : UI_REQUIRED[kind]
       const value = block[required]
       const action = block.action as Record<string, unknown> | undefined
       if (required && (value === undefined || value === null || value === '' || (Array.isArray(value) && !value.length))) { code = 'missing_required'; path = required }
@@ -1138,6 +1314,30 @@ export function parseUiEnvelopeWithDiagnostics(raw: unknown, imageHosts: string[
       else if (kind === 'options' && (!action || String(action.name) !== 'send_message')) { code = 'invalid_action'; path = 'action.name' }
       else if (kind === 'options' && (typeof action?.template !== 'string' || !action.template.includes('{choice}'))) { code = 'invalid_action'; path = 'action.template' }
       else if (kind === 'options' && (!Array.isArray(block.options) || block.options.length < 2)) { code = 'missing_required'; path = 'options' }
+      else if (kind === 'sandbox' && (block.kind === 'scene' || ('code' in block && !('html' in block)))) {
+        const codeStr = block.code
+        if (typeof codeStr !== 'string' || !codeStr.trim()) {
+          code = 'missing_required'
+          path = 'code'
+        } else if (codeStr.length > MAX_SCENE_CODE) {
+          code = 'limit_exceeded'
+          path = 'code'
+        } else {
+          let hasForbidden = false
+          for (const pat of FORBIDDEN_SCENE_TERMS) {
+            if (pat.test(codeStr)) {
+              code = 'invalid_scene_code'
+              path = 'code'
+              hasForbidden = true
+              break
+            }
+          }
+          if (!hasForbidden) {
+            code = 'type_mismatch'
+            path = 'params'
+          }
+        }
+      }
       else if (kind === 'sandbox' && typeof block.html === 'string' && block.html.length > MAX_SANDBOX_HTML) { code = 'limit_exceeded'; path = 'html' }
       else if (kind === 'chart' && (!block.rows || (Array.isArray(block.rows) && !block.rows.length)) && !(Array.isArray(block.series) && block.series[0] && typeof block.series[0] === 'object' && 'rows' in block.series[0])) { code = 'missing_required'; path = 'rows' }
       else if (kind === 'table' && (!block.rows || (Array.isArray(block.rows) && !block.rows.length))) { code = 'missing_required'; path = 'rows' }

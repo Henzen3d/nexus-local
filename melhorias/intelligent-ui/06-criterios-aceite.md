@@ -156,3 +156,33 @@ Pizza, vídeo, proxy de imagem, widget dentro do cache semântico e Thesys não 
 - [x] Estabilidade visual e Zero CLS no Recharts: detecção de expressões dinâmicas em `ChartCard` forçando `isAnimationActive={false}` para eliminar saltos e animações acumuladas ao arrastar sliders.
 - [x] Acessibilidade: `ProgressCard` com expressão reativa mantém `aria-valuenow` numérico sincronizado com o valor calculado.
 - [x] Testes automatizados: 525 testes backend aprovados em pytest, 129 testes unitários frontend e teste de UI reativa real (`reactive.ui.tsx`) validando a cadeia interativa completa.
+
+## Plano 13 — Cenas 2D e 3D interativas em sandbox local (`sandbox` com `kind: "scene"`) (2026-10-15)
+
+- [x] Isolamento total de Three.js: `three` instalado estritamente como `devDependency` e empacotado em bundle isolado `public/scene/runtime.js` via `vite.scene.config.ts`. O bundle principal do aplicativo React não importa Three.js (`dist/assets/index-*.js` permanece inalterado).
+- [x] Runtime local e sem rede: runtime expõe `NexusScene = { setup, start }`, gerenciando palcos 3D (Three.js `Scene`, `PerspectiveCamera`, luzes, `WebGLRenderer`, `CSS2DRenderer`, `OrbitControls`) e palcos 2D (`Canvas` 800×450 letterboxed com `ctx`), relógio com passo máximo de 50ms (`MAX_STEP = 0.05`) e `reporter` com throttle a 100ms.
+- [x] Protocolo estrito app ↔ cena: `sceneProtocol.ts` com mensagens tipadas `__nexus_scene_params`, `__nexus_scene_pause`, `__nexus_scene_play`, `__nexus_scene_theme`, `__nexus_scene_ready`, `__nexus_scene_report` e `__nexus_scene_error`. `readSceneMessage` sanitiza todos os payloads e descarta lixo fora do protocolo.
+- [x] CSP estrita sem rede e proteção contra escape: `sceneDocument.ts` gera `srcdoc` com `default-src 'none'`, `script-src 'unsafe-inline' /scene/runtime.js` e `style-src 'unsafe-inline'`. `escapeScript` transforma `</script>` e `<!--` com segurança. Segundo `load` do iframe é bloqueado e exibe aviso de sandbox.
+- [x] Validação e auto-healing espelhados Python/TS:
+  - Verificação de termos proibidos (`while`, `import`, `fetch`, `WebSocket`, `XMLHttpRequest`, `document.cookie`, `localStorage`, `window.parent`, `postMessage`, `eval`, `Function(`) retornando código de diagnóstico `invalid_scene_code`.
+  - Tetos de código: máximo 6000 caracteres e máximo 120 linhas.
+  - Validação estrita de `params` (range, number, select) com `default` obrigatório e IDs únicos (máximo 4 parâmetros).
+  - Validação de `readout` com chaves válidas e sem repetição (máximo 6 leituras).
+  - Subteto estrito de no máximo 1 bloco `sandbox` por envelope.
+  - Inferência automática: objetos sem `type` com `code` (e sem `html`) inferidos como `sandbox`.
+- [x] Componente `SceneCard`:
+  - Casca `UiCard as="figure" variant="flush"` com ícones de modo (`Orbit` para 3D e `PenTool` para 2D).
+  - Ações no cabeçalho: Pausar/Continuar, Reiniciar, Tela cheia (via `requestFullscreen` no card) e Baixar HTML (quando `standalone_download !== false`).
+  - Layout responsivo: no desktop, palco principal com barra lateral de 200px para parâmetros; no mobile, controles dispostos abaixo do palco.
+  - Faixa de leitura `readout` com `tabular-nums` e tabela oculta `sr-only` para acessibilidade em leitores de tela.
+  - Estado compartilhado reativo: leituras recebidas por `__nexus_scene_report` publicam em `useMessageUiStore` como `sim.<key>` e `<key>` para consumo por outros blocos do envelope.
+- [x] Respeito a movimento e visibilidade:
+  - `prefers-reduced-motion` monta a cena pausada (`setup.paused = true`) e exibe o botão "Continuar".
+  - `visibilitychange` pausa a animação quando a aba fica oculta.
+  - `useSceneViewport` com `rootMargin: '100% 0px'` desmonta o iframe quando o usuário rola para longe (liberando contextos WebGL escassos) e remonta com os parâmetros atuais ao retornar.
+- [x] Tratamento de erros e laço de autocorreção: faixa de erro exibe mensagem capturada e botão "Pedir correção" envia prompt estruturado ao chat com título da cena e erro formatado. Erro de `webglcontextlost` oferece reinicialização direta.
+- [x] Exportação standalone autônoma: `downloadStandaloneSceneHtml` / `assembleStandaloneSceneHtml` embute o runtime.js completo lido localmente diretamente em `<script>`, setup inicial com parâmetros atuais e código da cena, permitindo funcionamento 100% offline em qualquer navegador.
+- [x] Catálogo modular e telemetria: módulo `backend/ui_blocks/catalog_modules/scene.txt` adicionado; gatilhos em `should_offer.py` (`órbita`, `pêndulo`, `partícula`, `passo a passo animado`); telemetria de eventos `scene_mounted`, `scene_error` e `scene_fix_requested` em `telemetry.py` e endpoint `/api/intelligent-ui/scene-event`.
+- [x] Fixtures canônicas: 6 cenas canônicas implementadas em `frontend/src/ui/scene/__fixtures__/fixtures.ts` (< 60 linhas cada): órbita com velocidade (3D), pêndulo simples (2D), ordenação bubble sort (2D), partículas com atrito (3D), gráfico de superfície (3D) e relógio analógico (2D).
+- [x] i18n rigoroso: 6 novas chaves traduzidas em todos os 8 locales (total de 53 chaves em `intelligentUi` validadas por `check-i18n.mjs`).
+- [x] Testes automatizados: 529 testes pytest aprovados no backend, 134 testes unitários e 12 testes de UI no frontend (146 testes frontend totais), TypeScript com 0 erros e compilação de produção limpa.

@@ -1069,7 +1069,13 @@
     "optionsMultipleHint": "Selecione uma ou mais opções e envie",
     "optionsOther": "Outra resposta...",
     "optionsSubmit": "Enviar resposta",
-    "optionsAnswered": "Respondido: {{choice}}"
+    "optionsAnswered": "Respondido: {{choice}}",
+    "scenePause": "Pausar",
+    "scenePlay": "Continuar",
+    "sceneError": "Falha na cena: {{message}}",
+    "sceneCorrectionPrompt": "Corrija a cena \"{{title}}\": falhou com: {{message}}. Mantenha o mesmo bloco sandbox kind scene.",
+    "sceneWebGlLost": "O contexto gráfico 3D foi perdido.",
+    "sceneReadoutTitle": "Valores da cena"
   },
   "proactive": {
     "bubbleBadge": "Assistente proativo",

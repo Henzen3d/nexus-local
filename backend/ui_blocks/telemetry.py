@@ -77,6 +77,7 @@ class IntelligentUiTelemetry:
             self.modules_produced: Counter[str] = Counter()
             self.error_codes: Counter[str] = Counter()
             self.diagnostic_dropped = 0
+            self.scene_events: Counter[str] = Counter()
             self.corrections: dict[str, Counter] = {}
             self._correction_messages: dict[tuple[str, str], tuple[str, bool]] = {}
 
@@ -178,6 +179,12 @@ class IntelligentUiTelemetry:
             self.corrections[model_id]['correction_requested'] += 1
             return model_id
 
+    def record_scene_event(self, event_type: str) -> None:
+        """Contadores de telemetria de cena: scene_mounted, scene_error, scene_fix_requested."""
+        if event_type in ("scene_mounted", "scene_error", "scene_fix_requested"):
+            with self._lock:
+                self.scene_events[event_type] += 1
+
     def correction_result(self, model_id: str, valid: bool) -> None:
         if valid:
             with self._lock:
@@ -204,6 +211,7 @@ class IntelligentUiTelemetry:
                 "modules_produced": dict(self.modules_produced),
                 "ui_error_codes": dict(self.error_codes),
                 "ui_dropped": self.diagnostic_dropped,
+                "scene_events": dict(self.scene_events),
                 "corrections": {model: {**dict(counts), "valid_rate": _ratio(counts["correction_valid"], counts["correction_requested"])} for model, counts in self.corrections.items()},
                 "rates": {
                     "produced_given_offered": _ratio(self.produced_when_offered, self.offered),

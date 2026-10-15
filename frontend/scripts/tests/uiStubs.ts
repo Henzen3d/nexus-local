@@ -19,6 +19,7 @@ export function useChatContext() { return { sendMessage: (...args: unknown[]) =>
 export const api = { offerUiCorrection: async (id: string) => { controls.offers.push(id); return { ok: true } } }
 export function useTranslation() { return { t: (key: string, values?: object) => key + JSON.stringify(values ?? {}), i18n: { language: 'pt-BR' } } }
 export function useNearScreen() { return true }
+export function useSceneViewport() { return true }
 export function useReducedMotion() { return false }
 export function useResolvedTheme() { return 'dark' }
 export function readLiveThemeTokens() { return {} }

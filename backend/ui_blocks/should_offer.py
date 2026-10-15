@@ -28,6 +28,7 @@ MODULE_TRIGGERS = (
     ("options", r"\bescolh|\bselecion|\bprefer|\bqual (?:dos|das)\b|\bop[çc][oõ]es\b|\benquetes?\b|\balternativas?\b"),
     ("callout", r"\baten[çc][aã]o\b|\bcuidado\b|\bimportante\b|\baviso\b|\brisco\b"),
     ("card", r"\bimage(?:m|ns)\b|\bfotos?\b|\bfotografia|\bcart(?:[aã]o|[oõ]es)\b|\bproduto|\bficha\b"),
+    ("scene", r"\b[oó]rbita|\bp[eê]ndulo|\bpart[ií]cul|\bpasso a passo animado\b"),
     ("sandbox", r"\bsimul(?!t)|\banima|\b3d\b|\bvisualiz(?:e|ar) o algoritmo\b|\binterativ"),
 )
 _MODULE_REGEXES = tuple((name, re.compile(pattern, re.IGNORECASE)) for name, pattern in MODULE_TRIGGERS)

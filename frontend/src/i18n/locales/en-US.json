@@ -1070,7 +1070,13 @@
     "optionsMultipleHint": "Select one or more options and send",
     "optionsOther": "Other answer...",
     "optionsSubmit": "Send answer",
-    "optionsAnswered": "Answered: {{choice}}"
+    "optionsAnswered": "Answered: {{choice}}",
+    "scenePause": "Pause",
+    "scenePlay": "Resume",
+    "sceneError": "Scene error: {{message}}",
+    "sceneCorrectionPrompt": "Fix the scene \"{{title}}\": failed with: {{message}}. Keep the same sandbox kind scene block.",
+    "sceneWebGlLost": "3D graphics context was lost.",
+    "sceneReadoutTitle": "Scene values"
   },
   "proactive": {
     "bubbleBadge": "Proactive assistant",

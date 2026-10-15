@@ -93,3 +93,15 @@ async def runtime_correction_offer(body: RuntimeCorrectionOffer, current_user: d
         return {'ok': True}
     finally:
         await db.close()
+
+
+class SceneEventRequest(BaseModel):
+    event: str = Field(min_length=1, max_length=32)
+
+
+@router.post('/scene-event')
+async def record_scene_event(body: SceneEventRequest, current_user: dict = Depends(get_current_user)):
+    """Counts scene lifecycle telemetry: scene_mounted, scene_error, scene_fix_requested."""
+    if body.event in ('scene_mounted', 'scene_error', 'scene_fix_requested'):
+        intelligent_ui_telemetry.record_scene_event(body.event)
+    return {'ok': True}

@@ -700,7 +700,13 @@
     "optionsMultipleHint": "Wählen Sie eine oder mehrere Optionen aus und senden Sie",
     "optionsOther": "Andere Antwort...",
     "optionsSubmit": "Antwort senden",
-    "optionsAnswered": "Beantwortet: {{choice}}"
+    "optionsAnswered": "Beantwortet: {{choice}}",
+    "scenePause": "Pausieren",
+    "scenePlay": "Fortsetzen",
+    "sceneError": "Szenenfehler: {{message}}",
+    "sceneCorrectionPrompt": "Korrigieren Sie die Szene \"{{title}}\": fehlgeschlagen mit: {{message}}. Behalten Sie denselben sandbox kind scene Block bei.",
+    "sceneWebGlLost": "Der 3D-Grafikkontext ist verloren gegangen.",
+    "sceneReadoutTitle": "Szenenwerte"
   },
   "memory": {
     "useMemoryGlobal": "Gedächtnis in Gesprächen (Standard: an)",

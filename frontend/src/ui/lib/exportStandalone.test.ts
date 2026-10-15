@@ -25,3 +25,24 @@ test('lang invalido cai para pt-BR', () => {
   const html = assembleStandaloneHtml('t', '<p>x</p>', '', '', true, '"><script>')
   assert.match(html, /<html lang="pt-BR"/)
 })
+
+test('assembleStandaloneSceneHtml embute runtime, setup e escapa codigo', async () => {
+  const { assembleStandaloneSceneHtml } = await import('./exportStandalone.ts')
+  const setup = {
+    title: 'Minha Cena',
+    mode: '3d' as const,
+    theme: { dark: true, text: '#ffffff', accent: '#cc785c' },
+    params: { vel: 1.5 },
+    paused: false,
+  }
+  const code = 'const x = 1;</script><script>alert(1)</script>'
+  const mockRuntime = 'window.NexusScene = { setup(){}, start(){} };'
+  const html = await assembleStandaloneSceneHtml('Minha Cena', setup, code, mockRuntime, 'pt-BR')
+  assert.match(html, /<title>Minha Cena<\/title>/)
+  assert.match(html, /NexusScene\.setup\(/)
+  assert.match(html, /"vel":1\.5/)
+  assert.match(html, /NexusScene\.start\(/)
+  assert.doesNotMatch(html, /<\/script><script>alert/)
+  assert.match(html, /<\\\/script>/)
+  assert.match(html, /window\.NexusScene/)
+})

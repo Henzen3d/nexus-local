@@ -34,7 +34,7 @@ export function SandboxCard({ block, streaming, onRuntimeError }: Props) {
   const { t, i18n } = useTranslation()
   const { sendMessage } = useChatContext()
   const { image_hosts } = useIntelligentUiConfig()
-  const { title, initial_height = 300, html, css = '', js = '', standalone_download = true } = block
+  const { title, initial_height = 300, html = '', css = '', js = '', standalone_download = true } = block
 
   const [currentHeight, setCurrentHeight] = useState<number>(initial_height)
   const [run, setRun] = useState(0)

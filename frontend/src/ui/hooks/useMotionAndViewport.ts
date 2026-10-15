@@ -54,3 +54,25 @@ function scrollParent(element: HTMLElement): HTMLElement | null {
   }
   return null
 }
+
+/**
+ * Verdadeiro enquanto o elemento está a menos de 100% de distância do viewport.
+ * Ao contrário do useNearScreen, este hook desmonta quando sai da vista para
+ * liberar contextos WebGL escassos (Plano 13).
+ */
+export function useSceneViewport(element: HTMLElement | null, margin = '100% 0px'): boolean {
+  const [inRange, setInRange] = useState<boolean>(() => typeof IntersectionObserver === 'undefined')
+  useEffect(() => {
+    if (!element || typeof IntersectionObserver === 'undefined') return
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const anyIntersecting = entries.some((entry) => entry.isIntersecting)
+        setInRange(anyIntersecting)
+      },
+      { root: scrollParent(element), rootMargin: margin }
+    )
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [element, margin])
+  return inRange
+}

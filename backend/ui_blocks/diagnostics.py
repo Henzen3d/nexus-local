@@ -12,7 +12,7 @@ from typing import Any
 ERROR_CODES = (
     'unknown_type', 'missing_required', 'type_mismatch', 'limit_exceeded',
     'invalid_action', 'invalid_expression', 'unsafe_url', 'duplicate_id',
-    'invalid_json', 'fence_unclosed', 'rejected_envelope',
+    'invalid_json', 'fence_unclosed', 'rejected_envelope', 'invalid_scene_code',
 )
 SIGNATURES = {
     'progress': 'progress: value, max or steps[{label,state}]',
@@ -21,7 +21,7 @@ SIGNATURES = {
     'table': 'table: columns[{key,label,kind?,unit?}], rows[]',
     'controls': 'controls: fields[], action{name:send_message|set_model,template?|field?}',
     'options': 'options: question, options[{value,label}], action{name:send_message,template}',
-    'sandbox': 'sandbox: title, html, css?, js?',
+    'sandbox': 'sandbox: title, html or kind:scene with code',
     'metric': 'metric: items[{label,value}]',
     'callout': 'callout: body, kind info|success|warning|danger',
     'follow_up': 'follow_up: items[string]',
@@ -96,7 +96,8 @@ def validate_with_diagnostics(raw: Any, **kwargs) -> dict:
                     if not is_allowed_image_url(image['url'], **kwargs):
                         error('unsafe_url', block_id, 'image.url', hint)
                 continue
-            required = REQUIRED.get(kind)
+            is_scene = kind == 'sandbox' and (block.get('kind') == 'scene' or ('code' in block and 'html' not in block))
+            required = 'code' if is_scene else REQUIRED.get(kind)
             if required and (required not in block or block[required] is None or block[required] == '' or block[required] == []):
                 code, path = 'missing_required', required
             elif kind == 'controls' and (not isinstance(block.get('action'), dict) or block['action'].get('name') not in ('send_message', 'set_model')):
@@ -122,8 +123,21 @@ def validate_with_diagnostics(raw: Any, **kwargs) -> dict:
                 code, path = 'invalid_action', 'action.name'
             elif kind == 'options' and (not isinstance(block.get('action', {}).get('template'), str) or '{choice}' not in block['action']['template']):
                 code, path = 'invalid_action', 'action.template'
-            elif kind == 'options' and (not block.get('options') or len(block.get('options', [])) < 2):
-                code, path = 'missing_required', 'options'
+            elif kind == 'sandbox' and (block.get('kind') == 'scene' or ('code' in block and 'html' not in block)):
+                import re
+                from backend.ui_blocks.validate import FORBIDDEN_SCENE_TERMS, MAX_SCENE_CODE
+                code_str = block.get('code')
+                if not isinstance(code_str, str) or not code_str.strip():
+                    code, path = 'missing_required', 'code'
+                elif len(code_str) > MAX_SCENE_CODE:
+                    code, path = 'limit_exceeded', 'code'
+                else:
+                    for pat in FORBIDDEN_SCENE_TERMS:
+                        if re.search(pat, code_str):
+                            code, path = 'invalid_scene_code', 'code'
+                            break
+                    if not code:
+                        code, path = 'type_mismatch', 'params'
             elif kind == 'sandbox' and isinstance(block.get('html'), str) and len(block['html']) > 12000:
                 code, path = 'limit_exceeded', 'html'
             elif kind == 'chart' and (not block.get('rows')) and not (isinstance(block.get('series'), list) and block['series'] and isinstance(block['series'][0], dict) and 'rows' in block['series'][0]):

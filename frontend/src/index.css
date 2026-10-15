@@ -12733,6 +12733,123 @@ html[data-theme="light"] .model-option-provider-tag {
   height: 100% !important;
 }
 
+/* Scene (sandbox kind scene, plano 13) ------------------------------------- */
+.nexus-ui-scene {
+  width: 100%;
+}
+
+.nexus-ui-scene__container {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  gap: 12px;
+}
+
+@media (min-width: 640px) {
+  .nexus-ui-scene__container--with-params {
+    display: grid;
+    grid-template-columns: 1fr 200px;
+    align-items: start;
+    gap: 16px;
+  }
+}
+
+.nexus-ui-scene__main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  width: 100%;
+}
+
+.nexus-ui-scene__stage {
+  position: relative;
+  width: 100%;
+  background: var(--surface-soft);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  transition: height 0.2s ease;
+}
+
+.nexus-ui-scene__stage iframe {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: transparent;
+}
+
+.nexus-ui-scene__readout {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 16px;
+  padding: 8px 12px;
+  margin-top: 6px;
+  background: color-mix(in srgb, var(--surface-soft) 80%, transparent);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  font-size: 0.75rem;
+  color: var(--body);
+}
+
+.nexus-ui-scene__readout-item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.nexus-ui-scene__readout-label {
+  color: var(--ink-muted);
+  font-weight: 500;
+}
+
+.nexus-ui-scene__readout-value {
+  color: var(--ink);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.nexus-ui-scene__readout-unit {
+  color: var(--ink-muted);
+  font-size: 0.7rem;
+}
+
+.nexus-ui-scene__params {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 4px 0;
+}
+
+.nexus-ui-scene__param {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.nexus-ui-scene__param-val {
+  font-size: 0.75rem;
+  color: var(--ink-muted);
+  font-variant-numeric: tabular-nums;
+  margin-left: auto;
+}
+
+.nexus-ui-scene__error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  margin-top: 8px;
+  background: color-mix(in srgb, var(--error) 10%, var(--surface-card));
+  border: 1px solid color-mix(in srgb, var(--error) 25%, transparent);
+  border-radius: var(--radius-sm);
+}
+
+.nexus-ui-card:fullscreen .nexus-ui-scene__stage {
+  height: 100% !important;
+}
+
 /* KPIs (`metric`, plano 12 §2.1) ------------------------------------------- */
 .nexus-ui-kpis__grid {
   display: grid;

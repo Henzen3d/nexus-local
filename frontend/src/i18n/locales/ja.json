@@ -700,7 +700,13 @@
     "optionsMultipleHint": "1つ以上のオプションを選択して送信",
     "optionsOther": "その他の回答...",
     "optionsSubmit": "回答を送信",
-    "optionsAnswered": "回答済み: {{choice}}"
+    "optionsAnswered": "回答済み: {{choice}}",
+    "scenePause": "一時停止",
+    "scenePlay": "再開",
+    "sceneError": "シーンエラー: {{message}}",
+    "sceneCorrectionPrompt": "シーン「{{title}}」を修正してください: エラー「{{message}}」。同じsandbox kind sceneブロックを維持してください。",
+    "sceneWebGlLost": "3Dグラフィックコンテキストが失われました。",
+    "sceneReadoutTitle": "シーンの値"
   },
   "memory": {
     "useMemoryGlobal": "会話のメモリ（デフォルト: オン）",

@@ -58,6 +58,26 @@ MAX_SANDBOX_HTML = 12000
 MAX_SANDBOX_CSS = 4000
 MAX_SANDBOX_JS = 8000
 
+MAX_SCENE_CODE = 6000
+MAX_SCENE_LINES = 120
+
+FORBIDDEN_SCENE_TERMS = (
+    r"\bimport\b",
+    r"\bfetch\b",
+    r"\bXMLHttpRequest\b",
+    r"\bWebSocket\b",
+    r"\bdocument\.cookie\b",
+    r"\blocalStorage\b",
+    r"\bwindow\.parent\b",
+    r"\bpostMessage\b",
+    r"\beval\b",
+    r"\bFunction\s*\(",
+    r"\bwhile\b",
+)
+
+SCENE_KEY_REGEX = re.compile(r"^[a-z0-9_]{1,24}$")
+SCENE_ID_REGEX = re.compile(r"^[a-zA-Z0-9_]{1,32}$")
+
 
 def _env_hosts() -> set[str]:
     raw = os.getenv("INTELLIGENT_UI_IMAGE_HOSTS", "")
@@ -696,7 +716,150 @@ def _validate_controls(block: dict[str, Any]) -> dict[str, Any] | None:
     return out
 
 
+def _validate_scene(block: dict[str, Any]) -> dict[str, Any] | None:
+    title = _clean_text(block.get("title"), 1, 80) or "Cena"
+    code = block.get("code")
+    if not isinstance(code, str) or not (1 <= len(code) <= MAX_SCENE_CODE):
+        return None
+    if len(code.splitlines()) > MAX_SCENE_LINES:
+        return None
+
+    # Verifica termos proibidos
+    for pattern in FORBIDDEN_SCENE_TERMS:
+        if re.search(pattern, code):
+            return None
+
+    mode = str(block.get("mode") or "3d").strip().lower()
+    if mode not in ("2d", "3d"):
+        mode = "3d"
+
+    initial_height = block.get("initial_height")
+    try:
+        h_num = int(round(float(initial_height))) if initial_height is not None else None
+    except (TypeError, ValueError):
+        h_num = None
+    h = h_num if h_num is not None and 160 <= h_num <= 600 else 320
+
+    out: dict[str, Any] = {
+        "id": block.get("id") or "scene_1",
+        "type": "sandbox",
+        "kind": "scene",
+        "mode": mode,
+        "title": title,
+        "code": code,
+        "initial_height": h,
+        "standalone_download": bool(block.get("standalone_download", True)),
+    }
+
+    # Validação de params (0 a 4)
+    raw_params = block.get("params")
+    if isinstance(raw_params, list):
+        clean_params = []
+        seen_param_ids = set()
+        for p in raw_params[:4]:
+            if not isinstance(p, dict):
+                continue
+            p_id = p.get("id")
+            if not isinstance(p_id, str) or not SCENE_ID_REGEX.match(p_id) or p_id in seen_param_ids:
+                return None  # id repetido ou inválido descarta o bloco
+            seen_param_ids.add(p_id)
+
+            p_kind = str(p.get("kind") or "range").strip().lower()
+            if p_kind not in ("range", "number", "select"):
+                continue
+
+            p_label = str(p.get("label", p_id)).strip()[:60]
+            clean_p: dict[str, Any] = {"id": p_id, "kind": p_kind, "label": p_label}
+
+            default = p.get("default")
+            if default is None:
+                return None  # default é obrigatório na cena
+
+            if p_kind in ("range", "number"):
+                mn = p.get("min", 0)
+                mx = p.get("max", 100)
+                try:
+                    mn = float(mn)
+                    mx = float(mx)
+                except (ValueError, TypeError):
+                    mn, mx = 0, 100
+                if mn >= mx:
+                    mn, mx = 0, 100
+                clean_p["min"] = mn
+                clean_p["max"] = mx
+
+                step = p.get("step", 1)
+                try:
+                    step = float(step)
+                    if step <= 0 or math.isnan(step):
+                        step = 1
+                except (ValueError, TypeError):
+                    step = 1
+                clean_p["step"] = step
+
+                try:
+                    def_val = float(default)
+                    if not (mn <= def_val <= mx):
+                        def_val = mn
+                except (ValueError, TypeError):
+                    def_val = mn
+                clean_p["default"] = def_val
+            elif p_kind == "select":
+                opts = p.get("options")
+                if not isinstance(opts, list) or not (2 <= len(opts) <= 8):
+                    continue
+                clean_opts = []
+                seen_vals = set()
+                for o in opts:
+                    if not isinstance(o, dict):
+                        continue
+                    v = str(o.get("value", "")).strip()
+                    l = str(o.get("label", v)).strip()
+                    if not v or v in seen_vals:
+                        continue
+                    seen_vals.add(v)
+                    clean_opts.append({"value": v, "label": l[:40]})
+                if len(clean_opts) < 2:
+                    continue
+                clean_p["options"] = clean_opts
+                def_str = str(default).strip()
+                if def_str not in seen_vals:
+                    def_str = clean_opts[0]["value"]
+                clean_p["default"] = def_str
+
+            clean_params.append(clean_p)
+
+        if clean_params:
+            out["params"] = clean_params
+
+    # Validação de readout (0 a 6)
+    raw_readout = block.get("readout")
+    if isinstance(raw_readout, list):
+        clean_readout = []
+        seen_readout_keys = set()
+        for r in raw_readout[:6]:
+            if not isinstance(r, dict):
+                continue
+            r_key = r.get("key")
+            if not isinstance(r_key, str) or not SCENE_KEY_REGEX.match(r_key) or r_key in seen_readout_keys:
+                continue
+            seen_readout_keys.add(r_key)
+            r_label = str(r.get("label", r_key)).strip()[:40]
+            clean_r: dict[str, Any] = {"key": r_key, "label": r_label}
+            if r.get("unit") is not None:
+                clean_r["unit"] = str(r["unit"]).strip()[:16]
+            clean_readout.append(clean_r)
+        if clean_readout:
+            out["readout"] = clean_readout
+
+    return out
+
+
 def _validate_sandbox(block: dict[str, Any]) -> dict[str, Any] | None:
+    kind = str(block.get("kind") or "").strip().lower()
+    if kind == "scene" or ("code" in block and "html" not in block):
+        return _validate_scene(block)
+
     title = str(block.get("title") or "Simulação").strip()[:80]
     html = block.get("html")
     if not isinstance(html, str) or not (1 <= len(html) <= MAX_SANDBOX_HTML):
@@ -931,7 +1094,7 @@ def _infer_type(item: dict[str, Any]) -> str | None:
         return "controls"
     if "question" in item and "options" in item:
         return "options"
-    if "html" in item:
+    if "html" in item or ("code" in item and "html" not in item):
         return "sandbox"
     items = item.get("items")
     if isinstance(items, list) and items:

@@ -1017,3 +1017,136 @@ def test_table_and_chart_expressions():
     chart_b = [b for b in validated["blocks"] if b["type"] == "chart"][0]
     assert chart_b["rows"][0]["vendas"] == "={multiplicador} * 5"
     assert chart_b["rows"][1]["vendas"] == 0.0
+
+
+def test_validate_scene_valid():
+    from backend.ui_blocks.validate import validate_envelope
+
+    env_3d = {
+        "v": 1,
+        "blocks": [
+            {
+                "type": "sandbox",
+                "kind": "scene",
+                "mode": "3d",
+                "title": "Órbita 3D",
+                "code": "const geo = new THREE.SphereGeometry(1); scene.add(new THREE.Mesh(geo)); onFrame((t, dt) => report({ r: 5 }));",
+                "params": [
+                    {"id": "vel", "label": "Velocidade", "kind": "range", "min": 0.1, "max": 2, "step": 0.1, "default": 1},
+                    {"id": "modo", "label": "Modo", "kind": "select", "options": [{"value": "a", "label": "A"}, {"value": "b", "label": "B"}], "default": "a"},
+                ],
+                "readout": [
+                    {"key": "r", "label": "Raio", "unit": "ua"},
+                ],
+            }
+        ],
+    }
+    res_3d = validate_envelope(env_3d)
+    assert res_3d is not None
+    block = res_3d["blocks"][0]
+    assert block["type"] == "sandbox"
+    assert block["kind"] == "scene"
+    assert block["mode"] == "3d"
+    assert block["title"] == "Órbita 3D"
+    assert len(block["params"]) == 2
+    assert block["params"][0]["default"] == 1.0
+    assert len(block["readout"]) == 1
+
+    # Inferência: bloco sem type mas com code (e sem html) infere sandbox/scene
+    env_inferred = {
+        "v": 1,
+        "blocks": [
+            {
+                "kind": "scene",
+                "mode": "2d",
+                "code": "ctx.fillRect(0, 0, 100, 100);",
+            }
+        ],
+    }
+    res_inf = validate_envelope(env_inferred)
+    assert res_inf is not None
+    assert res_inf["blocks"][0]["type"] == "sandbox"
+    assert res_inf["blocks"][0]["kind"] == "scene"
+    assert res_inf["blocks"][0]["mode"] == "2d"
+
+
+def test_validate_scene_forbidden_terms():
+    from backend.ui_blocks.validate import validate_envelope
+    from backend.ui_blocks.diagnostics import validate_with_diagnostics
+
+    forbidden_snippets = [
+        "while (true) {}",
+        "import * as foo from 'bar';",
+        "fetch('https://evil.com')",
+        "new XMLHttpRequest()",
+        "new WebSocket('ws://evil.com')",
+        "const c = document.cookie;",
+        "localStorage.setItem('k', 'v')",
+        "window.parent.postMessage('steal', '*')",
+        "postMessage('msg')",
+        "eval('2 + 2')",
+        "Function('return 1')()",
+    ]
+
+    for snippet in forbidden_snippets:
+        env = {
+            "v": 1,
+            "blocks": [
+                {
+                    "type": "sandbox",
+                    "kind": "scene",
+                    "code": f"onFrame(() => {{ {snippet} }});",
+                }
+            ],
+        }
+        assert validate_envelope(env) is None, f"Snippet should be rejected: {snippet}"
+        diag = validate_with_diagnostics(env)
+        assert diag["dropped"] == 1
+        assert any(e["code"] == "invalid_scene_code" for e in diag["errors"]), f"Should report invalid_scene_code for: {snippet}"
+
+
+def test_validate_scene_limits_and_params():
+    from backend.ui_blocks.validate import validate_envelope
+
+    # Código > 6000 caracteres rejeitado
+    assert validate_envelope({
+        "type": "sandbox",
+        "kind": "scene",
+        "code": "a = 1;\n" * 1500,
+    }) is None
+
+    # Mais de 120 linhas rejeitado
+    assert validate_envelope({
+        "type": "sandbox",
+        "kind": "scene",
+        "code": "\n".join(["// line"] * 125),
+    }) is None
+
+    # Parâmetro sem default obrigatório é rejeitado
+    assert validate_envelope({
+        "type": "sandbox",
+        "kind": "scene",
+        "code": "onFrame(() => {});",
+        "params": [{"id": "p1", "kind": "number"}],
+    }) is None
+
+    # Parâmetro com id duplicado é rejeitado
+    assert validate_envelope({
+        "type": "sandbox",
+        "kind": "scene",
+        "code": "onFrame(() => {});",
+        "params": [
+            {"id": "p1", "kind": "number", "default": 1},
+            {"id": "p1", "kind": "number", "default": 2},
+        ],
+    }) is None
+
+
+def test_scene_triggers_should_offer():
+    from backend.ui_blocks.should_offer import select_modules, should_offer_ui
+
+    assert should_offer_ui("Simule uma órbita planetária")
+    assert "scene" in select_modules("Simule uma órbita planetária")
+    assert "scene" in select_modules("Mostre o movimento do pêndulo em 2D")
+    assert "scene" in select_modules("Simulação de partículas em suspensão")
+    assert "scene" in select_modules("Passo a passo animado do algoritmo")
