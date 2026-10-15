@@ -50,6 +50,8 @@ public/scene/
 # ── Logs e temporários ───────────────────────────────────────────────────────
 *.log
 *.tmp
+.pytest_cache/
+backend/.pytest_cache/
 
 # ── Documentos de planejamento, rascunhos e referências de design ─────────────
 # (uso interno — não necessários para rodar o projeto)

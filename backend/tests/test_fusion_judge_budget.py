@@ -10,9 +10,10 @@ def test_cap_judge_block_deixa_texto_curto_intacto():
 def test_cap_judge_block_corta_em_4000_e_marca():
     texto = "a" * 5000
     saida = cap_judge_block(texto)
-    assert saida.startswith("a" * 4000)
-    assert saida.endswith("…[truncado para o Juiz]")
-    assert len(saida) == 4000 + len("\n…[truncado para o Juiz]")
+    assert saida.startswith("a" * int(4000 * 0.65))
+    assert saida.endswith("a" * (4000 - int(4000 * 0.65) - len("\n…[truncado para o Juiz]")))
+    assert saida.count("…[truncado para o Juiz]") == 1
+    assert len(saida) == 4000
 
 
 def test_cap_judge_block_none_vira_vazio():

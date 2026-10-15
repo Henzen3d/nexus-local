@@ -82,6 +82,7 @@ Retorne apenas a resposta final em Markdown, direto ao usuário."""
 
 
 JUDGE_BLOCK_MAX_CHARS = 4000
+JUDGE_START_RATIO = 0.65  # fração do limite reservada ao início
 JUDGE_TRUNCATION_MARK = "\n…[truncado para o Juiz]"
 
 
@@ -89,7 +90,9 @@ def cap_judge_block(text: str, limit: int = JUDGE_BLOCK_MAX_CHARS) -> str:
     body = text or ""
     if len(body) <= limit:
         return body
-    return body[:limit] + JUDGE_TRUNCATION_MARK
+    start_chars = int(limit * JUDGE_START_RATIO)  # ~2600
+    end_chars = limit - start_chars - len(JUDGE_TRUNCATION_MARK)  # ~1385
+    return body[:start_chars] + JUDGE_TRUNCATION_MARK + body[-end_chars:]
 
 
 def judge_timeout_action(full_response: str) -> str:
@@ -617,18 +620,18 @@ async def executar_fusion(
 
     except asyncio.TimeoutError:
         logger.error(
-            "Fusion: timeout do juiz (180s) conversation=%s judge=%s",
-            conversation_id, judge_model_id,
+            "Fusion: timeout do juiz (%ss) conversation=%s judge=%s",
+            TIMEOUT_JUIZ, conversation_id, judge_model_id,
         )
         if judge_timeout_action(full_response) == "error":
             await websocket.send_json({
                 "type": "error",
-                "message": "O juiz do Fusion excedeu o tempo limite (180s). Tente novamente.",
+                "message": f"O juiz do Fusion excedeu o tempo limite ({TIMEOUT_JUIZ}s). Tente novamente.",
             })
             return
         await websocket.send_json({
             "type": "fusion_status",
-            "message": "Juiz interrompido no limite de 180s. Resposta parcial salva.",
+            "message": f"Juiz interrompido no limite de {TIMEOUT_JUIZ}s. Resposta parcial salva.",
         })
     except Exception as e:
         error_msg = str(e)
