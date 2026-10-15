@@ -116,3 +116,31 @@ test("20 tokens não aumentam commits do ChatWindow nem renders das bolhas antig
   assert.ok(data.chatWindowCommitsAfterMount >= 1)
   assert.equal(data.chatWindowCommitsDuringTokens, 0)
 })
+
+test("depois do stream, copiar e substituir ou remover mensagem antiga usam o estado atual", () => {
+  const frontend = dirname(fileURLToPath(new URL("../", import.meta.url)))
+  const result = spawnSync(process.execPath, ["scripts/run-message-actions-after-stream.mjs"], {
+    cwd: frontend,
+    encoding: "utf8",
+    timeout: 300000,
+  })
+  assert.equal(result.status, 0, result.stderr)
+  const line = result.stdout.trim().split("\n").find((row) => row.startsWith("{"))
+  assert.ok(line, result.stdout)
+  const data = JSON.parse(line!) as {
+    copyAfterStream: string
+    copyAfterEdit: string
+    visibleAfterEdit: boolean
+    goneAfterDelete: boolean
+    staleActionControls: string[]
+  }
+  assert.equal(data.copyAfterStream, "CONTEUDO-ANTIGO-42")
+  assert.equal(data.visibleAfterEdit, true)
+  assert.equal(data.copyAfterEdit, "CONTEUDO-EDITADO-99")
+  assert.equal(data.goneAfterDelete, true)
+  assert.deepEqual(
+    data.staleActionControls,
+    [],
+    "editar, regenerar e excluir não existem na bolha; um controle novo precisa provar que lê a mensagem atual",
+  )
+})
