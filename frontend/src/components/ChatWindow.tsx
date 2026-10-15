@@ -3,8 +3,10 @@ import { PanelLeftOpen, Code2, BookOpen, Pencil, Lightbulb, X, ChevronRight, Mor
 import { BuyCoffeeIcon } from './BuyCoffeeIcon'
 import { useTranslation } from 'react-i18next'
 import { useStore } from '../store/useStore'
+import { useShallow } from 'zustand/react/shallow'
 import { api } from '../api/client'
-import { MessageBubble, StreamingBubble } from './MessageBubble'
+import { MessageBubble } from './MessageBubble'
+import { StreamingTail } from './StreamingTail'
 import { ProactiveBubble, ProactiveResearching } from './ProactiveBubble'
 import { ProactiveWelcomeCard } from './ProactiveWelcomeCard'
 import { NotificationBell } from './NotificationBell'
@@ -16,6 +18,7 @@ import { BottomSheet } from './ui/BottomSheet'
 import { useIsMobile } from '../hooks/useIsMobile'
 import { NexusLogoIcon } from './NexusLogoIcon'
 import { getTtsPrefs, onSpeechEnded, playSpeech } from '../lib/ttsPlayer'
+import { streamScrollBehavior } from '../lib/scrollPolicy'
 import { applyDecision, getTalk, noteSpeaking, onTtsEnded } from '../lib/talkLoop'
 import { AdapterRegistry } from '../adapters/AdapterRegistry'
 
@@ -228,11 +231,14 @@ function getScoresAndTailored(conversations: any[]) {
 }
 
 export function ChatWindow() {
+  if ((globalThis as { __NEXUS_RENDER_PROBE__?: boolean }).__NEXUS_RENDER_PROBE__ === true) {
+    const probe = globalThis as { __NEXUS_CHATWINDOW_RENDERS__?: number }
+    probe.__NEXUS_CHATWINDOW_RENDERS__ = (probe.__NEXUS_CHATWINDOW_RENDERS__ ?? 0) + 1
+  }
   const { t } = useTranslation()
   const {
     messages,
     conversations,
-    streamingContent,
     isStreaming,
     sidebarOpen,
     setSidebarOpen,
@@ -248,7 +254,25 @@ export function ChatWindow() {
     setView,
     setActiveProjectId,
     proactiveStatus,
-  } = useStore()
+  } = useStore(useShallow((s) => ({
+    messages: s.messages,
+    conversations: s.conversations,
+    isStreaming: s.isStreaming,
+    sidebarOpen: s.sidebarOpen,
+    setSidebarOpen: s.setSidebarOpen,
+    fusionMode: s.fusionMode,
+    setFusionMode: s.setFusionMode,
+    fusionActive: s.fusionActive,
+    displayName: s.displayName,
+    activeConversationId: s.activeConversationId,
+    activeConversation: s.activeConversation,
+    activeProjectId: s.activeProjectId,
+    projectNameById: s.projectNameById,
+    setProjectName: s.setProjectName,
+    setView: s.setView,
+    setActiveProjectId: s.setActiveProjectId,
+    proactiveStatus: s.proactiveStatus,
+  })))
   const { sendMessage, stopStream } = useChatContext()
   const isMobile = useIsMobile()
   const messagesAreaRef = useRef<HTMLDivElement>(null)
@@ -388,13 +412,18 @@ export function ChatWindow() {
       return
     }
 
+    if (isStreaming) return
+
     const threshold = 180
     const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < threshold
 
-    if (isNearBottom && bottomSentinelRef.current) {
-      bottomSentinelRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' })
+    if (isNearBottom && bottomSentinelRef.current?.scrollIntoView) {
+      bottomSentinelRef.current.scrollIntoView({
+        behavior: streamScrollBehavior(false),
+        block: 'end',
+      })
     }
-  }, [messages, streamingContent])
+  }, [messages, isStreaming])
 
   const spokenConv = useRef<string | null>(null)
   const spokenIds = useRef<Set<string>>(new Set())
@@ -624,7 +653,7 @@ export function ChatWindow() {
               }
               return <MessageBubble key={m.id} message={m} />
             })}
-            {isStreaming && <StreamingBubble content={streamingContent} />}
+            {isStreaming && <StreamingTail sentinelRef={bottomSentinelRef} messagesAreaRef={messagesAreaRef} />}
             {!isStreaming && proactiveStatus && proactiveStatus.conversation_id === activeConversationId && (
               <ProactiveResearching stage={proactiveStatus.stage} />
             )}

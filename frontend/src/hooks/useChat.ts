@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback } from 'react'
 import i18n from '../i18n'
 import { useStore } from '../store/useStore'
+import { useShallow } from 'zustand/react/shallow'
 import { getTalk } from '../lib/talkLoop'
 import { usePresence } from './usePresence'
 import type { WSMessage, Attachment } from '../types'
@@ -65,7 +66,16 @@ export function useChat() {
     token,
     webSearchActive,
     activeProjectId,
-  } = useStore()
+  } = useStore(useShallow((s) => ({
+    activeConversationId: s.activeConversationId,
+    selectedModelId: s.selectedModelId,
+    selectedProviderId: s.selectedProviderId,
+    fusionMode: s.fusionMode,
+    addUserMessage: s.addUserMessage,
+    token: s.token,
+    webSearchActive: s.webSearchActive,
+    activeProjectId: s.activeProjectId,
+  })))
 
   // ── Presença (assistente proativo, F3.4) ───────────────────────────────────
   // active | idle | hidden + conversa/tela atual → backend decide inline × toast × pendente
