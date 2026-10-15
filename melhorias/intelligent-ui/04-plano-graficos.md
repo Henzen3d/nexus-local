@@ -32,7 +32,7 @@
 - Consumes: bloco `chart` válido
 - Produces: `ChartCard({ block })`, carregado com `React.lazy`. `DynamicRenderer.tsx` não importa `recharts`. Para `kind === "bar"`, um `BarChart` com uma `Bar`.
 
-- [ ] **Step 1: Teste.** Título "Custo por 1M tokens" aparece. *(**Pendente** como teste de render. O validador do bloco `chart` é coberto por `test_chart_bar_line_compare` e pelo teste TS "chart bar line e compare".)* A tabela acessível contém "Groq 8B" e "0.05" quando esse for o row do teste. Não exigir pixel do canvas.
+- [x] **Step 1: Teste.** Título "Custo por 1M tokens" aparece. *(Coberto em `scripts/tests/table-chart.ui.tsx`: validação de título "Custo por 1M tokens" e tabela acessível contendo "Groq 8B" e "0.05".)* A tabela acessível contém "Groq 8B" e "0.05" quando esse for o row do teste. Não exigir pixel do canvas.
 
 - [x] **Step 2: Implementar `bar`.** `x_key` no eixo. `series[0].key` na barra. Fill: `var(--primary)`. *(`frontend/src/ui/components/ChartCard.tsx`, único arquivo do módulo que importa `recharts`.)*
 

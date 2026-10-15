@@ -33,7 +33,7 @@
 - Consumes: tipo `card` de `nexusUi.ts`
 - Produces: `ImageCard({ block })` com `title`, `body` opcional e até 6 `facts`. Carga via `React.lazy` no `DynamicRenderer`.
 
-- [ ] **Step 1: Teste.** Título "ESP32-S3" e fato "Flash / 8 MB" aparecem. Sem `image`, não há `<img>`. *(**Pendente** como teste de render. A validação do bloco `card` é coberta por `test_card_e_filtro_imagem` no backend.)*
+- [x] **Step 1: Teste.** Título "ESP32-S3" e fato "Flash / 8 MB" aparecem. Sem `image`, não há `<img>`. *(Coberto em `scripts/tests/native-cards.ui.tsx`: validação de título "ESP32-S3", fatos "Flash / 8 MB" e ausência de tag `<img>` sem imagem.)*
 
 - [x] **Step 2: Implementar.** Fundo `--surface-card`, borda `--hairline`, título `--ink`, corpo `--body`. *(`frontend/src/ui/components/ImageCard.tsx`. Sem `image` válida o bloco da foto não é montado — não fica buraco.)*
 

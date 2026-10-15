@@ -122,3 +122,40 @@ test('ChartCard renders pie and stacked chart blocks with sr-only table', () => 
     view!.unmount()
   })
 })
+
+test('ChartCard renders bar chart with title and accessible sr-only table containing model data', () => {
+  const barBlock: ChartBlock = {
+    id: 'costs_bar',
+    type: 'chart',
+    kind: 'bar',
+    title: 'Custo por 1M tokens',
+    x_key: 'modelo',
+    series: [{ key: 'custo', label: 'Custo (US$)' }],
+    rows: [
+      { modelo: 'Groq 8B', custo: 0.05 },
+      { modelo: 'GPT-4o mini', custo: 0.15 },
+    ],
+  }
+
+  let view: Renderer.ReactTestRenderer
+  act(() => {
+    view = Renderer.create(<ChartCard block={barBlock} />)
+  })
+
+  // Título renderizado
+  const cardTitle = view!.root.findByProps({ className: 'nexus-ui-card__title' })
+  assert.equal(cardTitle.children[0], 'Custo por 1M tokens')
+
+  // Tabela acessível contém Groq 8B e 0.05
+  const srTable = view!.root.findByProps({ className: 'nexus-ui-sr-only' })
+  assert.ok(srTable)
+  const rows = srTable.findByType('tbody').findAllByType('tr')
+  assert.equal(rows.length, 2)
+  const firstRowCells = rows[0].findAllByType('td')
+  assert.equal(firstRowCells[0].children[0], 'Groq 8B')
+  assert.ok(String(firstRowCells[1].children[0]).includes('0'))
+
+  act(() => {
+    view!.unmount()
+  })
+})

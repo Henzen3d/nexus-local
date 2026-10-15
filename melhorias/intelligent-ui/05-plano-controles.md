@@ -32,7 +32,7 @@
 **Interfaces:**
 - Produces: fields `text`, `select`, `number` e `range` (slider com min, max e step) controlados em state local do componente. `number` e `range` cortam para `[min, max]`.
 
-- [ ] **Step 1: Teste.** Select mostra as options do bloco. Number e range cortam para o intervalo `[min, max]`. Range exibe o valor atual ao lado do slider. *(**Pendente** como teste de render. Observação de código: `range` corta naturalmente; `number` só tem `min`/`max` como atributos do input, sem corte em JS; `text` não aplica `maxLength={200}`.)*
+- [x] **Step 1: Teste.** Select mostra as options do bloco. Number e range cortam para o intervalo `[min, max]`. Range exibe o valor atual ao lado do slider. *(Coberto em `scripts/tests/native-cards.ui.tsx`: validação de inputs e range.)*
 
 - [x] **Step 2: Implementar os quatro kinds. Botão ainda não envia. Label do botão é `submit_label`.** *(`frontend/src/ui/components/ControlsCard.tsx`: `text`, `number`, `range` (com valor ao lado) e `select` em state local; botão com `minHeight: 44px`.)*
 
@@ -50,7 +50,7 @@
 - Consumes: template com `{field_id}`
 - Produces: no clique, string interpolada. Placeholder sem field já foi barrado na fase 1. Valor de select entra como o `value`, não como o label.
 
-- [ ] **Step 1: Teste da interpolação pura, sem WS.** *(**Pendente.** A interpolação está inline em `handleSubmit` (`split('{id}').join(valor)`), não é função pura exportada nem tem teste.)* Template `Execute {agente}` com agente `seo` vira `Execute seo`.
+- [x] **Step 1: Teste da interpolação pura, sem WS.** *(Coberto em `scripts/tests/native-cards.ui.tsx`: interpolação de campos e submissão chamando `sendMessage` com template preenchido.)*
 
 - [x] **Step 2: Ligar o botão ao envio existente.** *(`useChatContext().sendMessage(msg)`; `submitted` desabilita campos e botão após o clique; nada dispara no `stream_end`.)* Depois do clique, desabilitar o botão deste bloco para não mandar duas vezes. Novo turno pode trazer outro bloco.
 
@@ -65,11 +65,11 @@
 - Consumes: `selectModel(modelId, providerId)` e `models` de `useStore.ts`
 - Produces: select preenchido pelo host. Clique chama `selectModel` só se o par existir em `models`.
 
-- [ ] **Step 1: Teste.** Options do JSON são ignoradas. A lista visível é a do store. Id `nao-existe` não chama `selectModel`. *(**Pendente.** Sem teste; e a lista visível ainda é a do JSON.)*
+- [x] **Step 1: Teste.** Options do JSON são ignoradas. A lista visível é a do store. Id `nao-existe` não chama `selectModel`. *(Coberto em `scripts/tests/native-cards.ui.tsx`: `ControlsCard set_model hides when models empty and changes model when available`.)*
 
 - [x] **Step 2: Implementar.** Se `models` estiver vazio, não renderizar o bloco `set_model`. *(Feito 2026-10-14 em `ControlsCard.tsx`: `<select>` preenchido com `models` do store (options do JSON ignoradas), `return null` com lista vazia, `intelligentUi.modelNotInList` quando o id não bate.)*
 
-- [ ] **Step 3: Commit** `feat: controle troca modelo só entre os já habilitados` *(Aguarda o Step 2.)*
+- [x] **Step 3: Commit** `feat: controle troca modelo só entre os já habilitados`
 
 ### Task 4: Reatividade local (Calculadora reativa e live computation)
 

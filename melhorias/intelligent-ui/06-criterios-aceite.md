@@ -57,7 +57,7 @@ Lista para quem for ligar `INTELLIGENT_UI_ENABLED` no servidor da família. Item
 - [x] Clique em sugestão de `follow_up` chama `sendMessage(texto)`; durante o stream os botões ficam desabilitados; nenhum envio automático. *(`FollowUpCard`; sem teste de DOM.)*
 - [x] Catálogo com os três tipos continua sob 400 tokens (`len/4` ≈ 389) e o exemplo dele segue sendo um envelope válido. *(`test_catalogo_cabe_no_teto_e_tem_as_regras_da_spec`.)*
 - [x] Strings novas (`metricUp/Down/Flat`, `calloutInfo/Success/Warning/Danger`, `followUpTitle/Hint`) nos oito idiomas. *(`check-i18n.mjs intelligentUi` OK.)*
-- [ ] Teste de DOM (`test:dom`, plano 11 §4.5) para o clique do `follow_up` e a cor do delta por `trend × good`.
+- [x] Teste de componentes UI em `scripts/tests/native-cards.ui.tsx` para o clique do `follow_up` (chama `sendMessage`, trava no stream) e a cor do delta por `trend × good` (`data-tone="good|bad|neutral"`).
 
 ## Prompt
 

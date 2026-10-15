@@ -101,5 +101,5 @@ Decisões tomadas na fatia:
 - [x] Passo ativo tem `aria-current="step"`; estado de cada passo é lido por leitor de tela.
 - [x] Sandbox: Reiniciar remonta o iframe; navegação para fora vira aviso com Reiniciar; iframe só monta perto do viewport; placeholder tem a mesma altura.
 - [x] `tsc`, `vite build`, `npm test` e `check-i18n.mjs intelligentUi` limpos.
-- [ ] Testes de render dos cartões (4.5).
+- [x] Testes de render dos cartões (cobertos na suíte `scripts/tests/*.ui.tsx` via `npm run test:ui` para os cartões nativos, tabelas, gráficos, controles, sandbox e cenas 2D/3D).
 - [ ] Captura visual em claro/escuro revisada no PR (4.5).

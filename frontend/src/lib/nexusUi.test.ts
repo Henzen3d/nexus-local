@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { isAllowedImageUrl, parseUiEnvelope, stripUiFences } from './nexusUi.ts'
+import { isAllowedImageUrl, mergeUiEnvelopes, parseUiEnvelope, stripUiFences } from './nexusUi.ts'
 
 test('rejeita versao errada', () => {
   assert.equal(parseUiEnvelope('{"v":2,"blocks":[]}'), null)
@@ -772,4 +772,42 @@ test('subteto de sandbox no envelope: no maximo 1 sandbox/cena', () => {
   assert.notEqual(validated, null)
   assert.equal(validated?.blocks.length, 1)
   assert.equal(validated?.blocks[0].id, 'cena1')
+})
+test('mergeUiEnvelopes deduplica por id e respeita o teto de MAX_BLOCKS', () => {
+  const host = {
+    v: 1,
+    blocks: [
+      { id: 'step_1', type: 'progress', label: 'Passo 1', value: 1, max: 2 },
+      { id: 'step_2', type: 'progress', label: 'Passo 2', value: 2, max: 2 },
+    ],
+  } as any
+  const model = {
+    v: 1,
+    blocks: [
+      { id: 'step_2', type: 'progress', label: 'Passo 2 antigo', value: 0, max: 2 },
+      { id: 'step_3', type: 'progress', label: 'Passo 3', value: 3, max: 3 },
+    ],
+  } as any
+
+  const merged = mergeUiEnvelopes(host, model)
+  assert.notEqual(merged, null)
+  assert.equal(merged?.blocks.length, 3)
+  // Host prevalece para o mesmo id
+  assert.equal(merged?.blocks[1].label, 'Passo 2')
+  assert.equal(merged?.blocks[1].value, 2)
+  assert.equal(merged?.blocks[2].id, 'step_3')
+
+  // Mais de 6 blocos corta em MAX_BLOCKS (6)
+  const manyHost = {
+    v: 1,
+    blocks: Array.from({ length: 8 }, (_, i) => ({
+      id: `block_${i}`,
+      type: 'progress',
+      label: `Bloco ${i}`,
+      value: i,
+      max: 10,
+    })),
+  } as any
+  const mergedMany = mergeUiEnvelopes(manyHost, null)
+  assert.equal(mergedMany?.blocks.length, 6)
 })

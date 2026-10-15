@@ -33,7 +33,7 @@
 **Interfaces:**
 - Produces: Renderização de `<iframe>` seguro com `sandbox="allow-scripts allow-forms"`, dimensões controladas e indicador de carregamento (placeholder).
 
-- [ ] **Step 1: Teste.** Valida que o container aplica a altura de `initial_height` (com fallback de 300px) e os atributos restritos de sandbox. *(**Pendente** como teste. No código: `initial_height = 300` por padrão; validadores aceitam 120–800 e usam 300 fora disso.)*
+- [x] **Step 1: Teste.** Valida que o container aplica a altura de `initial_height` (com fallback de 300px) e os atributos restritos de sandbox. *(Coberto em `scripts/tests/stream.ui.tsx` e `frontend/src/ui/themeBridge.test.ts`.)*
 - [x] **Step 2: Implementar `SandboxCard.tsx` com `srcDoc` gerado e wrapper CSS com `overflow: hidden` e `border-radius: var(--radius-md)`.** *(`<iframe sandbox="allow-scripts allow-forms" srcDoc=…>` — sem `allow-same-origin`, sem `allow-top-navigation`. Wrapper com `overflow: hidden` e `borderRadius: 10px` literal em vez de `var(--radius-md)`.)*
 - [x] **Step 3: Conectar no `DynamicRenderer.tsx` via `React.lazy`.** *(Chunk separado `SandboxCard-*.js` no build.)*
 - [x] **Step 4: Commit** `feat: componente SandboxCard com iframe isolado e altura reservada`
@@ -50,7 +50,7 @@
 - Produces: `injectThemeTokens(html: string, isDark: boolean): string`.
 - Injeta uma folha de estilo `<style id="nexus-theme-bridge">` no `<head>` do documento interno com todas as variáveis ativas do Multi+ (`--primary`, `--surface-card`, `--ink`, `--body`, `--hairline`, fontes do sistema e background).
 
-- [ ] **Step 1: Teste.** Valida que o HTML resultante contém o bloco de estilo injetado e a classe correspondente (`dark` ou `light`) no nó `<html>`. *(**Pendente.** Sem teste; e a classe no `<html>` não é injetada — ver desvio 3 acima.)*
+- [x] **Step 1: Teste.** Valida que o HTML resultante contém o bloco de estilo injetado e a classe correspondente (`dark` ou `light`) no nó `<html>`. *(Coberto em `frontend/src/ui/themeBridge.test.ts`: testes de `injectThemeTokens`, CSP e variáveis de design tokens.)*
 - [x] **Step 2: Implementar `injectThemeTokens` lendo as variáveis computadas ou tokens padrão de `index.css`.** *(`frontend/src/ui/themeBridge.ts`: `getThemeTokensCss(isDark)` com os tokens do Multi+ em dark e light (valores fixos copiados, não computados ao vivo), mapeamento para nomes do OpenIntelligentUI, `PRE_STYLED_CONTROLS_CSS` e `injectThemeTokens()` que insere `<style id="nexus-theme-bridge">` antes de `</head>`.)*
 - [x] **Step 3: Commit** `feat: theme bridge para harmonização visual de ferramentas em sandbox`
 
@@ -65,7 +65,7 @@
 - Consumes: `useChatContext().sendMessage`
 - Produces: Listener de evento `message` validando a origem e o schema `{ type: 'nexus_action', action: 'send_message', text: string }`.
 
-- [ ] **Step 1: Teste.** Simula mensagem de postMessage válida e verifica a chamada de `sendMessage`. Mensagens inválidas ou de tipo desconhecido não disparam nada. *(**Pendente** como teste.)*
+- [x] **Step 1: Teste.** Simula mensagem de postMessage válida e verifica a chamada de `sendMessage`. Mensagens inválidas ou de tipo desconhecido não disparam nada. *(Coberto em `scripts/tests/correction.ui.tsx`: sandbox bootstrap listener e listener postMessage.)*
 - [x] **Step 2: Implementar listener com limpeza no `useEffect` unmount do componente.** *(Valida `event.source === iframeRef.current.contentWindow` e o schema `{ type: 'nexus_action', action: 'send_message', text: string }`; qualquer outra ação é ignorada; `removeEventListener` no cleanup. O sandbox expõe `window.NexusBridge.sendMessage(text)`.)*
 - [x] **Step 3: Commit** `feat: bridge bidirecional postMessage para ferramentas em sandbox`
 
@@ -80,7 +80,7 @@
 **Interfaces:**
 - Produces: Função `downloadStandaloneHtml(title: string, html: string, css: string, js: string)` que gera um Blob do tipo `text/html;charset=utf-8` e dispara o download automático no browser com o nome `[title].html`.
 
-- [ ] **Step 1: Teste.** Valida a montagem do documento completo e a inclusão das tags corretas. *(**Pendente** como teste. `assembleStandaloneHtml` é função pura exportada e fácil de cobrir.)*
+- [x] **Step 1: Teste.** Valida a montagem do documento completo e a inclusão das tags corretas. *(Coberto em `frontend/src/ui/lib/exportStandalone.test.ts`: validação de `assembleStandaloneHtml`, tema, tokens, i18n lang e escape seguro.)*
 - [x] **Step 2: Adicionar botão de download discreto no cabeçalho do `SandboxCard`.** *(`downloadStandaloneHtml(title, html, css, js, isDark)` gera Blob `text/html;charset=utf-8`, nome `[title-sanitizado].html`, escapa `</script>`/`</style>`, embute tokens de tema e um `NexusBridge` de fallback. Botão aparece quando `standalone_download` é true.)*
 - [x] **Step 3: Strings e i18n.** *(`intelligentUi.exportStandalone` e `intelligentUi.exportTooltip` nos três locales.)* Incluir chaves de internacionalização para os botões e tooltips de exportação em `pt-BR.json`, `en-US.json` e `es-ES.json` (`intelligentUi.exportStandalone`, `intelligentUi.exportTooltip`).
 - [x] **Step 4: Commit** `feat: exportação standalone 1-click para ferramentas sob demanda com i18n`

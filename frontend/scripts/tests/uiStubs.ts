@@ -1,6 +1,14 @@
 import { useSyncExternalStore } from 'react'
-export const controls = { enabled: true, sendSuccess: true, sent: [] as unknown[][], offers: [] as string[] }
-let state: any = { isStreaming: false, uiCorrectionRequested: {}, showToast: () => {} }
+export const controls = { enabled: true, sendSuccess: true, sent: [] as unknown[][], offers: [] as string[], selectedModels: [] as unknown[][] }
+let state: any = {
+  isStreaming: false,
+  uiCorrectionRequested: {},
+  showToast: () => {},
+  models: [] as any[],
+  selectModel: (modelId: string, providerId: string) => { controls.selectedModels.push([modelId, providerId]) },
+  selectedModelId: null,
+  selectedProviderId: null,
+}
 const listeners = new Set<() => void>()
 export const useStore = Object.assign((selector: (s: any) => unknown) => useSyncExternalStore(
   (cb) => { listeners.add(cb); return () => listeners.delete(cb) },
@@ -10,8 +18,8 @@ export const useStore = Object.assign((selector: (s: any) => unknown) => useSync
   setState: (update: any) => { state = { ...state, ...(typeof update === 'function' ? update(state) : update) }; listeners.forEach((cb) => cb()) },
 })
 export function reset() {
-  controls.enabled = true; controls.sendSuccess = true; controls.sent = []; controls.offers = []
-  useStore.setState({ isStreaming: false, uiCorrectionRequested: {} })
+  controls.enabled = true; controls.sendSuccess = true; controls.sent = []; controls.offers = []; controls.selectedModels = []
+  useStore.setState({ isStreaming: false, uiCorrectionRequested: {}, models: [], selectedModelId: null, selectedProviderId: null })
 }
 export function useIntelligentUiEnabled() { return controls.enabled }
 export function useIntelligentUiConfig() { return { image_hosts: [] } }

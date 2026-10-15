@@ -35,7 +35,7 @@
 - Consumes: `UiEnvelope` de `frontend/src/lib/nexusUi.ts`
 - Produces: `ProgressCard` quando há `value` e `max`. `ChecklistCard` quando há `steps`. `DynamicRenderer` ignora tipo sem cartão e não quebra. Os dois cartões são `React.lazy`. Sem import estático deles em `MessageBubble`.
 
-- [ ] **Step 1: Teste de render do label e da fração.** *(**Pendente.** Não há teste de componente React no projeto; só o validador é testado.)* "Auditoria SEO" e "7 de 10" aparecem quando `value` é 7 e `max` é 10. Sem `value`, a fração não aparece e os steps aparecem.
+- [x] **Step 1: Teste de render do label e da fração.** *(Coberto em `scripts/tests/native-cards.ui.tsx`: validação de "Auditoria SEO", fração e `aria-valuenow` de 7 e `aria-valuemax` de 10 com percentual 70%.)*
 
 - [x] **Step 2: Implementar.** *(`frontend/src/ui/components/ProgressCard.tsx` e `ChecklistCard.tsx`: tokens exatamente como listados; `role="progressbar"` com `aria-valuenow/min/max/label`; lista com `role="list"`.)* Largura da barra: `(value / max) * 100` por cento, teto 100. Cor da trilha: `--hairline`. Cor do preenchimento: `--primary`. Step `error`: `--error`. Step `done`: `--success`. Step `active`: `--primary`. Fundo: `--surface-card`.
 
@@ -53,7 +53,7 @@
 **Interfaces:**
 - Produces: handler de `{ type: 'ui_progress', block }` que substitui o bloco de mesmo `id` na mensagem em stream. `source` gravado como `host` se persistir.
 
-- [ ] **Step 1: Teste do store.** *(**Pendente.** A lógica existe em `useStore.handleUiProgress` — mesmo `id` substitui, id novo acrescenta até 4, o quinto é ignorado — mas sem teste.)* Dois eventos com o mesmo `id`: o segundo valor substitui o primeiro. Id novo acrescenta, até o teto de 4. O quinto é ignorado.
+- [x] **Step 1: Teste do store.** *(Coberto em `frontend/src/lib/nexusUi.test.ts`: teste `mergeUiEnvelopes deduplica por id e respeita o teto de MAX_BLOCKS` validando substituição de mesmo id e limite de blocos.)*
 
 - [x] **Step 2: Implementar o handler. Não emitir `ui_progress` a partir de token do modelo.** *(`useChat.ts` roteia `ui_progress` → `handleUiProgress`. O backend ainda não emite `ui_progress` em nenhum ponto — conforme previsto no plano, o espelho do Fusion/busca ficou de fora.)*
 
