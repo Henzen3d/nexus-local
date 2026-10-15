@@ -1556,7 +1556,16 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
-  setSidebarOpen: (v: boolean) => set({ sidebarOpen: v }),
+  setSidebarOpen: (v: boolean) => {
+    // Ao fechar, solta o focus preso dentro da sidebar: no mobile o <aside>
+    // recebe inert + aria-hidden no commit seguinte, e focus em descendente
+    // dispara o aviso do Chrome "Blocked aria-hidden ... descendant retained focus".
+    if (!v) {
+      const active = document.activeElement
+      if (active instanceof HTMLElement && active.closest('.sidebar')) active.blur()
+    }
+    set({ sidebarOpen: v })
+  },
   setView: (v: 'chat' | 'admin' | 'conversations' | 'artifacts' | 'projects' | 'library' | 'proactive') => set({ view: v }),
   setLibraryFilter: (filter) => {
     set({ libraryFilter: filter })
