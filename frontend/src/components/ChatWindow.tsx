@@ -653,7 +653,7 @@ export function ChatWindow() {
               }
               return <MessageBubble key={m.id} message={m} />
             })}
-            {isStreaming && <StreamingTail sentinelRef={bottomSentinelRef} />}
+            {isStreaming && <StreamingTail sentinelRef={bottomSentinelRef} messagesAreaRef={messagesAreaRef} />}
             {!isStreaming && proactiveStatus && proactiveStatus.conversation_id === activeConversationId && (
               <ProactiveResearching stage={proactiveStatus.stage} />
             )}
