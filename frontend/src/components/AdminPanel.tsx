@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import {
   Eye, EyeOff, Save, ToggleLeft, ToggleRight, Database, Sparkles, Users, Trash2, X, Monitor, Sun, Moon, Search, ChevronDown, ChevronRight,
   ChevronLeft, Info, Settings, CreditCard, Shield, Sliders, Volume2, Lock, Link2, LogOut, Check, User, Palette, Type, Smartphone, Trash, Activity,
-  Award, Languages, Brain, Share2, ExternalLink, Key, Compass, Image as ImageIcon, Radar
+  Award, Languages, Brain, Share2, ExternalLink, Key, Compass, Image as ImageIcon, Radar, Terminal
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { api } from '../api/client'
@@ -23,6 +23,7 @@ import { UsageDashboard } from './UsageDashboard'
 import { RankingWeightsSettings } from './RankingWeightsSettings'
 import { RankingsView } from './RankingsView'
 import { UserMemoryPanel } from './UserMemoryPanel'
+import { LogsPanel } from './LogsPanel'
 import { ProactiveSettings } from './ProactiveSettings'
 import { ProactiveAdminSettings } from './ProactiveAdminSettings'
 import { AutoRouterSettings } from './AutoRouterSettings'
@@ -31,7 +32,7 @@ import { canShowRegisterUserButton } from '../lib/registerUser'
 import { playSpeech, saveTtsPrefs, useTtsPrefs } from '../lib/ttsPlayer'
 import { useIsMobile } from '../hooks/useIsMobile'
 
-type Tab = 'general' | 'providers' | 'router' | 'rankings' | 'cache' | 'tools' | 'users' | 'dashboard' | 'memory' | 'proactive'
+type Tab = 'general' | 'providers' | 'router' | 'rankings' | 'cache' | 'tools' | 'users' | 'dashboard' | 'memory' | 'proactive' | 'logs'
 
 export function AdminPanel() {
   const isMobile = useIsMobile()
@@ -2237,6 +2238,7 @@ function AdminPanelDesktop() {
     { id: 'rankings' as Tab, label: t('settings.modelRankings'), icon: <Award size={14} /> },
     // Dashboard is admin-only (API uses require_admin after security phase)
     ...(user?.role === 'admin' ? [{ id: 'dashboard' as Tab, label: t('settings.usage'), icon: <Activity size={14} /> }] : []),
+    ...(user?.role === 'admin' ? [{ id: 'logs' as Tab, label: 'Logs do Sistema', icon: <Terminal size={14} /> }] : []),
     { id: 'cache' as Tab, label: t('settings.smartCache'), icon: <Database size={14} /> },
     { id: 'tools' as Tab, label: t('settings.tools'), icon: <Sparkles size={14} /> },
     { id: 'memory' as Tab, label: t('settings.memory'), icon: <Brain size={14} /> },
@@ -2736,6 +2738,11 @@ function AdminPanelDesktop() {
                 <ProactiveSettings />
                 {user?.role === 'admin' && <ProactiveAdminSettings />}
               </div>
+            )}
+
+            {/* 8c. Logs Tab (admin) */}
+            {tab === 'logs' && (
+              <LogsPanel />
             )}
 
             {/* 9. Router Tab */}

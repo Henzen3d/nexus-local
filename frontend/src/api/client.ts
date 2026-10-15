@@ -337,6 +337,13 @@ export const api = {
       body: JSON.stringify(payload),
     }),
 
+  // Logs monitoring
+  getLogsTail: (params?: { lines?: number; level?: string }) =>
+    fetchJSON<any>(`/logs/tail?lines=${params?.lines || 100}&level=${params?.level || 'ALL'}`),
+  getLogsErrors: (params?: { hours?: number; limit?: number }) =>
+    fetchJSON<any>(`/logs/errors?hours=${params?.hours || 24}&limit=${params?.limit || 50}`),
+  getLogsStats: () => fetchJSON<any>('/logs/stats'),
+
   // Ranking Weights
   getRankingWeights: () => fetchJSON<any>('/ranking/weights'),
   saveRankingWeights: (data: any) =>
