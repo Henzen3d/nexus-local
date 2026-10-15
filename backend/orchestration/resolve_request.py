@@ -112,6 +112,7 @@ async def stream_from_llm(
     vision_relay_retry_done = False
     attempted_model_ids: set[str] = set()
     stream_started = False
+    next_failover_reason = "rate_limit"
 
     while attempt < _MAX_FAILOVER_ATTEMPTS and not success:
         attempt += 1
@@ -121,6 +122,7 @@ async def stream_from_llm(
             resolved = await resolve_model_with_failover(
                 model_id if attempt == 1 else original_model_id,
                 db,
+                failover_reason=next_failover_reason,
                 failover_enabled=True,
                 exclude_model_ids=list(attempted_model_ids),
                 user_id=user_id,
@@ -395,6 +397,7 @@ async def stream_from_llm(
             provider_id = current_provider_id
 
         except RateLimitError as e:
+            next_failover_reason = getattr(e, "failover_reason", None) or "rate_limit"
             from backend.ranking.token_bucket import token_bucket_manager
             await token_bucket_manager.on_rate_limit(current_provider_id)
             attempted_model_ids.add(current_model_id)
@@ -408,6 +411,7 @@ async def stream_from_llm(
             continue
         except Exception as e:
             error_msg = str(e)
+            next_failover_reason = getattr(e, "failover_reason", None) or "rate_limit"
             # Rede de segurança HTTP 400 com termos de reasoning:
             # Se a chamada falhou com erro citando parâmetros de reasoning, emite effort_dropped
             # com reason 'provider_rejected' e retenta UMA ÚNICA vez sem esforço, sem desativar o modelo.

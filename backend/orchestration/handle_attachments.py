@@ -255,8 +255,11 @@ async def load_history(
         msg_atts = attachments_by_msg.get(msg["id"], [])
         text_content = msg["content"]
         # Descarta mensagens de assistente vazias e limpa tags de raciocínio de turnos anteriores
+        reflection_extra: dict = {}
         if msg["role"] == "assistant":
             from backend.orchestration.artifacts import strip_thinking_tags
+            from backend.providers.reflection import reflection_history_extra
+            reflection_extra = reflection_history_extra(text_content, provider_id)
             text_content = strip_thinking_tags(text_content)
             if not (text_content and text_content.strip()):
                 continue
@@ -324,7 +327,7 @@ async def load_history(
                             "Erro ao ler/encoded imagem base64",
                             extra={"filename": img.get("filename")},
                         )
-                history.append({"role": msg["role"], "content": parts})
+                history.append({"role": msg["role"], "content": parts, **reflection_extra})
             else:
                 # Vision Relay
                 image_descriptions: list[str] = []
@@ -340,9 +343,9 @@ async def load_history(
                 if image_descriptions:
                     descriptions_block = "\n\n".join(image_descriptions)
                     text_content = f"{descriptions_block}\n\n---\n\n{text_content}"
-                history.append({"role": msg["role"], "content": text_content})
+                history.append({"role": msg["role"], "content": text_content, **reflection_extra})
         else:
-            history.append({"role": msg["role"], "content": text_content})
+            history.append({"role": msg["role"], "content": text_content, **reflection_extra})
 
     return history, relay_used, relay_model_id
 

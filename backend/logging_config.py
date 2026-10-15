@@ -24,6 +24,17 @@ _LOGGER_NAME = "nexuslocal"
 _CONFIGURED = False
 
 
+class _ContextDefaults(logging.Filter):
+    """O formatter sempre pede user_id e conversation_id. Sem default o log some."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if not hasattr(record, "user_id"):
+            record.user_id = "-"
+        if not hasattr(record, "conversation_id"):
+            record.conversation_id = "-"
+        return True
+
+
 def configure_logging(
     level: int = logging.INFO,
     stream=None,
@@ -59,6 +70,7 @@ def configure_logging(
 
     # Handler para stdout/stderr (docker logs)
     stream_handler = logging.StreamHandler(stream)
+    stream_handler.addFilter(_ContextDefaults())
     stream_handler.setFormatter(logging.Formatter(fmt + extra_fmt, datefmt="%Y-%m-%d %H:%M:%S"))
     root_logger.addHandler(stream_handler)
 
@@ -68,6 +80,7 @@ def configure_logging(
             log_path = Path(log_file)
             log_path.parent.mkdir(parents=True, exist_ok=True)
             file_handler = logging.FileHandler(log_path, encoding='utf-8')
+            file_handler.addFilter(_ContextDefaults())
             file_handler.setFormatter(logging.Formatter(
                 fmt + extra_fmt,
                 datefmt="%Y-%m-%d %H:%M:%S"

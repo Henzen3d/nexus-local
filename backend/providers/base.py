@@ -113,6 +113,9 @@ class OpenAICompatProvider(BaseProvider):
             headers["HTTP-Referer"] = "https://nexuslocal.app"
             headers["X-Title"] = "NexusLocal"
 
+        from backend.providers.reflection import strip_provider_private_fields
+        messages = strip_provider_private_fields(messages)
+
         payload = {
             "model": model,
             "messages": messages,
@@ -369,6 +372,8 @@ class CloudflareProvider(BaseProvider):
 
         # Filter out 'system' messages for models that don't support them,
         # merging them into the first user message if needed.
+        from backend.providers.reflection import strip_provider_private_fields
+        messages = strip_provider_private_fields(messages)
         filtered = []
         system_text = ""
         for msg in messages:
@@ -452,7 +457,9 @@ class GeminiProvider(BaseProvider):
         reasoning_effort: Optional[str] = None,
         reasoning_control: Optional[str] = None,
     ) -> AsyncIterator[str]:
+        from backend.providers.reflection import strip_provider_private_fields
         from backend.reasoning.payload import build_gemini_thinking_config
+        messages = strip_provider_private_fields(messages)
         thinking_cfg = build_gemini_thinking_config(reasoning_effort)
         # Estimate total character length to check if we should attempt caching
         # Context caching has a minimum token limit of 32,768 tokens (approx 130,000 characters)

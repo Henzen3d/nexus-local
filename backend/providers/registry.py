@@ -117,6 +117,9 @@ async def get_provider(provider_id: str, db: aiosqlite.Connection, user_id: str 
         return GeminiProvider(api_key=api_key or "", base_url=base_url)
     if provider_id == "cloudflare":
         return CloudflareProvider(api_key=api_key or "", base_url=base_url)
+    if provider_id == "reflection" or "reflection.ai" in (base_url or ""):
+        from backend.providers.reflection import ReflectionProvider
+        return ReflectionProvider(api_key=api_key or "", base_url=base_url)
     return OpenAICompatProvider(api_key=api_key or "", base_url=base_url)
 
 
