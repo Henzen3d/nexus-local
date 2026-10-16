@@ -15060,14 +15060,21 @@ html[data-theme="light"] .model-option-provider-tag {
   inset: 0;
   z-index: 500;
   background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
   display: flex;
   align-items: flex-end;
   justify-content: center;
   animation: agentDrawerFadeIn 0.2s ease-out;
 }
 
+.agent-drawer-backdrop.is-closing {
+  animation: agentDrawerFadeOut 0.22s ease-in forwards;
+}
+
 .agent-drawer-panel {
   width: 100%;
+  height: 92dvh;
   max-height: 92dvh;
   background: var(--surface-soft);
   border-radius: 20px 20px 0 0;
@@ -15077,6 +15084,11 @@ html[data-theme="light"] .model-option-provider-tag {
   animation: agentDrawerSlideUp 0.28s cubic-bezier(0.16, 1, 0.3, 1);
   box-shadow: 0 -4px 40px rgba(0, 0, 0, 0.4);
   border-top: 1px solid var(--hairline);
+  touch-action: auto;
+}
+
+.agent-drawer-backdrop.is-closing .agent-drawer-panel {
+  animation: agentDrawerSlideDown 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 .agent-drawer-handle {
@@ -15085,6 +15097,7 @@ html[data-theme="light"] .model-option-provider-tag {
   padding: 10px 0 4px;
   flex-shrink: 0;
   cursor: grab;
+  touch-action: none;
 }
 
 .agent-drawer-handle:active { cursor: grabbing; }
@@ -15104,7 +15117,17 @@ html[data-theme="light"] .model-option-provider-tag {
   to { opacity: 1; }
 }
 
+@keyframes agentDrawerFadeOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
 @keyframes agentDrawerSlideUp {
   from { transform: translateY(100%); }
   to { transform: translateY(0); }
+}
+
+@keyframes agentDrawerSlideDown {
+  from { transform: translateY(0); }
+  to { transform: translateY(100%); }
 }

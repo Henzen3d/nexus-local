@@ -27,7 +27,7 @@ import { PwaInstallBanner } from './components/PwaInstallBanner'
 import { applyDocumentLang } from './i18n'
 import { useProactive } from './hooks/useProactive'
 import { UNAUTHORIZED_EVENT } from './api/client'
-import { MOBILE_BREAKPOINT } from './hooks/useIsMobile'
+import { MOBILE_BREAKPOINT, useIsMobile } from './hooks/useIsMobile'
 
 function Toast() {
   const { t } = useTranslation()
@@ -129,6 +129,7 @@ function useEdgeSwipeOpenSidebar() {
 }
 
 export default function App() {
+  const isMobile = useIsMobile()
   const sidebarOpen = useStore((s) => s.sidebarOpen)
   const setSidebarOpen = useStore((s) => s.setSidebarOpen)
   const view = useStore((s) => s.view)
@@ -248,7 +249,7 @@ export default function App() {
       />
       <div className={layoutClass}>
         <Sidebar />
-        {view === 'chat' && <ChatWindow />}
+        {(view === 'chat' || (view === 'agents' && isMobile)) && <ChatWindow />}
         {view === 'conversations' && <ConversationsPanel />}
         {view === 'artifacts' && <ArtifactsPanel />}
         {view === 'projects' && <ProjectsPanel />}

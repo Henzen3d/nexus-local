@@ -35,6 +35,7 @@ import { PetAvatar } from '../mascot/PetAvatar'
 import { markdownComponents } from '../markdownComponents'
 import { api } from '../../api/client'
 import { useStore } from '../../store/useStore'
+import { useIsMobile } from '../../hooks/useIsMobile'
 import type { ProactiveBot, ProactiveRoutine, MascotId } from '../../types'
 
 interface AgentMessage {
@@ -129,58 +130,67 @@ export const AgentWorkspace: React.FC = () => {
   const [screenshotUrl, setScreenshotUrl] = useState<string | undefined>()
   const [actionLogs, setActionLogs] = useState<ActionLogItem[]>([])
   const [mobileTab, setMobileTab] = useState<'roster' | 'chat' | 'sandbox'>('chat')
-  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' ? window.innerWidth <= 768 : false)
-  const [drawerOpen, setDrawerOpen] = useState(!isMobile)
+  const isMobile = useIsMobile()
+  const [drawerOpen, setDrawerOpen] = useState(true)
+  const [isClosing, setIsClosing] = useState(false)
+  const panelRef = useRef<HTMLDivElement>(null)
   const touchStartY = useRef(0)
   const touchDelta = useRef(0)
   const isDragging = useRef(false)
 
   const chatBottomRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => {
-    const handleResize = (e?: MediaQueryListEvent) => {
-      const mobile = e?.matches ?? window.innerWidth <= 768
-      setIsMobile(mobile)
-      if (!mobile) setDrawerOpen(false)
-    }
-    const mq = window.matchMedia(`(max-width: ${768}px)`)
-    mq.addEventListener('change', handleResize)
-    return () => mq.removeEventListener('change', handleResize)
-  }, [])
-
-  // Swipe-to-close for mobile drawer
-  useEffect(() => {
-    if (!isMobile) return
-    const onTouchStart = (e: TouchEvent) => {
-      if ((e.target as HTMLElement).closest('.agent-drawer-skip')) return
-      touchStartY.current = e.touches[0].clientY
-      touchDelta.current = 0
-      isDragging.current = true
-    }
-    const onTouchMove = (e: TouchEvent) => {
-      if (!isDragging.current) return
-      touchDelta.current = e.touches[0].clientY - touchStartY.current
-    }
-    const onTouchEnd = () => {
-      if (!isDragging.current) return
-      isDragging.current = false
-      if (touchDelta.current > 80) setDrawerOpen(false)
-    }
-    window.addEventListener('touchstart', onTouchStart, { passive: true })
-    window.addEventListener('touchmove', onTouchMove, { passive: true })
-    window.addEventListener('touchend', onTouchEnd, { passive: true })
-    return () => {
-      window.removeEventListener('touchstart', onTouchStart)
-      window.removeEventListener('touchmove', onTouchMove)
-      window.removeEventListener('touchend', onTouchEnd)
-    }
-  }, [isMobile])
+  const handleCloseDrawer = () => {
+    if (isClosing) return
+    setIsClosing(true)
+    setTimeout(() => {
+      setDrawerOpen(false)
+      setView('chat')
+    }, 220)
+  }
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && isMobile) setDrawerOpen(false) }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isMobile) handleCloseDrawer()
+    }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [isMobile])
+  }, [isMobile, isClosing])
+
+  const onHandleTouchStart = (e: React.TouchEvent) => {
+    touchStartY.current = e.touches[0].clientY
+    touchDelta.current = 0
+    isDragging.current = true
+    if (panelRef.current) {
+      panelRef.current.style.transition = 'none'
+    }
+  }
+
+  const onHandleTouchMove = (e: React.TouchEvent) => {
+    if (!isDragging.current) return
+    const delta = e.touches[0].clientY - touchStartY.current
+    if (delta > 0) {
+      touchDelta.current = delta
+      if (panelRef.current) {
+        panelRef.current.style.transform = `translateY(${delta}px)`
+      }
+    }
+  }
+
+  const onHandleTouchEnd = () => {
+    if (!isDragging.current) return
+    isDragging.current = false
+    if (panelRef.current) {
+      panelRef.current.style.transition = 'transform 0.22s cubic-bezier(0.16, 1, 0.3, 1)'
+    }
+    if (touchDelta.current > 70) {
+      handleCloseDrawer()
+    } else {
+      if (panelRef.current) {
+        panelRef.current.style.transform = 'translateY(0)'
+      }
+    }
+  }
 
   // Carrega bots e rotinas
   const loadData = async () => {
@@ -795,21 +805,23 @@ export const AgentWorkspace: React.FC = () => {
 
   return (
     <div
-      className="agent-drawer-backdrop"
-      onClick={() => setDrawerOpen(false)}
+      className={`agent-drawer-backdrop ${isClosing ? 'is-closing' : ''}`}
+      onClick={handleCloseDrawer}
       data-testid="agent-drawer"
     >
       <div
+        ref={panelRef}
         className="agent-drawer-panel"
-        style={{
-          transform: isDragging.current
-            ? `translateY(${Math.max(0, touchDelta.current)}px)`
-            : '',
-        }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Swipe indicator */}
-        <div className="agent-drawer-handle" aria-hidden="true">
+        <div
+          className="agent-drawer-handle"
+          aria-hidden="true"
+          onTouchStart={onHandleTouchStart}
+          onTouchMove={onHandleTouchMove}
+          onTouchEnd={onHandleTouchEnd}
+        >
           <div className="agent-drawer-handle-bar" />
         </div>
 
@@ -824,10 +836,13 @@ export const AgentWorkspace: React.FC = () => {
             gap: 6,
             flexShrink: 0,
           }}
+          onTouchStart={onHandleTouchStart}
+          onTouchMove={onHandleTouchMove}
+          onTouchEnd={onHandleTouchEnd}
         >
           <button
             type="button"
-            onClick={() => { setView('chat'); setDrawerOpen(false) }}
+            onClick={handleCloseDrawer}
             style={{
               padding: '6px 8px',
               borderRadius: 8,
@@ -917,11 +932,9 @@ export const AgentWorkspace: React.FC = () => {
 
         {/* Conteúdo: Mobile (1 Coluna por aba) */}
         <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-          <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
-            {mobileTab === 'roster' && renderRosterColumn()}
-            {mobileTab === 'chat' && renderChatColumn()}
-            {mobileTab === 'sandbox' && renderSandboxColumn()}
-          </div>
+          {mobileTab === 'roster' && renderRosterColumn()}
+          {mobileTab === 'chat' && renderChatColumn()}
+          {mobileTab === 'sandbox' && renderSandboxColumn()}
         </div>
 
         {/* Modais */}
