@@ -264,14 +264,17 @@ export const AgentWorkspace: React.FC = () => {
         }
         const nextUrl = res.current_url || currentUrl
         const nextTitle = res.page_title || pageTitle
+        const nextScreenshot = res.screenshot_url || screenshotUrl
         if (res.current_url) setCurrentUrl(nextUrl)
         if (res.page_title) setPageTitle(nextTitle)
+        if (res.screenshot_url) setScreenshotUrl(nextScreenshot)
 
         persistBotState(selectedBot.id, {
           messages: withReply,
           actionLogs: nextLogs,
           currentUrl: nextUrl,
           pageTitle: nextTitle,
+          screenshotUrl: nextScreenshot,
         })
       }
     } catch (err) {

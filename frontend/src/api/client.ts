@@ -722,6 +722,7 @@ export const api = {
       }>
       current_url: string
       page_title?: string
+      screenshot_url?: string
     }>(`/proactive/bots/${encodeURIComponent(botId)}/chat`, {
       method: 'POST',
       body: JSON.stringify({ message, history, url }),

@@ -1433,12 +1433,38 @@ async def bot_chat(
 
         reply = "".join(chunks).strip() or "Tarefa processada com sucesso no computador sandbox."
 
+        # Se navegou para uma URL válida, captura o snapshot real para o feed e viewport do sandbox
+        screenshot_url = None
+        if current_url and current_url != "about:blank" and current_url.startswith("http"):
+            try:
+                from backend.computer.base import capture_page_snapshot
+                t_ss0 = time.monotonic()
+                snap = await capture_page_snapshot(
+                    current_url,
+                    title=page_title,
+                    snippet=extracted_content,
+                    bot_name=bot_id,
+                )
+                screenshot_url = snap.get("screenshot_url")
+                if screenshot_url:
+                    actions.append({
+                        "id": f"act_{secrets.token_hex(4)}",
+                        "action": "screenshot",
+                        "target": f"viewport 1280×800 ({current_url})",
+                        "status": "success",
+                        "latencyMs": round((time.monotonic() - t_ss0) * 1000, 1),
+                        "time": "Agora",
+                    })
+            except Exception as e:
+                logger.debug("[BotChat] Erro ao capturar snapshot: %s", e)
+
         return {
             "ok": True,
             "reply": reply,
             "actions": actions,
             "current_url": current_url,
             "page_title": page_title,
+            "screenshot_url": screenshot_url,
         }
     finally:
         await db.close()

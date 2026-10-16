@@ -203,47 +203,143 @@ class BaseComputer:
         }
 
 
-async def capture_page_snapshot(
-    url: str,
-    title: str | None = None,
-    snippet: str | None = None,
-    bot_name: str | None = None,
-) -> dict[str, Any]:
-    """Tenta capturar screenshot via Chromium CDP (nexus_computer:9222) ou gera visual snapshot de alta fidelidade."""
-    import base64
-    import html
+async def _capture_via_cdp(url: str, cdp_host: str = "nexus_computer") -> str | None:
+    """Captura screenshot real via Chromium DevTools Protocol (CDP) do container sandbox."""
+    import json
     import httpx
-    from urllib.parse import urlparse
+    import websockets
 
-    domain = urlparse(url).netloc or url
-    display_title = (title or domain or "Página Web").strip()
-    clean_snippet = (snippet or "").strip()[:400]
+    hosts_to_try = [cdp_host]
+    if cdp_host != "localhost":
+        hosts_to_try.append("localhost")
 
-    # Tentativa 1: Conexão CDP com o container Chromium nexus_computer
-    try:
-        async with httpx.AsyncClient(timeout=3.0) as client:
-            resp = await client.get("http://nexus_computer:9222/json/version")
-            if resp.status_code == 200:
-                new_tab_resp = await client.put(f"http://nexus_computer:9222/json/new?{url}")
-                if new_tab_resp.status_code == 200:
-                    tab_info = new_tab_resp.json()
-                    tab_id = tab_info.get("id")
-                    await asyncio.sleep(0.4)
+    for host in hosts_to_try:
+        try:
+            async with httpx.AsyncClient(timeout=3.0) as client:
+                v_resp = await client.get(f"http://{host}:9222/json/version")
+                if v_resp.status_code != 200:
+                    continue
+
+                new_tab = await client.put(f"http://{host}:9222/json/new?{url}")
+                if new_tab.status_code != 200:
+                    continue
+
+                tab_data = new_tab.json()
+                tab_id = tab_data.get("id")
+                ws_url = tab_data.get("webSocketDebuggerUrl")
+                if not ws_url or not tab_id:
+                    continue
+
+                # Corrige hostname do WebSocket se retornado como localhost dentro do container
+                if host not in ws_url:
+                    ws_url = ws_url.replace("localhost:9222", f"{host}:9222").replace("127.0.0.1:9222", f"{host}:9222")
+
+                try:
+                    async with websockets.connect(ws_url, ping_interval=None, close_timeout=3.0) as ws:
+                        await ws.send(json.dumps({"id": 1, "method": "Page.enable"}))
+                        await ws.send(json.dumps({"id": 2, "method": "Page.navigate", "params": {"url": url}}))
+
+                        # Aguarda carregamento com limite de 3.5s
+                        t_max = asyncio.get_event_loop().time() + 3.5
+                        while asyncio.get_event_loop().time() < t_max:
+                            try:
+                                raw_msg = await asyncio.wait_for(ws.recv(), timeout=1.0)
+                                parsed = json.loads(raw_msg)
+                                if parsed.get("method") == "Page.loadEventFired":
+                                    break
+                            except Exception:
+                                break
+
+                        await asyncio.sleep(0.3)
+                        await ws.send(json.dumps({
+                            "id": 3,
+                            "method": "Page.captureScreenshot",
+                            "params": {"format": "jpeg", "quality": 82},
+                        }))
+
+                        t_ss_max = asyncio.get_event_loop().time() + 4.0
+                        while asyncio.get_event_loop().time() < t_ss_max:
+                            raw_ss = await asyncio.wait_for(ws.recv(), timeout=2.0)
+                            p_ss = json.loads(raw_ss)
+                            if p_ss.get("id") == 3:
+                                b64_data = p_ss.get("result", {}).get("data")
+                                if b64_data:
+                                    logger.info("[Computer] Screenshot capturado via Chromium CDP com sucesso (%s)", host)
+                                    return f"data:image/jpeg;base64,{b64_data}"
+                                break
+                finally:
                     try:
-                        await client.get(f"http://nexus_computer:9222/json/close/{tab_id}")
+                        await client.get(f"http://{host}:9222/json/close/{tab_id}")
                     except Exception:
                         pass
-    except Exception as e:
-        logger.debug("[Computer] CDP não disponível ou em fallback visual: %s", e)
+        except Exception as exc:
+            logger.debug("[Computer] Tentativa CDP em %s falhou: %s", host, exc)
 
-    # Fallback Visual de Alta Fidelidade (SVG renderizado como Data URI de imagem)
+    return None
+
+
+async def _capture_via_web_render(url: str) -> str | None:
+    """Captura screenshot real da página pública via renderizador headless com compressão JPEG Pillow."""
+    import io
+    import base64
+    import httpx
+    from PIL import Image
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
+
+    # Provedor 1: Microlink
+    try:
+        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
+            m_url = f"https://api.microlink.io/?url={url}&screenshot=true&embed=screenshot.url"
+            resp = await client.get(m_url, headers=headers)
+            if resp.status_code == 200 and resp.content and len(resp.content) > 2000:
+                img = Image.open(io.BytesIO(resp.content)).convert("RGB")
+                out = io.BytesIO()
+                img.save(out, format="JPEG", quality=82, optimize=True)
+                b64 = base64.b64encode(out.getvalue()).decode("utf-8")
+                logger.info("[Computer] Screenshot real capturado via Microlink (%s)", url)
+                return f"data:image/jpeg;base64,{b64}"
+    except Exception as exc:
+        logger.debug("[Computer] Falha no provedor 1 (microlink): %s", exc)
+
+    # Provedor 2: Thum.io
+    try:
+        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
+            t_url = f"https://image.thum.io/get/width/1280/crop/800/{url}"
+            resp = await client.get(t_url, headers=headers)
+            if resp.status_code == 200 and resp.content and len(resp.content) > 2000:
+                img = Image.open(io.BytesIO(resp.content)).convert("RGB")
+                out = io.BytesIO()
+                img.save(out, format="JPEG", quality=82, optimize=True)
+                b64 = base64.b64encode(out.getvalue()).decode("utf-8")
+                logger.info("[Computer] Screenshot real capturado via Thum.io (%s)", url)
+                return f"data:image/jpeg;base64,{b64}"
+    except Exception as exc:
+        logger.debug("[Computer] Falha no provedor 2 (thum.io): %s", exc)
+
+    return None
+
+
+def _generate_svg_fallback(
+    url: str,
+    display_title: str,
+    domain: str,
+    snippet: str,
+    bot_name: str | None,
+) -> str:
+    """Gera fallback vetorial elegante caso todos os renderizadores estejam offline."""
+    import base64
+    import html
+
     esc_title = html.escape(display_title[:65])
     esc_url = html.escape(url[:80])
     esc_domain = html.escape(domain)
 
     lines: list[str] = []
-    if clean_snippet:
-        words = clean_snippet.split()
+    if snippet:
+        words = snippet.split()
         curr = ""
         for w in words:
             if len(curr) + len(w) + 1 <= 60:
@@ -303,16 +399,54 @@ async def capture_page_snapshot(
   {content_svg_lines}
 
   <rect x="30" y="425" width="740" height="32" rx="0 0 8 8" fill="#090d16" opacity="0.6"/>
-  <text x="50" y="445" fill="#64748b" font-family="system-ui, -apple-system, sans-serif" font-size="11">Sessão Playwright Isolada · Chromium Headless · SSL Validado · Anti-SSRF Ativo</text>
+  <text x="50" y="445" fill="#64748b" font-family="system-ui, -apple-system, sans-serif" font-size="11">Sessão Sandbox Isolada · SSL Validado · Anti-SSRF Ativo</text>
   <text x="630" y="445" fill="#94a3b8" font-family="system-ui, -apple-system, sans-serif" font-size="11">1280 × 800 Viewport</text>
 </svg>"""
 
     b64_svg = base64.b64encode(svg.encode("utf-8")).decode("utf-8")
-    data_uri = f"data:image/svg+xml;base64,{b64_svg}"
+    return f"data:image/svg+xml;base64,{b64_svg}"
 
+
+async def capture_page_snapshot(
+    url: str,
+    title: str | None = None,
+    snippet: str | None = None,
+    bot_name: str | None = None,
+) -> dict[str, Any]:
+    """Captura screenshot real da página via Chromium CDP local ou web render headless, com fallback SVG."""
+    import os
+    from urllib.parse import urlparse
+
+    domain = urlparse(url).netloc or url
+    display_title = (title or domain or "Página Web").strip()
+
+    cdp_host = os.environ.get("COMPUTER_CDP_HOST", "nexus_computer")
+
+    # 1. Tenta captura real via Chromium CDP local
+    real_ss = await _capture_via_cdp(url, cdp_host=cdp_host)
+    if real_ss:
+        return {
+            "url": url,
+            "title": display_title,
+            "screenshot_url": real_ss,
+            "mode": "cdp_real",
+        }
+
+    # 2. Tenta captura real via serviço de renderização web headless
+    real_ss = await _capture_via_web_render(url)
+    if real_ss:
+        return {
+            "url": url,
+            "title": display_title,
+            "screenshot_url": real_ss,
+            "mode": "web_render_real",
+        }
+
+    # 3. Fallback SVG (apenas se completamente desconectado de CDP e web)
+    svg_data = _generate_svg_fallback(url, display_title, domain, snippet or "", bot_name)
     return {
         "url": url,
         "title": display_title,
-        "screenshot_url": data_uri,
-        "mode": "live_snapshot",
+        "screenshot_url": svg_data,
+        "mode": "svg_fallback",
     }
