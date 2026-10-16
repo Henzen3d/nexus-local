@@ -723,6 +723,7 @@ export const api = {
       current_url: string
       page_title?: string
       screenshot_url?: string
+      new_routine?: import('../types').ProactiveRoutine
     }>(`/proactive/bots/${encodeURIComponent(botId)}/chat`, {
       method: 'POST',
       body: JSON.stringify({ message, history, url }),

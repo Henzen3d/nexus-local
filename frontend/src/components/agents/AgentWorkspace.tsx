@@ -23,12 +23,14 @@ import {
   MessageSquare,
   Users,
   ArrowLeft,
+  Trash2,
 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { BotRosterList } from './BotRosterList'
 import { ComputerActionBlock, type ActionLogItem } from './ComputerActionBlock'
 import { CreateBotModal } from './CreateBotModal'
+import { CreateRoutineModal } from './CreateRoutineModal'
 import { PetAvatar } from '../mascot/PetAvatar'
 import { markdownComponents } from '../markdownComponents'
 import { api } from '../../api/client'
@@ -117,6 +119,7 @@ export const AgentWorkspace: React.FC = () => {
   const [selectedBot, setSelectedBot] = useState<ProactiveBot | null>(null)
   const [routines, setRoutines] = useState<ProactiveRoutine[]>([])
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
+  const [isCreateRoutineModalOpen, setIsCreateRoutineModalOpen] = useState(false)
   const [messages, setMessages] = useState<AgentMessage[]>([])
   const [inputMessage, setInputMessage] = useState('')
   const [isSending, setIsSending] = useState(false)
@@ -269,6 +272,13 @@ export const AgentWorkspace: React.FC = () => {
         if (res.page_title) setPageTitle(nextTitle)
         if (res.screenshot_url) setScreenshotUrl(nextScreenshot)
 
+        if (res.new_routine) {
+          setRoutines((prev) => [
+            res.new_routine as ProactiveRoutine,
+            ...prev.filter((r) => r.id !== res.new_routine!.id),
+          ])
+        }
+
         persistBotState(selectedBot.id, {
           messages: withReply,
           actionLogs: nextLogs,
@@ -324,6 +334,28 @@ export const AgentWorkspace: React.FC = () => {
     }
   }
 
+  const handleCreateRoutine = async (data: Partial<ProactiveRoutine>) => {
+    try {
+      const res = await api.createProactiveRoutine(data)
+      if (res.ok && res.routine) {
+        setRoutines((prev) => [res.routine, ...prev.filter((r) => r.id !== res.routine.id)])
+      }
+    } catch (e) {
+      console.error('[AgentWorkspace] erro ao criar rotina:', e)
+    }
+  }
+
+  const handleDeleteRoutine = async (routineId: string) => {
+    try {
+      const res = await api.deleteProactiveRoutine(routineId)
+      if (res.ok) {
+        setRoutines((prev) => prev.filter((r) => r.id !== routineId))
+      }
+    } catch (e) {
+      console.error('[AgentWorkspace] erro ao excluir rotina:', e)
+    }
+  }
+
   // Subcomponente: Coluna 1 (Roster de Bots)
   const renderRosterColumn = () => (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
@@ -364,6 +396,27 @@ export const AgentWorkspace: React.FC = () => {
             <Clock size={13} color="var(--primary)" />
             Rotinas Agendadas ({routines.length})
           </span>
+          <button
+            type="button"
+            onClick={() => setIsCreateRoutineModalOpen(true)}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: 'var(--primary)',
+              fontSize: '0.74rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 2,
+              padding: '2px 6px',
+              borderRadius: 4,
+            }}
+            title="Criar nova rotina ou lembrete"
+          >
+            <Plus size={12} />
+            <span>Nova</span>
+          </button>
         </div>
 
         <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -371,29 +424,54 @@ export const AgentWorkspace: React.FC = () => {
             <div
               key={r.id}
               style={{
-                padding: '4px 8px',
+                padding: '5px 8px',
                 borderRadius: 6,
                 background: 'var(--surface-soft)',
                 fontSize: '0.75rem',
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
+                gap: 6,
               }}
             >
-              <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {r.name}
-              </span>
-              <span
-                style={{
-                  fontSize: '0.65rem',
-                  padding: '1px 4px',
-                  borderRadius: 4,
-                  background: 'rgba(59, 130, 246, 0.1)',
-                  color: '#3B82F6',
-                }}
-              >
-                {r.timing_value}
-              </span>
+              <div style={{ minWidth: 0, flex: 1, display: 'flex', flexDirection: 'column' }}>
+                <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: 500, color: 'var(--ink)' }}>
+                  {r.name}
+                </span>
+                <span style={{ fontSize: '0.65rem', color: 'var(--ink-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {r.next_run_at ? `Próx: ${r.next_run_at}` : r.prompt}
+                </span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+                <span
+                  style={{
+                    fontSize: '0.65rem',
+                    padding: '1px 5px',
+                    borderRadius: 4,
+                    background: 'rgba(59, 130, 246, 0.1)',
+                    color: '#3B82F6',
+                    fontWeight: 600,
+                  }}
+                >
+                  {r.timing_value}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => handleDeleteRoutine(r.id)}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: 'var(--ink-muted)',
+                    cursor: 'pointer',
+                    padding: 2,
+                    display: 'flex',
+                    alignItems: 'center',
+                  }}
+                  title="Excluir rotina"
+                >
+                  <Trash2 size={12} />
+                </button>
+              </div>
             </div>
           ))}
           {routines.length === 0 && (
@@ -772,6 +850,15 @@ export const AgentWorkspace: React.FC = () => {
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
         onSave={handleCreateBot}
+      />
+
+      {/* Modal de Criação de Rotina */}
+      <CreateRoutineModal
+        isOpen={isCreateRoutineModalOpen}
+        onClose={() => setIsCreateRoutineModalOpen(false)}
+        onSave={handleCreateRoutine}
+        bots={bots}
+        selectedBotId={selectedBot?.id}
       />
     </div>
   )

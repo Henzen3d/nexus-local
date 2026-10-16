@@ -1365,6 +1365,96 @@ async def bot_chat(
             except Exception as exc:
                 logger.debug("[BotChat] Erro na busca web: %s", exc)
 
+        # 2.5 Detecção e Criação Automática de Rotinas / Lembretes
+        new_routine = None
+        lower_text = user_text.lower()
+        schedule_keywords = [
+            "lembr", "agend", "rotina", "cron", "todo dia", "diariamente",
+            "amanhã", "amanha", "a cada", "programar", "programe"
+        ]
+        is_schedule_intent = any(k in lower_text for k in schedule_keywords)
+
+        if is_schedule_intent:
+            from backend.proactive.scheduler import compute_next_run
+
+            timing_type = "daily"
+            timing_value = "09:00"
+
+            # Detecta horário específico (ex: "às 14:00", "às 9h", "10:30")
+            time_match = re.search(r'(?:às|as|\b)\s*(\d{1,2})(?:[h:](\d{2})?)?', lower_text)
+            if time_match and ("às" in lower_text or "as " in lower_text or ":" in time_match.group(0)):
+                try:
+                    hour = int(time_match.group(1))
+                    minute = int(time_match.group(2) or 0)
+                    if 0 <= hour <= 23 and 0 <= minute <= 59:
+                        timing_value = f"{hour:02d}:{minute:02d}"
+                except Exception:
+                    pass
+
+            # Detecta intervalo (ex: "a cada 2 horas", "a cada 30 minutos", "a cada 1 dia")
+            interval_match = re.search(r'a cada\s*(\d+)\s*(m|min|minuto|h|hora|d|dia)s?', lower_text)
+            if interval_match:
+                timing_type = "interval"
+                num = interval_match.group(1)
+                unit = interval_match.group(2)[0].lower()
+                timing_value = f"{num}{unit}"
+
+            # Extrai nome limpo do lembrete/rotina
+            clean_task = re.sub(
+                r'^(pode me lembrar|me lembre|lembrar|agende uma rotina|agende um lembrete|agende|crie uma rotina|programe)\s*(de|para)?\s*(amanhã|amanha)?\s*(às \d{1,2}(?:[h:]\d{2})?)?\s*(de)?\s*',
+                '',
+                user_text,
+                flags=re.IGNORECASE,
+            ).strip()
+            clean_task = re.sub(r'^(de|que|para)\s+', '', clean_task, flags=re.IGNORECASE) or user_text
+
+            routine_name = f"Lembrete: {clean_task[:50].capitalize()}"
+            routine_prompt = f"Lembrar o usuário de: {clean_task}. Se necessário, consulte as informações salvas no sandbox e entregue um resumo claro."
+            routine_id = f"routine_{secrets.token_hex(8)}"
+            next_run = compute_next_run(timing_type, timing_value)
+
+            try:
+                await db.execute(
+                    """
+                    INSERT INTO proactive_routines (id, bot_id, user_id, name, prompt, timing_type, timing_value, next_run_at, is_active)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
+                    """,
+                    (
+                        routine_id,
+                        bot_id,
+                        current_user["id"],
+                        routine_name,
+                        routine_prompt,
+                        timing_type,
+                        timing_value,
+                        next_run,
+                    ),
+                )
+                await db.commit()
+
+                new_routine = {
+                    "id": routine_id,
+                    "bot_id": bot_id,
+                    "user_id": current_user["id"],
+                    "name": routine_name,
+                    "prompt": routine_prompt,
+                    "timing_type": timing_type,
+                    "timing_value": timing_value,
+                    "next_run_at": next_run,
+                    "is_active": 1,
+                }
+
+                actions.append({
+                    "id": f"act_{secrets.token_hex(4)}",
+                    "action": "schedule_routine",
+                    "target": f"{routine_name} ({timing_value})",
+                    "status": "success",
+                    "latencyMs": 15,
+                    "time": "Agora",
+                })
+            except Exception as exc:
+                logger.warning("[BotChat] Falha ao persistir rotina: %s", exc)
+
         # 3. Resolve modelo LLM
         from backend.proactive import synthesizer
         config = await load_config(db)
@@ -1374,12 +1464,18 @@ async def bot_chat(
             )
         except Exception as exc:
             logger.warning("[BotChat] falha ao resolver modelo do bot: %s", exc)
+            fallback_reply = (
+                f"Com certeza! Agendei seu lembrete com sucesso: **{new_routine['name']}** programado para ({new_routine['timing_value']}). Vou notificá-lo na data prevista!"
+                if new_routine else
+                f"Olá! Sou {bot_name} ({bot_title}). Executei os passos solicitados no computador sandbox. Como posso ajudá-lo a avançar com estes dados?"
+            )
             return {
                 "ok": True,
-                "reply": f"Olá! Sou {bot_name} ({bot_title}). Executei os passos solicitados no computador sandbox. Como posso ajudá-lo a avançar com estes dados?",
+                "reply": fallback_reply,
                 "actions": actions,
                 "current_url": current_url,
                 "page_title": page_title,
+                "new_routine": new_routine,
             }
 
         # 4. Constrói prompts e mensagens
@@ -1391,6 +1487,17 @@ async def bot_chat(
             f"Responda à solicitação do usuário de forma clara, prestativa e estruturada.\n"
             f"Se você utilizou o sandbox ou consultou páginas/fontes na web (dados abaixo), mencione os achados e fontes citando-as naturalmente."
         )
+
+        if new_routine:
+            system_prompt += (
+                f"\n\n[CAPACIDADE DE AGENDAMENTO ATIVA]\n"
+                f"Você possui integração direta com o agendador de rotinas (proactive_routines) do NexusLocal.\n"
+                f"A rotina/lembrete foi AGENDADA E CRIADA COM SUCESSO no sistema:\n"
+                f"- Nome: {new_routine['name']}\n"
+                f"- Programação: {new_routine['timing_value']} ({new_routine['timing_type']})\n"
+                f"- Próxima execução: {new_routine['next_run_at']}\n"
+                f"Confirme ao usuário com entusiasmo que o lembrete/rotina está agendado e que você o notificará na data/horário previsto!"
+            )
 
         llm_messages: list[dict[str, str]] = [{"role": "system", "content": system_prompt}]
 
@@ -1411,7 +1518,7 @@ async def bot_chat(
 
         llm_messages.append({"role": "user", "content": user_text})
 
-        # 5. Executa stream e coleta resposta
+        # 5. Executa stream e coleta resposta com failover
         chunks: list[str] = []
         try:
             async def _collect() -> None:
@@ -1422,16 +1529,43 @@ async def bot_chat(
 
             await asyncio.wait_for(_collect(), timeout=30.0)
         except Exception as exc:
-            logger.warning("[BotChat] Erro na geração LLM: %s", exc)
-            return {
-                "ok": True,
-                "reply": "Concluí as ações no sandbox e a navegação foi registrada com sucesso.",
-                "actions": actions,
-                "current_url": current_url,
-                "page_title": page_title,
-            }
+            logger.warning("[BotChat] Erro na geração LLM com %s: %s", model_name, exc)
+            # Tenta provedores alternativos
+            if not chunks:
+                from backend.orchestration.provider_pool import get_provider_pool
+                pool = get_provider_pool()
+                for alt_prov_id, alt_model in [
+                    ("gemini", "gemini-2.5-flash"),
+                    ("groq", "llama-3.3-70b-versatile"),
+                    ("openrouter", "google/gemini-2.0-flash-exp:free"),
+                ]:
+                    try:
+                        alt_prov = pool.get_provider(alt_prov_id)
+                        if alt_prov:
+                            async def _collect_alt() -> None:
+                                async for token in alt_prov.stream_chat(
+                                    model=alt_model, messages=llm_messages, temperature=0.7, max_tokens=1000
+                                ):
+                                    chunks.append(str(token))
+                            await asyncio.wait_for(_collect_alt(), timeout=15.0)
+                            if chunks:
+                                logger.info("[BotChat] Recuperado com sucesso via fallback %s/%s", alt_prov_id, alt_model)
+                                break
+                    except Exception:
+                        continue
 
-        reply = "".join(chunks).strip() or "Tarefa processada com sucesso no computador sandbox."
+            if not chunks:
+                if new_routine:
+                    reply = (
+                        f"Com certeza! Agendei seu lembrete com sucesso: **{new_routine['name']}** "
+                        f"programado para ({new_routine['timing_value']}). Vou notificá-lo na data prevista!"
+                    )
+                else:
+                    reply = "Concluí as ações no sandbox e a navegação foi registrada com sucesso."
+            else:
+                reply = "".join(chunks).strip()
+        else:
+            reply = "".join(chunks).strip() or "Tarefa processada com sucesso no computador sandbox."
 
         # Se navegou para uma URL válida, captura o snapshot real para o feed e viewport do sandbox
         screenshot_url = None
@@ -1465,6 +1599,7 @@ async def bot_chat(
             "current_url": current_url,
             "page_title": page_title,
             "screenshot_url": screenshot_url,
+            "new_routine": new_routine,
         }
     finally:
         await db.close()
