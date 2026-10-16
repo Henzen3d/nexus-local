@@ -130,14 +130,57 @@ export const AgentWorkspace: React.FC = () => {
   const [actionLogs, setActionLogs] = useState<ActionLogItem[]>([])
   const [mobileTab, setMobileTab] = useState<'roster' | 'chat' | 'sandbox'>('chat')
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' ? window.innerWidth <= 768 : false)
+  const [drawerOpen, setDrawerOpen] = useState(!isMobile)
+  const touchStartY = useRef(0)
+  const touchDelta = useRef(0)
+  const isDragging = useRef(false)
 
   const chatBottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    const handleResize = () => setIsMobile(window.innerWidth <= 768)
-    window.addEventListener('resize', handleResize)
-    return () => window.removeEventListener('resize', handleResize)
+    const handleResize = (e?: MediaQueryListEvent) => {
+      const mobile = e?.matches ?? window.innerWidth <= 768
+      setIsMobile(mobile)
+      if (!mobile) setDrawerOpen(false)
+    }
+    const mq = window.matchMedia(`(max-width: ${768}px)`)
+    mq.addEventListener('change', handleResize)
+    return () => mq.removeEventListener('change', handleResize)
   }, [])
+
+  // Swipe-to-close for mobile drawer
+  useEffect(() => {
+    if (!isMobile) return
+    const onTouchStart = (e: TouchEvent) => {
+      if ((e.target as HTMLElement).closest('.agent-drawer-skip')) return
+      touchStartY.current = e.touches[0].clientY
+      touchDelta.current = 0
+      isDragging.current = true
+    }
+    const onTouchMove = (e: TouchEvent) => {
+      if (!isDragging.current) return
+      touchDelta.current = e.touches[0].clientY - touchStartY.current
+    }
+    const onTouchEnd = () => {
+      if (!isDragging.current) return
+      isDragging.current = false
+      if (touchDelta.current > 80) setDrawerOpen(false)
+    }
+    window.addEventListener('touchstart', onTouchStart, { passive: true })
+    window.addEventListener('touchmove', onTouchMove, { passive: true })
+    window.addEventListener('touchend', onTouchEnd, { passive: true })
+    return () => {
+      window.removeEventListener('touchstart', onTouchStart)
+      window.removeEventListener('touchmove', onTouchMove)
+      window.removeEventListener('touchend', onTouchEnd)
+    }
+  }, [isMobile])
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && isMobile) setDrawerOpen(false) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [isMobile])
 
   // Carrega bots e rotinas
   const loadData = async () => {
@@ -707,35 +750,86 @@ export const AgentWorkspace: React.FC = () => {
     </div>
   )
 
+  // Desktop: renderiza o layout 3-colunas normal. Mobile: mostra drawer se aberto.
+  if (!isMobile) {
+    return (
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          height: '100vh',
+          width: '100%',
+          background: 'var(--surface-soft)',
+          overflow: 'hidden',
+        }}
+      >
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: '270px 1fr 330px',
+            height: '100%',
+            width: '100%',
+          }}
+        >
+          {renderRosterColumn()}
+          {renderChatColumn()}
+          {renderSandboxColumn()}
+        </div>
+        <CreateBotModal
+          isOpen={isCreateModalOpen}
+          onClose={() => setIsCreateModalOpen(false)}
+          onSave={handleCreateBot}
+        />
+        <CreateRoutineModal
+          isOpen={isCreateRoutineModalOpen}
+          onClose={() => setIsCreateRoutineModalOpen(false)}
+          onSave={handleCreateRoutine}
+          bots={bots}
+          selectedBotId={selectedBot?.id}
+        />
+      </div>
+    )
+  }
+
+  if (!drawerOpen) return null
+
   return (
     <div
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        height: '100vh',
-        width: '100%',
-        background: 'var(--surface-soft)',
-        overflow: 'hidden',
-      }}
+      className="agent-drawer-backdrop"
+      onClick={() => setDrawerOpen(false)}
+      data-testid="agent-drawer"
     >
-      {/* Barra de Abas no Mobile */}
-      {isMobile && (
+      <div
+        className="agent-drawer-panel"
+        style={{
+          transform: isDragging.current
+            ? `translateY(${Math.max(0, touchDelta.current)}px)`
+            : '',
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Swipe indicator */}
+        <div className="agent-drawer-handle" aria-hidden="true">
+          <div className="agent-drawer-handle-bar" />
+        </div>
+
+        {/* Barra de abas + botão voltar */}
         <div
           style={{
             display: 'flex',
             alignItems: 'center',
             background: 'var(--surface)',
             borderBottom: '1px solid var(--hairline)',
-            padding: '4px 8px',
+            padding: '8px 8px 4px',
             gap: 6,
             flexShrink: 0,
           }}
         >
           <button
             type="button"
-            onClick={() => setView('chat')}
+            onClick={() => { setView('chat'); setDrawerOpen(false) }}
             style={{
-              padding: '8px 8px',
+              padding: '6px 8px',
               borderRadius: 8,
               border: 'none',
               background: 'transparent',
@@ -751,6 +845,7 @@ export const AgentWorkspace: React.FC = () => {
             aria-label="Voltar ao Chat"
           >
             <ArrowLeft size={16} />
+            <span style={{ fontSize: '0.78rem' }}>Fechar</span>
           </button>
           <button
             type="button"
@@ -819,47 +914,30 @@ export const AgentWorkspace: React.FC = () => {
             <span>Sandbox</span>
           </button>
         </div>
-      )}
 
-      {/* Conteúdo: Mobile (1 Coluna por aba) ou Desktop (3 Colunas) */}
-      <div style={{ flex: 1, minHeight: 0, width: '100%' }}>
-        {isMobile ? (
-          <div style={{ height: '100%', width: '100%' }}>
+        {/* Conteúdo: Mobile (1 Coluna por aba) */}
+        <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
             {mobileTab === 'roster' && renderRosterColumn()}
             {mobileTab === 'chat' && renderChatColumn()}
             {mobileTab === 'sandbox' && renderSandboxColumn()}
           </div>
-        ) : (
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: '270px 1fr 330px',
-              height: '100%',
-              width: '100%',
-            }}
-          >
-            {renderRosterColumn()}
-            {renderChatColumn()}
-            {renderSandboxColumn()}
-          </div>
-        )}
+        </div>
+
+        {/* Modais */}
+        <CreateBotModal
+          isOpen={isCreateModalOpen}
+          onClose={() => setIsCreateModalOpen(false)}
+          onSave={handleCreateBot}
+        />
+        <CreateRoutineModal
+          isOpen={isCreateRoutineModalOpen}
+          onClose={() => setIsCreateRoutineModalOpen(false)}
+          onSave={handleCreateRoutine}
+          bots={bots}
+          selectedBotId={selectedBot?.id}
+        />
       </div>
-
-      {/* Modal de Criação de Bot */}
-      <CreateBotModal
-        isOpen={isCreateModalOpen}
-        onClose={() => setIsCreateModalOpen(false)}
-        onSave={handleCreateBot}
-      />
-
-      {/* Modal de Criação de Rotina */}
-      <CreateRoutineModal
-        isOpen={isCreateRoutineModalOpen}
-        onClose={() => setIsCreateRoutineModalOpen(false)}
-        onSave={handleCreateRoutine}
-        bots={bots}
-        selectedBotId={selectedBot?.id}
-      />
     </div>
   )
 }

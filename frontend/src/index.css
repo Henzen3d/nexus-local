@@ -15051,3 +15051,60 @@ html[data-theme="light"] .model-option-provider-tag {
   from { transform: translateY(100%); }
   to { transform: translateY(0); }
 }
+
+/* ════════════════════════════════════════════════════════════
+   Agent Workspace — Mobile Drawer (slide-up bottom sheet)
+   ════════════════════════════════════════════════════════════ */
+.agent-drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 500;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  animation: agentDrawerFadeIn 0.2s ease-out;
+}
+
+.agent-drawer-panel {
+  width: 100%;
+  max-height: 92dvh;
+  background: var(--surface-soft);
+  border-radius: 20px 20px 0 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: agentDrawerSlideUp 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 -4px 40px rgba(0, 0, 0, 0.4);
+  border-top: 1px solid var(--hairline);
+}
+
+.agent-drawer-handle {
+  display: flex;
+  justify-content: center;
+  padding: 10px 0 4px;
+  flex-shrink: 0;
+  cursor: grab;
+}
+
+.agent-drawer-handle:active { cursor: grabbing; }
+
+.agent-drawer-handle-bar {
+  width: 36px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--ink-muted);
+  opacity: 0.35;
+}
+
+.agent-drawer-skip { pointer-events: auto; }
+
+@keyframes agentDrawerFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes agentDrawerSlideUp {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
