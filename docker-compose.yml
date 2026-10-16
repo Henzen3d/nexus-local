@@ -51,7 +51,7 @@ services:
     image: zenika/alpine-chrome:with-playwright
     container_name: nexus_computer
     restart: always
-    init: true
+    entrypoint: ["/usr/bin/chromium"]
     command: ["--no-sandbox", "--remote-debugging-address=0.0.0.0", "--remote-debugging-port=9222"]
     networks:
       - nexus_net
