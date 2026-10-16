@@ -1,7 +1,4 @@
-/**
- * ComputerActionBlock.tsx — Painel do Sandbox de Computador & Feed de Ações (F8.3.3)
- */
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import {
   Monitor,
   CheckCircle,
@@ -12,103 +9,179 @@ import {
   ExternalLink,
   ShieldCheck,
   Terminal,
+  Loader2,
 } from 'lucide-react'
 import type { ProactiveBot } from '../../types'
+import { api } from '../../api/client'
 
-interface ComputerActionBlockProps {
-  activeBot: ProactiveBot | null
-}
-
-interface ActionLogItem {
+export interface ActionLogItem {
   id: string
   action: string
   target: string
-  status: 'success' | 'error'
+  status: 'success' | 'error' | 'warning'
   latencyMs: number
   time: string
+  error?: string
 }
 
-export const ComputerActionBlock: React.FC<ComputerActionBlockProps> = ({ activeBot }) => {
+interface ComputerActionBlockProps {
+  activeBot: ProactiveBot | null
+  currentUrl?: string
+  pageTitle?: string
+  logs?: ActionLogItem[]
+  onLogsChange?: (logs: ActionLogItem[]) => void
+  onUrlChange?: (url: string) => void
+}
+
+export const ComputerActionBlock: React.FC<ComputerActionBlockProps> = ({
+  activeBot,
+  currentUrl: propCurrentUrl,
+  pageTitle: propPageTitle,
+  logs: propLogs,
+  onLogsChange,
+  onUrlChange,
+}) => {
   const [urlInput, setUrlInput] = useState('https://news.ycombinator.com')
-  const [currentUrl, setCurrentUrl] = useState('https://news.ycombinator.com')
+  const [currentUrl, setCurrentUrl] = useState(propCurrentUrl || 'https://news.ycombinator.com')
+  const [pageTitle, setPageTitle] = useState(propPageTitle || '')
   const [isNavigating, setIsNavigating] = useState(false)
-  const [logs, setLogs] = useState<ActionLogItem[]>([
-    {
-      id: 'log-1',
-      action: 'navigate',
-      target: 'https://news.ycombinator.com',
-      status: 'success',
-      latencyMs: 142,
-      time: 'Agora há pouco',
-    },
-    {
-      id: 'log-2',
-      action: 'extract_dom',
-      target: '30 itens de notícias',
-      status: 'success',
-      latencyMs: 48,
-      time: 'Agora há pouco',
-    },
-  ])
+  const [logs, setLogs] = useState<ActionLogItem[]>(
+    propLogs || [
+      {
+        id: 'log-1',
+        action: 'navigate',
+        target: 'https://news.ycombinator.com',
+        status: 'success',
+        latencyMs: 142,
+        time: 'Agora há pouco',
+      },
+      {
+        id: 'log-2',
+        action: 'extract_dom',
+        target: '30 itens de notícias',
+        status: 'success',
+        latencyMs: 48,
+        time: 'Agora há pouco',
+      },
+    ]
+  )
 
-  const handleNavigate = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!urlInput.trim()) return
-
-    // Checagem básica client-side anti-SSRF
-    const lower = urlInput.toLowerCase()
-    if (
-      lower.includes('127.0.0.1') ||
-      lower.includes('localhost') ||
-      lower.includes('192.168.') ||
-      lower.includes('10.') ||
-      lower.includes('172.16.')
-    ) {
-      setLogs((prev) => [
-        {
-          id: `log-${Date.now()}`,
-          action: 'navigate',
-          target: urlInput,
-          status: 'error',
-          latencyMs: 12,
-          time: 'Agora',
-        },
-        ...prev,
-      ])
-      alert('Bloqueio Anti-SSRF: Redes locais e endereços privados não são permitidos no sandbox.')
-      return
+  useEffect(() => {
+    if (propCurrentUrl && propCurrentUrl !== currentUrl) {
+      setCurrentUrl(propCurrentUrl)
+      setUrlInput(propCurrentUrl)
     }
+  }, [propCurrentUrl])
+
+  useEffect(() => {
+    if (propPageTitle !== undefined) {
+      setPageTitle(propPageTitle)
+    }
+  }, [propPageTitle])
+
+  useEffect(() => {
+    if (propLogs) {
+      setLogs(propLogs)
+    }
+  }, [propLogs])
+
+  const handleNavigate = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!urlInput.trim() || isNavigating) return
+
+    const trimmedUrl = urlInput.trim()
+    const validUrl = trimmedUrl.startsWith('http://') || trimmedUrl.startsWith('https://')
+      ? trimmedUrl
+      : `https://${trimmedUrl}`
 
     setIsNavigating(true)
-    setTimeout(() => {
-      setCurrentUrl(urlInput)
+
+    try {
+      if (activeBot?.id) {
+        const res = await api.navigateProactiveComputer(activeBot.id, validUrl)
+        if (res.ok && res.action) {
+          const newUrl = res.url || validUrl
+          setCurrentUrl(newUrl)
+          setUrlInput(newUrl)
+          if (res.title) setPageTitle(res.title)
+          onUrlChange?.(newUrl)
+
+          const newActions: ActionLogItem[] = [res.action as ActionLogItem]
+          if (res.articles_count) {
+            newActions.push({
+              id: `act_${Date.now()}`,
+              action: 'extract_dom',
+              target: `${res.articles_count} itens extraídos`,
+              status: 'success',
+              latencyMs: 35,
+              time: 'Agora',
+            })
+          }
+
+          const updated = [...newActions, ...logs]
+          setLogs(updated)
+          onLogsChange?.(updated)
+        } else {
+          const errAction: ActionLogItem = (res.action as ActionLogItem) || {
+            id: `err-${Date.now()}`,
+            action: 'navigate',
+            target: validUrl,
+            status: 'error',
+            latencyMs: 12,
+            time: 'Agora',
+            error: res.error || 'Falha ao acessar endereço no sandbox',
+          }
+          const updated = [errAction, ...logs]
+          setLogs(updated)
+          onLogsChange?.(updated)
+          if (res.error) alert(res.error)
+        }
+      } else {
+        setCurrentUrl(validUrl)
+        const updated: ActionLogItem[] = [
+          {
+            id: `act_${Date.now()}`,
+            action: 'navigate',
+            target: validUrl,
+            status: 'success',
+            latencyMs: 80,
+            time: 'Agora',
+          },
+          ...logs,
+        ]
+        setLogs(updated)
+        onLogsChange?.(updated)
+      }
+    } catch (err) {
+      console.error('[ComputerActionBlock] erro na navegação:', err)
+      const errAction: ActionLogItem = {
+        id: `err-${Date.now()}`,
+        action: 'navigate',
+        target: validUrl,
+        status: 'error',
+        latencyMs: 15,
+        time: 'Agora',
+      }
+      const updated = [errAction, ...logs]
+      setLogs(updated)
+      onLogsChange?.(updated)
+    } finally {
       setIsNavigating(false)
-      setLogs((prev) => [
-        {
-          id: `log-${Date.now()}`,
-          action: 'navigate',
-          target: urlInput,
-          status: 'success',
-          latencyMs: 110,
-          time: 'Agora',
-        },
-        ...prev,
-      ])
-    }, 600)
+    }
   }
 
   const handleScreenshot = () => {
-    setLogs((prev) => [
-      {
-        id: `log-${Date.now()}`,
-        action: 'screenshot',
-        target: 'viewport 1280x800',
-        status: 'success',
-        latencyMs: 85,
-        time: 'Agora',
-      },
-      ...prev,
-    ])
+    const shotAction: ActionLogItem = {
+      id: `log-${Date.now()}`,
+      action: 'screenshot',
+      target: `viewport 1280x800 (${currentUrl})`,
+      status: 'success',
+      latencyMs: 65,
+      time: 'Agora',
+    }
+    const updated = [shotAction, ...logs]
+    setLogs(updated)
+    onLogsChange?.(updated)
   }
 
   return (
@@ -250,7 +323,7 @@ export const ComputerActionBlock: React.FC<ComputerActionBlockProps> = ({ active
           </span>
         </div>
 
-        {/* Conteúdo Renderizado (Mock de Navegação Isolada) */}
+        {/* Conteúdo Renderizado (Navegação e Sandbox Isolado) */}
         <div
           style={{
             flex: 1,
@@ -261,14 +334,32 @@ export const ComputerActionBlock: React.FC<ComputerActionBlockProps> = ({ active
             justifyContent: 'center',
             alignItems: 'center',
             textAlign: 'center',
+            background: 'linear-gradient(180deg, #0f172a 0%, #1e293b 100%)',
           }}
         >
-          <Globe size={28} color="#38bdf8" style={{ marginBottom: 6 }} />
-          <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>Sessão Playwright Isolada</div>
-          <div style={{ fontSize: '0.7rem', color: '#94a3b8', maxWidth: 220 }}>
-            {activeBot
-              ? `Controlado por: ${activeBot.name}`
-              : 'Nenhum bot conectado ao sandbox'}
+          {isNavigating ? (
+            <Loader2 size={26} color="#38bdf8" className="spin-slow" style={{ marginBottom: 6 }} />
+          ) : (
+            <Globe size={26} color="#38bdf8" style={{ marginBottom: 6 }} />
+          )}
+          <div
+            style={{
+              fontSize: '0.84rem',
+              fontWeight: 600,
+              maxWidth: 280,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {pageTitle || (currentUrl === 'about:blank' ? 'Sandbox em Espera' : currentUrl)}
+          </div>
+          <div style={{ fontSize: '0.7rem', color: '#94a3b8', maxWidth: 260, marginTop: 2 }}>
+            {isNavigating
+              ? 'Navegando com verificação Anti-SSRF...'
+              : activeBot
+              ? `Sandbox vinculado a ${activeBot.name}`
+              : 'Sessão Playwright segura'}
           </div>
         </div>
 
@@ -339,6 +430,8 @@ export const ComputerActionBlock: React.FC<ComputerActionBlockProps> = ({ active
             >
               {item.status === 'success' ? (
                 <CheckCircle size={14} color="#10B981" style={{ flexShrink: 0, marginTop: 1 }} />
+              ) : item.status === 'warning' ? (
+                <AlertTriangle size={14} color="#F59E0B" style={{ flexShrink: 0, marginTop: 1 }} />
               ) : (
                 <AlertTriangle size={14} color="#EF4444" style={{ flexShrink: 0, marginTop: 1 }} />
               )}

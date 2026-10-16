@@ -707,6 +707,45 @@ export const api = {
     fetchJSON<{ ok: boolean }>(`/proactive/bots/${encodeURIComponent(botId)}`, {
       method: 'DELETE',
     }),
+  chatProactiveBot: (botId: string, message: string, history: any[] = [], url?: string) =>
+    fetchJSON<{
+      ok: boolean
+      reply: string
+      actions: Array<{
+        id: string
+        action: string
+        target: string
+        status: 'success' | 'error' | 'warning'
+        latencyMs: number
+        time: string
+        error?: string
+      }>
+      current_url: string
+      page_title?: string
+    }>(`/proactive/bots/${encodeURIComponent(botId)}/chat`, {
+      method: 'POST',
+      body: JSON.stringify({ message, history, url }),
+    }),
+  navigateProactiveComputer: (botId: string, url: string) =>
+    fetchJSON<{
+      ok: boolean
+      url?: string
+      title?: string
+      error?: string
+      action?: {
+        id: string
+        action: string
+        target: string
+        status: 'success' | 'error' | 'warning'
+        latencyMs: number
+        time: string
+        error?: string
+      }
+      articles_count?: number
+    }>(`/proactive/bots/${encodeURIComponent(botId)}/computer/navigate`, {
+      method: 'POST',
+      body: JSON.stringify({ url }),
+    }),
   // F8.1.3 — Rotinas Agendadas
   getProactiveRoutines: () => fetchJSON<{ ok: boolean; routines: import('../types').ProactiveRoutine[] }>('/proactive/routines'),
   createProactiveRoutine: (data: Partial<import('../types').ProactiveRoutine>) =>

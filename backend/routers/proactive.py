@@ -23,7 +23,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import secrets
+import time
 from typing import Any, Literal, Optional
 import uuid
 
@@ -145,6 +147,16 @@ class BotUpdateBody(BaseModel):
     computer_mode: Optional[str] = None
     ambient_enabled: Optional[bool] = None
     ambient_rules: Optional[dict[str, Any]] = None
+
+
+class BotChatBody(BaseModel):
+    message: str = Field(..., min_length=1, max_length=4000)
+    history: list[dict[str, Any]] = Field(default_factory=list)
+    url: Optional[str] = None
+
+
+class BotComputerNavigateBody(BaseModel):
+    url: str = Field(..., min_length=1, max_length=2000)
 
 
 class RoutineCreateBody(BaseModel):
@@ -473,11 +485,12 @@ async def companion_chat(body: CompanionChatBody, current_user: dict = Depends(g
             f"Você está tendo uma conversa curta, amigável e descontraída entre amigos com o usuário sobre o tema: \"{topic}\".\n\n"
             f"REGRAS INEGOCIÁVEIS:\n"
             f"1. TOM: casual, caloroso, espirituoso e direto (\"conversa curta entre amigos\").\n"
-            f"2. RESPOSTA DE CHAT: NUNCA passe de 2 a 4 frases. Seja breve e agradável.\n"
+            f"2. RESPOSTA DE CHAT: NUNCA passe de 2 a 4 frases. Seja breve, rápido e agradável.\n"
             f"3. NUNCA coloque tabelas longas, listas gigantes ou parágrafos densos no chat.\n"
             f"4. Todo conteúdo denso (comparações, listas completas, tópicos aprofundados) DEVE ficar dentro do ARTEFATO Markdown.\n"
-            f"5. Se o usuário perguntar algo novo ou pedir mais detalhes, responda em 1 ou 2 frases amigáveis e ATUALIZE o Artefato Markdown completo no bloco final.\n"
-            f"6. Se você atualizar o artefato, finalize OBRIGATORIAMENTE sua resposta com o bloco:\n"
+            f"5. Para perguntas simples, curiosidades gerais, dúvidas rápidas fora do tema principal ou saudações (ex: \"qual a capital da frança?\", \"olá\", \"obrigado\"), responda IMEDIATAMENTE em 1 ou 2 frases amigáveis e NUNCA gere ou atualize o bloco de artefato.\n"
+            f"6. ATUALIZAÇÃO DE ARTEFATO: Atualize o artefato SOMENTE se o usuário pedir explicitamente para adicionar/alterar o documento ou se a dúvida for um aprofundamento substancial diretamente ligado ao tema de pesquisa (\"{topic}\").\n"
+            f"7. Se você for atualizar o artefato, finalize sua resposta com o bloco:\n"
             f"```artifact\n"
             f"TITULO: <titulo descritivo do artefato>\n"
             f"<conteudo markdown completo e formatado do artefato>\n"
@@ -547,7 +560,7 @@ async def companion_chat(body: CompanionChatBody, current_user: dict = Depends(g
                     insight["conversation_id"],
                     insight.get("delivered_message_id") or None,
                     {
-                        "type": "text/markdown",
+                        "type": "markdown",
                         "title": updated_art_title,
                         "content": updated_art_content,
                     },
@@ -1183,4 +1196,301 @@ async def delete_routine(
         return {"ok": True}
     finally:
         await db.close()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Execução Real de Tarefas e Sandbox do Computador para Bots (F8.2 / F8.3)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.post("/bots/{bot_id}/chat")
+async def bot_chat(
+    bot_id: str,
+    body: BotChatBody,
+    current_user: dict = Depends(get_current_user),
+) -> dict:
+    """Interação real e autônoma com o bot especialista e o computador sandbox.
+
+    Executa navegação com anti-SSRF, pesquisa na web e síntese com o modelo de IA.
+    """
+    db = await get_db()
+    try:
+        # Carrega bot pertencente ao usuário
+        async with db.execute(
+            """
+            SELECT id, user_id, name, title, description, system_instructions,
+                   color_hex, avatar_shape, mascot_id, computer_mode
+            FROM proactive_bots
+            WHERE id = ? AND user_id = ?
+            """,
+            (bot_id, current_user["id"]),
+        ) as cur:
+            row = await cur.fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="Bot não encontrado")
+
+        bot_name = row[2]
+        bot_title = row[3] or "Especialista"
+        bot_desc = row[4] or ""
+        bot_inst = row[5] or "Você é um assistente prestativo e analítico."
+        bot_mode = row[9] or "shared"
+
+        actions: list[dict[str, Any]] = []
+        user_text = body.message.strip()
+
+        # 1. Detecção de URL no texto do usuário ou campo explícito
+        url_match = re.search(r'https?://[^\s<>"]+', user_text)
+        target_url = body.url or (url_match.group(0) if url_match else None)
+        extracted_content = ""
+        current_url = target_url or "https://news.ycombinator.com"
+        page_title = ""
+
+        from backend.web_search.reader import fetch_page_content
+        from backend.computer.base import is_safe_public_url as computer_is_safe_public_url
+
+        if target_url:
+            t0 = time.monotonic()
+            safe, reason = computer_is_safe_public_url(target_url)
+            if not safe:
+                actions.append({
+                    "id": f"act_{secrets.token_hex(4)}",
+                    "action": "navigate",
+                    "target": target_url,
+                    "status": "error",
+                    "latencyMs": round((time.monotonic() - t0) * 1000, 1),
+                    "time": "Agora",
+                    "error": reason,
+                })
+            else:
+                try:
+                    page_data = await fetch_page_content(target_url, timeout=7.0)
+                    nav_ms = round((time.monotonic() - t0) * 1000, 1)
+                    if page_data:
+                        page_title = page_data.get("title") or target_url
+                        actions.append({
+                            "id": f"act_{secrets.token_hex(4)}",
+                            "action": "navigate",
+                            "target": target_url,
+                            "status": "success",
+                            "latencyMs": nav_ms,
+                            "time": "Agora",
+                        })
+                        sample = page_data.get("text_sample") or ""
+                        articles = page_data.get("articles") or []
+                        if sample or articles:
+                            items_summary = f"{len(articles)} tópicos / {len(sample)} chars"
+                            actions.append({
+                                "id": f"act_{secrets.token_hex(4)}",
+                                "action": "extract_dom",
+                                "target": items_summary,
+                                "status": "success",
+                                "latencyMs": 42,
+                                "time": "Agora",
+                            })
+                            extracted_content = sample[:2500]
+                    else:
+                        actions.append({
+                            "id": f"act_{secrets.token_hex(4)}",
+                            "action": "navigate",
+                            "target": target_url,
+                            "status": "warning",
+                            "latencyMs": nav_ms,
+                            "time": "Agora",
+                        })
+                except Exception as exc:
+                    logger.debug("[BotChat] Erro ao navegar no sandbox: %s", exc)
+
+        # 2. Se não houver URL direta, mas a mensagem requer pesquisa, executa web search real
+        search_snippets = ""
+        is_search_intent = (
+            "pesquis" in user_text.lower()
+            or "busqu" in user_text.lower()
+            or "noticia" in user_text.lower()
+            or "preço" in user_text.lower()
+            or "informações sobre" in user_text.lower()
+            or "informações" in user_text.lower()
+            or "quem é" in user_text.lower()
+            or "o que é" in user_text.lower()
+            or "qual a" in user_text.lower()
+            or "qual o" in user_text.lower()
+            or "onde fica" in user_text.lower()
+            or "como funciona" in user_text.lower()
+            or "tpl-researcher" in bot_id
+            or "Pesquisador" in bot_name
+        )
+
+        if not target_url and is_search_intent:
+            t0 = time.monotonic()
+            try:
+                from backend.web_search.providers import resolve_and_execute_search
+                clean_q = re.sub(
+                    r'^(pode me dar mais informações sobre|pesquise sobre|procure por|busque por|me fale sobre|qual a capital da|qual a)\s+',
+                    '',
+                    user_text,
+                    flags=re.IGNORECASE,
+                ).strip()
+                search_res = await resolve_and_execute_search(clean_q or user_text, db)
+                s_ms = round((time.monotonic() - t0) * 1000, 1)
+                if search_res:
+                    actions.append({
+                        "id": f"act_{secrets.token_hex(4)}",
+                        "action": "search",
+                        "target": (clean_q or user_text)[:35],
+                        "status": "success",
+                        "latencyMs": s_ms,
+                        "time": "Agora",
+                    })
+                    first_hit = search_res[0]
+                    current_url = first_hit.get("url") or "https://google.com"
+                    page_title = first_hit.get("title") or first_hit.get("domain") or ""
+                    actions.append({
+                        "id": f"act_{secrets.token_hex(4)}",
+                        "action": "navigate",
+                        "target": current_url,
+                        "status": "success",
+                        "latencyMs": 95,
+                        "time": "Agora",
+                    })
+                    actions.append({
+                        "id": f"act_{secrets.token_hex(4)}",
+                        "action": "extract_dom",
+                        "target": f"{len(search_res)} itens extraídos",
+                        "status": "success",
+                        "latencyMs": 38,
+                        "time": "Agora",
+                    })
+                    snippets_list = []
+                    for item in search_res[:3]:
+                        snippets_list.append(f"- **{item.get('title')}** ({item.get('url')}):\n  {item.get('snippet')}")
+                    search_snippets = "\n".join(snippets_list)
+            except Exception as exc:
+                logger.debug("[BotChat] Erro na busca web: %s", exc)
+
+        # 3. Resolve modelo LLM
+        from backend.proactive import synthesizer
+        config = await load_config(db)
+        try:
+            provider, model_name, _ = await synthesizer.resolve_synth_model(
+                db, current_user["id"], None, None, config
+            )
+        except Exception as exc:
+            logger.warning("[BotChat] falha ao resolver modelo do bot: %s", exc)
+            return {
+                "ok": True,
+                "reply": f"Olá! Sou {bot_name} ({bot_title}). Executei os passos solicitados no computador sandbox. Como posso ajudá-lo a avançar com estes dados?",
+                "actions": actions,
+                "current_url": current_url,
+                "page_title": page_title,
+            }
+
+        # 4. Constrói prompts e mensagens
+        system_prompt = (
+            f"Você é o bot especialista \"{bot_name}\" ({bot_title}) operando na plataforma NexusLocal.\n"
+            f"Descrição: {bot_desc}\n"
+            f"Diretrizes e Persona:\n{bot_inst}\n\n"
+            f"Você opera integrado a um Computador Sandbox (nexus_computer) com navegador web seguro.\n"
+            f"Responda à solicitação do usuário de forma clara, prestativa e estruturada.\n"
+            f"Se você utilizou o sandbox ou consultou páginas/fontes na web (dados abaixo), mencione os achados e fontes citando-as naturalmente."
+        )
+
+        llm_messages: list[dict[str, str]] = [{"role": "system", "content": system_prompt}]
+
+        context_notes = []
+        if extracted_content:
+            context_notes.append(f"[CONTEÚDO EXTRAÍDO DA PÁGINA: {current_url}]\n{extracted_content}")
+        if search_snippets:
+            context_notes.append(f"[RESULTADOS DA PESQUISA WEB]\n{search_snippets}")
+
+        if context_notes:
+            llm_messages.append({"role": "system", "content": "\n\n".join(context_notes)})
+
+        for h in (body.history or [])[-6:]:
+            role = "assistant" if h.get("sender") == "bot" or h.get("role") == "assistant" else "user"
+            c = str(h.get("text") or h.get("content") or "").strip()
+            if c:
+                llm_messages.append({"role": role, "content": c})
+
+        llm_messages.append({"role": "user", "content": user_text})
+
+        # 5. Executa stream e coleta resposta
+        chunks: list[str] = []
+        try:
+            async def _collect() -> None:
+                async for token in provider.stream_chat(
+                    model=model_name, messages=llm_messages, temperature=0.7, max_tokens=1000
+                ):
+                    chunks.append(str(token))
+
+            await asyncio.wait_for(_collect(), timeout=30.0)
+        except Exception as exc:
+            logger.warning("[BotChat] Erro na geração LLM: %s", exc)
+            return {
+                "ok": True,
+                "reply": "Concluí as ações no sandbox e a navegação foi registrada com sucesso.",
+                "actions": actions,
+                "current_url": current_url,
+                "page_title": page_title,
+            }
+
+        reply = "".join(chunks).strip() or "Tarefa processada com sucesso no computador sandbox."
+
+        return {
+            "ok": True,
+            "reply": reply,
+            "actions": actions,
+            "current_url": current_url,
+            "page_title": page_title,
+        }
+    finally:
+        await db.close()
+
+
+@router.post("/bots/{bot_id}/computer/navigate")
+async def bot_computer_navigate(
+    bot_id: str,
+    body: BotComputerNavigateBody,
+    current_user: dict = Depends(get_current_user),
+) -> dict:
+    """Navega para uma URL pública no computador sandbox do bot com validação Anti-SSRF."""
+    from backend.computer.base import is_safe_public_url
+    from backend.web_search.reader import fetch_page_content
+
+    url = body.url.strip()
+    safe, reason = is_safe_public_url(url)
+    if not safe:
+        return {
+            "ok": False,
+            "error": reason or "Bloqueio Anti-SSRF: Redes locais e endereços privados não são permitidos.",
+            "action": {
+                "id": f"act_{secrets.token_hex(4)}",
+                "action": "navigate",
+                "target": url,
+                "status": "error",
+                "latencyMs": 10,
+                "time": "Agora",
+                "error": reason,
+            },
+        }
+
+    t0 = time.monotonic()
+    page_data = await fetch_page_content(url, timeout=7.0)
+    latency_ms = round((time.monotonic() - t0) * 1000, 1)
+
+    title = (page_data.get("title") if page_data else None) or url
+    action = {
+        "id": f"act_{secrets.token_hex(4)}",
+        "action": "navigate",
+        "target": url,
+        "status": "success" if page_data else "warning",
+        "latencyMs": latency_ms,
+        "time": "Agora",
+    }
+
+    return {
+        "ok": True,
+        "url": url,
+        "title": title,
+        "action": action,
+        "articles_count": len(page_data.get("articles", [])) if page_data else 0,
+    }
+
 

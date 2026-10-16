@@ -1,5 +1,5 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react'
-import { X, Send, Sparkles, FileText, ExternalLink, ArrowRight, CornerDownLeft, Loader2 } from 'lucide-react'
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react'
+import { X, Send, Sparkles, FileText, ExternalLink, ArrowRight, CornerDownLeft, Loader2, Maximize2, Minimize2 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { useTranslation } from 'react-i18next'
@@ -7,6 +7,11 @@ import { useStore } from '../store/useStore'
 import { api } from '../api/client'
 import { ProactiveMascot } from './ProactiveMascot'
 import { markdownComponents } from './markdownComponents'
+
+type ResizeDirection = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw'
+
+const MIN_MODAL_WIDTH = 460
+const MIN_MODAL_HEIGHT = 400
 
 export const ProactiveCompanionModal: React.FC = () => {
   const { t } = useTranslation()
@@ -25,8 +30,167 @@ export const ProactiveCompanionModal: React.FC = () => {
   const [input, setInput] = useState('')
   const threadEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const isInteractingRef = useRef(false)
+
+  // Estados de dimensão e posicionamento tipo janela do Windows
+  const [size, setSize] = useState<{ width: number; height: number }>(() => {
+    const w = typeof window !== 'undefined' ? Math.min(740, window.innerWidth - 32) : 720
+    const h = typeof window !== 'undefined' ? Math.min(680, window.innerHeight - 40) : 680
+    return { width: Math.max(MIN_MODAL_WIDTH, w), height: Math.max(MIN_MODAL_HEIGHT, h) }
+  })
+
+  const [pos, setPos] = useState<{ x: number; y: number }>(() => {
+    const w = typeof window !== 'undefined' ? Math.min(740, window.innerWidth - 32) : 720
+    const h = typeof window !== 'undefined' ? Math.min(680, window.innerHeight - 40) : 680
+    const x = typeof window !== 'undefined' ? Math.max(16, Math.round((window.innerWidth - w) / 2)) : 40
+    const y = typeof window !== 'undefined' ? Math.max(16, Math.round((window.innerHeight - h) / 2)) : 40
+    return { x, y }
+  })
+
+  const [isMaximized, setIsMaximized] = useState(false)
+  const prevBoundsRef = useRef<{ x: number; y: number; width: number; height: number } | null>(null)
 
   const personaStyle = proactiveSettings?.persona_style || 'lumi'
+
+  // Centraliza janela se for aberta pela primeira vez ou se a viewport mudar muito
+  useEffect(() => {
+    if (isOpen && !isMaximized) {
+      const w = Math.min(size.width, window.innerWidth - 32)
+      const h = Math.min(size.height, window.innerHeight - 40)
+      const x = Math.max(16, Math.round((window.innerWidth - w) / 2))
+      const y = Math.max(16, Math.round((window.innerHeight - h) / 2))
+      setPos({ x, y })
+      setSize({ width: Math.max(MIN_MODAL_WIDTH, w), height: Math.max(MIN_MODAL_HEIGHT, h) })
+    }
+  }, [isOpen])
+
+  // Drag da janela pelo cabeçalho (estilo Windows)
+  const handleHeaderMouseDown = (e: React.MouseEvent) => {
+    if (isMaximized) return
+    const target = e.target as HTMLElement
+    if (target.closest('button') || target.closest('a') || target.closest('input') || target.closest('textarea')) {
+      return
+    }
+
+    e.preventDefault()
+    isInteractingRef.current = true
+    const startX = e.clientX
+    const startY = e.clientY
+    const startPosX = pos.x
+    const startPosY = pos.y
+
+    document.body.style.userSelect = 'none'
+
+    const onMouseMove = (moveEv: MouseEvent) => {
+      const deltaX = moveEv.clientX - startX
+      const deltaY = moveEv.clientY - startY
+      const maxX = Math.max(0, window.innerWidth - size.width)
+      const maxY = Math.max(0, window.innerHeight - 60)
+      setPos({
+        x: Math.max(0, Math.min(startPosX + deltaX, maxX)),
+        y: Math.max(0, Math.min(startPosY + deltaY, maxY)),
+      })
+    }
+
+    const onMouseUp = () => {
+      document.body.style.userSelect = ''
+      setTimeout(() => {
+        isInteractingRef.current = false
+      }, 50)
+      window.removeEventListener('mousemove', onMouseMove)
+      window.removeEventListener('mouseup', onMouseUp)
+    }
+
+    window.addEventListener('mousemove', onMouseMove)
+    window.addEventListener('mouseup', onMouseUp)
+  }
+
+  // Redimensionamento pelas bordas e cantos (8 direções)
+  const handleResizeMouseDown = (direction: ResizeDirection, e: React.MouseEvent) => {
+    if (isMaximized) return
+    e.preventDefault()
+    e.stopPropagation()
+    isInteractingRef.current = true
+
+    const startX = e.clientX
+    const startY = e.clientY
+    const startW = size.width
+    const startH = size.height
+    const startPosX = pos.x
+    const startPosY = pos.y
+
+    document.body.style.userSelect = 'none'
+
+    const onMouseMove = (moveEv: MouseEvent) => {
+      const deltaX = moveEv.clientX - startX
+      const deltaY = moveEv.clientY - startY
+
+      let newW = startW
+      let newH = startH
+      let newX = startPosX
+      let newY = startPosY
+
+      // Leste (Right)
+      if (direction.includes('e')) {
+        newW = Math.max(MIN_MODAL_WIDTH, Math.min(startW + deltaX, window.innerWidth - startPosX - 16))
+      }
+      // Sul (Bottom)
+      if (direction.includes('s')) {
+        newH = Math.max(MIN_MODAL_HEIGHT, Math.min(startH + deltaY, window.innerHeight - startPosY - 16))
+      }
+      // Oeste (Left)
+      if (direction.includes('w')) {
+        const maxDeltaX = startW - MIN_MODAL_WIDTH
+        const clampedDeltaX = Math.min(deltaX, maxDeltaX)
+        newW = startW - clampedDeltaX
+        newX = startPosX + clampedDeltaX
+        if (newX < 10) {
+          newW = startW + startPosX - 10
+          newX = 10
+        }
+      }
+      // Norte (Top)
+      if (direction.includes('n')) {
+        const maxDeltaY = startH - MIN_MODAL_HEIGHT
+        const clampedDeltaY = Math.min(deltaY, maxDeltaY)
+        newH = startH - clampedDeltaY
+        newY = startPosY + clampedDeltaY
+        if (newY < 10) {
+          newH = startH + startPosY - 10
+          newY = 10
+        }
+      }
+
+      setSize({ width: Math.round(newW), height: Math.round(newH) })
+      setPos({ x: Math.round(newX), y: Math.round(newY) })
+    }
+
+    const onMouseUp = () => {
+      document.body.style.userSelect = ''
+      setTimeout(() => {
+        isInteractingRef.current = false
+      }, 50)
+      window.removeEventListener('mousemove', onMouseMove)
+      window.removeEventListener('mouseup', onMouseUp)
+    }
+
+    window.addEventListener('mousemove', onMouseMove)
+    window.addEventListener('mouseup', onMouseUp)
+  }
+
+  // Alterna maximizar / restaurar tamanho
+  const toggleMaximize = useCallback(() => {
+    if (isMaximized) {
+      if (prevBoundsRef.current) {
+        setPos({ x: prevBoundsRef.current.x, y: prevBoundsRef.current.y })
+        setSize({ width: prevBoundsRef.current.width, height: prevBoundsRef.current.height })
+      }
+      setIsMaximized(false)
+    } else {
+      prevBoundsRef.current = { ...pos, ...size }
+      setIsMaximized(true)
+    }
+  }, [isMaximized, pos, size])
 
   // Auto-scroll para a última mensagem
   useEffect(() => {
@@ -96,11 +260,65 @@ export const ProactiveCompanionModal: React.FC = () => {
   const followUps = insight.follow_ups || []
   const currentArtifactTitle = insight.artifact_title || insight.topic || t('proactive.artifactFallbackTitle', { defaultValue: 'Guia & Destaques' })
 
+  const containerStyle: React.CSSProperties = isMaximized
+    ? {
+        position: 'fixed',
+        top: 10,
+        left: 10,
+        width: 'calc(100vw - 20px)',
+        height: 'calc(100vh - 20px)',
+        maxWidth: 'none',
+        maxHeight: 'none',
+        borderRadius: 14,
+        zIndex: 1260,
+      }
+    : {
+        position: 'fixed',
+        top: pos.y,
+        left: pos.x,
+        width: size.width,
+        height: size.height,
+        maxWidth: 'none',
+        maxHeight: 'none',
+        zIndex: 1260,
+      }
+
   return (
-    <div className="proactive-companion-overlay" onClick={closeCompanion} role="dialog" aria-modal="true">
-      <div className="proactive-companion-container" onClick={(e) => e.stopPropagation()}>
+    <div
+      className="proactive-companion-overlay"
+      onClick={() => {
+        if (!isInteractingRef.current) closeCompanion()
+      }}
+      role="dialog"
+      aria-modal="true"
+    >
+      <div
+        className={`proactive-companion-container ${isMaximized ? 'is-maximized' : ''}`}
+        style={containerStyle}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Resize Handles (8 direções) */}
+        {!isMaximized && (
+          <>
+            <div className="companion-resize-edge n" onMouseDown={(e) => handleResizeMouseDown('n', e)} />
+            <div className="companion-resize-edge s" onMouseDown={(e) => handleResizeMouseDown('s', e)} />
+            <div className="companion-resize-edge w" onMouseDown={(e) => handleResizeMouseDown('w', e)} />
+            <div className="companion-resize-edge e" onMouseDown={(e) => handleResizeMouseDown('e', e)} />
+            <div className="companion-resize-corner nw" onMouseDown={(e) => handleResizeMouseDown('nw', e)} />
+            <div className="companion-resize-corner ne" onMouseDown={(e) => handleResizeMouseDown('ne', e)} />
+            <div className="companion-resize-corner sw" onMouseDown={(e) => handleResizeMouseDown('sw', e)} />
+            <div className="companion-resize-corner se" onMouseDown={(e) => handleResizeMouseDown('se', e)} />
+          </>
+        )}
+
         {/* Cabeçalho */}
-        <header className="companion-header">
+        <header
+          className="companion-header"
+          onMouseDown={handleHeaderMouseDown}
+          onDoubleClick={toggleMaximize}
+          style={{ cursor: isMaximized ? 'default' : 'grab' }}
+          title={isMaximized ? undefined : 'Arraste para mover a janela'}
+        >
           <div className="companion-header-identity">
             <ProactiveMascot size={32} state={isSending ? 'researching' : 'ready'} style={personaStyle} />
             <div className="companion-header-titles">
@@ -128,6 +346,15 @@ export const ProactiveCompanionModal: React.FC = () => {
             >
               <ExternalLink size={14} />
               <span>{t('proactive.openInChat', { defaultValue: 'Abrir no chat' })}</span>
+            </button>
+            <button
+              type="button"
+              className="companion-maximize-btn"
+              onClick={toggleMaximize}
+              title={isMaximized ? t('common.restore', { defaultValue: 'Restaurar' }) : t('common.maximize', { defaultValue: 'Maximizar' })}
+              aria-label={isMaximized ? 'Restaurar' : 'Maximizar'}
+            >
+              {isMaximized ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
             </button>
             <button
               type="button"

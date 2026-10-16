@@ -5,7 +5,7 @@
  * Coluna 2: Chat e Canal de Tarefas do Bot Ativo
  * Coluna 3: Sandbox do Computador (nexus_computer) e Ações ao Vivo
  */
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import {
   Bot,
   Send,
@@ -19,10 +19,13 @@ import {
   AlertCircle,
   RotateCcw,
 } from 'lucide-react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { BotRosterList } from './BotRosterList'
-import { ComputerActionBlock } from './ComputerActionBlock'
+import { ComputerActionBlock, type ActionLogItem } from './ComputerActionBlock'
 import { CreateBotModal } from './CreateBotModal'
 import { PetAvatar } from '../mascot/PetAvatar'
+import { markdownComponents } from '../markdownComponents'
 import { api } from '../../api/client'
 import type { ProactiveBot, ProactiveRoutine, MascotId } from '../../types'
 
@@ -42,6 +45,27 @@ export const AgentWorkspace: React.FC = () => {
   const [inputMessage, setInputMessage] = useState('')
   const [isSending, setIsSending] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
+  const [currentUrl, setCurrentUrl] = useState('https://news.ycombinator.com')
+  const [pageTitle, setPageTitle] = useState('')
+  const [actionLogs, setActionLogs] = useState<ActionLogItem[]>([
+    {
+      id: 'log-1',
+      action: 'navigate',
+      target: 'https://news.ycombinator.com',
+      status: 'success',
+      latencyMs: 142,
+      time: 'Agora há pouco',
+    },
+    {
+      id: 'log-2',
+      action: 'extract_dom',
+      target: '30 itens de notícias',
+      status: 'success',
+      latencyMs: 48,
+      time: 'Agora há pouco',
+    },
+  ])
+  const chatBottomRef = useRef<HTMLDivElement>(null)
 
   // Carrega bots e rotinas
   const loadData = async () => {
@@ -84,9 +108,14 @@ export const AgentWorkspace: React.FC = () => {
     }
   }, [selectedBot])
 
-  const handleSendMessage = (e: React.FormEvent) => {
+  // Auto-scroll para o fim do chat
+  useEffect(() => {
+    chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages, isSending])
+
+  const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!inputMessage.trim() || !selectedBot) return
+    if (!inputMessage.trim() || !selectedBot || isSending) return
 
     const userText = inputMessage.trim()
     setInputMessage('')
@@ -98,20 +127,47 @@ export const AgentWorkspace: React.FC = () => {
       timestamp: 'Agora',
     }
 
-    setMessages((prev) => [...prev, userMsg])
+    const updated = [...messages, userMsg]
+    setMessages(updated)
     setIsSending(true)
 
-    // Simulação da resposta do agente especialista com execução sandbox
-    setTimeout(() => {
-      const replyMsg: AgentMessage = {
-        id: `bot-${Date.now()}`,
+    try {
+      const history = updated
+        .slice(0, -1)
+        .map((m) => ({ sender: m.sender, text: m.text }))
+
+      const res = await api.chatProactiveBot(selectedBot.id, userText, history)
+      if (res.ok) {
+        const replyMsg: AgentMessage = {
+          id: `bot-${Date.now()}`,
+          sender: 'bot',
+          text: res.reply,
+          timestamp: 'Agora',
+        }
+        setMessages((prev) => [...prev, replyMsg])
+
+        if (res.actions && res.actions.length > 0) {
+          setActionLogs((prev) => [...(res.actions as ActionLogItem[]), ...prev])
+        }
+        if (res.current_url) {
+          setCurrentUrl(res.current_url)
+        }
+        if (res.page_title) {
+          setPageTitle(res.page_title)
+        }
+      }
+    } catch (err) {
+      console.error('[AgentWorkspace] erro ao interagir com o bot:', err)
+      const errorMsg: AgentMessage = {
+        id: `bot-err-${Date.now()}`,
         sender: 'bot',
-        text: `Compreendido! Estou processando "${userText}". Analisei o DOM do sandbox e organizei os passos necessários para a tarefa.`,
+        text: 'Desculpe, tive uma oscilação na conexão com o modelo ou com o sandbox de navegação. Por favor, tente novamente.',
         timestamp: 'Agora',
       }
-      setMessages((prev) => [...prev, replyMsg])
+      setMessages((prev) => [...prev, errorMsg])
+    } finally {
       setIsSending(false)
-    }, 800)
+    }
   }
 
   const handleCreateBot = async (data: Partial<ProactiveBot>) => {
@@ -338,7 +394,15 @@ export const AgentWorkspace: React.FC = () => {
                     border: isUser ? 'none' : '1px solid var(--hairline)',
                   }}
                 >
-                  <div>{m.text}</div>
+                  <div style={{ wordBreak: 'break-word' }}>
+                    {isUser ? (
+                      <div>{m.text}</div>
+                    ) : (
+                      <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                        {m.text}
+                      </ReactMarkdown>
+                    )}
+                  </div>
                   <div
                     style={{
                       fontSize: '0.65rem',
@@ -359,6 +423,7 @@ export const AgentWorkspace: React.FC = () => {
               <span>{selectedBot?.name} está investigando no computador sandbox...</span>
             </div>
           )}
+          <div ref={chatBottomRef} />
         </div>
 
         {/* Input Bar */}
@@ -407,7 +472,14 @@ export const AgentWorkspace: React.FC = () => {
 
       {/* ─── COLUNA 3: SANDBOX DO COMPUTADOR ─── */}
       <div style={{ height: '100%', minHeight: 0 }}>
-        <ComputerActionBlock activeBot={selectedBot} />
+        <ComputerActionBlock
+          activeBot={selectedBot}
+          currentUrl={currentUrl}
+          pageTitle={pageTitle}
+          logs={actionLogs}
+          onLogsChange={setActionLogs}
+          onUrlChange={setCurrentUrl}
+        />
       </div>
 
       {/* Modal de Criação de Bot */}

@@ -75,7 +75,7 @@ export function ProactiveBubble({ message }: { message: Message }) {
     if (insight?.artifact_id) {
       return [{
         id: insight.artifact_id,
-        type: 'text/markdown',
+        type: 'markdown',
         title: insight.artifact_title || insight.topic || t('proactive.artifactFallbackTitle', { defaultValue: 'Guia & Pesquisa' }),
       }]
     }

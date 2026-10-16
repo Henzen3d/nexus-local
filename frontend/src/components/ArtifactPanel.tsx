@@ -282,12 +282,31 @@ export function ArtifactPanel() {
     : ''
 
   /**
+   * Normaliza o tipo do artefato para garantir compatibilidade com MIME types (ex: text/markdown)
+   * e formatos legados ou variantes sem que a interface quebre ou fique em branco.
+   */
+  const normalizedType = useMemo(() => {
+    if (!activeArtifact?.type) return 'markdown'
+    const raw = activeArtifact.type.toLowerCase().trim()
+    if (raw === 'text/markdown' || raw === 'markdown' || raw === 'md') return 'markdown'
+    if (raw === 'text/html' || raw === 'html' || raw === 'htm') return 'html'
+    if (raw === 'image/svg+xml' || raw === 'svg') return 'svg'
+    if (raw === 'jsx' || raw === 'tsx' || raw === 'react') return 'jsx'
+    if (raw === 'code') return 'code'
+    if (raw.startsWith('text/')) return 'markdown'
+    // Se o tipo for desconhecido, analisa o conteúdo para inferir o tipo
+    if (cleanContent.startsWith('<!DOCTYPE html') || cleanContent.startsWith('<html')) return 'html'
+    if (cleanContent.startsWith('<svg')) return 'svg'
+    return 'markdown'
+  }, [activeArtifact?.type, cleanContent])
+
+  /**
    * Detecta a linguagem para syntax highlight a partir do tipo/título do artifact.
    * Títulos de código vêm do backend no formato "{LANG} Code" (ex: "PYTHON Code").
    */
   const highlightLang = useMemo(() => {
     if (!activeArtifact) return ''
-    const type = activeArtifact.type
+    const type = normalizedType
     if (type === 'html') return 'html'
     if (type === 'svg') return 'svg'
     if (type === 'jsx') return 'jsx'
@@ -324,7 +343,7 @@ export function ArtifactPanel() {
     const first = title.split(/[\s._-]+/)[0]?.replace(/[^a-z0-9+#]/g, '')
     if (first && first.length >= 1 && first.length <= 12 && first !== 'code') return first
     return ''
-  }, [activeArtifact])
+  }, [activeArtifact, normalizedType])
 
   const highlightedCode = useMemo(
     () => (cleanContent ? highlightCode(cleanContent, highlightLang) : ''),
@@ -344,7 +363,7 @@ export function ArtifactPanel() {
   if (!activeArtifact) return null
 
   const getRunnableLanguage = () => {
-    if (activeArtifact.type !== 'code') return null
+    if (normalizedType !== 'code') return null
     const titleLower = activeArtifact.title.toLowerCase()
     if (titleLower.includes('javascript') || titleLower.includes('js')) return 'javascript'
     if (titleLower.includes('python') || titleLower.includes('py')) return 'python'
@@ -377,7 +396,7 @@ export function ArtifactPanel() {
   }
 
   const handleDownload = () => {
-    const mime = getMimeType(activeArtifact.type)
+    const mime = getMimeType(normalizedType)
     const blob = new Blob([cleanContent], { type: mime })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -385,7 +404,7 @@ export function ArtifactPanel() {
     
     // Remove caracteres inválidos do título para nome de arquivo
     const safeTitle = activeArtifact.title.replace(/[^a-z0-9\s-_.]/gi, '')
-    const ext = getFileExtension(activeArtifact.type)
+    const ext = getFileExtension(normalizedType)
     a.download = safeTitle.toLowerCase().endsWith(`.${ext}`) ? safeTitle : `${safeTitle}.${ext}`
     
     document.body.appendChild(a)
@@ -395,12 +414,10 @@ export function ArtifactPanel() {
   }
 
   const handleOpenNewTab = () => {
-    const mime = getMimeType(activeArtifact.type)
+    const mime = getMimeType(normalizedType)
     const blob = new Blob([cleanContent], { type: mime })
     const url = URL.createObjectURL(blob)
     window.open(url, '_blank')
-    // Nota: não podemos dar revokeObjectURL imediatamente pois a nova aba precisa carregar o blob.
-    // O navegador limpará quando a aba for fechada.
   }
 
   const renderIcon = (type: string) => {
@@ -432,11 +449,11 @@ export function ArtifactPanel() {
       markdown: 'Markdown',
       code: 'código',
     }
-    const label = typeLabel[activeArtifact.type] ?? activeArtifact.type.toUpperCase()
+    const label = typeLabel[normalizedType] ?? normalizedType.toUpperCase()
 
     // Para tipos que usam blocos de código, envolve o conteúdo no fence correto
-    const wrappedContent = activeArtifact.type !== 'markdown'
-      ? `\`\`\`${activeArtifact.type}\n${cleanContent}\n\`\`\``
+    const wrappedContent = normalizedType !== 'markdown'
+      ? `\`\`\`${normalizedType}\n${cleanContent}\n\`\`\``
       : `\`\`\`markdown\n${cleanContent}\n\`\`\``
 
     const fullPrompt =
@@ -465,7 +482,7 @@ export function ArtifactPanel() {
       {/* Toolbar */}
       <div className="artifact-toolbar">
         <div className="artifact-info">
-          {['html', 'svg', 'markdown', 'jsx'].includes(activeArtifact.type) ? (
+          {['html', 'svg', 'markdown', 'jsx'].includes(normalizedType) ? (
             <div className="segmented-control">
               <button 
                 className={`segmented-btn custom-tooltip-trigger ${viewMode === 'preview' ? 'active' : ''}`}
@@ -483,15 +500,15 @@ export function ArtifactPanel() {
               </button>
             </div>
           ) : (
-            renderIcon(activeArtifact.type)
+            renderIcon(normalizedType)
           )}
           
           <span className="artifact-title" title={activeArtifact.title}>
             {activeArtifact.title}
-            {['html', 'svg', 'markdown', 'jsx'].includes(activeArtifact.type) && (
+            {['html', 'svg', 'markdown', 'jsx'].includes(normalizedType) && (
               <>
                 <span className="artifact-title-separator"> · </span>
-                <span className="artifact-title-format">{getFriendlyFormatName(activeArtifact.type)}</span>
+                <span className="artifact-title-format">{getFriendlyFormatName(normalizedType)}</span>
               </>
             )}
           </span>
@@ -583,16 +600,16 @@ export function ArtifactPanel() {
 
       {/* Viewer */}
       <div className="artifact-viewer">
-        {['html', 'svg', 'markdown', 'jsx'].includes(activeArtifact.type) && viewMode === 'code' ? (
+        {['html', 'svg', 'markdown', 'jsx'].includes(normalizedType) && viewMode === 'code' ? (
           <pre className="artifact-code-content">
             <code
-              className={`language-${highlightLang || activeArtifact.type}`}
+              className={`language-${highlightLang || normalizedType}`}
               dangerouslySetInnerHTML={{ __html: highlightedCode }}
             />
           </pre>
         ) : (
           <>
-            {activeArtifact.type === 'html' && (
+            {normalizedType === 'html' && (
               <iframe
                 sandbox="allow-scripts"
                 srcDoc={cleanContent}
@@ -601,7 +618,7 @@ export function ArtifactPanel() {
               />
             )}
             
-            {activeArtifact.type === 'markdown' && (
+            {normalizedType === 'markdown' && (
               <div className="artifact-markdown-content">
                 <ReactMarkdown 
                   remarkPlugins={[remarkGfm]}
@@ -618,7 +635,7 @@ export function ArtifactPanel() {
               </div>
             )}
 
-            {activeArtifact.type === 'svg' && (
+            {normalizedType === 'svg' && (
               <div className="artifact-svg-content">
                 <img 
                   src={"data:image/svg+xml;base64," + btoa(unescape(encodeURIComponent(cleanContent)))} 
@@ -627,7 +644,7 @@ export function ArtifactPanel() {
               </div>
             )}
 
-            {activeArtifact.type === 'jsx' && (
+            {normalizedType === 'jsx' && (
               <iframe
                 sandbox="allow-scripts"
                 srcDoc={buildJsxSandbox(cleanContent, activeArtifact.title)}
@@ -638,7 +655,7 @@ export function ArtifactPanel() {
           </>
         )}
 
-        {activeArtifact.type === 'code' && (
+        {normalizedType === 'code' && (
           isRunningCode && getRunnableLanguage() ? (
             <iframe
               key={runKey}
@@ -660,6 +677,15 @@ export function ArtifactPanel() {
               />
             </pre>
           )
+        )}
+
+        {/* Fallback de segurança universal: se nenhum renderizador acima capturou, exibe como Markdown/texto para nunca ficar em branco */}
+        {!['html', 'svg', 'markdown', 'jsx', 'code'].includes(normalizedType) && (
+          <div className="artifact-markdown-content">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+              {cleanContent}
+            </ReactMarkdown>
+          </div>
         )}
       </div>
 

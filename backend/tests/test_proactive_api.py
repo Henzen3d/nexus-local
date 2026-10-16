@@ -471,3 +471,59 @@ async def test_proactive_companion_chat_endpoint(_isolation, monkeypatch):
     assert data["artifact"]["id"]
     assert data["artifact"]["title"]
 
+
+async def test_proactive_bot_chat_and_computer_navigate(_isolation):
+    """Testa o endpoint POST /api/proactive/bots/{id}/chat e navegação sandbox anti-SSRF."""
+    db = await get_db()
+    try:
+        user_id, conv_id, _ = await seed_user_conv(db)
+    finally:
+        await db.close()
+
+    client = _routers()
+
+    # 1. Lista bots para obter o bot inicial semeado
+    res_bots = client.get("/api/proactive/bots", headers=_auth(user_id))
+    assert res_bots.status_code == 200
+    bots = res_bots.json()["bots"]
+    assert len(bots) >= 1
+    bot_id = bots[0]["id"]
+
+    # 2. Testa navegação segura
+    res_nav = client.post(
+        f"/api/proactive/bots/{bot_id}/computer/navigate",
+        json={"url": "https://news.ycombinator.com"},
+        headers=_auth(user_id),
+    )
+    assert res_nav.status_code == 200
+    data_nav = res_nav.json()
+    assert data_nav["ok"] is True
+    assert data_nav["action"]["action"] == "navigate"
+
+    # 3. Testa bloqueio anti-SSRF de IP privado
+    res_ssrf = client.post(
+        f"/api/proactive/bots/{bot_id}/computer/navigate",
+        json={"url": "http://127.0.0.1:8000/internal"},
+        headers=_auth(user_id),
+    )
+    assert res_ssrf.status_code == 200
+    data_ssrf = res_ssrf.json()
+    assert data_ssrf["ok"] is False
+    assert "Anti-SSRF" in data_ssrf["error"] or "privado" in data_ssrf["error"].lower()
+
+    # 4. Testa chat com o bot especialista
+    res_chat = client.post(
+        f"/api/proactive/bots/{bot_id}/chat",
+        json={
+            "message": "qual a capital da frança?",
+            "history": [],
+        },
+        headers=_auth(user_id),
+    )
+    assert res_chat.status_code == 200
+    data_chat = res_chat.json()
+    assert data_chat["ok"] is True
+    assert data_chat["reply"]
+    assert isinstance(data_chat["actions"], list)
+
+

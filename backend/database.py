@@ -2231,6 +2231,13 @@ async def _migrate_proactive_schema(db: aiosqlite.Connection) -> None:
     except Exception as e:
         logger.error("[database migration] erro ao criar índices do assistente proativo: %s", e)
 
+    # Normalização de tipos de artifacts criados pelo assistente proativo
+    try:
+        await db.execute("UPDATE artifacts SET type = 'markdown' WHERE type = 'text/markdown'")
+        await db.commit()
+    except Exception as e:
+        logger.debug("[database migration] normalizacao artifacts type markdown: %s", e)
+
     # F2.1.6 — chaves de meta (admin). INSERT OR IGNORE preserva valores já editados.
     try:
         for key, value in PROACTIVE_META_DEFAULTS.items():

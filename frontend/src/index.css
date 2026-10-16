@@ -14649,6 +14649,95 @@ html[data-theme="light"] .model-option-provider-tag {
   color: var(--ink);
 }
 
+.companion-maximize-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.companion-maximize-btn:hover {
+  background: var(--surface-dark);
+  color: var(--ink);
+}
+
+/* ── Alças de Redimensionamento estilo Janela Windows (8 direções) ─── */
+.companion-resize-edge {
+  position: absolute;
+  z-index: 50;
+  transition: background-color 0.15s ease;
+}
+.companion-resize-edge:hover,
+.companion-resize-corner:hover {
+  background-color: rgba(var(--primary-rgb, 99, 102, 241), 0.25);
+}
+.companion-resize-edge.n {
+  top: 0;
+  left: 12px;
+  right: 12px;
+  height: 6px;
+  cursor: ns-resize;
+}
+.companion-resize-edge.s {
+  bottom: 0;
+  left: 12px;
+  right: 12px;
+  height: 6px;
+  cursor: ns-resize;
+}
+.companion-resize-edge.w {
+  left: 0;
+  top: 12px;
+  bottom: 12px;
+  width: 6px;
+  cursor: ew-resize;
+}
+.companion-resize-edge.e {
+  right: 0;
+  top: 12px;
+  bottom: 12px;
+  width: 6px;
+  cursor: ew-resize;
+}
+.companion-resize-corner {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  z-index: 55;
+  transition: background-color 0.15s ease;
+}
+.companion-resize-corner.nw {
+  top: 0;
+  left: 0;
+  cursor: nwse-resize;
+  border-top-left-radius: 14px;
+}
+.companion-resize-corner.ne {
+  top: 0;
+  right: 0;
+  cursor: nesw-resize;
+  border-top-right-radius: 14px;
+}
+.companion-resize-corner.sw {
+  bottom: 0;
+  left: 0;
+  cursor: nesw-resize;
+  border-bottom-left-radius: 14px;
+}
+.companion-resize-corner.se {
+  bottom: 0;
+  right: 0;
+  cursor: nwse-resize;
+  border-bottom-right-radius: 14px;
+}
+
 /* Card do Artefato Anexo */
 .companion-artifact-bar {
   display: flex;

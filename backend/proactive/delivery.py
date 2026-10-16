@@ -335,7 +335,7 @@ async def ensure_proactive_artifact(
             conv_id,
             message_id,
             {
-                "type": "text/markdown",
+                "type": "markdown",
                 "title": final_title,
                 "content": art_content,
             },
