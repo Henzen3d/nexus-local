@@ -22,6 +22,7 @@ import { FamilySettings } from './FamilySettings'
 import { UsageDashboard } from './UsageDashboard'
 import { RankingWeightsSettings } from './RankingWeightsSettings'
 import { RankingsView } from './RankingsView'
+import { ToolsPanel } from './ToolsPanel'
 import { UserMemoryPanel } from './UserMemoryPanel'
 import { LogsPanel } from './LogsPanel'
 import { ProactiveSettings } from './ProactiveSettings'
@@ -2628,6 +2629,8 @@ function AdminPanelDesktop() {
                   {t('settings.toolsDesc')}
                 </p>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', width: '100%' }}>
+                  <ToolsPanel />
+                  <div className="admin-divider" style={{ margin: 0 }} />
                   <EnhancerSettings />
                   <div className="admin-divider" style={{ margin: 0 }} />
                   <FusionSettings />

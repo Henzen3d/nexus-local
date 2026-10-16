@@ -1,4 +1,4 @@
-import type { Conversation, ConversationDetail, Model, Provider, CacheStats, CacheSettings, CacheEntry, EnhancerConfig, FusionConfig, Artifact, Attachment, LibraryItem, VisionRelayConfig, WebSearchConfig, WebSearchLog, AutoRouterPreviewResult, RankingEntry, RankingSyncResult } from '../types'
+import type { Conversation, ConversationDetail, Model, Provider, CacheStats, CacheSettings, CacheEntry, EnhancerConfig, FusionConfig, Artifact, Attachment, LibraryItem, VisionRelayConfig, WebSearchConfig, WebSearchLog, AutoRouterPreviewResult, RankingEntry, RankingSyncResult, ToolsStatusResponse, PublicApisResponse, ToolConfig } from '../types'
 
 export interface UserProfileApi {
   user_id?: string
@@ -798,6 +798,104 @@ export const api = {
   // F9.4 — Pareamento do Companion Móvel
   getProactiveCompanionPair: () =>
     fetchJSON<{ ok: boolean; pair_code: string; selected_pet: string; expires_in_seconds: number; companion_url: string }>('/proactive/companion/pair'),
+
+  // ── Ferramentas & APIs Públicas (Free APIs) ──────────────────────
+  executeCode: (language: string, code: string, stdin = '') =>
+    fetchJSON<{
+      success: boolean
+      data: {
+        language?: string
+        version?: string
+        stdout?: string
+        stderr?: string
+        exit_code?: number
+        compile_output?: string
+        execution_time_ms?: number
+        source?: string
+      }
+      error?: string
+    }>('/tools/execute', {
+      method: 'POST',
+      body: JSON.stringify({ language, code, stdin }),
+    }),
+
+  renderDiagram: (type: string, source_code: string, width = 600, height = 380) =>
+    fetchJSON<{
+      success: boolean
+      data: {
+        diagram_type?: string
+        svg?: string
+        source?: string
+      }
+      error?: string
+    }>('/tools/diagram', {
+      method: 'POST',
+      body: JSON.stringify({ type, source_code, width, height }),
+    }),
+
+  getToolsStatus: () =>
+    fetchJSON<ToolsStatusResponse>('/admin/tools/status'),
+
+  toggleToolProvider: (providerId: string, enabled: boolean) =>
+    fetchJSON<{ provider_id: string; enabled: boolean }>(`/admin/tools/provider/${encodeURIComponent(providerId)}/toggle`, {
+      method: 'PUT',
+      body: JSON.stringify({ enabled }),
+    }),
+
+  testToolProvider: (providerId: string) =>
+    fetchJSON<any>(`/admin/tools/provider/${encodeURIComponent(providerId)}/test`, {
+      method: 'POST',
+    }),
+
+  clearToolCache: (family: string) =>
+    fetchJSON<{ family: string; cleared_entries: number }>(`/admin/tools/cache/${encodeURIComponent(family)}`, {
+      method: 'DELETE',
+    }),
+
+  getToolsUsage: (period: '24h' | '7d' | '30d' = '24h') =>
+    fetchJSON<{
+      period: string
+      by_family: Array<{ family: string; calls: number; hits: number; latency_ms: number }>
+      by_provider: Array<{ provider: string; family: string; calls: number; status: string }>
+    }>(`/admin/tools/usage?period=${period}`),
+
+  syncPublicApis: () =>
+    fetchJSON<{
+      success: boolean
+      last_synced?: string
+      total_apis?: number
+      high_relevance?: number
+      medium_relevance?: number
+      low_relevance?: number
+      error?: string
+    }>('/admin/tools/sync-public-apis', {
+      method: 'POST',
+    }),
+
+  getPublicApis: (params: { relevance?: string; category?: string; search?: string; limit?: number; offset?: number } = {}) => {
+    const q = new URLSearchParams()
+    if (params.relevance) q.set('relevance', params.relevance)
+    if (params.category) q.set('category', params.category)
+    if (params.search) q.set('search', params.search)
+    if (params.limit) q.set('limit', String(params.limit))
+    if (params.offset) q.set('offset', String(params.offset))
+    const qs = q.toString()
+    return fetchJSON<PublicApisResponse>(`/admin/tools/public-apis${qs ? `?${qs}` : ''}`)
+  },
+
+  getToolConfig: () =>
+    fetchJSON<ToolConfig>('/admin/tools/config'),
+
+  updateToolConfig: (config: {
+    global_enabled?: boolean
+    auto_detection?: boolean
+    rate_limit_per_user?: number
+    ttls?: Record<string, number>
+  }) =>
+    fetchJSON<{ success: boolean }>('/admin/tools/config', {
+      method: 'PUT',
+      body: JSON.stringify(config),
+    }),
 }
 
 export interface MemoryStatsApi {

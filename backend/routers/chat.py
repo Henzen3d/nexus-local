@@ -587,6 +587,56 @@ async def _run_turn(
             "4. Vá direto ao ponto central para permitir que a conversa continue dinâmica e sem pausas longas."
         )
 
+    # ── Ferramentas & APIs Gratuitas (Free APIs & Intent Detection) ──
+    try:
+        tool_auto_enabled = True
+        try:
+            async with db.execute("SELECT value FROM meta WHERE key = 'tool_auto_detection'") as cur:
+                m_row = await cur.fetchone()
+                if m_row and m_row[0]:
+                    tool_auto_enabled = m_row[0].lower() in ("true", "1")
+        except Exception:
+            pass
+
+        if tool_auto_enabled and not web_search_used:
+            from backend.tools.intent import detect_intents
+            from backend.tools.dispatcher import dispatch_tool
+            from backend.tools.context_injector import build_tools_context_block
+
+            detected_intents = detect_intents(user_message)
+            high_conf_intents = [i for i in detected_intents if i.confidence >= 0.8]
+
+            tool_results = []
+            for item in high_conf_intents[:2]:
+                try:
+                    await ws.send_json({
+                        "type": "tool_executing",
+                        "family": item.family,
+                        "action": item.action,
+                    })
+                except Exception:
+                    pass
+
+                t_res = await dispatch_tool(item.family, item.params, user_id=user_id, db=db)
+                if t_res.success:
+                    tool_results.append(t_res)
+                    try:
+                        await ws.send_json({
+                            "type": "tool_executed",
+                            "family": item.family,
+                            "provider": t_res.provider,
+                            "cached": t_res.cached,
+                        })
+                    except Exception:
+                        pass
+
+            if tool_results:
+                tool_block = build_tools_context_block(tool_results)
+                if tool_block:
+                    system_instruction += "\n\n" + tool_block
+    except Exception as e_tools:
+        logger.error("Erro na detecção/execução de ferramentas em chat:", exc_info=e_tools)
+
     # ── Intelligent UI: configuração efetiva do turno (painel admin > .env) ─
     # Lida uma vez e usada tanto na oferta do catálogo quanto na extração do
     # fence. Com a flag desligada o turno é idêntico ao chat sem o recurso:

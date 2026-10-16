@@ -1119,3 +1119,128 @@ export interface ImageTask {
   created_at: string
   completed_at?: string | null
 }
+
+// ─── Free APIs & Tools System ────────────────────────────────────────────────
+
+export interface CodeExecRequest {
+  language: string
+  code: string
+  stdin?: string
+}
+
+export interface CodeExecData {
+  language: string
+  version?: string
+  stdout: string
+  stderr: string
+  exit_code: number
+  compile_output?: string
+  execution_time_ms?: number
+  source?: string
+}
+
+export interface ToolResultResponse<T = any> {
+  success: boolean
+  data: T | null
+  error?: string | null
+  provider?: string
+  cached?: boolean
+  latency_ms?: number
+}
+
+export interface DiagramRequest {
+  type: string
+  source_code: string
+  width?: number
+  height?: number
+}
+
+export interface DiagramData {
+  diagram_type?: string
+  chart_type?: string
+  svg?: string
+  image_url?: string
+  source?: string
+}
+
+export interface ToolProviderStatus {
+  id: string
+  display_name: string
+  base_url: string
+  requires_key: boolean
+  env_key_name?: string
+  fallback_order: number
+  enabled: boolean
+  status: 'available' | 'exhausted' | 'disabled'
+  consecutive_errors: number
+  exhausted_at?: string | null
+  estimated_reset_at?: string | null
+  last_error?: string | null
+  total_calls_24h: number
+  cache_hit_rate: number
+  avg_latency_ms: number
+}
+
+export interface ToolFamilyStatus {
+  id: string
+  display_name: string
+  description?: string
+  enabled: boolean
+  ttl_seconds: number
+  providers: ToolProviderStatus[]
+}
+
+export interface ToolsStatusResponse {
+  families: ToolFamilyStatus[]
+  global_stats: {
+    total_calls_24h: number
+    cache_hit_rate: number
+    active_providers: number
+    exhausted_providers: number
+  }
+}
+
+export interface ToolUsageReport {
+  period: string
+  by_family: Array<{
+    family: string
+    calls: number
+    hits: number
+    latency_ms: number
+  }>
+  by_provider: Array<{
+    provider: string
+    family: string
+    calls: number
+    status: string
+  }>
+}
+
+export interface PublicApiItem {
+  id: string
+  api_name: string
+  description?: string
+  auth?: string
+  https: boolean
+  cors?: string
+  category?: string
+  url: string
+  relevance: 'high' | 'medium' | 'low' | 'none' | string
+  integrated: boolean
+  discovered_at: string
+}
+
+export interface PublicApisResponse {
+  total: number
+  limit: number
+  offset: number
+  apis: PublicApiItem[]
+}
+
+export interface ToolConfig {
+  global_enabled: boolean
+  auto_detection: boolean
+  rate_limit_per_user: number
+  ttls: Record<string, number>
+}
+

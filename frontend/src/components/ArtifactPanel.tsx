@@ -1,12 +1,17 @@
-import { useState, useRef, useEffect, useMemo } from 'react'
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useStore } from '../store/useStore'
-import { Copy, Check, Download, ExternalLink, X, FileCode, FileText, Image, Globe, ChevronLeft, ChevronRight, Pencil, Send, Atom, Play, Square, Eye, Code2 } from 'lucide-react'
+import {
+  Copy, Check, Download, ExternalLink, X, FileCode, FileText, Image, Globe,
+  ChevronLeft, ChevronRight, Pencil, Send, Atom, Play, Square, Eye, Code2,
+  Terminal, Loader2, RefreshCw, AlertCircle, CheckCircle2, Network, BarChart2
+} from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { useChatContext } from '../context/ChatContext'
 import { ThinkingParser } from '../utils/ThinkingParser'
 import { highlightCode } from './CodeBlock'
+import { api } from '../api/client'
 
 /**
  * buildJsxSandbox — constrói um documento HTML completo que executa
@@ -107,7 +112,6 @@ ${code}
  * interceptando chamadas de console.log/error/warn para exibi-las na tela.
  */
 function buildJsSandbox(userCode: string): string {
-  // Escapa tags script para evitar quebra de string no render
   const escapedCode = userCode.replace(/<\/script>/g, '<\\/script>')
   return `<!DOCTYPE html>
 <html>
@@ -168,7 +172,6 @@ function buildJsSandbox(userCode: string): string {
 
     try {
       appendLog(['Executando JavaScript...'], 'info');
-      // Eval ou execução direta via script inserido
       const script = document.createElement('script');
       script.textContent = \`${escapedCode}\`;
       document.body.appendChild(script);
@@ -211,7 +214,6 @@ function buildPythonSandbox(userCode: string): string {
     .log-info { color: #60a5fa; }
     .system-msg { color: #888; font-style: italic; margin-top: 10px; }
   </style>
-  <!-- Pyodide CDN -->
   <script src="https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.js"></script>
 </head>
 <body>
@@ -232,17 +234,11 @@ function buildPythonSandbox(userCode: string): string {
     async function main() {
       try {
         let pyodide = await loadPyodide();
-        // Remove a mensagem de carregando
         output.innerHTML = "";
         appendLog("Pyodide carregado. Executando script Python...", "info");
-
-        // Redireciona standard output
         pyodide.setStdout({ batched: (msg) => appendLog(msg, 'log') });
         pyodide.setStderr({ batched: (msg) => appendLog(msg, 'error') });
-
-        // Executa o código Python
         await pyodide.runPythonAsync(\`${userCode.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, '\\$')}\`);
-        
         appendLog("\\n--- Execução Concluída ---", "system-msg");
       } catch (err) {
         appendLog(err.message, "error");
@@ -265,13 +261,34 @@ export function ArtifactPanel() {
   // Modo de visualização de arquivo (prévia ou código)
   const [viewMode, setViewMode] = useState<'preview' | 'code'>('preview')
 
-  // Estados para execução segura de código (sandbox)
+  // Estados para execução segura client-side (sandbox iframe legada)
   const [isRunningCode, setIsRunningCode] = useState(false)
   const [runKey, setRunKey] = useState(0)
+
+  // Estados para execução de código server-side (Piston / Judge0)
+  const [isExecutingRemote, setIsExecutingRemote] = useState(false)
+  const [execResult, setExecResult] = useState<{
+    language?: string
+    version?: string
+    stdout?: string
+    stderr?: string
+    exit_code?: number
+    compile_output?: string
+    execution_time_ms?: number
+    source?: string
+    error?: string
+  } | null>(null)
+
+  // Estados para renderização de diagramas (Kroki / QuickChart)
+  const [renderedSvg, setRenderedSvg] = useState<string | null>(null)
+  const [diagramLoading, setDiagramLoading] = useState(false)
+  const [diagramError, setDiagramError] = useState<string | null>(null)
 
   // Reseta estado de execução e visualização ao trocar de artefato/versão
   useEffect(() => {
     setIsRunningCode(false)
+    setIsExecutingRemote(false)
+    setExecResult(null)
     setViewMode('preview')
   }, [activeArtifact?.id])
 
@@ -292,13 +309,30 @@ export function ArtifactPanel() {
     if (raw === 'text/html' || raw === 'html' || raw === 'htm') return 'html'
     if (raw === 'image/svg+xml' || raw === 'svg') return 'svg'
     if (raw === 'jsx' || raw === 'tsx' || raw === 'react') return 'jsx'
+    if (['diagram', 'mermaid', 'plantuml', 'd2', 'graphviz', 'chart'].includes(raw)) return 'diagram'
     if (raw === 'code') return 'code'
     if (raw.startsWith('text/')) return 'markdown'
     // Se o tipo for desconhecido, analisa o conteúdo para inferir o tipo
     if (cleanContent.startsWith('<!DOCTYPE html') || cleanContent.startsWith('<html')) return 'html'
     if (cleanContent.startsWith('<svg')) return 'svg'
+    if (/^\s*(sequenceDiagram|classDiagram|erDiagram|gantt|pie|flowchart|graph\s+[TBRLE]|gitGraph)/i.test(cleanContent)) return 'diagram'
+    if (/^\s*@startuml/i.test(cleanContent)) return 'diagram'
+    if (/^\s*\{\s*"chart"\s*:/i.test(cleanContent)) return 'diagram'
     return 'markdown'
   }, [activeArtifact?.type, cleanContent])
+
+  /**
+   * Determina a variante do diagrama (mermaid, plantuml, d2, graphviz, chart)
+   */
+  const diagramType = useMemo(() => {
+    if (!activeArtifact) return 'mermaid'
+    const raw = activeArtifact.type?.toLowerCase().trim() || ''
+    if (raw === 'plantuml' || /^\s*@startuml/i.test(cleanContent)) return 'plantuml'
+    if (raw === 'd2' || (/^\s*(\w+)\s*\{/i.test(cleanContent) && cleanContent.includes('->'))) return 'd2'
+    if (raw === 'graphviz' || /^\s*(digraph|graph)\s*\{/i.test(cleanContent)) return 'graphviz'
+    if (raw === 'chart' || /^\s*\{\s*"chart"\s*:/i.test(cleanContent)) return 'chart'
+    return 'mermaid'
+  }, [activeArtifact, cleanContent])
 
   /**
    * Detecta a linguagem para syntax highlight a partir do tipo/título do artifact.
@@ -311,9 +345,9 @@ export function ArtifactPanel() {
     if (type === 'svg') return 'svg'
     if (type === 'jsx') return 'jsx'
     if (type === 'markdown') return 'markdown'
+    if (type === 'diagram') return diagramType
 
     const title = activeArtifact.title.toLowerCase()
-    // "PYTHON Code", "JS Code", "typescript code", etc.
     const known: Array<[RegExp, string]> = [
       [/\b(python|py)\b/, 'python'],
       [/\b(typescript|ts)\b/, 'typescript'],
@@ -339,11 +373,10 @@ export function ArtifactPanel() {
     for (const [re, lang] of known) {
       if (re.test(title)) return lang
     }
-    // Fallback: primeira palavra do título se parecer um id de linguagem
     const first = title.split(/[\s._-]+/)[0]?.replace(/[^a-z0-9+#]/g, '')
     if (first && first.length >= 1 && first.length <= 12 && first !== 'code') return first
     return ''
-  }, [activeArtifact, normalizedType])
+  }, [activeArtifact, normalizedType, diagramType])
 
   const highlightedCode = useMemo(
     () => (cleanContent ? highlightCode(cleanContent, highlightLang) : ''),
@@ -356,17 +389,33 @@ export function ArtifactPanel() {
       case 'markdown': return 'Markdown'
       case 'svg': return 'SVG'
       case 'jsx': return 'React'
+      case 'diagram': return diagramType === 'chart' ? 'Gráfico' : `Diagrama (${diagramType})`
       default: return 'Código'
     }
   }
 
-  if (!activeArtifact) return null
-
   const getRunnableLanguage = () => {
-    if (normalizedType !== 'code') return null
-    const titleLower = activeArtifact.title.toLowerCase()
-    if (titleLower.includes('javascript') || titleLower.includes('js')) return 'javascript'
-    if (titleLower.includes('python') || titleLower.includes('py')) return 'python'
+    if (normalizedType !== 'code' || !activeArtifact) return null
+    const lang = (highlightLang || '').toLowerCase()
+    const titleLower = (activeArtifact.title || '').toLowerCase()
+    const supported = [
+      'python', 'py', 'javascript', 'js', 'typescript', 'ts',
+      'java', 'cpp', 'c', 'csharp', 'cs', 'go', 'rust', 'rs',
+      'ruby', 'rb', 'php', 'bash', 'sh', 'swift', 'kotlin', 'kt', 'sql'
+    ]
+    for (const s of supported) {
+      if (lang === s || titleLower.includes(s)) {
+        if (s === 'py') return 'python'
+        if (s === 'js') return 'javascript'
+        if (s === 'ts') return 'typescript'
+        if (s === 'sh') return 'bash'
+        if (s === 'cs') return 'csharp'
+        if (s === 'rs') return 'rust'
+        if (s === 'rb') return 'ruby'
+        if (s === 'kt') return 'kotlin'
+        return s
+      }
+    }
     return null
   }
 
@@ -376,6 +425,7 @@ export function ArtifactPanel() {
       case 'markdown': return 'md'
       case 'svg': return 'svg'
       case 'jsx': return 'jsx'
+      case 'diagram': return renderedSvg ? 'svg' : 'txt'
       default: return 'txt'
     }
   }
@@ -385,6 +435,7 @@ export function ArtifactPanel() {
       case 'html': return 'text/html'
       case 'markdown': return 'text/markdown'
       case 'svg': return 'image/svg+xml'
+      case 'diagram': return renderedSvg ? 'image/svg+xml' : 'text/plain'
       default: return 'text/plain'
     }
   }
@@ -397,13 +448,14 @@ export function ArtifactPanel() {
 
   const handleDownload = () => {
     const mime = getMimeType(normalizedType)
-    const blob = new Blob([cleanContent], { type: mime })
+    const content = (normalizedType === 'diagram' && renderedSvg) ? renderedSvg : cleanContent
+    const blob = new Blob([content], { type: mime })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
     
-    // Remove caracteres inválidos do título para nome de arquivo
-    const safeTitle = activeArtifact.title.replace(/[^a-z0-9\s-_.]/gi, '')
+    const rawTitle = activeArtifact?.title || 'artifact'
+    const safeTitle = rawTitle.replace(/[^a-z0-9\s-_.]/gi, '')
     const ext = getFileExtension(normalizedType)
     a.download = safeTitle.toLowerCase().endsWith(`.${ext}`) ? safeTitle : `${safeTitle}.${ext}`
     
@@ -415,9 +467,68 @@ export function ArtifactPanel() {
 
   const handleOpenNewTab = () => {
     const mime = getMimeType(normalizedType)
-    const blob = new Blob([cleanContent], { type: mime })
+    const content = (normalizedType === 'diagram' && renderedSvg) ? renderedSvg : cleanContent
+    const blob = new Blob([content], { type: mime })
     const url = URL.createObjectURL(blob)
     window.open(url, '_blank')
+  }
+
+  // ── Renderização Kroki / QuickChart ────────────────────────────────
+  const fetchDiagram = useCallback(async () => {
+    if (normalizedType !== 'diagram' || !cleanContent) return
+    setDiagramLoading(true)
+    setDiagramError(null)
+    try {
+      const res = await api.renderDiagram(diagramType, cleanContent)
+      if (res.success && res.data?.svg) {
+        setRenderedSvg(res.data.svg)
+      } else {
+        setDiagramError(res.error || 'Falha ao renderizar diagrama')
+      }
+    } catch (err: any) {
+      setDiagramError(err.message || 'Erro ao conectar ao renderizador Kroki')
+    } finally {
+      setDiagramLoading(false)
+    }
+  }, [normalizedType, diagramType, cleanContent])
+
+  useEffect(() => {
+    if (normalizedType === 'diagram') {
+      fetchDiagram()
+    } else {
+      setRenderedSvg(null)
+      setDiagramError(null)
+    }
+  }, [normalizedType, diagramType, cleanContent, fetchDiagram])
+
+  // ── Execução de Código Remota (Piston / Judge0) ────────────────────
+  const handleExecuteCode = async () => {
+    const lang = getRunnableLanguage()
+    if (!lang || !cleanContent || isExecutingRemote) return
+    setIsExecutingRemote(true)
+    setExecResult(null)
+    try {
+      const res = await api.executeCode(lang, cleanContent)
+      if (res.success && res.data) {
+        setExecResult(res.data)
+      } else {
+        setExecResult({
+          error: res.error || 'Falha na execução',
+          stdout: '',
+          stderr: res.error || '',
+          exit_code: 1,
+        })
+      }
+    } catch (err: any) {
+      setExecResult({
+        error: err.message || 'Erro ao conectar ao executor de código',
+        stdout: '',
+        stderr: err.message || '',
+        exit_code: 1,
+      })
+    } finally {
+      setIsExecutingRemote(false)
+    }
   }
 
   const renderIcon = (type: string) => {
@@ -430,16 +541,17 @@ export function ArtifactPanel() {
         return <FileText size={16} className="text-orange-500" />
       case 'jsx':
         return <Atom size={16} className="text-cyan-500" />
+      case 'diagram':
+        return diagramType === 'chart' ? (
+          <BarChart2 size={16} className="text-emerald-500" />
+        ) : (
+          <Network size={16} className="text-emerald-500" />
+        )
       default:
         return <FileCode size={16} className="text-purple-500" />
     }
   }
 
-  /**
-   * Constrói o prompt completo com contexto do artifact e envia ao modelo.
-   * O chat exibe apenas o prompt curto (displayText); o backend recebe o prompt
-   * completo incluindo o conteúdo atual do artifact para que o modelo possa editá-lo.
-   */
   const handleEdit = () => {
     if (!editPrompt.trim() || !activeArtifact || isStreaming) return
 
@@ -447,11 +559,11 @@ export function ArtifactPanel() {
       html: 'HTML',
       svg: 'SVG',
       markdown: 'Markdown',
+      diagram: 'diagrama',
       code: 'código',
     }
     const label = typeLabel[normalizedType] ?? normalizedType.toUpperCase()
 
-    // Para tipos que usam blocos de código, envolve o conteúdo no fence correto
     const wrappedContent = normalizedType !== 'markdown'
       ? `\`\`\`${normalizedType}\n${cleanContent}\n\`\`\``
       : `\`\`\`markdown\n${cleanContent}\n\`\`\``
@@ -462,7 +574,6 @@ export function ArtifactPanel() {
       `[DOCUMENTO ATUAL: "${activeArtifact.title}"]\n${wrappedContent}\n[/DOCUMENTO ATUAL]\n\n` +
       `Instrução: ${editPrompt.trim()}`
 
-    // Texto exibido no chat — versão curta e legível
     const displayText = `✏️ ${activeArtifact.title}: ${editPrompt.trim()}`
 
     sendMessage(fullPrompt, displayText)
@@ -470,31 +581,32 @@ export function ArtifactPanel() {
   }
 
   const handleEditKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    // Enter sem Shift envia; Shift+Enter cria nova linha
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       handleEdit()
     }
   }
 
+  if (!activeArtifact) return null
+
   return (
     <div className="artifact-panel">
       {/* Toolbar */}
       <div className="artifact-toolbar">
         <div className="artifact-info">
-          {['html', 'svg', 'markdown', 'jsx'].includes(normalizedType) ? (
+          {['html', 'svg', 'markdown', 'jsx', 'diagram'].includes(normalizedType) ? (
             <div className="segmented-control">
               <button 
                 className={`segmented-btn custom-tooltip-trigger ${viewMode === 'preview' ? 'active' : ''}`}
                 onClick={() => setViewMode('preview')}
-                data-tooltip={t('artifacts.preview')}
+                data-tooltip={t('artifacts.preview', 'Prévia')}
               >
                 <Eye size={14} />
               </button>
               <button 
                 className={`segmented-btn custom-tooltip-trigger ${viewMode === 'code' ? 'active' : ''}`}
                 onClick={() => setViewMode('code')}
-                data-tooltip={t('artifacts.code')}
+                data-tooltip={t('artifacts.code', 'Código')}
               >
                 <Code2 size={14} />
               </button>
@@ -505,7 +617,7 @@ export function ArtifactPanel() {
           
           <span className="artifact-title" title={activeArtifact.title}>
             {activeArtifact.title}
-            {['html', 'svg', 'markdown', 'jsx'].includes(normalizedType) && (
+            {['html', 'svg', 'markdown', 'jsx', 'diagram'].includes(normalizedType) && (
               <>
                 <span className="artifact-title-separator"> · </span>
                 <span className="artifact-title-format">{getFriendlyFormatName(normalizedType)}</span>
@@ -515,7 +627,7 @@ export function ArtifactPanel() {
           <span className="artifact-version-tag">v{activeArtifact.version}</span>
         </div>
 
-        {/* Navegação entre versões — só aparece quando há mais de uma */}
+        {/* Navegação entre versões */}
         {artifactHistory.length > 1 && (() => {
           const currentIdx = artifactHistory.findIndex((a) => a.id === activeArtifact.id)
           const total = artifactHistory.length
@@ -525,7 +637,7 @@ export function ArtifactPanel() {
                 className="artifact-action-btn custom-tooltip-trigger"
                 onClick={() => navigateVersion('prev')}
                 disabled={currentIdx <= 0}
-                data-tooltip={t('artifacts.prevVersion')}
+                data-tooltip={t('artifacts.prevVersion', 'Versão anterior')}
               >
                 <ChevronLeft size={14} />
               </button>
@@ -536,7 +648,7 @@ export function ArtifactPanel() {
                 className="artifact-action-btn custom-tooltip-trigger"
                 onClick={() => navigateVersion('next')}
                 disabled={currentIdx >= total - 1}
-                data-tooltip={t('artifacts.nextVersion')}
+                data-tooltip={t('artifacts.nextVersion', 'Próxima versão')}
               >
                 <ChevronRight size={14} />
               </button>
@@ -547,25 +659,23 @@ export function ArtifactPanel() {
         <div className="artifact-actions">
           {getRunnableLanguage() && (
             <button
-              className={`artifact-action-btn run-btn custom-tooltip-trigger ${isRunningCode ? 'running' : ''}`}
-              onClick={() => {
-                if (isRunningCode) {
-                  setIsRunningCode(false)
-                } else {
-                  setIsRunningCode(true)
-                  setRunKey((k) => k + 1)
-                }
-              }}
-              data-tooltip={isRunningCode ? t('artifacts.stopRun') : t('artifacts.runCode')}
+              className={`artifact-action-btn run-btn custom-tooltip-trigger ${isExecutingRemote ? 'running' : ''}`}
+              onClick={handleExecuteCode}
+              disabled={isExecutingRemote}
+              data-tooltip={isExecutingRemote ? t('artifacts.runningCode', 'Executando...') : t('artifacts.runCode', 'Executar código (Piston)')}
             >
-              {isRunningCode ? <Square size={14} className="text-red-500" /> : <Play size={14} className="text-green-500" />}
+              {isExecutingRemote ? (
+                <Loader2 size={14} className="animate-spin text-primary" />
+              ) : (
+                <Play size={14} className="text-emerald-500" />
+              )}
             </button>
           )}
 
           <button 
             className="artifact-action-btn custom-tooltip-trigger" 
             onClick={handleCopy} 
-            data-tooltip={t('artifacts.copyContent')}
+            data-tooltip={t('artifacts.copyContent', 'Copiar conteúdo')}
           >
             {copied ? <Check size={14} /> : <Copy size={14} />}
           </button>
@@ -573,7 +683,7 @@ export function ArtifactPanel() {
           <button 
             className="artifact-action-btn custom-tooltip-trigger" 
             onClick={handleDownload} 
-            data-tooltip={t('artifacts.downloadFile')}
+            data-tooltip={t('artifacts.downloadFile', 'Baixar arquivo')}
           >
             <Download size={14} />
           </button>
@@ -581,7 +691,7 @@ export function ArtifactPanel() {
           <button 
             className="artifact-action-btn custom-tooltip-trigger" 
             onClick={handleOpenNewTab} 
-            data-tooltip={t('artifacts.openNewTab')}
+            data-tooltip={t('artifacts.openNewTab', 'Abrir em nova aba')}
           >
             <ExternalLink size={14} />
           </button>
@@ -591,7 +701,7 @@ export function ArtifactPanel() {
           <button 
             className="artifact-action-btn close-btn custom-tooltip-trigger" 
             onClick={() => setArtifactPanelOpen(false)} 
-            data-tooltip={t('artifacts.closePanel')}
+            data-tooltip={t('artifacts.closePanel', 'Fechar painel')}
           >
             <X size={14} />
           </button>
@@ -600,7 +710,7 @@ export function ArtifactPanel() {
 
       {/* Viewer */}
       <div className="artifact-viewer">
-        {['html', 'svg', 'markdown', 'jsx'].includes(normalizedType) && viewMode === 'code' ? (
+        {['html', 'svg', 'markdown', 'jsx', 'diagram'].includes(normalizedType) && viewMode === 'code' ? (
           <pre className="artifact-code-content">
             <code
               className={`language-${highlightLang || normalizedType}`}
@@ -652,35 +762,123 @@ export function ArtifactPanel() {
                 title={activeArtifact.title}
               />
             )}
+
+            {normalizedType === 'diagram' && (
+              <div className="artifact-diagram-container">
+                {diagramLoading && (
+                  <div className="artifact-diagram-loading">
+                    <Loader2 size={24} className="animate-spin text-primary" />
+                    <span>{t('artifacts.renderingDiagram', 'Renderizando diagrama via Kroki...')}</span>
+                  </div>
+                )}
+                {diagramError && (
+                  <div className="artifact-diagram-error">
+                    <div className="artifact-diagram-error-header">
+                      <AlertCircle size={16} className="text-red-500" />
+                      <strong>{t('artifacts.diagramError', 'Falha ao renderizar diagrama')}</strong>
+                    </div>
+                    <pre className="artifact-diagram-error-text">{diagramError}</pre>
+                    <button 
+                      className="artifact-diagram-retry-btn" 
+                      onClick={fetchDiagram}
+                    >
+                      <RefreshCw size={13} /> {t('common.retry', 'Tentar novamente')}
+                    </button>
+                  </div>
+                )}
+                {!diagramLoading && !diagramError && renderedSvg && (
+                  <div 
+                    className="artifact-diagram-svg-wrap"
+                    dangerouslySetInnerHTML={{ __html: renderedSvg }} 
+                  />
+                )}
+              </div>
+            )}
           </>
         )}
 
         {normalizedType === 'code' && (
-          isRunningCode && getRunnableLanguage() ? (
-            <iframe
-              key={runKey}
-              sandbox="allow-scripts"
-              srcDoc={
-                getRunnableLanguage() === 'python'
-                  ? buildPythonSandbox(cleanContent)
-                  : buildJsSandbox(cleanContent)
-              }
-              referrerPolicy="no-referrer"
-              title="Code Execution Console"
-              className="artifact-console-frame"
-            />
-          ) : (
+          <div className="artifact-code-wrapper">
             <pre className="artifact-code-content">
               <code
                 className={`language-${highlightLang || 'code'}`}
                 dangerouslySetInnerHTML={{ __html: highlightedCode }}
               />
             </pre>
-          )
+
+            {/* Console de saída da execução remota Piston / Judge0 */}
+            {execResult && (
+              <div className="artifact-exec-console">
+                <div className="artifact-console-header">
+                  <div className="artifact-console-meta">
+                    <Terminal size={13} />
+                    <span className="artifact-console-status">
+                      {execResult.exit_code === 0 ? (
+                        <span className="status-success">
+                          <CheckCircle2 size={12} /> {t('artifacts.execSuccess', 'Sucesso')}
+                        </span>
+                      ) : (
+                        <span className="status-error">
+                          <AlertCircle size={12} /> {t('artifacts.execFailed', 'Erro')} ({execResult.exit_code ?? 1})
+                        </span>
+                      )}
+                    </span>
+                    <span className="artifact-console-tag">
+                      {execResult.language} {execResult.version || ''}
+                    </span>
+                    {execResult.execution_time_ms !== undefined && (
+                      <span className="artifact-console-tag">
+                        {execResult.execution_time_ms}ms
+                      </span>
+                    )}
+                    {execResult.source && (
+                      <span className="artifact-console-tag source-tag">
+                        {execResult.source}
+                      </span>
+                    )}
+                  </div>
+                  <button 
+                    className="artifact-console-close" 
+                    onClick={() => setExecResult(null)}
+                    title={t('common.close', 'Fechar')}
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+                <div className="artifact-console-body">
+                  {execResult.compile_output && (
+                    <div className="artifact-console-section compile">
+                      <div className="section-label">Compile Output:</div>
+                      <pre className="artifact-console-compile">{execResult.compile_output}</pre>
+                    </div>
+                  )}
+                  {execResult.stdout && (
+                    <div className="artifact-console-section stdout">
+                      <pre className="artifact-console-stdout">{execResult.stdout}</pre>
+                    </div>
+                  )}
+                  {execResult.stderr && (
+                    <div className="artifact-console-section stderr">
+                      <div className="section-label">Error Output:</div>
+                      <pre className="artifact-console-stderr">{execResult.stderr}</pre>
+                    </div>
+                  )}
+                  {execResult.error && (
+                    <div className="artifact-console-section stderr">
+                      <pre className="artifact-console-stderr">{execResult.error}</pre>
+                    </div>
+                  )}
+                  {!execResult.stdout && !execResult.stderr && !execResult.compile_output && !execResult.error && (
+                    <div className="artifact-console-empty">{t('artifacts.noOutput', '(Sem saída gerada)')}</div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
         )}
 
-        {/* Fallback de segurança universal: se nenhum renderizador acima capturou, exibe como Markdown/texto para nunca ficar em branco */}
-        {!['html', 'svg', 'markdown', 'jsx', 'code'].includes(normalizedType) && (
+        {/* Fallback de segurança universal */}
+        {!['html', 'svg', 'markdown', 'jsx', 'diagram', 'code'].includes(normalizedType) && (
           <div className="artifact-markdown-content">
             <ReactMarkdown remarkPlugins={[remarkGfm]}>
               {cleanContent}
@@ -695,7 +893,7 @@ export function ArtifactPanel() {
         <textarea
           ref={editInputRef}
           className="artifact-edit-input"
-          placeholder={isStreaming ? t('artifacts.waitingResponse') : t('artifacts.editPlaceholder')}
+          placeholder={isStreaming ? t('artifacts.waitingResponse', 'Aguardando...') : t('artifacts.editPlaceholder', 'Descreva o que deseja alterar...')}
           value={editPrompt}
           onChange={(e) => setEditPrompt(e.target.value)}
           onKeyDown={handleEditKeyDown}
@@ -706,7 +904,7 @@ export function ArtifactPanel() {
           className="artifact-edit-send"
           onClick={handleEdit}
           disabled={isStreaming || !editPrompt.trim()}
-          title={t('artifacts.applyEdit')}
+          title={t('artifacts.applyEdit', 'Aplicar')}
         >
           <Send size={14} />
         </button>

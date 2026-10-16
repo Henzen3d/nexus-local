@@ -35,6 +35,7 @@ from backend.routers.proactive import router as proactive_router
 from backend.routers.intelligent_ui import router as intelligent_ui_router
 from backend.routers.push import router as push_router
 from backend.routers.logs import router as logs_router
+from backend.routers.tools import router as tools_router
 from backend.ws_origin import allowed_origins_from_env
 
 app = FastAPI(title="NexusLocal", version="1.0.0")
@@ -79,6 +80,7 @@ app.include_router(proactive_router)
 app.include_router(intelligent_ui_router)
 app.include_router(push_router)
 app.include_router(logs_router)
+app.include_router(tools_router)
 
 
 
@@ -455,6 +457,48 @@ async def recover_interrupted_proactive():
         logger.error("[Proactive Startup Recovery] erro ao recuperar insights interrompidos:", exc_info=e)
 
 
+async def run_tool_maintenance_job():
+    """Libera cotas expiradas de ferramentas e limpa cache expirado a cada 5 min."""
+    from backend.database import get_db
+    from backend.tools.cache import evict_expired
+    from backend.tools.failover import release_expired_tool_quotas
+    from backend.tools.registry import ToolRegistry
+
+    await asyncio.sleep(45)
+    while True:
+        try:
+            db = await get_db()
+            try:
+                released = await release_expired_tool_quotas(db)
+                evicted = await evict_expired(db)
+                await ToolRegistry.get_instance().sync_with_db(db)
+                if released or evicted:
+                    logger.debug("[ToolMaintenance] %d quotas liberadas, %d caches expirados removidos", released, evicted)
+            finally:
+                await db.close()
+        except Exception as e:
+            logger.error("Erro no job de manutenção de ferramentas", exc_info=e)
+        await asyncio.sleep(5 * 60)
+
+
+async def run_public_apis_weekly_sync_job():
+    """Executa sincronização periódica semanal do repositório public-apis."""
+    from backend.database import get_db
+    from backend.tools.sync_public_apis import sync_public_apis
+
+    await asyncio.sleep(300)
+    while True:
+        try:
+            db = await get_db()
+            try:
+                await sync_public_apis(db)
+            finally:
+                await db.close()
+        except Exception as e:
+            logger.error("Erro na sincronização semanal de public-apis", exc_info=e)
+        await asyncio.sleep(7 * 24 * 60 * 60)
+
+
 @app.on_event("startup")
 async def startup():
     await init_db()
@@ -472,6 +516,14 @@ async def startup():
         logger.warning("[SQLite Boot] Não foi possível rodar integrity_check: %s", _ie)
     await recover_interrupted_dreams()
     await recover_interrupted_proactive()
+
+    # Auto-registra todos os provedores embutidos das 10 famílias de ferramentas
+    try:
+        from backend.tools.registry import auto_register_default_providers
+        auto_register_default_providers()
+    except Exception as e:
+        logger.error("[Tools] Erro ao registrar provedores de ferramentas:", exc_info=e)
+
     logger.info("NexusLocal iniciado - banco de dados pronto.")
     # Warm-up embedder before accepting heavy traffic (background task still lets HTTP start)
     # As referências ficam em app.state para os jobs não serem coletados pelo GC
@@ -489,6 +541,8 @@ async def startup():
         run_dream_consolidation_job(),
         run_project_memory_synthesis_job(),
         run_proactive_housekeeping_job(),
+        run_tool_maintenance_job(),
+        run_public_apis_weekly_sync_job(),
     ):
         task = asyncio.create_task(coro)
         app.state.background_tasks.add(task)
@@ -529,4 +583,25 @@ async def shutdown():
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "app": "NexusLocal"}
+    tools_status = "healthy"
+    try:
+        from backend.database import get_db
+        db = await get_db()
+        try:
+            async with db.execute("SELECT count(*) FROM tool_provider_quota WHERE status = 'exhausted'") as cur:
+                r = await cur.fetchone()
+                exhausted = r[0] if r else 0
+                if exhausted > 5:
+                    tools_status = "degraded"
+        finally:
+            await db.close()
+    except Exception:
+        tools_status = "unknown"
+
+    return {
+        "status": "ok",
+        "app": "NexusLocal",
+        "tools": {
+            "status": tools_status,
+        },
+    }

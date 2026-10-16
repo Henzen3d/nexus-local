@@ -1892,6 +1892,9 @@ async def init_db():
         # ── Assistente Proativo (F2.1) — tabelas, colunas e índices ─────────
         await _migrate_proactive_schema(db)
 
+        # ── Free APIs & Tool System (Fase 0) ────────────────────────────────
+        await _migrate_tool_system_schema(db)
+
         await claim_global_provider_keys(db)
         await seed_reasoning_controls(db)
 
@@ -2247,6 +2250,279 @@ async def _migrate_proactive_schema(db: aiosqlite.Connection) -> None:
         await db.commit()
     except Exception as e:
         logger.error("[database migration] erro ao semear meta do assistente proativo: %s", e)
+
+
+# ── Free APIs & Tool System Schema & Seed Data (Fase 0 - 5) ─────────────
+
+TOOL_META_DEFAULTS: dict[str, str] = {
+    "tool_global_enabled": "true",
+    "tool_auto_detection": "true",
+    "tool_rate_limit_per_user": "10",
+    "tool_weather_ttl": "900",
+    "tool_currency_ttl": "300",
+    "tool_brasil_cep_ttl": "604800",
+    "tool_brasil_cnpj_ttl": "86400",
+    "tool_knowledge_ttl": "86400",
+    "tool_news_ttl": "1800",
+    "tool_translation_ttl": "2592000",
+    "tool_geo_ttl": "604800",
+    "tool_diagrams_ttl": "3600",
+}
+
+INITIAL_TOOL_FAMILIES = [
+    ("weather", "Clima", "Previsão do tempo e dados meteorológicos em tempo real", 1),
+    ("currency", "Câmbio", "Cotações de moedas e conversões cambiais em tempo real", 1),
+    ("brasil", "Brasil", "Consultas de CEP, CNPJ, DDD, bancos e feriados nacionais", 1),
+    ("knowledge", "Conhecimento", "Fatos verificáveis, resumos enciclopédicos e livros", 1),
+    ("news", "Notícias", "Últimas notícias e manchetes nacionais e internacionais", 1),
+    ("translation", "Tradução", "Tradução neural entre diversos idiomas", 1),
+    ("geo", "Geolocalização", "Geocodificação direta e reversa com coordenadas", 1),
+    ("fun", "Curiosidades", "Fatos curiosos, animais e conselhos divertidos", 1),
+    ("code_exec", "Execução de Código", "Execução server-side de código em 70+ linguagens (Piston/Judge0)", 1),
+    ("diagrams", "Diagramas", "Renderização de diagramas Mermaid, PlantUML e gráficos", 1),
+]
+
+INITIAL_TOOL_PROVIDERS = [
+    # Weather
+    ("open_meteo", "weather", "Open-Meteo", "https://api.open-meteo.com/v1", 0, None, 1, 1),
+    ("wttr_in", "weather", "wttr.in", "https://wttr.in", 0, None, 2, 1),
+    ("hg_brasil_weather", "weather", "HG Brasil Clima", "https://api.hgbrasil.com/weather", 1, "HG_BRASIL_KEY", 3, 1),
+    # Currency
+    ("awesomeapi", "currency", "AwesomeAPI", "https://economia.awesomeapi.com.br/json", 0, None, 1, 1),
+    ("frankfurter", "currency", "Frankfurter", "https://api.frankfurter.app", 0, None, 2, 1),
+    # Brasil
+    ("brasilapi", "brasil", "BrasilAPI", "https://brasilapi.com.br/api", 0, None, 1, 1),
+    ("viacep", "brasil", "ViaCEP", "https://viacep.com.br/ws", 0, None, 2, 1),
+    # Knowledge
+    ("wikipedia", "knowledge", "Wikipedia", "https://wikipedia.org", 0, None, 1, 1),
+    ("open_library", "knowledge", "Open Library", "https://openlibrary.org", 0, None, 2, 1),
+    # News
+    ("gnews", "news", "GNews", "https://gnews.io/api/v4", 1, "GNEWS_API_KEY", 1, 1),
+    ("currents", "news", "Currents", "https://api.currentsapi.services/v1", 1, "CURRENTS_API_KEY", 2, 1),
+    ("ddg_news", "news", "DuckDuckGo News", "https://duckduckgo.com", 0, None, 3, 1),
+    # Translation
+    ("libretranslate", "translation", "LibreTranslate", "https://libretranslate.com", 0, "LIBRETRANSLATE_API_KEY", 1, 1),
+    ("mymemory", "translation", "MyMemory", "https://api.mymemory.translated.net", 0, None, 2, 1),
+    # Geo
+    ("nominatim", "geo", "Nominatim OSM", "https://nominatim.openstreetmap.org", 0, None, 1, 1),
+    ("open_meteo_geo", "geo", "Open-Meteo Geo", "https://geocoding-api.open-meteo.com/v1", 0, None, 2, 1),
+    # Fun
+    ("random_facts", "fun", "Random Facts & Fun", "https://uselessfacts.jsph.pl", 0, None, 1, 1),
+    # Code Exec
+    ("piston", "code_exec", "Piston Engine", "https://emkc.org/api/v2/piston", 0, None, 1, 1),
+    ("judge0", "code_exec", "Judge0 CE", "https://judge0-ce.p.rapidapi.com", 1, "JUDGE0_RAPIDAPI_KEY", 2, 1),
+    # Diagrams
+    ("kroki", "diagrams", "Kroki", "https://kroki.io", 0, None, 1, 1),
+    ("quickchart", "diagrams", "QuickChart", "https://quickchart.io", 0, None, 2, 1),
+]
+
+
+async def _migrate_tool_system_schema(db: aiosqlite.Connection) -> None:
+    """Migrações incrementais do sistema de ferramentas e APIs públicas (Free APIs)."""
+    # 1. tool_families
+    try:
+        await db.execute("SELECT id FROM tool_families LIMIT 1")
+    except aiosqlite.OperationalError:
+        try:
+            await db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS tool_families (
+                    id           TEXT PRIMARY KEY,
+                    display_name TEXT NOT NULL,
+                    description  TEXT,
+                    enabled      INTEGER DEFAULT 1,
+                    created_at   TEXT DEFAULT (datetime('now'))
+                );
+                """
+            )
+            await db.commit()
+        except Exception as e:
+            logger.error("[database migration] erro ao criar tool_families: %s", e)
+
+    # 2. tool_providers
+    try:
+        await db.execute("SELECT id FROM tool_providers LIMIT 1")
+    except aiosqlite.OperationalError:
+        try:
+            await db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS tool_providers (
+                    id             TEXT PRIMARY KEY,
+                    family_id      TEXT NOT NULL REFERENCES tool_families(id) ON DELETE CASCADE,
+                    display_name   TEXT NOT NULL,
+                    base_url       TEXT NOT NULL,
+                    requires_key   INTEGER DEFAULT 0,
+                    env_key_name   TEXT,
+                    fallback_order INTEGER NOT NULL,
+                    enabled        INTEGER DEFAULT 1,
+                    created_at     TEXT DEFAULT (datetime('now')),
+                    UNIQUE(family_id, fallback_order)
+                );
+                """
+            )
+            await db.execute(
+                "CREATE INDEX IF NOT EXISTS idx_tool_providers_family ON tool_providers(family_id, fallback_order);"
+            )
+            await db.commit()
+        except Exception as e:
+            logger.error("[database migration] erro ao criar tool_providers: %s", e)
+
+    # 3. tool_provider_quota
+    try:
+        await db.execute("SELECT provider_id FROM tool_provider_quota LIMIT 1")
+    except aiosqlite.OperationalError:
+        try:
+            await db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS tool_provider_quota (
+                    provider_id        TEXT PRIMARY KEY REFERENCES tool_providers(id) ON DELETE CASCADE,
+                    status             TEXT DEFAULT 'available',
+                    consecutive_errors INTEGER DEFAULT 0,
+                    exhausted_at       TEXT,
+                    estimated_reset_at TEXT,
+                    last_error_message TEXT
+                );
+                """
+            )
+            await db.commit()
+        except Exception as e:
+            logger.error("[database migration] erro ao criar tool_provider_quota: %s", e)
+
+    # 4. tool_cache
+    try:
+        await db.execute("SELECT cache_key FROM tool_cache LIMIT 1")
+    except aiosqlite.OperationalError:
+        try:
+            await db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS tool_cache (
+                    cache_key   TEXT PRIMARY KEY,
+                    family      TEXT NOT NULL,
+                    provider    TEXT NOT NULL,
+                    response    TEXT NOT NULL,
+                    created_at  TEXT NOT NULL,
+                    expires_at  TEXT NOT NULL,
+                    hit_count   INTEGER DEFAULT 0
+                );
+                """
+            )
+            await db.execute("CREATE INDEX IF NOT EXISTS idx_tool_cache_expires ON tool_cache(expires_at);")
+            await db.execute("CREATE INDEX IF NOT EXISTS idx_tool_cache_family ON tool_cache(family);")
+            await db.commit()
+        except Exception as e:
+            logger.error("[database migration] erro ao criar tool_cache: %s", e)
+
+    # 5. tool_usage_log
+    try:
+        await db.execute("SELECT id FROM tool_usage_log LIMIT 1")
+    except aiosqlite.OperationalError:
+        try:
+            await db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS tool_usage_log (
+                    id              TEXT PRIMARY KEY,
+                    family          TEXT NOT NULL,
+                    provider_id     TEXT NOT NULL,
+                    user_id         TEXT,
+                    conversation_id TEXT,
+                    cache_hit       INTEGER DEFAULT 0,
+                    latency_ms      REAL,
+                    status          TEXT,
+                    error_message   TEXT,
+                    created_at      TEXT DEFAULT (datetime('now'))
+                );
+                """
+            )
+            await db.execute("CREATE INDEX IF NOT EXISTS idx_tool_usage_family ON tool_usage_log(family, created_at);")
+            await db.commit()
+        except Exception as e:
+            logger.error("[database migration] erro ao criar tool_usage_log: %s", e)
+
+    # 6. public_apis_registry
+    try:
+        await db.execute("SELECT id FROM public_apis_registry LIMIT 1")
+    except aiosqlite.OperationalError:
+        try:
+            await db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS public_apis_registry (
+                    id            TEXT PRIMARY KEY,
+                    api_name      TEXT NOT NULL,
+                    description   TEXT,
+                    auth          TEXT,
+                    https         INTEGER DEFAULT 1,
+                    cors          TEXT,
+                    category      TEXT,
+                    url           TEXT NOT NULL,
+                    discovered_at TEXT DEFAULT (datetime('now')),
+                    relevance     TEXT DEFAULT 'unknown',
+                    integrated    INTEGER DEFAULT 0
+                );
+                """
+            )
+            await db.execute("CREATE INDEX IF NOT EXISTS idx_public_apis_relevance ON public_apis_registry(relevance);")
+            await db.commit()
+        except Exception as e:
+            logger.error("[database migration] erro ao criar public_apis_registry: %s", e)
+
+    # 7. users.tool_auto_detection
+    try:
+        await db.execute("SELECT tool_auto_detection FROM users LIMIT 1")
+    except aiosqlite.OperationalError:
+        try:
+            await db.execute("ALTER TABLE users ADD COLUMN tool_auto_detection INTEGER DEFAULT 1")
+            await db.commit()
+        except Exception as e:
+            logger.error("[database migration] erro ao adicionar tool_auto_detection em users: %s", e)
+
+    # 8. Seed inicial das famílias (idempotente)
+    try:
+        for fid, dname, desc, en in INITIAL_TOOL_FAMILIES:
+            await db.execute(
+                """
+                INSERT INTO tool_families (id, display_name, description, enabled)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET display_name = excluded.display_name, description = excluded.description
+                """,
+                (fid, dname, desc, en)
+            )
+        await db.commit()
+    except Exception as e:
+        logger.error("[database migration] erro ao semear tool_families: %s", e)
+
+    # 9. Seed inicial dos provedores (idempotente)
+    try:
+        for pid, fid, dname, burl, reqk, envk, forder, en in INITIAL_TOOL_PROVIDERS:
+            await db.execute(
+                """
+                INSERT INTO tool_providers (id, family_id, display_name, base_url, requires_key, env_key_name, fallback_order, enabled)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    family_id = excluded.family_id,
+                    display_name = excluded.display_name,
+                    base_url = excluded.base_url,
+                    requires_key = excluded.requires_key,
+                    env_key_name = excluded.env_key_name,
+                    fallback_order = excluded.fallback_order
+                """,
+                (pid, fid, dname, burl, reqk, envk, forder, en)
+            )
+            # Inicializa quota com status 'available' se não existir
+            await db.execute(
+                "INSERT OR IGNORE INTO tool_provider_quota (provider_id, status) VALUES (?, 'available')",
+                (pid,)
+            )
+        await db.commit()
+    except Exception as e:
+        logger.error("[database migration] erro ao semear tool_providers: %s", e)
+
+    # 10. Chaves padrão em meta
+    try:
+        for key, value in TOOL_META_DEFAULTS.items():
+            await db.execute("INSERT OR IGNORE INTO meta (key, value) VALUES (?, ?)", (key, value))
+        await db.commit()
+    except Exception as e:
+        logger.error("[database migration] erro ao semear TOOL_META_DEFAULTS: %s", e)
 
 
 async def seed_reasoning_controls(db: aiosqlite.Connection) -> int:
