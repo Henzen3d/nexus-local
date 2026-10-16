@@ -52,7 +52,7 @@ services:
     container_name: nexus_computer
     restart: always
     entrypoint: ["/usr/bin/chromium"]
-    command: ["--no-sandbox", "--remote-debugging-address=0.0.0.0", "--remote-debugging-port=9222"]
+    command: ["--no-sandbox", "--headless=new", "--disable-gpu", "--remote-debugging-address=0.0.0.0", "--remote-debugging-port=9222"]
     networks:
       - nexus_net
 
