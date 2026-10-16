@@ -2930,11 +2930,10 @@ async def rollback_memory_snapshot(user_id: str, snapshot_id: str) -> bool:
             logger.error("[Rollback] Falha na transação de rollback:", exc_info=e)
             raise
 
-    # Outside DB lock: refresh summaries and semantic cache fingerprint
+    # Outside DB lock: refresh summaries outside lock
     try:
-        from backend.memory import refresh_memory_summaries, build_memory_fingerprint
+        from backend.memory import refresh_memory_summaries
         await refresh_memory_summaries(user_id, use_llm=False)
-        await build_memory_fingerprint(user_id)
     except Exception as e:
         logger.warning("[Rollback] Erro ao recalcular resumos pós-rollback: %s", e)
 
@@ -2993,8 +2992,8 @@ async def update_memory_fact(
             updated_row = await cur.fetchone()
 
     try:
-        from backend.memory import build_memory_fingerprint
-        await build_memory_fingerprint(user_id)
+        from backend.memory import refresh_memory_summaries
+        await refresh_memory_summaries(user_id, use_llm=False)
     except Exception:
         pass
 

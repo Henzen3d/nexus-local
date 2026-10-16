@@ -81,10 +81,17 @@ class DuckDuckGoProvider:
                 })
             return results
         except asyncio.TimeoutError:
-            logger.error("[DuckDuckGo Search Error] timeout após %.1fs", timeout)
+            logger.warning("[DuckDuckGo Search] Timeout após %.1fs para query: %s", timeout, query[:80])
             return []
         except Exception as e:
-            logger.error("[DuckDuckGo Search Error]", exc_info=e)
+            err_msg = str(e).lower()
+            if "no results" in err_msg:
+                logger.info("[DuckDuckGo Search] Nenhum resultado encontrado para query: %s", query[:80])
+                return []
+            if "ratelimit" in err_msg or "rate limit" in err_msg or "202" in err_msg:
+                logger.warning("[DuckDuckGo Search] Rate limit atingido pelo DuckDuckGo: %s", e)
+                return []
+            logger.error("[DuckDuckGo Search Error] %s", e)
         return []
 
 async def resolve_and_execute_search(query: str, db, config: dict = None) -> list[dict]:

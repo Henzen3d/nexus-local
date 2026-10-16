@@ -844,18 +844,57 @@ async def extract_user_memory_background(
             logger.error("[Memory Extractor] Erro na chamada ao LLM (source=%s):", source, exc_info=api_err)
             return
 
-        # 3. Clean up potential markdown fences
+        # 3. Clean up potential markdown fences & extract JSON array
         full_response = full_response.strip()
-        if full_response.startswith("```"):
+
+        # Tenta extrair bloco ```json ... ``` se presente
+        fenced_match = re.search(r"```(?:json)?\s*(\[.*?\])\s*```", full_response, re.DOTALL)
+        if fenced_match:
+            candidate_json = fenced_match.group(1).strip()
+        elif full_response.startswith("```"):
             lines = full_response.splitlines()
             if len(lines) >= 3:
-                full_response = "\n".join(lines[1:-1]).strip()
+                candidate_json = "\n".join(lines[1:-1]).strip()
+            else:
+                candidate_json = full_response
+        else:
+            # Tenta encontrar o array JSON mais externo
+            bracket_match = re.search(r"\[\s*\{.*\}\s*\]", full_response, re.DOTALL)
+            if bracket_match:
+                candidate_json = bracket_match.group(0).strip()
+            elif full_response.startswith("[") and full_response.endswith("]"):
+                candidate_json = full_response
+            else:
+                candidate_json = full_response
 
         # 4. Parse and persist
         try:
-            items = json.loads(full_response)
+            # Se for uma resposta em prosa indicando ausência de fatos, trata como array vazio
+            lower_resp = full_response.lower()
+            no_fact_phrases = (
+                "não há fatos",
+                "sem fatos",
+                "nenhum fato",
+                "não foram encontrados",
+                "não identifiquei",
+                "não foi possível extrair",
+                "no durable facts",
+                "no facts",
+                "no new facts",
+                "nothing to extract",
+            )
+            if any(phrase in lower_resp for phrase in no_fact_phrases) and not (
+                candidate_json.startswith("[") and "{" in candidate_json
+            ):
+                logger.info(
+                    "[Memory Extractor] Nenhum fato durável detectado pelo modelo (resposta em prosa explicativa)"
+                )
+                items = []
+            else:
+                items = json.loads(candidate_json)
+
             if not isinstance(items, list):
-                return
+                items = []
 
             saved = 0
             forgotten = 0
@@ -924,8 +963,8 @@ async def extract_user_memory_background(
                 # Even with no new facts, mark extracted so idle job advances
                 pass
         except Exception as parse_err:
-            logger.error(
-                "[Memory Extractor] Erro ao decodificar JSON: %s. Resposta: %s",
+            logger.warning(
+                "[Memory Extractor] Aviso ao decodificar JSON do extrator: %s. Resposta: %s",
                 parse_err, full_response[:200],
             )
             # Still mark extracted to avoid hammering the same dead JSON forever
@@ -1355,6 +1394,7 @@ def build_summary_block(
             + project_summary["summary_md"].strip()
             + "\n"
         )
+    return "".join(chunks)
 
 def sanitize_memory_for_external(
     facts: list[dict],
@@ -1397,12 +1437,12 @@ def build_memory_block(
     Builds the markdown block injected into the system prompt.
     Order: profile → summaries → fact bullets (with hard char cap).
     """
-    profile_part = build_profile_block(profile)
+    profile_part = build_profile_block(profile) or ""
 
     if profile and not profile.get("memory_enabled", 1):
         return profile_part
 
-    summary_part = build_summary_block(global_summary, project_summary)
+    summary_part = build_summary_block(global_summary, project_summary) or ""
 
     if not facts and not profile_part and not summary_part:
         return ""
@@ -1476,7 +1516,7 @@ def build_memory_block(
             + "\n"
         )
 
-    return profile_part + summary_part + facts_part
+    return (profile_part or "") + (summary_part or "") + (facts_part or "")
 
 
 # --- Importar memória de outros provedores (Claude dated + markdown rico) ----

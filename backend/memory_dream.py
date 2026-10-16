@@ -892,11 +892,10 @@ async def apply_dream_operations(
         except Exception as e:
             logger.warning("[Dream] Erro ao gravar FastEmbed embeddings em lote: %s", e)
 
-    # Reconciliação fora do lock: resumos rolling e cache semântico
+    # Reconciliação fora do lock: resumos rolling
     try:
-        from backend.memory import refresh_memory_summaries, build_memory_fingerprint
+        from backend.memory import refresh_memory_summaries
         await refresh_memory_summaries(user_id, use_llm=False)
-        await build_memory_fingerprint(user_id)
     except Exception as e:
         logger.warning("[Dream] Erro ao recalcular resumos pós-aplicação (user=%s): %s", user_id, e)
 
