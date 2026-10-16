@@ -185,6 +185,40 @@ export interface ProactiveUserStats {
 
 export type ProactivePersonaStyle = 'lumi' | 'core'
 
+export type MascotId =
+  | 'nex'
+  | 'lumi'
+  | 'zed'
+  | 'neko'
+  | 'pip'
+  | 'koda'
+  | 'mimi'
+  | 'blu'
+  | 'orion'
+  | 'rex'
+  | 'tico'
+  | 'pingo'
+  | 'stella'
+  | 'taro'
+  | 'bibi'
+  | 'flux'
+  | 'nuvem'
+  | 'pixel'
+  | 'shelly'
+  | 'kai'
+  | 'lali'
+  | 'jin'
+  | 'fogo'
+  | 'sumi'
+  | 'jax'
+  | 'boo'
+  | 'vox'
+  | 'balu'
+  | 'zen'
+  | 'kiro'
+  | 'liko'
+  | 'byte'
+
 export interface ProactiveSettings {
   enabled: boolean
   sensitivity: ProactiveSensitivity
@@ -192,6 +226,8 @@ export interface ProactiveSettings {
   quiet_hours?: ProactiveQuietHours | null
   push_enabled?: boolean
   persona_style?: ProactivePersonaStyle
+  selected_pet?: MascotId | string
+  pet_widget_enabled?: boolean
   onboarding_seen_at?: string | null
   updated_at?: string | null
   allowed_categories?: ProactiveCategory[]
@@ -207,6 +243,49 @@ export interface ProactiveSettings {
 }
 
 export type ProactiveAckAction = 'seen' | 'dismissed' | 'blocked' | 'know_more'
+
+export interface ProactiveBot {
+  id: string
+  user_id: string
+  name: string
+  title?: string | null
+  description?: string | null
+  system_instructions?: string | null
+  color_hex: string
+  avatar_shape: string
+  mascot_id: MascotId | string
+  computer_mode: 'shared' | 'isolated' | 'sandbox'
+  ambient_enabled: boolean
+  ambient_rules?: { topics?: string[] } | null
+  created_at?: string
+  updated_at?: string
+}
+
+export interface ProactiveRoutine {
+  id: string
+  bot_id: string
+  user_id: string
+  name: string
+  prompt: string
+  timing_type: 'interval' | 'daily' | 'cron'
+  timing_value: string
+  last_run_at?: string | null
+  next_run_at?: string | null
+  is_active: boolean
+  created_at?: string
+}
+
+export interface ProactiveMemory {
+  id: string
+  topic_category: string
+  topic_key: string
+  signal_count: number
+  accumulated_context: Record<string, any>
+  insight_ready_id?: string | null
+  status: 'accumulating' | 'ready_to_prompt' | 'delivered' | 'archived'
+  last_signal_at?: string
+  created_at?: string
+}
 
 /** F4.4.1 — configuração global (admin), persistida em `meta` */
 export interface ProactiveAdminConfig {

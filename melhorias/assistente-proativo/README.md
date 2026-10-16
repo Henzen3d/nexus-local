@@ -16,6 +16,8 @@ Transformar o Nexus de chat reativo em assistente que percebe **interesse genuí
 | 6 | [`06-fase-5-qualidade-e-rollout.md`](./06-fase-5-qualidade-e-rollout.md) | F5 — suíte completa, housekeeping, observabilidade, documentação, rollout gradual com a família |
 | 7 | [`07-opcional-web-push-pwa.md`](./07-opcional-web-push-pwa.md) | F6 (pós-MVP) — notificação nativa com o app fechado |
 | 8 | [`08-central-de-notificacoes-hub-e-persona.md`](./08-central-de-notificacoes-hub-e-persona.md) | F7 — Central de notificações (sininho com badge), Hub na sidebar (abaixo de Artefatos), diálogo paralelo e mascote Lumi |
+| 9 | [`09-evolucao-multi-agentes-e-computer.md`](./09-evolucao-multi-agentes-e-computer.md) | F8 — Evolução Multi-Agentes, Computer Sandbox (Chromium/Playwright isolado), Rotinas/Cron e Avatares Orgânicos (inspirado no Rakazo) |
+| 10 | [`10-pet-virtual-clippy-e-openmausbot.md`](./10-pet-virtual-clippy-e-openmausbot.md) | F9 — Nexus Pet: Assistente estilo "Clippy Moderno", Mascotes Reativos (32 personas) e Engenharia Reversa do OpenMausBot (Sidecar Companion, Gaze Tracking e Física de Molas) |
 | ✔ | [`ROADMAP-CHECKLIST.md`](./ROADMAP-CHECKLIST.md) | Todas as tarefas e subtarefas em checkboxes, com IDs, estimativas, critérios de aceite e **notas de implementação por fase** |
 | 📖 | [`../../docs/guia-assistente-proativo.md`](../../docs/guia-assistente-proativo.md) | Guia de 1 página para a família (pt-BR): o que é, como ligar/desligar, como bloquear um assunto, privacidade |
 | 🔐 | [`../../docs/auditoria-sistema.md`](../../docs/auditoria-sistema.md) | Auditoria de segurança que definiu o padrão dos testes de IDOR/SSRF reaproveitado aqui |
@@ -43,6 +45,8 @@ Transformar o Nexus de chat reativo em assistente que percebe **interesse genuí
 | F5 Qualidade e rollout | ✅ código: fakes compartilhados, regressão de segurança, carga leve, recuperação no boot, logs estruturados, cards + alarme no dashboard, flag de onboarding, docs · ⏳ **semana de teste com a família** (F5.4.2–F5.4.4, F5.5.3) é operacional e fica com o admin | PR F5 |
 | F6 Web Push (opcional) | ✅ Implementado: VAPID, pywebpush, push_subscriptions, service worker customizado, toggle nativo nas preferências | PR F6/F7 |
 | F7 Central, Hub e Persona | ✅ Implementado: Sininho com badge dinâmico, Hub dedicado na Sidebar, pesquisa sob demanda e Mascote Lumi com microanimações | PR F6/F7 |
+| F8 Multi-Agentes & Computer | 📝 Especificado ([`09-evolucao-multi-agentes-e-computer.md`](./09-evolucao-multi-agentes-e-computer.md)) — Sandbox Docker, layout 3 colunas, rotinas e avatares orgânicos | Planejado |
+| F9 Nexus Pet & Companion | 📝 Especificado ([`10-pet-virtual-clippy-e-openmausbot.md`](./10-pet-virtual-clippy-e-openmausbot.md)) — Mascote interativo, balões estilo Clippy, acúmulo de contexto em background e companion móvel | Planejado |
 
 
 ### Como operar (resumo)

@@ -22,7 +22,10 @@ Admin (``require_admin``):
 from __future__ import annotations
 
 import asyncio
+import json
+import secrets
 from typing import Any, Literal, Optional
+import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -31,6 +34,7 @@ from backend.auth import get_current_user, require_admin
 from backend.database import get_db
 from backend.logging_config import get_logger
 from backend.proactive import admin as proactive_admin
+from backend.proactive.accumulator import MemoryTopicAccumulator
 from backend.proactive import delivery
 from backend.proactive import service as proactive_service
 from backend.proactive.config import (
@@ -63,6 +67,8 @@ class ProactiveSettingsUpdate(BaseModel):
     clear_quiet_hours: bool = False
     push_enabled: Optional[bool] = None
     persona_style: Optional[str] = None
+    selected_pet: Optional[str] = None
+    pet_widget_enabled: Optional[bool] = None
     onboarding_seen: Optional[bool] = None
 
 
@@ -106,6 +112,57 @@ class AdminConfigUpdate(BaseModel):
     expiry_news_hours: Optional[int] = None
     expiry_default_days: Optional[int] = None
     onboarding_enabled: Optional[bool] = None
+
+
+class MemorySignalBody(BaseModel):
+    category: str = Field(..., min_length=1, max_length=50)
+    topic_key: str = Field(..., min_length=1, max_length=100)
+    snippet: str = Field(..., min_length=1, max_length=1000)
+    weight: float = Field(1.0, ge=0.1, le=5.0)
+
+
+class BotCreateBody(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+    title: Optional[str] = Field(None, max_length=100)
+    description: Optional[str] = Field(None, max_length=500)
+    system_instructions: Optional[str] = None
+    color_hex: str = Field("#3EC5A8", max_length=10)
+    avatar_shape: str = Field("circle", max_length=30)
+    mascot_id: str = Field("nex", max_length=30)
+    computer_mode: str = Field("shared", max_length=30)
+    ambient_enabled: bool = True
+    ambient_rules: Optional[dict[str, Any]] = None
+
+
+class BotUpdateBody(BaseModel):
+    name: Optional[str] = None
+    title: Optional[str] = None
+    description: Optional[str] = None
+    system_instructions: Optional[str] = None
+    color_hex: Optional[str] = None
+    avatar_shape: Optional[str] = None
+    mascot_id: Optional[str] = None
+    computer_mode: Optional[str] = None
+    ambient_enabled: Optional[bool] = None
+    ambient_rules: Optional[dict[str, Any]] = None
+
+
+class RoutineCreateBody(BaseModel):
+    bot_id: str = Field(..., min_length=1)
+    name: str = Field(..., min_length=1, max_length=100)
+    prompt: str = Field(..., min_length=1)
+    timing_type: Literal["interval", "cron", "daily"] = Field("interval")
+    timing_value: str = Field(..., min_length=1)
+    is_active: bool = True
+
+
+class RoutineUpdateBody(BaseModel):
+    bot_id: Optional[str] = None
+    name: Optional[str] = None
+    prompt: Optional[str] = None
+    timing_type: Optional[Literal["interval", "cron", "daily"]] = None
+    timing_value: Optional[str] = None
+    is_active: Optional[bool] = None
 
 
 async def _settings_payload(db, user_id: str) -> dict:
@@ -170,6 +227,8 @@ async def write_settings(body: ProactiveSettingsUpdate, current_user: dict = Dep
             clear_quiet_hours=body.clear_quiet_hours,
             push_enabled=body.push_enabled,
             persona_style=body.persona_style,
+            selected_pet=body.selected_pet,
+            pet_widget_enabled=body.pet_widget_enabled,
             onboarding_seen=body.onboarding_seen,
         )
         extra: dict[str, Any] = {}
@@ -582,3 +641,546 @@ async def read_admin_stats(
         return await proactive_admin.admin_stats(db, days=days)
     finally:
         await db.close()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Memórias de Longo Prazo / Acúmulo de Tópicos (F9.1)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.get("/memories")
+async def list_memories(
+    status: Optional[str] = Query(None),
+    limit: int = Query(50, ge=1, le=100),
+    current_user: dict = Depends(get_current_user),
+) -> dict:
+    db = await get_db()
+    try:
+        sql = """
+            SELECT id, topic_category, topic_key, signal_count, accumulated_context,
+                   insight_ready_id, status, last_signal_at, created_at
+            FROM proactive_memories
+            WHERE user_id = ?
+        """
+        params: list[Any] = [current_user["id"]]
+        if status:
+            sql += " AND status = ?"
+            params.append(status)
+        sql += " ORDER BY last_signal_at DESC LIMIT ?"
+        params.append(limit)
+
+        async with db.execute(sql, params) as cur:
+            rows = await cur.fetchall()
+
+        memories = []
+        for r in rows:
+            ctx = {}
+            if r[4]:
+                try:
+                    ctx = json.loads(r[4])
+                except Exception:
+                    ctx = {}
+            memories.append({
+                "id": r[0],
+                "topic_category": r[1],
+                "topic_key": r[2],
+                "signal_count": r[3],
+                "accumulated_context": ctx,
+                "insight_ready_id": r[5],
+                "status": r[6],
+                "last_signal_at": r[7],
+                "created_at": r[8],
+            })
+        return {"ok": True, "memories": memories}
+    finally:
+        await db.close()
+
+
+@router.post("/memories/signal")
+async def add_memory_signal(
+    body: MemorySignalBody,
+    current_user: dict = Depends(get_current_user),
+) -> dict:
+    db = await get_db()
+    try:
+        accumulator = MemoryTopicAccumulator(db)
+        res = await accumulator.record_signal(
+            user_id=current_user["id"],
+            category=body.category,
+            topic=body.topic_key,
+            context_snippet=body.snippet,
+        )
+        return {
+            "ok": True,
+            "memory": {
+                "id": res.memory_id,
+                "triggered": res.triggered,
+                "signal_count": res.signal_count,
+                "status": res.status,
+                "topic_key": res.topic_key,
+                "action": res.action,
+                "prompt_hook": res.prompt_hook,
+            },
+        }
+    finally:
+        await db.close()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Companion Móvel & Pareamento Seguro (F9.4)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.get("/companion/pair")
+async def get_companion_pairing(
+    current_user: dict = Depends(get_current_user),
+) -> dict:
+    code = secrets.token_hex(6).upper()
+    settings = None
+    db = await get_db()
+    try:
+        settings = await get_user_settings(db, current_user["id"])
+    finally:
+        await db.close()
+
+    pet_id = settings.selected_pet if settings else "lumi"
+    return {
+        "ok": True,
+        "pair_code": code,
+        "selected_pet": pet_id,
+        "expires_in_seconds": 300,
+        "companion_url": f"/companion?pair={code}&pet={pet_id}",
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Multi-Agentes & Bots Especialistas (F8.1)
+# ─────────────────────────────────────────────────────────────────────────────
+
+DEFAULT_BOT_TEMPLATES = [
+    {
+        "id": "tpl-researcher",
+        "name": "Pesquisador Autônomo",
+        "title": "Especialista em Web e Documentos",
+        "description": "Explora páginas, cruza referências e sintetiza artigos técnicos profundos.",
+        "system_instructions": "Você é um pesquisador incansável. Sempre cite fontes e organize por tópicos.",
+        "color_hex": "#3B82F6",
+        "avatar_shape": "bot_headphone",
+        "mascot_id": "zed",
+        "computer_mode": "shared",
+        "ambient_enabled": 1,
+        "ambient_rules": '{"topics":["pesquisa","noticias","estudos"]}',
+    },
+    {
+        "id": "tpl-travel",
+        "name": "Concierge de Viagens",
+        "title": "Especialista em Roteiros e Voos",
+        "description": "Planeja passeios, compara passagens e organiza roteiros dia a dia.",
+        "system_instructions": "Você é especialista em turismo e viagens. Planeje roteiros práticos com orçamentos e dicas locais.",
+        "color_hex": "#10B981",
+        "avatar_shape": "sprout",
+        "mascot_id": "neko",
+        "computer_mode": "shared",
+        "ambient_enabled": 1,
+        "ambient_rules": '{"topics":["viagem","hotel","voo","turismo"]}',
+    },
+    {
+        "id": "tpl-auditor",
+        "name": "Auditor de Código",
+        "title": "Revisão e Segurança",
+        "description": "Inspeciona código-fonte, detecta vulnerabilidades e checa conformidade.",
+        "system_instructions": "Você é um auditor sênior de software e segurança. Aponte vulnerabilidades, anti-padrões e melhorias.",
+        "color_hex": "#8B5CF6",
+        "avatar_shape": "monitor",
+        "mascot_id": "byte",
+        "computer_mode": "sandbox",
+        "ambient_enabled": 1,
+        "ambient_rules": '{"topics":["código","bug","segurança","deploy"]}',
+    },
+]
+
+
+@router.get("/bots")
+async def list_bots(current_user: dict = Depends(get_current_user)) -> dict:
+    db = await get_db()
+    try:
+        async with db.execute(
+            """
+            SELECT id, user_id, name, title, description, system_instructions,
+                   color_hex, avatar_shape, mascot_id, computer_mode, ambient_enabled,
+                   ambient_rules, created_at, updated_at
+            FROM proactive_bots
+            WHERE user_id = ?
+            ORDER BY created_at ASC
+            """,
+            (current_user["id"],),
+        ) as cur:
+            rows = await cur.fetchall()
+
+        bots = []
+        for r in rows:
+            rules = None
+            if r[11]:
+                try:
+                    rules = json.loads(r[11])
+                except Exception:
+                    rules = None
+            bots.append({
+                "id": r[0],
+                "user_id": r[1],
+                "name": r[2],
+                "title": r[3],
+                "description": r[4],
+                "system_instructions": r[5],
+                "color_hex": r[6],
+                "avatar_shape": r[7],
+                "mascot_id": r[8],
+                "computer_mode": r[9],
+                "ambient_enabled": bool(r[10]),
+                "ambient_rules": rules,
+                "created_at": r[12],
+                "updated_at": r[13],
+            })
+
+        # Se o usuário ainda não tiver nenhum bot criado, semeia automaticamente os templates padrões
+        if not bots:
+            for tpl in DEFAULT_BOT_TEMPLATES:
+                bot_id = f"bot_{secrets.token_hex(8)}"
+                await db.execute(
+                    """
+                    INSERT INTO proactive_bots
+                        (id, user_id, name, title, description, system_instructions,
+                         color_hex, avatar_shape, mascot_id, computer_mode, ambient_enabled,
+                         ambient_rules, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+                    """,
+                    (
+                        bot_id,
+                        current_user["id"],
+                        tpl["name"],
+                        tpl["title"],
+                        tpl["description"],
+                        tpl["system_instructions"],
+                        tpl["color_hex"],
+                        tpl["avatar_shape"],
+                        tpl["mascot_id"],
+                        tpl["computer_mode"],
+                        tpl["ambient_enabled"],
+                        tpl["ambient_rules"],
+                    ),
+                )
+                bots.append({
+                    "id": bot_id,
+                    "user_id": current_user["id"],
+                    "name": tpl["name"],
+                    "title": tpl["title"],
+                    "description": tpl["description"],
+                    "system_instructions": tpl["system_instructions"],
+                    "color_hex": tpl["color_hex"],
+                    "avatar_shape": tpl["avatar_shape"],
+                    "mascot_id": tpl["mascot_id"],
+                    "computer_mode": tpl["computer_mode"],
+                    "ambient_enabled": bool(tpl["ambient_enabled"]),
+                    "ambient_rules": json.loads(tpl["ambient_rules"]),
+                    "created_at": "agora",
+                    "updated_at": "agora",
+                })
+            await db.commit()
+
+        return {"ok": True, "bots": bots}
+    finally:
+        await db.close()
+
+
+@router.post("/bots")
+async def create_bot(
+    body: BotCreateBody,
+    current_user: dict = Depends(get_current_user),
+) -> dict:
+    db = await get_db()
+    try:
+        bot_id = f"bot_{secrets.token_hex(8)}"
+        rules_json = json.dumps(body.ambient_rules, ensure_ascii=False) if body.ambient_rules else None
+        await db.execute(
+            """
+            INSERT INTO proactive_bots
+                (id, user_id, name, title, description, system_instructions,
+                 color_hex, avatar_shape, mascot_id, computer_mode, ambient_enabled,
+                 ambient_rules, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+            """,
+            (
+                bot_id,
+                current_user["id"],
+                body.name.strip(),
+                body.title.strip() if body.title else None,
+                body.description.strip() if body.description else None,
+                body.system_instructions.strip() if body.system_instructions else None,
+                body.color_hex.strip(),
+                body.avatar_shape.strip(),
+                body.mascot_id.strip(),
+                body.computer_mode.strip(),
+                1 if body.ambient_enabled else 0,
+                rules_json,
+            ),
+        )
+        await db.commit()
+        return {
+            "ok": True,
+            "bot": {
+                "id": bot_id,
+                "user_id": current_user["id"],
+                "name": body.name,
+                "title": body.title,
+                "description": body.description,
+                "system_instructions": body.system_instructions,
+                "color_hex": body.color_hex,
+                "avatar_shape": body.avatar_shape,
+                "mascot_id": body.mascot_id,
+                "computer_mode": body.computer_mode,
+                "ambient_enabled": body.ambient_enabled,
+                "ambient_rules": body.ambient_rules,
+            },
+        }
+    finally:
+        await db.close()
+
+
+@router.put("/bots/{bot_id}")
+async def update_bot(
+    bot_id: str,
+    body: BotUpdateBody,
+    current_user: dict = Depends(get_current_user),
+) -> dict:
+    db = await get_db()
+    try:
+        async with db.execute(
+            "SELECT id FROM proactive_bots WHERE id = ? AND user_id = ?",
+            (bot_id, current_user["id"]),
+        ) as cur:
+            if not await cur.fetchone():
+                raise HTTPException(status_code=404, detail="Bot não encontrado")
+
+        updates: list[str] = []
+        params: list[Any] = []
+        if body.name is not None:
+            updates.append("name = ?")
+            params.append(body.name.strip())
+        if body.title is not None:
+            updates.append("title = ?")
+            params.append(body.title.strip())
+        if body.description is not None:
+            updates.append("description = ?")
+            params.append(body.description.strip())
+        if body.system_instructions is not None:
+            updates.append("system_instructions = ?")
+            params.append(body.system_instructions.strip())
+        if body.color_hex is not None:
+            updates.append("color_hex = ?")
+            params.append(body.color_hex.strip())
+        if body.avatar_shape is not None:
+            updates.append("avatar_shape = ?")
+            params.append(body.avatar_shape.strip())
+        if body.mascot_id is not None:
+            updates.append("mascot_id = ?")
+            params.append(body.mascot_id.strip())
+        if body.computer_mode is not None:
+            updates.append("computer_mode = ?")
+            params.append(body.computer_mode.strip())
+        if body.ambient_enabled is not None:
+            updates.append("ambient_enabled = ?")
+            params.append(1 if body.ambient_enabled else 0)
+        if body.ambient_rules is not None:
+            updates.append("ambient_rules = ?")
+            params.append(json.dumps(body.ambient_rules, ensure_ascii=False))
+
+        if updates:
+            updates.append("updated_at = datetime('now')")
+            params.extend([bot_id, current_user["id"]])
+            await db.execute(
+                f"UPDATE proactive_bots SET {', '.join(updates)} WHERE id = ? AND user_id = ?",
+                params,
+            )
+            await db.commit()
+
+        return {"ok": True}
+    finally:
+        await db.close()
+
+
+@router.delete("/bots/{bot_id}")
+async def delete_bot(
+    bot_id: str,
+    current_user: dict = Depends(get_current_user),
+) -> dict:
+    db = await get_db()
+    try:
+        async with db.execute(
+            "DELETE FROM proactive_bots WHERE id = ? AND user_id = ?",
+            (bot_id, current_user["id"]),
+        ) as cur:
+            if cur.rowcount == 0:
+                raise HTTPException(status_code=404, detail="Bot não encontrado")
+        await db.commit()
+        return {"ok": True}
+    finally:
+        await db.close()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Rotinas Agendadas dos Bots (F8.1.3)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.get("/routines")
+async def list_routines(current_user: dict = Depends(get_current_user)) -> dict:
+    db = await get_db()
+    try:
+        async with db.execute(
+            """
+            SELECT id, bot_id, user_id, name, prompt, timing_type, timing_value,
+                   last_run_at, next_run_at, is_active, created_at
+            FROM proactive_routines
+            WHERE user_id = ?
+            ORDER BY created_at DESC
+            """,
+            (current_user["id"],),
+        ) as cur:
+            rows = await cur.fetchall()
+
+        routines = [
+            {
+                "id": r[0],
+                "bot_id": r[1],
+                "user_id": r[2],
+                "name": r[3],
+                "prompt": r[4],
+                "timing_type": r[5],
+                "timing_value": r[6],
+                "last_run_at": r[7],
+                "next_run_at": r[8],
+                "is_active": bool(r[9]),
+                "created_at": r[10],
+            }
+            for r in rows
+        ]
+        return {"ok": True, "routines": routines}
+    finally:
+        await db.close()
+
+
+@router.post("/routines")
+async def create_routine(
+    body: RoutineCreateBody,
+    current_user: dict = Depends(get_current_user),
+) -> dict:
+    db = await get_db()
+    try:
+        # Verifica se o bot pertence ao usuário
+        async with db.execute(
+            "SELECT id FROM proactive_bots WHERE id = ? AND user_id = ?",
+            (body.bot_id, current_user["id"]),
+        ) as cur:
+            if not await cur.fetchone():
+                raise HTTPException(status_code=404, detail="Bot associado não encontrado")
+
+        routine_id = f"routine_{secrets.token_hex(8)}"
+        await db.execute(
+            """
+            INSERT INTO proactive_routines
+                (id, bot_id, user_id, name, prompt, timing_type, timing_value,
+                 next_run_at, is_active, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now', '+1 hour'), ?, datetime('now'))
+            """,
+            (
+                routine_id,
+                body.bot_id,
+                current_user["id"],
+                body.name.strip(),
+                body.prompt.strip(),
+                body.timing_type,
+                body.timing_value.strip(),
+                1 if body.is_active else 0,
+            ),
+        )
+        await db.commit()
+        return {
+            "ok": True,
+            "routine": {
+                "id": routine_id,
+                "bot_id": body.bot_id,
+                "name": body.name,
+                "prompt": body.prompt,
+                "timing_type": body.timing_type,
+                "timing_value": body.timing_value,
+                "is_active": body.is_active,
+            },
+        }
+    finally:
+        await db.close()
+
+
+@router.put("/routines/{routine_id}")
+async def update_routine(
+    routine_id: str,
+    body: RoutineUpdateBody,
+    current_user: dict = Depends(get_current_user),
+) -> dict:
+    db = await get_db()
+    try:
+        async with db.execute(
+            "SELECT id FROM proactive_routines WHERE id = ? AND user_id = ?",
+            (routine_id, current_user["id"]),
+        ) as cur:
+            if not await cur.fetchone():
+                raise HTTPException(status_code=404, detail="Rotina não encontrada")
+
+        updates: list[str] = []
+        params: list[Any] = []
+        if body.bot_id is not None:
+            updates.append("bot_id = ?")
+            params.append(body.bot_id)
+        if body.name is not None:
+            updates.append("name = ?")
+            params.append(body.name.strip())
+        if body.prompt is not None:
+            updates.append("prompt = ?")
+            params.append(body.prompt.strip())
+        if body.timing_type is not None:
+            updates.append("timing_type = ?")
+            params.append(body.timing_type)
+        if body.timing_value is not None:
+            updates.append("timing_value = ?")
+            params.append(body.timing_value.strip())
+        if body.is_active is not None:
+            updates.append("is_active = ?")
+            params.append(1 if body.is_active else 0)
+
+        if updates:
+            params.extend([routine_id, current_user["id"]])
+            await db.execute(
+                f"UPDATE proactive_routines SET {', '.join(updates)} WHERE id = ? AND user_id = ?",
+                params,
+            )
+            await db.commit()
+
+        return {"ok": True}
+    finally:
+        await db.close()
+
+
+@router.delete("/routines/{routine_id}")
+async def delete_routine(
+    routine_id: str,
+    current_user: dict = Depends(get_current_user),
+) -> dict:
+    db = await get_db()
+    try:
+        async with db.execute(
+            "DELETE FROM proactive_routines WHERE id = ? AND user_id = ?",
+            (routine_id, current_user["id"]),
+        ) as cur:
+            if cur.rowcount == 0:
+                raise HTTPException(status_code=404, detail="Rotina não encontrada")
+        await db.commit()
+        return {"ok": True}
+    finally:
+        await db.close()
+

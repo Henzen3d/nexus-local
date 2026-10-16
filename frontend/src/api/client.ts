@@ -598,7 +598,7 @@ export const api = {
     data: Partial<
       Pick<
         import('../types').ProactiveSettings,
-        'enabled' | 'sensitivity' | 'categories' | 'quiet_hours' | 'push_enabled' | 'persona_style'
+        'enabled' | 'sensitivity' | 'categories' | 'quiet_hours' | 'push_enabled' | 'persona_style' | 'selected_pet' | 'pet_widget_enabled'
       >
     > & {
       onboarding_seen?: boolean
@@ -691,6 +691,51 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ prompt, category }),
     }),
+  // F8 — Multi-Agentes & Bots Especialistas
+  getProactiveBots: () => fetchJSON<{ ok: boolean; bots: import('../types').ProactiveBot[] }>('/proactive/bots'),
+  createProactiveBot: (data: Partial<import('../types').ProactiveBot>) =>
+    fetchJSON<{ ok: boolean; bot: import('../types').ProactiveBot }>('/proactive/bots', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  updateProactiveBot: (botId: string, data: Partial<import('../types').ProactiveBot>) =>
+    fetchJSON<{ ok: boolean }>(`/proactive/bots/${encodeURIComponent(botId)}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+  deleteProactiveBot: (botId: string) =>
+    fetchJSON<{ ok: boolean }>(`/proactive/bots/${encodeURIComponent(botId)}`, {
+      method: 'DELETE',
+    }),
+  // F8.1.3 — Rotinas Agendadas
+  getProactiveRoutines: () => fetchJSON<{ ok: boolean; routines: import('../types').ProactiveRoutine[] }>('/proactive/routines'),
+  createProactiveRoutine: (data: Partial<import('../types').ProactiveRoutine>) =>
+    fetchJSON<{ ok: boolean; routine: import('../types').ProactiveRoutine }>('/proactive/routines', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  updateProactiveRoutine: (id: string, data: Partial<import('../types').ProactiveRoutine>) =>
+    fetchJSON<{ ok: boolean }>(`/proactive/routines/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+  deleteProactiveRoutine: (id: string) =>
+    fetchJSON<{ ok: boolean }>(`/proactive/routines/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    }),
+  // F9.1 — Memórias e Tópicos Acumulados
+  getProactiveMemories: (status?: string) => {
+    const qs = status ? `?status=${encodeURIComponent(status)}` : ''
+    return fetchJSON<{ ok: boolean; memories: import('../types').ProactiveMemory[] }>(`/proactive/memories${qs}`)
+  },
+  sendProactiveMemorySignal: (data: { category: string; topic_key: string; snippet: string; weight?: number }) =>
+    fetchJSON<{ ok: boolean; memory: any }>('/proactive/memories/signal', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  // F9.4 — Pareamento do Companion Móvel
+  getProactiveCompanionPair: () =>
+    fetchJSON<{ ok: boolean; pair_code: string; selected_pet: string; expires_in_seconds: number; companion_url: string }>('/proactive/companion/pair'),
 }
 
 export interface MemoryStatsApi {

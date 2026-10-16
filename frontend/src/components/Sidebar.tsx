@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import {
   MessageSquare, Trash2, Pencil, Check, X, ChevronRight,
   Sparkles, Globe, Image, Images, FileText, Atom, FileCode, Download, LogOut,
-  MoreVertical, Star, Sun, Moon, Folder, Search, PanelLeftClose, PanelLeftOpen, Plus, Bot,
+  MoreVertical, Star, Sun, Moon, Folder, Search, PanelLeftClose, PanelLeftOpen, Plus, Bot, Cpu,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useStore } from '../store/useStore'
@@ -864,6 +864,19 @@ export function Sidebar() {
                 {pendingInsights.length}
               </span>
             )}
+          </button>
+          <button
+            type="button"
+            className={`sidebar-fixed-nav-item custom-tooltip-trigger ${view === 'agents' ? 'selected' : ''}`}
+            data-tooltip={t('sidebar.agents', { defaultValue: 'Multi-Agentes & Sandbox' })}
+            aria-label={t('sidebar.agents', { defaultValue: 'Multi-Agentes & Sandbox' })}
+            onClick={() => {
+              setView('agents')
+              if (window.innerWidth <= MOBILE_BREAKPOINT) setSidebarOpen(false)
+            }}
+          >
+            <Cpu size={20} />
+            <span>{t('sidebar.agents', { defaultValue: 'Multi-Agentes' })}</span>
           </button>
         </div>
 

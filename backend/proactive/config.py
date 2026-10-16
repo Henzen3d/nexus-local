@@ -274,6 +274,8 @@ class UserSettings:
     quiet_hours: Optional[dict[str, Any]] = None
     push_enabled: bool = False
     persona_style: str = "lumi"
+    selected_pet: str = "lumi"
+    pet_widget_enabled: bool = True
     onboarding_seen_at: Optional[str] = None
     updated_at: Optional[str] = None
     exists: bool = False                        # havia linha no banco?
@@ -286,6 +288,8 @@ class UserSettings:
             "quiet_hours": self.quiet_hours,
             "push_enabled": self.push_enabled,
             "persona_style": self.persona_style,
+            "selected_pet": self.selected_pet,
+            "pet_widget_enabled": self.pet_widget_enabled,
             "onboarding_seen_at": self.onboarding_seen_at,
             "updated_at": self.updated_at,
         }
@@ -337,7 +341,8 @@ async def get_user_settings(db: Any, user_id: str) -> UserSettings:
     try:
         async with db.execute(
             """SELECT enabled, sensitivity, categories_json, quiet_hours_json,
-                      onboarding_seen_at, updated_at, push_enabled, persona_style
+                      onboarding_seen_at, updated_at, push_enabled, persona_style,
+                      selected_pet, pet_widget_enabled
                FROM proactive_user_settings WHERE user_id = ?""",
             (user_id,),
         ) as cur:
@@ -347,18 +352,29 @@ async def get_user_settings(db: Any, user_id: str) -> UserSettings:
         try:
             async with db.execute(
                 """SELECT enabled, sensitivity, categories_json, quiet_hours_json,
-                          onboarding_seen_at, updated_at
+                          onboarding_seen_at, updated_at, push_enabled, persona_style
                    FROM proactive_user_settings WHERE user_id = ?""",
                 (user_id,),
             ) as cur:
                 row = await cur.fetchone()
-        except Exception as exc:
-            logger.debug("[Proactive] proactive_user_settings indisponível: %s", exc)
-            row = None
+        except Exception:
+            try:
+                async with db.execute(
+                    """SELECT enabled, sensitivity, categories_json, quiet_hours_json,
+                              onboarding_seen_at, updated_at
+                       FROM proactive_user_settings WHERE user_id = ?""",
+                    (user_id,),
+                ) as cur:
+                    row = await cur.fetchone()
+            except Exception as exc:
+                logger.debug("[Proactive] proactive_user_settings indisponível: %s", exc)
+                row = None
     if not row:
         return UserSettings(user_id=user_id)
     push_val = bool(row[6]) if len(row) > 6 and row[6] is not None else False
     persona_val = str(row[7]) if len(row) > 7 and row[7] is not None else "lumi"
+    pet_val = str(row[8]) if len(row) > 8 and row[8] is not None else "lumi"
+    widget_val = bool(row[9]) if len(row) > 9 and row[9] is not None else True
     return UserSettings(
         user_id=user_id,
         enabled=bool(row[0]),
@@ -367,6 +383,8 @@ async def get_user_settings(db: Any, user_id: str) -> UserSettings:
         quiet_hours=_parse_json(row[3], None) if row[3] else None,
         push_enabled=push_val,
         persona_style=persona_val,
+        selected_pet=pet_val,
+        pet_widget_enabled=widget_val,
         onboarding_seen_at=row[4],
         updated_at=row[5],
         exists=True,
@@ -384,6 +402,8 @@ async def upsert_user_settings(
     clear_quiet_hours: bool = False,
     push_enabled: Optional[bool] = None,
     persona_style: Optional[str] = None,
+    selected_pet: Optional[str] = None,
+    pet_widget_enabled: Optional[bool] = None,
     onboarding_seen: Optional[bool] = None,
 ) -> UserSettings:
     """Atualiza apenas os campos informados e devolve o estado final."""
@@ -393,6 +413,8 @@ async def upsert_user_settings(
     new_categories = current.categories if categories is None else normalize_categories(categories)
     new_push = current.push_enabled if push_enabled is None else bool(push_enabled)
     new_persona = current.persona_style if persona_style is None else str(persona_style).strip().lower()
+    new_pet = current.selected_pet if selected_pet is None else str(selected_pet).strip().lower()
+    new_widget = current.pet_widget_enabled if pet_widget_enabled is None else bool(pet_widget_enabled)
     if clear_quiet_hours:
         new_quiet: Optional[dict[str, Any]] = None
     else:
@@ -408,8 +430,8 @@ async def upsert_user_settings(
     try:
         await db.execute(
             """INSERT INTO proactive_user_settings
-                   (user_id, enabled, sensitivity, categories_json, quiet_hours_json, push_enabled, persona_style, onboarding_seen_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                   (user_id, enabled, sensitivity, categories_json, quiet_hours_json, push_enabled, persona_style, selected_pet, pet_widget_enabled, onboarding_seen_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
                ON CONFLICT(user_id) DO UPDATE SET
                    enabled = excluded.enabled,
                    sensitivity = excluded.sensitivity,
@@ -417,6 +439,8 @@ async def upsert_user_settings(
                    quiet_hours_json = excluded.quiet_hours_json,
                    push_enabled = excluded.push_enabled,
                    persona_style = excluded.persona_style,
+                   selected_pet = excluded.selected_pet,
+                   pet_widget_enabled = excluded.pet_widget_enabled,
                    onboarding_seen_at = excluded.onboarding_seen_at,
                    updated_at = datetime('now')""",
             (
@@ -427,30 +451,59 @@ async def upsert_user_settings(
                 json.dumps(new_quiet, ensure_ascii=False) if new_quiet is not None else None,
                 1 if new_push else 0,
                 new_persona,
+                new_pet,
+                1 if new_widget else 0,
                 new_onboarding,
             ),
         )
     except Exception:
         # Fallback se colunas ainda não existirem no DB
-        await db.execute(
-            """INSERT INTO proactive_user_settings
-                   (user_id, enabled, sensitivity, categories_json, quiet_hours_json, onboarding_seen_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
-               ON CONFLICT(user_id) DO UPDATE SET
-                   enabled = excluded.enabled,
-                   sensitivity = excluded.sensitivity,
-                   categories_json = excluded.categories_json,
-                   quiet_hours_json = excluded.quiet_hours_json,
-                   onboarding_seen_at = excluded.onboarding_seen_at,
-                   updated_at = datetime('now')""",
-            (
-                user_id,
-                1 if new_enabled else 0,
-                new_sensitivity,
-                json.dumps(new_categories, ensure_ascii=False),
-                json.dumps(new_quiet, ensure_ascii=False) if new_quiet is not None else None,
-                new_onboarding,
-            ),
-        )
+        try:
+            await db.execute(
+                """INSERT INTO proactive_user_settings
+                       (user_id, enabled, sensitivity, categories_json, quiet_hours_json, push_enabled, persona_style, onboarding_seen_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                   ON CONFLICT(user_id) DO UPDATE SET
+                       enabled = excluded.enabled,
+                       sensitivity = excluded.sensitivity,
+                       categories_json = excluded.categories_json,
+                       quiet_hours_json = excluded.quiet_hours_json,
+                       push_enabled = excluded.push_enabled,
+                       persona_style = excluded.persona_style,
+                       onboarding_seen_at = excluded.onboarding_seen_at,
+                       updated_at = datetime('now')""",
+                (
+                    user_id,
+                    1 if new_enabled else 0,
+                    new_sensitivity,
+                    json.dumps(new_categories, ensure_ascii=False),
+                    json.dumps(new_quiet, ensure_ascii=False) if new_quiet is not None else None,
+                    1 if new_push else 0,
+                    new_persona,
+                    new_onboarding,
+                ),
+            )
+        except Exception:
+            # Fallback se colunas ainda não existirem no DB
+            await db.execute(
+                """INSERT INTO proactive_user_settings
+                       (user_id, enabled, sensitivity, categories_json, quiet_hours_json, onboarding_seen_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+                   ON CONFLICT(user_id) DO UPDATE SET
+                       enabled = excluded.enabled,
+                       sensitivity = excluded.sensitivity,
+                       categories_json = excluded.categories_json,
+                       quiet_hours_json = excluded.quiet_hours_json,
+                       onboarding_seen_at = excluded.onboarding_seen_at,
+                       updated_at = datetime('now')""",
+                (
+                    user_id,
+                    1 if new_enabled else 0,
+                    new_sensitivity,
+                    json.dumps(new_categories, ensure_ascii=False),
+                    json.dumps(new_quiet, ensure_ascii=False) if new_quiet is not None else None,
+                    new_onboarding,
+                ),
+            )
     await db.commit()
     return await get_user_settings(db, user_id)

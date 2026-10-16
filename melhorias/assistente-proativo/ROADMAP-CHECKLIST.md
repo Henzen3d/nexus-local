@@ -11,9 +11,12 @@ Use este arquivo para marcar o progresso. Cada item tem o mesmo ID usado no docu
 | F3 Presença, fila e retorno | `04-fase-3-presenca-fila-retorno.md` | 10 h | F2 | ✅ |
 | F4 Controles e admin | `05-fase-4-controles-e-admin.md` | 6 h | F2, F3 | ✅ |
 | F5 Qualidade e rollout | `06-fase-5-qualidade-e-rollout.md` | 8 h + 1 semana | F1–F4 | ✅ código · ⏳ semana de teste (F5.4.1/F5.4.2/F5.5.3 com o admin) |
-| F6 Web Push (opcional) | `07-opcional-web-push-pwa.md` | 8 h | F3, F4 | 🔮 |
+| F6 Web Push (opcional) | `07-opcional-web-push-pwa.md` | 8 h | F3, F4 | ✅ Implementado com pywebpush e VAPID |
+| F7 Central, Hub e Persona | `08-central-de-notificacoes-hub-e-persona.md` | 10 h | F6 | ✅ Implementado com Mascote Lumi, Sininho e Hub na Sidebar |
+| F8 Multi-Agentes & Computer | `09-evolucao-multi-agentes-e-computer.md` | 14 h | F7 | ✅ Concluído (Workspace 3 colunas, bots, rotinas e sandbox nexus_computer) |
+| F9 Nexus Pet & Companion | `10-pet-virtual-clippy-e-openmausbot.md` | 12 h | F7/F8 | ✅ Concluído (32 mascotes SVG, molas procedurais, balões Clippy e accumulator) |
 
-**Total MVP (F1–F5): ~38 h · com F6: ~46 h**
+**Total Roadmap:** F1–F5 (MVP: ~38 h) · F6–F7 (Presença & Notificações: ~18 h) · F8–F9 (Multi-Agentes, Sandbox, Pet Virtual & Companion: ~26 h)
 
 ---
 
@@ -299,5 +302,63 @@ Use este arquivo para marcar o progresso. Cada item tem o mesmo ID usado no docu
 - [x] **F7.3.1** Mascote vetorial reativo SVG `ProactiveMascot.tsx` (estados: idle, researching, ready, sleep)
 - [x] **F7.3.2** Toggle nas preferências: "Mascote Lumi" vs. "Orbe Minimalista"
 - [x] **F7.3.3** Tradução completa em 8 locales e testes de regressão
+
+---
+
+## 🤖 F8 — Multi-Agentes, Computer Sandbox e Rotinas (`09-evolucao-multi-agentes-e-computer.md`)
+
+**F8.1 Banco de Dados e Backend Multi-Agentes**
+- [x] **F8.1.1** Migrações em `init_db()` para `proactive_bots`, `proactive_routines` e `proactive_memories`
+- [x] **F8.1.2** Modelo e CRUD REST: `GET/POST/PUT/DELETE /api/proactive/bots`
+- [x] **F8.1.3** Modelo e CRUD REST: `GET/POST/PUT/DELETE /api/proactive/routines`
+- [x] **F8.1.4** Motor de Ambient Listening: subscrição de canais/conversas para bots especialistas com filtros de palavras-chave e gatilhos de contexto
+- [x] **F8.1.5** Agendador de rotinas (Cron / Interval) assíncrono em `backend/proactive/scheduler.py`
+
+**F8.2 Container e Serviço Sandbox (`nexus_computer`)**
+- [x] **F8.2.1** Definição de serviço Docker Compose `computer` (Chromium headless + CDP + VNC preview)
+- [x] **F8.2.2** Classe `BaseComputer` com `navigate()`, `click()`, `type()`, `screenshot()` e `extract_dom()`
+- [x] **F8.2.3** Gateway de segurança de rede (anti-SSRF, blocklist de IPs locais/privados)
+- [x] **F8.2.4** Endpoint e preview de tela para visualização do sandbox
+
+**F8.3 Frontend: Layout de 3 Colunas e Roster de Bots**
+- [x] **F8.3.1** View `AgentWorkspace.tsx` (`view === 'agents'`) com layout 3 colunas (Roster à esquerda, Chat central, Painel de Computador/Rotinas à direita)
+- [x] **F8.3.2** Componente `BotRosterList.tsx` com avatares e status de atividade
+- [x] **F8.3.3** Componente `ComputerActionBlock.tsx` com preview da tela do computador e badges de execução (`✓`, `⚠`)
+- [x] **F8.3.4** Modal `CreateBotModal.tsx` com definição de instruções e ferramentas
+- [x] **F8.3.5** Tradução i18n completa em 8 locales e atalho na barra lateral
+
+**Aceite F8:** Multi-bots configuráveis com instruções isoladas · sandbox de computador roda Playwright sem expor o host · rotinas cron agendadas disparam notificações no sininho · zero vazamento de banco de dados nos testes.
+
+---
+
+## 🐾 F9 — Nexus Pet: Clippy Moderno, 32 Mascotes e Companion (`10-pet-virtual-clippy-e-openmausbot.md`)
+
+**F9.1 Backend: Acúmulo de Tópicos e Memória em Background**
+- [x] **F9.1.1** Tabela `proactive_memories` e migração incremental segura em `init_db()`
+- [x] **F9.1.2** Módulo `backend/proactive/accumulator.py` (`MemoryTopicAccumulator`) para pontuar e correlacionar intenções esparsas ao longo do tempo (ex: viagens, compras, estudos)
+- [x] **F9.1.3** Gatilho de convergência (`TriggerThreshold`): sintetiza o insight em background quando atinge relevância sem interromper o usuário
+- [x] **F9.1.4** Testes unitários com SQLite em memória (`conftest.py`) cobrindo acúmulo de tópicos, descarte e idempotência
+
+**F9.2 Motor de Mascotes com Física de Molas SVG**
+- [x] **F9.2.1** Componente `PetAvatar.tsx` com algoritmo de molas procedurais (*spring physics*: `bob`, `sway`, `pulse`, `squash`, `tilt`, `jitter`)
+- [x] **F9.2.2** Catálogo dos 32 Mascotes de `Coleção de Mascotes Assistentes Virtuais.png` com perfis de cores, traços de olhos e acessórios
+- [x] **F9.2.3** Algoritmo de Gaze Pointer Tracking (olhos seguem suavemente o cursor do mouse ou o texto em digitação)
+- [x] **F9.2.4** Sistema de partículas (confetes vetoriais e fitas de comemoração ao terminar uma tarefa)
+
+**F9.3 Balões de Fala Proativos e Interações Estilo Clippy**
+- [x] **F9.3.1** Componente `PetSpeechBalloon.tsx` com tipografia moderna, animação pop-in suave e fechamento automático/manual
+- [x] **F9.3.2** Botões de ação imediata no balão: `[✦ Ver Roteiro/Insight]`, `[☕ Guardar para Mais Tarde]`, `[Agora Não]`
+- [x] **F9.3.3** Componente mestre flutuante `NexusPetWidget.tsx` com suporte a arrastar (*drag-and-drop*), docar na lateral e alternar visibilidade
+- [x] **F9.3.4** Seletor de Pet nas preferências (`PetSettingsModal.tsx`) para escolher entre os 32 mascotes ou o modo corporativo
+
+**F9.4 Companion Sidecar Móvel & Pareamento Seguro**
+- [x] **F9.4.1** Rota de pareamento móvel com QR Code de uso único (validade 2 min, token SHA-256)
+- [x] **F9.4.2** Anúncio e autodescoberta local via mDNS (Bonjour)
+- [x] **F9.4.3** Notificações push personalizadas com o tom de voz do pet escolhido
+- [x] **F9.4.4** Cards de decisão e aprovação rápida para celular (`ApprovalCard` e `AskCard`)
+
+**Aceite F9:** O mascote anima organicamente sem usar imagens/vídeos pesados · balões de fala respeitam o fluxo do usuário sem roubar foco do teclado · correlação de viagens e pesquisas funciona em background com disparo no momento certo · pareamento com celular via QR Code é seguro e isolado em loopback.
+
+
 
 

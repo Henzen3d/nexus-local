@@ -47,10 +47,20 @@ async def test_init_db_is_idempotent_and_creates_proactive_schema():
         assert settings["sensitivity"]["default"] == "'medium'"
         assert "categories_json" in settings and "quiet_hours_json" in settings
         assert "onboarding_seen_at" in settings
+        assert "selected_pet" in settings and "pet_widget_enabled" in settings
 
         blocklist = await _columns(db, "proactive_topic_blocklist")
         assert {"user_id", "topic_hash", "topic_label", "created_at"} <= set(blocklist)
         assert blocklist["user_id"]["pk"] == 1 and blocklist["topic_hash"]["pk"] == 2
+
+        memories = await _columns(db, "proactive_memories")
+        assert {"id", "user_id", "topic_category", "topic_key", "signal_count", "accumulated_context", "status"} <= set(memories)
+
+        bots = await _columns(db, "proactive_bots")
+        assert {"id", "user_id", "name", "color_hex", "avatar_shape", "mascot_id", "ambient_enabled"} <= set(bots)
+
+        routines = await _columns(db, "proactive_routines")
+        assert {"id", "bot_id", "user_id", "name", "prompt", "timing_type", "timing_value", "is_active"} <= set(routines)
 
         messages = await _columns(db, "messages")
         assert messages["kind"]["default"] == "'normal'"
@@ -63,6 +73,9 @@ async def test_init_db_is_idempotent_and_creates_proactive_schema():
             await _indexes(db, "proactive_insights")
         )
         assert "idx_messages_kind_proactive" in await _indexes(db, "messages")
+        assert "idx_proactive_memories_user_status" in await _indexes(db, "proactive_memories")
+        assert "idx_proactive_bots_user" in await _indexes(db, "proactive_bots")
+        assert "idx_proactive_routines_next" in await _indexes(db, "proactive_routines")
 
         async with db.execute("SELECT key, value FROM meta WHERE key LIKE 'proactive_%'") as cur:
             meta = dict(await cur.fetchall())

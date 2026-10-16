@@ -2015,10 +2015,12 @@ async def _migrate_proactive_schema(db: aiosqlite.Connection) -> None:
         except Exception as e:
             logger.error("[database migration] erro ao criar proactive_user_settings:", exc_info=e)
 
-    # Colunas incrementais em proactive_user_settings (F6/F7)
+    # Colunas incrementais em proactive_user_settings (F6/F7/F9)
     for col_name, col_def in [
         ("push_enabled", "INTEGER DEFAULT 0"),
         ("persona_style", "TEXT DEFAULT 'lumi'"),
+        ("selected_pet", "TEXT DEFAULT 'lumi'"),
+        ("pet_widget_enabled", "INTEGER DEFAULT 1"),
     ]:
         try:
             await db.execute(f"SELECT {col_name} FROM proactive_user_settings LIMIT 1")
@@ -2028,6 +2030,87 @@ async def _migrate_proactive_schema(db: aiosqlite.Connection) -> None:
                 await db.commit()
             except Exception as e:
                 logger.error("[database migration] erro ao adicionar %s em proactive_user_settings: %s", col_name, e)
+
+    # F9.1.1 — proactive_memories (Acúmulo de tópicos e sinais em background)
+    try:
+        await db.execute("SELECT id FROM proactive_memories LIMIT 1")
+    except aiosqlite.OperationalError:
+        try:
+            await db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS proactive_memories (
+                    id                  TEXT PRIMARY KEY,
+                    user_id             TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    topic_category      TEXT NOT NULL,
+                    topic_key           TEXT NOT NULL,
+                    signal_count        INTEGER NOT NULL DEFAULT 1,
+                    accumulated_context TEXT NOT NULL DEFAULT '{}',
+                    insight_ready_id    TEXT REFERENCES proactive_insights(id) ON DELETE SET NULL,
+                    status              TEXT NOT NULL DEFAULT 'accumulating'
+                        CHECK(status IN ('accumulating', 'ready_to_prompt', 'delivered', 'archived')),
+                    last_signal_at      TEXT DEFAULT (datetime('now')),
+                    created_at          TEXT DEFAULT (datetime('now'))
+                );
+                """
+            )
+            await db.commit()
+        except Exception as e:
+            logger.error("[database migration] erro ao criar proactive_memories:", exc_info=e)
+
+    # F8.1.1 — proactive_bots (Bots especialistas com instruções e avatares)
+    try:
+        await db.execute("SELECT id FROM proactive_bots LIMIT 1")
+    except aiosqlite.OperationalError:
+        try:
+            await db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS proactive_bots (
+                    id                  TEXT PRIMARY KEY,
+                    user_id             TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    name                TEXT NOT NULL,
+                    title               TEXT,
+                    description         TEXT,
+                    system_instructions TEXT,
+                    color_hex           TEXT NOT NULL DEFAULT '#3EC5A8',
+                    avatar_shape        TEXT NOT NULL DEFAULT 'circle',
+                    mascot_id           TEXT DEFAULT 'nex',
+                    computer_mode       TEXT NOT NULL DEFAULT 'shared',
+                    ambient_enabled     INTEGER NOT NULL DEFAULT 1,
+                    ambient_rules       TEXT,
+                    created_at          TEXT DEFAULT (datetime('now')),
+                    updated_at          TEXT DEFAULT (datetime('now'))
+                );
+                """
+            )
+            await db.commit()
+        except Exception as e:
+            logger.error("[database migration] erro ao criar proactive_bots:", exc_info=e)
+
+    # F8.1.1 — proactive_routines (Rotinas cron/intervalo para bots especialistas)
+    try:
+        await db.execute("SELECT id FROM proactive_routines LIMIT 1")
+    except aiosqlite.OperationalError:
+        try:
+            await db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS proactive_routines (
+                    id           TEXT PRIMARY KEY,
+                    bot_id       TEXT NOT NULL REFERENCES proactive_bots(id) ON DELETE CASCADE,
+                    user_id      TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    name         TEXT NOT NULL,
+                    prompt       TEXT NOT NULL,
+                    timing_type  TEXT NOT NULL DEFAULT 'interval',
+                    timing_value TEXT NOT NULL,
+                    last_run_at  TEXT,
+                    next_run_at  TEXT,
+                    is_active    INTEGER NOT NULL DEFAULT 1,
+                    created_at   TEXT DEFAULT (datetime('now'))
+                );
+                """
+            )
+            await db.commit()
+        except Exception as e:
+            logger.error("[database migration] erro ao criar proactive_routines:", exc_info=e)
 
     # F6.1.2 — push_subscriptions (Web Push no PWA)
     try:
@@ -2118,6 +2201,22 @@ async def _migrate_proactive_schema(db: aiosqlite.Connection) -> None:
         await db.execute(
             "CREATE INDEX IF NOT EXISTS idx_push_subs_user "
             "ON push_subscriptions(user_id)"
+        )
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_proactive_memories_user_status "
+            "ON proactive_memories(user_id, status)"
+        )
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_proactive_memories_topic "
+            "ON proactive_memories(user_id, topic_category, topic_key)"
+        )
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_proactive_bots_user "
+            "ON proactive_bots(user_id)"
+        )
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_proactive_routines_next "
+            "ON proactive_routines(is_active, next_run_at)"
         )
         await db.commit()
     except Exception as e:
