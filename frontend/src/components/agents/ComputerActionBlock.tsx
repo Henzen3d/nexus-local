@@ -10,6 +10,8 @@ import {
   ShieldCheck,
   Terminal,
   Loader2,
+  Maximize2,
+  X,
 } from 'lucide-react'
 import type { ProactiveBot } from '../../types'
 import { api } from '../../api/client'
@@ -28,22 +30,28 @@ interface ComputerActionBlockProps {
   activeBot: ProactiveBot | null
   currentUrl?: string
   pageTitle?: string
+  screenshotUrl?: string
   logs?: ActionLogItem[]
   onLogsChange?: (logs: ActionLogItem[]) => void
   onUrlChange?: (url: string) => void
+  onScreenshotChange?: (url: string) => void
 }
 
 export const ComputerActionBlock: React.FC<ComputerActionBlockProps> = ({
   activeBot,
   currentUrl: propCurrentUrl,
   pageTitle: propPageTitle,
+  screenshotUrl: propScreenshotUrl,
   logs: propLogs,
   onLogsChange,
   onUrlChange,
+  onScreenshotChange,
 }) => {
   const [urlInput, setUrlInput] = useState('https://news.ycombinator.com')
   const [currentUrl, setCurrentUrl] = useState(propCurrentUrl || 'https://news.ycombinator.com')
   const [pageTitle, setPageTitle] = useState(propPageTitle || '')
+  const [screenshotUrl, setScreenshotUrl] = useState<string | undefined>(propScreenshotUrl)
+  const [isZoomOpen, setIsZoomOpen] = useState(false)
   const [isNavigating, setIsNavigating] = useState(false)
   const [logs, setLogs] = useState<ActionLogItem[]>(
     propLogs || [
@@ -80,6 +88,12 @@ export const ComputerActionBlock: React.FC<ComputerActionBlockProps> = ({
   }, [propPageTitle])
 
   useEffect(() => {
+    if (propScreenshotUrl !== undefined) {
+      setScreenshotUrl(propScreenshotUrl)
+    }
+  }, [propScreenshotUrl])
+
+  useEffect(() => {
     if (propLogs) {
       setLogs(propLogs)
     }
@@ -104,6 +118,10 @@ export const ComputerActionBlock: React.FC<ComputerActionBlockProps> = ({
           setCurrentUrl(newUrl)
           setUrlInput(newUrl)
           if (res.title) setPageTitle(res.title)
+          if (res.screenshot_url) {
+            setScreenshotUrl(res.screenshot_url)
+            onScreenshotChange?.(res.screenshot_url)
+          }
           onUrlChange?.(newUrl)
 
           const newActions: ActionLogItem[] = [res.action as ActionLogItem]
@@ -170,18 +188,39 @@ export const ComputerActionBlock: React.FC<ComputerActionBlockProps> = ({
     }
   }
 
-  const handleScreenshot = () => {
-    const shotAction: ActionLogItem = {
-      id: `log-${Date.now()}`,
-      action: 'screenshot',
-      target: `viewport 1280x800 (${currentUrl})`,
-      status: 'success',
-      latencyMs: 65,
-      time: 'Agora',
+  const handleScreenshot = async () => {
+    if (!currentUrl || isNavigating) return
+    setIsNavigating(true)
+    try {
+      if (activeBot?.id) {
+        const res = await api.screenshotProactiveComputer(activeBot.id, currentUrl)
+        if (res.ok && res.screenshot_url) {
+          setScreenshotUrl(res.screenshot_url)
+          onScreenshotChange?.(res.screenshot_url)
+          if (res.action) {
+            const updated = [res.action as ActionLogItem, ...logs]
+            setLogs(updated)
+            onLogsChange?.(updated)
+          }
+        }
+      } else {
+        const shotAction: ActionLogItem = {
+          id: `log-${Date.now()}`,
+          action: 'screenshot',
+          target: `viewport 1280x800 (${currentUrl})`,
+          status: 'success',
+          latencyMs: 65,
+          time: 'Agora',
+        }
+        const updated = [shotAction, ...logs]
+        setLogs(updated)
+        onLogsChange?.(updated)
+      }
+    } catch (err) {
+      console.error('[ComputerActionBlock] erro no snapshot:', err)
+    } finally {
+      setIsNavigating(false)
     }
-    const updated = [shotAction, ...logs]
-    setLogs(updated)
-    onLogsChange?.(updated)
   }
 
   return (
@@ -327,72 +366,133 @@ export const ComputerActionBlock: React.FC<ComputerActionBlockProps> = ({
         <div
           style={{
             flex: 1,
-            padding: 12,
-            color: '#f8fafc',
+            position: 'relative',
+            background: 'linear-gradient(180deg, #0f172a 0%, #1e293b 100%)',
             display: 'flex',
             flexDirection: 'column',
             justifyContent: 'center',
             alignItems: 'center',
-            textAlign: 'center',
-            background: 'linear-gradient(180deg, #0f172a 0%, #1e293b 100%)',
+            overflow: 'hidden',
           }}
         >
-          {isNavigating ? (
-            <Loader2 size={26} color="#38bdf8" className="spin-slow" style={{ marginBottom: 6 }} />
-          ) : (
-            <Globe size={26} color="#38bdf8" style={{ marginBottom: 6 }} />
+          {isNavigating && (
+            <div
+              style={{
+                position: 'absolute',
+                inset: 0,
+                background: 'rgba(0,0,0,0.5)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: 10,
+              }}
+            >
+              <Loader2 size={26} color="#38bdf8" className="spin-slow" />
+            </div>
           )}
+
+          {screenshotUrl ? (
+            <div
+              style={{
+                width: '100%',
+                height: '100%',
+                position: 'relative',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+              }}
+              onClick={() => setIsZoomOpen(true)}
+              title="Clique para ver o snapshot em tela cheia"
+            >
+              <img
+                src={screenshotUrl}
+                alt={pageTitle || currentUrl}
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'contain',
+                  display: 'block',
+                }}
+              />
+              <div
+                style={{
+                  position: 'absolute',
+                  top: 8,
+                  right: 8,
+                  background: 'rgba(0,0,0,0.6)',
+                  borderRadius: 4,
+                  padding: 4,
+                  color: '#fff',
+                }}
+              >
+                <Maximize2 size={12} />
+              </div>
+            </div>
+          ) : (
+            <div
+              style={{
+                padding: 12,
+                color: '#f8fafc',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'center',
+                alignItems: 'center',
+                textAlign: 'center',
+              }}
+            >
+              <Globe size={26} color="#38bdf8" style={{ marginBottom: 6 }} />
+              <div
+                style={{
+                  fontSize: '0.84rem',
+                  fontWeight: 600,
+                  maxWidth: 280,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {pageTitle || (currentUrl === 'about:blank' ? 'Sandbox em Espera' : currentUrl)}
+              </div>
+              <div style={{ fontSize: '0.7rem', color: '#94a3b8', maxWidth: 260, marginTop: 2 }}>
+                {activeBot ? `Sandbox vinculado a ${activeBot.name}` : 'Sessão Playwright segura'}
+              </div>
+            </div>
+          )}
+
+          {/* Barra de Ações Rápidas */}
           <div
             style={{
-              fontSize: '0.84rem',
-              fontWeight: 600,
-              maxWidth: 280,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            {pageTitle || (currentUrl === 'about:blank' ? 'Sandbox em Espera' : currentUrl)}
-          </div>
-          <div style={{ fontSize: '0.7rem', color: '#94a3b8', maxWidth: 260, marginTop: 2 }}>
-            {isNavigating
-              ? 'Navegando com verificação Anti-SSRF...'
-              : activeBot
-              ? `Sandbox vinculado a ${activeBot.name}`
-              : 'Sessão Playwright segura'}
-          </div>
-        </div>
-
-        {/* Barra de Ações Rápidas */}
-        <div
-          style={{
-            position: 'absolute',
-            bottom: 6,
-            right: 6,
-            display: 'flex',
-            gap: 4,
-          }}
-        >
-          <button
-            type="button"
-            onClick={handleScreenshot}
-            style={{
-              background: 'rgba(0,0,0,0.6)',
-              border: '1px solid rgba(255,255,255,0.2)',
-              color: '#fff',
-              borderRadius: 4,
-              padding: '3px 6px',
-              fontSize: '0.68rem',
-              cursor: 'pointer',
+              position: 'absolute',
+              bottom: 6,
+              right: 6,
               display: 'flex',
-              alignItems: 'center',
               gap: 4,
+              zIndex: 5,
             }}
-            title="Capturar screenshot da tela"
           >
-            <Camera size={11} />
-            Snapshot
-          </button>
+            <button
+              type="button"
+              onClick={handleScreenshot}
+              disabled={isNavigating}
+              style={{
+                background: 'rgba(0,0,0,0.65)',
+                border: '1px solid rgba(255,255,255,0.2)',
+                color: '#fff',
+                borderRadius: 4,
+                padding: '3px 8px',
+                fontSize: '0.68rem',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+              }}
+              title="Capturar snapshot visual da página"
+            >
+              <Camera size={11} />
+              Snapshot
+            </button>
+          </div>
         </div>
       </div>
 
@@ -416,7 +516,7 @@ export const ComputerActionBlock: React.FC<ComputerActionBlockProps> = ({
         </div>
 
         <div style={{ flex: 1, overflowY: 'auto', padding: '0.5rem 0.75rem' }}>
-          {logs.map((item) => (
+          {logs.map((item: ActionLogItem) => (
             <div
               key={item.id}
               style={{
@@ -457,6 +557,74 @@ export const ComputerActionBlock: React.FC<ComputerActionBlockProps> = ({
           ))}
         </div>
       </div>
+
+      {/* Modal Zoom do Snapshot */}
+      {isZoomOpen && screenshotUrl && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0, 0, 0, 0.85)',
+            zIndex: 3000,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 20,
+          }}
+          onClick={() => setIsZoomOpen(false)}
+        >
+          <div
+            style={{
+              maxWidth: 960,
+              width: '95vw',
+              background: '#0f172a',
+              borderRadius: 12,
+              border: '1px solid #334155',
+              overflow: 'hidden',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.7)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                padding: '10px 16px',
+                background: '#1e293b',
+                borderBottom: '1px solid #334155',
+                color: '#f8fafc',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.85rem', fontWeight: 600 }}>
+                <Globe size={16} color="#38bdf8" />
+                <span>{pageTitle || currentUrl}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsZoomOpen(false)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: '#94a3b8',
+                  cursor: 'pointer',
+                  padding: 4,
+                }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div style={{ padding: 12, display: 'flex', justifyContent: 'center' }}>
+              <img
+                src={screenshotUrl}
+                alt={pageTitle || currentUrl}
+                style={{ maxWidth: '100%', maxHeight: '78vh', objectFit: 'contain', borderRadius: 6 }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

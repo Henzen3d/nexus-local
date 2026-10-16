@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
-import { PanelLeftOpen, Code2, BookOpen, Pencil, Lightbulb, X, ChevronRight, MoreVertical, Folder } from 'lucide-react'
+import { PanelLeftOpen, Code2, BookOpen, Pencil, Lightbulb, X, ChevronRight, MoreVertical, Folder, Cpu } from 'lucide-react'
 import { BuyCoffeeIcon } from './BuyCoffeeIcon'
 import { useTranslation } from 'react-i18next'
 import { useStore } from '../store/useStore'
@@ -557,6 +557,19 @@ export function ChatWindow() {
           )}
 
           {isMobile && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="touch-target header-agents-btn"
+              onClick={() => setView('agents')}
+              aria-label={t('sidebar.agents', { defaultValue: 'Multi-Agentes' })}
+              title={t('sidebar.agents', { defaultValue: 'Multi-Agentes' })}
+            >
+              <Cpu size={18} />
+            </Button>
+          )}
+
+          {isMobile && (
             <div className="chat-header-overflow" ref={headerMenuRef}>
               <Button
                 variant="ghost"
@@ -570,6 +583,18 @@ export function ChatWindow() {
               </Button>
               {headerMenuOpen && (
                 <div className="chat-header-menu" role="menu">
+                  <button
+                    type="button"
+                    className="chat-header-menu-item"
+                    role="menuitem"
+                    onClick={() => {
+                      setHeaderMenuOpen(false)
+                      setView('agents')
+                    }}
+                  >
+                    <Cpu size={16} />
+                    <span>{t('sidebar.agents', { defaultValue: 'Multi-Agentes & Sandbox' })}</span>
+                  </button>
                   {chatProjectId && (
                     <button
                       type="button"

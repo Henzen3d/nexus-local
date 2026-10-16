@@ -413,44 +413,86 @@ export function MessageInput({ onSend, onStop, isEmpty = false }: Props) {
         )}
 
         {/* Camada 2: Linha / Área Unificada do Composer */}
-        <div className={isCompact ? 'composer-single-line-row' : 'composer-multiline-container'}>
-          <div className="composer-actions-left">
-            <PlusActionMenu
-              onOpenFilePicker={handleOpenFilePicker}
-              onEnhance={handleEnhance}
-              enhancing={enhancing}
-              hasText={!!text.trim()}
-              enhancerReady={enhancerReady}
-              disabled={isStreaming}
+        {isCompact ? (
+          <div className="composer-single-line-row">
+            <div className="composer-actions-left">
+              <PlusActionMenu
+                onOpenFilePicker={handleOpenFilePicker}
+                onEnhance={handleEnhance}
+                enhancing={enhancing}
+                hasText={!!text.trim()}
+                enhancerReady={enhancerReady}
+                disabled={isStreaming}
+              />
+            </div>
+
+            <textarea
+              ref={textareaRef}
+              className="composer-textarea composer-textarea-inline"
+              value={text}
+              onChange={(e) => {
+                setText(e.target.value)
+                noteTyping()
+              }}
+              onKeyDown={handleKey}
+              placeholder={
+                talk.phase === 'listening'
+                  ? t('chat.micListening', { defaultValue: 'Ouvindo…' })
+                  : !selectedModelId
+                  ? t('chat.selectModelPlaceholder')
+                  : t('chat.writeMessage')
+              }
+              disabled={isStreaming || enhancing}
+              rows={1}
+              enterKeyHint="send"
             />
-          </div>
 
-          <textarea
-            ref={textareaRef}
-            className={`composer-textarea ${isCompact ? 'composer-textarea-inline' : ''} ${isMultiline ? 'is-multiline' : ''}`}
-            value={text}
-            onChange={(e) => {
-              setText(e.target.value)
-              noteTyping()
-            }}
-            onKeyDown={handleKey}
-            placeholder={
-              talk.phase === 'listening'
-                ? t('chat.micListening', { defaultValue: 'Ouvindo…' })
-                : !selectedModelId
-                ? t('chat.selectModelPlaceholder')
-                : t('chat.writeMessage')
-            }
-            disabled={isStreaming || enhancing}
-            rows={1}
-            enterKeyHint="send"
-          />
-
-          <div className="composer-actions-right">
-            {isEmpty && <ModelSelector />}
-            {renderRightActions()}
+            <div className="composer-actions-right">
+              {renderRightActions()}
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="composer-multiline-container">
+            <textarea
+              ref={textareaRef}
+              className={`composer-textarea ${isMultiline ? 'is-multiline' : ''}`}
+              value={text}
+              onChange={(e) => {
+                setText(e.target.value)
+                noteTyping()
+              }}
+              onKeyDown={handleKey}
+              placeholder={
+                talk.phase === 'listening'
+                  ? t('chat.micListening', { defaultValue: 'Ouvindo…' })
+                  : !selectedModelId
+                  ? t('chat.selectModelPlaceholder')
+                  : t('chat.writeMessage')
+              }
+              disabled={isStreaming || enhancing}
+              rows={1}
+              enterKeyHint="send"
+            />
+
+            <div className="composer-multiline-toolbar">
+              <div className="composer-actions-left">
+                <PlusActionMenu
+                  onOpenFilePicker={handleOpenFilePicker}
+                  onEnhance={handleEnhance}
+                  enhancing={enhancing}
+                  hasText={!!text.trim()}
+                  enhancerReady={enhancerReady}
+                  disabled={isStreaming}
+                />
+              </div>
+
+              <div className="composer-actions-right">
+                {isEmpty && <ModelSelector />}
+                {renderRightActions()}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {enhanceError && (

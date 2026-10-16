@@ -1476,6 +1476,11 @@ async def bot_computer_navigate(
     latency_ms = round((time.monotonic() - t0) * 1000, 1)
 
     title = (page_data.get("title") if page_data else None) or url
+    snippet = page_data.get("markdown", "")[:400] if page_data else None
+
+    from backend.computer.base import capture_page_snapshot
+    snapshot = await capture_page_snapshot(url, title=title, snippet=snippet, bot_name=bot_id)
+
     action = {
         "id": f"act_{secrets.token_hex(4)}",
         "action": "navigate",
@@ -1490,7 +1495,53 @@ async def bot_computer_navigate(
         "url": url,
         "title": title,
         "action": action,
+        "screenshot_url": snapshot.get("screenshot_url"),
         "articles_count": len(page_data.get("articles", [])) if page_data else 0,
     }
+
+
+@router.post("/bots/{bot_id}/computer/screenshot")
+async def bot_computer_screenshot(
+    bot_id: str,
+    body: BotComputerNavigateBody,
+    current_user: dict = Depends(get_current_user),
+) -> dict:
+    """Captura snapshot visual em alta fidelidade da URL informada."""
+    from backend.computer.base import is_safe_public_url, capture_page_snapshot
+    from backend.web_search.reader import fetch_page_content
+
+    url = body.url.strip() or "https://news.ycombinator.com"
+    safe, reason = is_safe_public_url(url)
+    if not safe:
+        return {
+            "ok": False,
+            "error": reason or "Bloqueio Anti-SSRF: Redes locais e endereços privados não são permitidos.",
+        }
+
+    t0 = time.monotonic()
+    page_data = await fetch_page_content(url, timeout=5.0)
+    latency_ms = round((time.monotonic() - t0) * 1000, 1)
+
+    title = (page_data.get("title") if page_data else None) or url
+    snippet = page_data.get("markdown", "")[:400] if page_data else None
+    snapshot = await capture_page_snapshot(url, title=title, snippet=snippet, bot_name=bot_id)
+
+    action = {
+        "id": f"act_{secrets.token_hex(4)}",
+        "action": "screenshot",
+        "target": f"viewport 1280x800 ({url})",
+        "status": "success",
+        "latencyMs": latency_ms,
+        "time": "Agora",
+    }
+
+    return {
+        "ok": True,
+        "url": url,
+        "title": title,
+        "screenshot_url": snapshot.get("screenshot_url"),
+        "action": action,
+    }
+
 
 

@@ -742,7 +742,28 @@ export const api = {
         error?: string
       }
       articles_count?: number
+      screenshot_url?: string
     }>(`/proactive/bots/${encodeURIComponent(botId)}/computer/navigate`, {
+      method: 'POST',
+      body: JSON.stringify({ url }),
+    }),
+  screenshotProactiveComputer: (botId: string, url: string) =>
+    fetchJSON<{
+      ok: boolean
+      url?: string
+      title?: string
+      error?: string
+      screenshot_url?: string
+      action?: {
+        id: string
+        action: string
+        target: string
+        status: 'success' | 'error' | 'warning'
+        latencyMs: number
+        time: string
+        error?: string
+      }
+    }>(`/proactive/bots/${encodeURIComponent(botId)}/computer/screenshot`, {
       method: 'POST',
       body: JSON.stringify({ url }),
     }),
