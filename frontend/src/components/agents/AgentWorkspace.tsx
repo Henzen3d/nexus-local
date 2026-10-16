@@ -24,7 +24,11 @@ import {
   Users,
   ArrowLeft,
   Trash2,
+  Compass,
+  MapPin,
+  ExternalLink,
 } from 'lucide-react'
+import type { Components } from 'react-markdown'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { BotRosterList } from './BotRosterList'
@@ -43,6 +47,76 @@ interface AgentMessage {
   sender: 'user' | 'bot'
   text: string
   timestamp: string
+}
+
+const agentMarkdownComponents: Components = {
+  ...markdownComponents,
+  a({ href, children, ...props }) {
+    const isMap = href && /(google\.com\/maps|maps\.google|openstreetmap|waze\.com)/i.test(href)
+    if (isMap) {
+      return (
+        <a
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+            padding: '5px 12px',
+            margin: '6px 0',
+            background: 'rgba(14, 165, 233, 0.12)',
+            border: '1px solid rgba(14, 165, 233, 0.3)',
+            borderRadius: 8,
+            color: '#0284c7',
+            fontWeight: 600,
+            fontSize: '0.82rem',
+            textDecoration: 'none',
+            boxShadow: '0 2px 6px rgba(14, 165, 233, 0.08)',
+          }}
+          className="custom-tooltip-trigger"
+          data-tooltip="Abrir rota no mapa interativo"
+          {...props}
+        >
+          <MapPin size={14} color="#0284c7" />
+          <span>{children || 'Ver rota no Mapa'}</span>
+          <ExternalLink size={12} opacity={0.75} />
+        </a>
+      )
+    }
+    return (
+      <a
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{
+          color: 'var(--primary)',
+          textDecoration: 'underline',
+          textUnderlineOffset: '2px',
+          fontWeight: 500,
+          wordBreak: 'break-all',
+        }}
+        {...props}
+      >
+        {children}
+      </a>
+    )
+  },
+  blockquote({ children }) {
+    return (
+      <blockquote
+        style={{
+          borderLeft: '3px solid var(--primary)',
+          paddingLeft: '10px',
+          margin: '8px 0',
+          color: 'var(--ink-muted)',
+          fontStyle: 'italic',
+        }}
+      >
+        {children}
+      </blockquote>
+    )
+  },
 }
 
 interface BotChatState {
@@ -671,9 +745,108 @@ export const AgentWorkspace: React.FC = () => {
                   {isUser ? (
                     <div>{m.text}</div>
                   ) : (
-                    <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-                      {m.text}
-                    </ReactMarkdown>
+                    <>
+                      <ReactMarkdown remarkPlugins={[remarkGfm]} components={agentMarkdownComponents}>
+                        {m.text}
+                      </ReactMarkdown>
+
+                      {/* Sugestão de Hand-off Cooperativo entre Bots */}
+                      {(() => {
+                        const travelBot = bots.find((b) => b.id === 'travel_concierge' || b.name.toLowerCase().includes('viagen'))
+                        const codeBot = bots.find((b) => b.id === 'code_auditor' || b.name.toLowerCase().includes('código'))
+                        const isTravelQuery = /(roteiro|viagem|viajar|hotel|voo|porto alegre|poa|curitiba|florian[oó]polis|turismo|passeio)/i.test(m.text)
+                        const isCodeQuery = /(python|javascript|typescript|código|debug|endpoint|docker|função|api|git)/i.test(m.text)
+
+                        if (isTravelQuery && travelBot && selectedBot?.id !== travelBot.id) {
+                          return (
+                            <div
+                              style={{
+                                marginTop: 10,
+                                padding: '8px 12px',
+                                borderRadius: 8,
+                                background: 'rgba(56, 189, 248, 0.08)',
+                                border: '1px solid rgba(56, 189, 248, 0.25)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                gap: 8,
+                                fontSize: '0.78rem',
+                              }}
+                            >
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--ink)' }}>
+                                <Compass size={14} color="#0284c7" />
+                                <span>Quer aprofundar este roteiro com o especialista <strong>{travelBot.name}</strong>?</span>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedBot(travelBot)
+                                  if (isMobile) setMobileTab('chat')
+                                }}
+                                style={{
+                                  padding: '4px 10px',
+                                  borderRadius: 6,
+                                  border: 'none',
+                                  background: '#0284c7',
+                                  color: '#fff',
+                                  fontSize: '0.74rem',
+                                  fontWeight: 600,
+                                  cursor: 'pointer',
+                                  flexShrink: 0,
+                                }}
+                              >
+                                Alternar
+                              </button>
+                            </div>
+                          )
+                        }
+
+                        if (isCodeQuery && codeBot && selectedBot?.id !== codeBot.id) {
+                          return (
+                            <div
+                              style={{
+                                marginTop: 10,
+                                padding: '8px 12px',
+                                borderRadius: 8,
+                                background: 'rgba(168, 85, 247, 0.08)',
+                                border: '1px solid rgba(168, 85, 247, 0.25)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                gap: 8,
+                                fontSize: '0.78rem',
+                              }}
+                            >
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--ink)' }}>
+                                <Sparkles size={14} color="#a855f7" />
+                                <span>Deseja abrir o terminal e analisar no <strong>{codeBot.name}</strong>?</span>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedBot(codeBot)
+                                  if (isMobile) setMobileTab('chat')
+                                }}
+                                style={{
+                                  padding: '4px 10px',
+                                  borderRadius: 6,
+                                  border: 'none',
+                                  background: '#a855f7',
+                                  color: '#fff',
+                                  fontSize: '0.74rem',
+                                  fontWeight: 600,
+                                  cursor: 'pointer',
+                                  flexShrink: 0,
+                                }}
+                              >
+                                Alternar
+                              </button>
+                            </div>
+                          )
+                        }
+                        return null
+                      })()}
+                    </>
                   )}
                 </div>
                 <div

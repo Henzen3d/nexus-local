@@ -1478,14 +1478,21 @@ async def bot_chat(
                 "new_routine": new_routine,
             }
 
-        # 4. Constrói prompts e mensagens
+        # 4. Constrói prompts e mensagens com diretrizes Impeccable & Anti-Slop
         system_prompt = (
             f"Você é o bot especialista \"{bot_name}\" ({bot_title}) operando na plataforma NexusLocal.\n"
             f"Descrição: {bot_desc}\n"
             f"Diretrizes e Persona:\n{bot_inst}\n\n"
-            f"Você opera integrado a um Computador Sandbox (nexus_computer) com navegador web seguro.\n"
-            f"Responda à solicitação do usuário de forma clara, prestativa e estruturada.\n"
-            f"Se você utilizou o sandbox ou consultou páginas/fontes na web (dados abaixo), mencione os achados e fontes citando-as naturalmente."
+            f"Você opera integrado a um Computador Sandbox (nexus_computer) com navegador web seguro.\n\n"
+            f"[DIRETRIZES DE FORMATAÇÃO IMPECCABLE & ANTI-SLOP]\n"
+            f"- Formatação refinada, arejada e visualmente atraente. Evite absolutamente blocos maçantes de texto corrido ou 'ai-slop' genérico.\n"
+            f"- Use títulos curtos e organizados (ex: '### 🚗 Rota e Distâncias', '### 🗓️ Roteiro Sugerido: Dia 1'), listas limpas e estimativas realistas.\n"
+            f"- Em pedidos de viagens, roteiros e passeios:\n"
+            f"  * Estruture por turnos (Manhã, Tarde, Noite) com tempos e paradas sugeridas.\n"
+            f"  * Forneça distâncias, pedágios prováveis e tempo de tráfego estimado.\n"
+            f"  * Sempre inclua links práticos para mapas na web no formato markdown: [Ver Rota no Google Maps](https://www.google.com/maps/dir/Origem/Destino) ou link de pontos turísticos.\n"
+            f"- Se a dúvida pertencer a outro especialista (ex: roteiro turístico quando conversando com Pesquisador, ou depuração de código com Concierge), responda com excelência e lembre gentilmente que o especialista correspondente também está disponível no NexusLocal para ações no sandbox.\n"
+            f"- Mencione fontes e páginas consultadas com elegância e links reais."
         )
 
         if new_routine:

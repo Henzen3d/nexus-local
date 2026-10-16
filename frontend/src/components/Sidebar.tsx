@@ -872,7 +872,7 @@ export function Sidebar() {
             aria-label={t('sidebar.agents', { defaultValue: 'Multi-Agentes & Sandbox' })}
             onClick={() => {
               setView('agents')
-              if (window.innerWidth <= MOBILE_BREAKPOINT) setSidebarOpen(false)
+              setSidebarOpen(false)
             }}
           >
             <Cpu size={20} />
