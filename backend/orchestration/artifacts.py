@@ -19,6 +19,7 @@ logger = get_logger(__name__)
 # (não caem no detector genérico de blocos de código >= 15 linhas)
 _EXCLUDED_LANGS_FROM_CODE = {
     "html", "svg", "xml", "jsx", "tsx", "markdown", "md",
+    "mermaid", "plantuml", "d2", "graphviz", "dot", "chart",
     "bash", "sh", "shell", "zsh", "powershell", "ps1", "cmd", "bat", "plaintext", "txt",
     "nexus-ui", "nexus", "nexus_ui",
 }
@@ -69,7 +70,7 @@ def _extract_jsx_title(content: str, fallback: str = "React Component") -> str:
 
 
 _RE_FILENAME_COMMENT = re.compile(
-    r'^(?:#|//|<!--|/\*|\*)\s*([a-zA-Z0-9_\-\./\\]+\.[a-zA-Z0-9]{1,8})(?:\s*-->|\s*\*\/)?\s*$',
+    r'^(?:#|//|<!--|/\*|\*|%%)\s*(?:arquivo:\s*)?([a-zA-Z0-9_\-\./\\]+\.[a-zA-Z0-9]{1,8})(?:\s*-->|\s*\*\/)?\s*$',
     re.MULTILINE,
 )
 
@@ -191,6 +192,14 @@ def detect_artifacts(content: str, user_message: str = "") -> list[dict]:
                 fallback_title = _extract_markdown_title(body, fallback="Markdown Document")
                 artifacts.append({
                     "type": "markdown",
+                    "title": _extract_code_filename(body, lang, fallback_title),
+                    "content": body,
+                })
+        elif lang in ("mermaid", "plantuml", "d2", "graphviz", "dot", "chart"):
+            if line_count >= 3:
+                fallback_title = f"{lang.upper()} Diagram" if lang != "chart" else "Chart"
+                artifacts.append({
+                    "type": "diagram",
                     "title": _extract_code_filename(body, lang, fallback_title),
                     "content": body,
                 })

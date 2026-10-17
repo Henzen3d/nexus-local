@@ -310,16 +310,33 @@ export function ArtifactPanel() {
     if (raw === 'image/svg+xml' || raw === 'svg') return 'svg'
     if (raw === 'jsx' || raw === 'tsx' || raw === 'react') return 'jsx'
     if (['diagram', 'mermaid', 'plantuml', 'd2', 'graphviz', 'chart'].includes(raw)) return 'diagram'
+
+    // Verifica se é diagrama mesmo que venha identificado como 'code' ou sem tipo explícito
+    const titleLower = activeArtifact.title?.toLowerCase() || ''
+    if (
+      titleLower.includes('mermaid') ||
+      titleLower.includes('plantuml') ||
+      titleLower.includes('diagram') ||
+      titleLower.endsWith('.mmd') ||
+      titleLower.endsWith('.puml')
+    ) {
+      return 'diagram'
+    }
+
+    // Remove comentários ou cabeçalhos iniciais (ex: %% arquivo: ..., // ..., # ...)
+    const bodyWithoutComments = cleanContent.replace(/^(?:\s*(?:%%|\/\/|#|\/\*).*?\n)+/s, '').trim()
+    if (/^\s*(sequenceDiagram|classDiagram|erDiagram|gantt|pie|flowchart|graph\s+[TBRLE]|gitGraph|mindmap|timeline)/i.test(bodyWithoutComments)) {
+      return 'diagram'
+    }
+    if (/^\s*@startuml/i.test(bodyWithoutComments)) return 'diagram'
+    if (/^\s*\{\s*"chart"\s*:/i.test(bodyWithoutComments)) return 'diagram'
+
     if (raw === 'code') return 'code'
     if (raw.startsWith('text/')) return 'markdown'
-    // Se o tipo for desconhecido, analisa o conteúdo para inferir o tipo
     if (cleanContent.startsWith('<!DOCTYPE html') || cleanContent.startsWith('<html')) return 'html'
     if (cleanContent.startsWith('<svg')) return 'svg'
-    if (/^\s*(sequenceDiagram|classDiagram|erDiagram|gantt|pie|flowchart|graph\s+[TBRLE]|gitGraph)/i.test(cleanContent)) return 'diagram'
-    if (/^\s*@startuml/i.test(cleanContent)) return 'diagram'
-    if (/^\s*\{\s*"chart"\s*:/i.test(cleanContent)) return 'diagram'
     return 'markdown'
-  }, [activeArtifact?.type, cleanContent])
+  }, [activeArtifact?.type, activeArtifact?.title, cleanContent])
 
   /**
    * Determina a variante do diagrama (mermaid, plantuml, d2, graphviz, chart)
@@ -327,10 +344,12 @@ export function ArtifactPanel() {
   const diagramType = useMemo(() => {
     if (!activeArtifact) return 'mermaid'
     const raw = activeArtifact.type?.toLowerCase().trim() || ''
-    if (raw === 'plantuml' || /^\s*@startuml/i.test(cleanContent)) return 'plantuml'
-    if (raw === 'd2' || (/^\s*(\w+)\s*\{/i.test(cleanContent) && cleanContent.includes('->'))) return 'd2'
-    if (raw === 'graphviz' || /^\s*(digraph|graph)\s*\{/i.test(cleanContent)) return 'graphviz'
-    if (raw === 'chart' || /^\s*\{\s*"chart"\s*:/i.test(cleanContent)) return 'chart'
+    const title = activeArtifact.title?.toLowerCase() || ''
+    const bodyWithoutComments = cleanContent.replace(/^(?:\s*(?:%%|\/\/|#|\/\*).*?\n)+/s, '').trim()
+    if (raw === 'plantuml' || title.includes('plantuml') || /^\s*@startuml/i.test(bodyWithoutComments)) return 'plantuml'
+    if (raw === 'd2' || title.includes('d2') || (/^\s*(\w+)\s*\{/i.test(bodyWithoutComments) && cleanContent.includes('->'))) return 'd2'
+    if (raw === 'graphviz' || raw === 'dot' || title.includes('graphviz') || title.includes('.dot') || /^\s*(digraph|graph)\s*\{/i.test(bodyWithoutComments)) return 'graphviz'
+    if (raw === 'chart' || /^\s*\{\s*"chart"\s*:/i.test(bodyWithoutComments)) return 'chart'
     return 'mermaid'
   }, [activeArtifact, cleanContent])
 
@@ -404,7 +423,11 @@ export function ArtifactPanel() {
       'ruby', 'rb', 'php', 'bash', 'sh', 'swift', 'kotlin', 'kt', 'sql'
     ]
     for (const s of supported) {
-      if (lang === s || titleLower.includes(s)) {
+      const matched =
+        lang === s ||
+        titleLower.endsWith(`.${s}`) ||
+        new RegExp(`(^|[^a-z0-9])${s}([^a-z0-9]|$)`, 'i').test(titleLower)
+      if (matched) {
         if (s === 'py') return 'python'
         if (s === 'js') return 'javascript'
         if (s === 'ts') return 'typescript'
@@ -416,6 +439,9 @@ export function ArtifactPanel() {
         return s
       }
     }
+    if (/^#!\s*\/.*python/i.test(cleanContent) || /#\s*.*\.py/i.test(cleanContent)) return 'python'
+    if (/^#!\s*\/.*node/i.test(cleanContent)) return 'javascript'
+    if (/^#!\s*\/.*bash/i.test(cleanContent) || /^#!\s*\/.*sh/i.test(cleanContent)) return 'bash'
     return null
   }
 

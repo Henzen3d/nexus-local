@@ -93,3 +93,24 @@ async def test_kroki_diagram_mock(monkeypatch):
     assert result.success is True
     assert "<svg" in result.data["svg"]
     assert result.data["diagram_type"] == "mermaid"
+
+
+def test_detect_mermaid_as_diagram_artifact():
+    from backend.orchestration.artifacts import detect_artifacts
+
+    content = """
+Aqui está o diagrama:
+```mermaid
+%% arquivo: fluxo-autenticacao-jwt.mmd
+sequenceDiagram
+    participant C as Cliente
+    participant G as API Gateway
+    C->>G: POST /auth/login
+```
+Espero que ajude!
+"""
+    arts = detect_artifacts(content)
+    assert len(arts) == 1
+    assert arts[0]["type"] == "diagram"
+    assert arts[0]["title"] == "fluxo-autenticacao-jwt.mmd"
+    assert "sequenceDiagram" in arts[0]["content"]
