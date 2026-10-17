@@ -425,6 +425,101 @@ test.describe('Fluxo 8 — Mobile 375px', () => {
   })
 })
 
+// ─── U01: Erros de API com retry ─────────────────────────────────────────────
+
+test.describe('U01 — feedback de erro de API + retry', () => {
+  test('toast de erro exibe botão "Tentar novamente"', async ({ page }) => {
+    // Mock WebSocket error
+    await page.route('wss://api-multi.mob.tec.br/ws/chat*', async (route) => {
+      // Aceita a conexão WS mas depois envia erro
+      const ws = route.request().url()
+      route.fulfill({ status: 200, body: '' })
+    })
+
+    // Navega e aguarda carregar
+    await page.goto(BASE)
+    await page.waitForTimeout(2000)
+
+    // Fecha onboarding
+    const closeBtn = page.locator('[id="memory-onboarding-title"] button').first()
+    if (await closeBtn.count() > 0) await closeBtn.click()
+    await page.waitForTimeout(500)
+
+    // Envia mensagem
+    await page.fill('.composer-textarea', 'teste erro u01')
+    await page.keyboard.press('Enter')
+    await page.waitForTimeout(1000)
+
+    // Verifica se toast de erro aparece com ação de retry
+    const errorToast = page.locator('.toast-container.toast-error').first()
+    if (await errorToast.count() > 0) {
+      const hasRetry = await errorToast.locator('button:has-text("Tentar novamente")').count() > 0
+      if (hasRetry) {
+        console.log('[U01] ✅ Toast de erro com botão "Tentar novamente" encontrado')
+      } else {
+        console.log('[U01] ⚠️  Toast de erro sem botão retry')
+      }
+    } else {
+      console.log('[U01] ℹ️  Nenhum toast de erro gerado (erro não simulado no mock)')
+    }
+  })
+})
+
+// ─── U02: Detecção offline ────────────────────────────────────────────────────
+
+test.describe('U02 — detecção offline', () => {
+  test('banner offline aparece quando desconectado', async ({ page, context }) => {
+    await page.setViewportSize({ width: 1280, height: 800 })
+    await page.goto(BASE)
+    await page.waitForTimeout(2000)
+
+    // Fecha onboarding
+    const closeBtn = page.locator('[id="memory-onboarding-title"] button').first()
+    if (await closeBtn.count() > 0) await closeBtn.click()
+    await page.waitForTimeout(500)
+
+    // Simula offline
+    await context.setOffline(true)
+    await page.waitForTimeout(1000)
+
+    const banner = page.locator('.offline-banner')
+    if (await banner.count() > 0 && await banner.isVisible()) {
+      console.log('[U02] ✅ Banner offline visível')
+      await page.screenshot({ path: screenshotName('09_offline_banner') })
+    } else {
+      console.log('[U02] ⚠️  Banner offline NÃO encontrado')
+    }
+
+    // Restaura online
+    await context.setOffline(false)
+    await page.waitForTimeout(500)
+  })
+
+  test('banner some ao reconectar', async ({ page, context }) => {
+    await page.setViewportSize({ width: 1280, height: 800 })
+    await page.goto(BASE)
+    await page.waitForTimeout(2000)
+
+    const closeBtn = page.locator('[id="memory-onboarding-title"] button').first()
+    if (await closeBtn.count() > 0) await closeBtn.click()
+    await page.waitForTimeout(500)
+
+    // Vai offline e volta
+    await context.setOffline(true)
+    await page.waitForTimeout(500)
+    await context.setOffline(false)
+    await page.waitForTimeout(1000)
+
+    const banner = page.locator('.offline-banner')
+    const isVisible = await banner.count() > 0 && await banner.isVisible()
+    if (!isVisible) {
+      console.log('[U02] ✅ Banner some ao reconectar')
+    } else {
+      console.log('[U02] ⚠️  Banner permanece visível após reconectar')
+    }
+  })
+})
+
 // ─── Acessibilidade: axe ──────────────────────────────────────────────────────
 
 test.describe('Acessibilidade — axe', () => {

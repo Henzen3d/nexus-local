@@ -16182,3 +16182,34 @@ html[data-theme="light"] .model-option-provider-tag {
   opacity: 0.9;
   transform: translateY(-1px);
 }
+
+/* ════════════════════════════════════════════════════════════
+   Offline Banner (U02)
+   ════════════════════════════════════════════════════════════ */
+.offline-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1300;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: var(--status-warning-bg, #fff3cd);
+  border-bottom: 1px solid var(--status-warning-border, #ffc107);
+  color: var(--status-warning-text, #856404);
+  font-size: 13px;
+  font-weight: 500;
+  pointer-events: none;
+  animation: banner-slide-in 0.2s ease-out;
+}
+
+.offline-banner svg {
+  flex-shrink: 0;
+}
+
+@keyframes banner-slide-in {
+  from { transform: translateY(-100%); }
+  to { transform: translateY(0); }
+}

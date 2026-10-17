@@ -13,7 +13,7 @@
     "orientationAngle": 0,
     "orientationType": "landscape-primary"
   },
-  "timestamp": "2026-10-17T23:16:06.526Z",
+  "timestamp": "2026-10-17T23:40:22.413Z",
   "url": "http://localhost:5173/",
   "toolOptions": {
     "reporter": "v1"
@@ -5207,7 +5207,7 @@
               "data": null,
               "relatedNodes": [
                 {
-                  "html": "<h1 class=\"welcome-greeting\">Good to see you, Test User.</h1>",
+                  "html": "<h1 class=\"welcome-greeting\">Hi Test User! How can I help?</h1>",
                   "target": [
                     "h1"
                   ]
@@ -5561,7 +5561,7 @@
           "all": [],
           "none": [],
           "impact": null,
-          "html": "<h1 class=\"welcome-greeting\">Good to see you, Test User.</h1>",
+          "html": "<h1 class=\"welcome-greeting\">Hi Test User! How can I help?</h1>",
           "target": [
             "h1"
           ]
@@ -5937,7 +5937,7 @@
           "all": [],
           "none": [],
           "impact": null,
-          "html": "<h1 class=\"welcome-greeting\">Good to see you, Test User.</h1>",
+          "html": "<h1 class=\"welcome-greeting\">Hi Test User! How can I help?</h1>",
           "target": [
             "h1"
           ]
@@ -6039,7 +6039,7 @@
           "all": [],
           "none": [],
           "impact": null,
-          "html": "<h1 class=\"welcome-greeting\">Good to see you, Test User.</h1>",
+          "html": "<h1 class=\"welcome-greeting\">Hi Test User! How can I help?</h1>",
           "target": [
             "h1"
           ]
@@ -9033,7 +9033,7 @@
           "all": [],
           "none": [],
           "impact": null,
-          "html": "<h1 class=\"welcome-greeting\">Good to see you, Test User.</h1>",
+          "html": "<h1 class=\"welcome-greeting\">Hi Test User! How can I help?</h1>",
           "target": [
             "h1"
           ]
