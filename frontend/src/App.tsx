@@ -14,18 +14,12 @@ import { ConversationsPanel } from './components/ConversationsPanel'
 import { ArtifactsPanel } from './components/ArtifactsPanel'
 import { ProjectsPanel } from './components/ProjectsPanel'
 import { LibraryPanel } from './components/LibraryPanel'
-import { ProactiveHubPanel } from './components/ProactiveHubPanel'
-import { AgentWorkspace } from './components/agents/AgentWorkspace'
 import { ChatProvider } from './context/ChatContext'
 import { Login } from './components/Login'
 import { MemoryOnboarding } from './components/MemoryOnboarding'
-import { ProactiveOnboarding } from './components/ProactiveOnboarding'
-import { ProactiveCompanionModal } from './components/ProactiveCompanionModal'
-import { NexusPetWidget } from './components/mascot/NexusPetWidget'
 import { loadTtsPrefs } from './lib/ttsPlayer'
 import { PwaInstallBanner } from './components/PwaInstallBanner'
 import { applyDocumentLang } from './i18n'
-import { useProactive } from './hooks/useProactive'
 import { UNAUTHORIZED_EVENT } from './api/client'
 import { MOBILE_BREAKPOINT, useIsMobile } from './hooks/useIsMobile'
 
@@ -142,33 +136,9 @@ export default function App() {
   const locale = useStore((s) => s.locale)
   const hydrateProfileFromServer = useStore((s) => s.hydrateProfileFromServer)
   const setView = useStore((s) => s.setView)
-  const proactiveSettings = useStore((s) => s.proactiveSettings)
-  const updateProactiveSettings = useStore((s) => s.updateProactiveSettings)
-  const pendingInsights = useStore((s) => s.pendingInsights)
-  const openPendingInsight = useStore((s) => s.openPendingInsight)
-  const dismissPendingInsight = useStore((s) => s.dismissPendingInsight)
   const { setDeferredPrompt, setIsInstallable } = usePWAStore()
 
   useEdgeSwipeOpenSidebar()
-  // Assistente proativo (F3): fila de pendentes no boot + poda local de vencidos
-  useProactive()
-
-  const topPending = pendingInsights?.[0]
-  const activeBalloon = topPending
-    ? {
-        id: topPending.id,
-        title: topPending.topic,
-        message: topPending.text || 'Encontrei novidades sobre este assunto enquanto você estava fora!',
-        primaryLabel: 'Ver Detalhes',
-        secondaryLabel: 'Dispensar',
-        onPrimary: () => {
-          void openPendingInsight(topPending.id)
-        },
-        onSecondary: () => {
-          void dismissPendingInsight(topPending.id)
-        },
-      }
-    : null
 
   useEffect(() => {
     applyDocumentLang(locale)
@@ -254,8 +224,6 @@ export default function App() {
         {view === 'artifacts' && <ArtifactsPanel />}
         {view === 'projects' && <ProjectsPanel />}
         {view === 'library' && <LibraryPanel />}
-        {view === 'proactive' && <ProactiveHubPanel />}
-        {view === 'agents' && <AgentWorkspace />}
         {hasArtifact && <ArtifactPanel />}
       </div>
       {view === 'admin' && (
@@ -266,18 +234,6 @@ export default function App() {
       <PwaInstallBanner />
       <Toast />
       <MemoryOnboarding />
-      <ProactiveOnboarding />
-      <ProactiveCompanionModal />
-      {proactiveSettings?.pet_widget_enabled !== false && (
-        <NexusPetWidget
-          currentPetId={proactiveSettings?.selected_pet || 'lumi'}
-          onPetChange={(newPet) => {
-            void updateProactiveSettings({ selected_pet: newPet }, { silent: true })
-          }}
-          activeInsightBalloon={activeBalloon}
-          onOpenHub={() => setView('proactive')}
-        />
-      )}
     </ChatProvider>
   )
 }

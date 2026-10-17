@@ -2,7 +2,6 @@ import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { Bell, Sparkles, MessageSquare, ExternalLink, X, ArrowRight } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useStore } from '../store/useStore'
-import { ProactiveMascot } from './ProactiveMascot'
 import type { ProactiveInsight } from '../types'
 
 export const NotificationBell: React.FC = () => {
@@ -106,7 +105,7 @@ export const NotificationBell: React.FC = () => {
           <div className="notification-popover" role="dialog" aria-modal="true" aria-label={t('proactive.notificationsTitle')}>
             <div className="notification-popover-header">
               <div className="popover-title-row">
-                <ProactiveMascot size={26} state={unreadCount > 0 ? 'ready' : 'idle'} style={personaStyle} />
+                <Sparkles size={26} className="text-primary" />
                 <span className="popover-title">
                   {t('proactive.notificationsTitle', { defaultValue: 'Descobertas Proativas' })}
                 </span>
@@ -127,7 +126,7 @@ export const NotificationBell: React.FC = () => {
             <div className="notification-popover-content">
               {unreadCount === 0 ? (
                 <div className="notification-empty-state">
-                  <ProactiveMascot size={54} state="idle" style={personaStyle} />
+                  <Sparkles size={54} className="text-primary" />
                   <p className="empty-title">{t('proactive.emptyTitle', { defaultValue: 'Tudo em dia!' })}</p>
                   <p className="empty-desc">
                     {t('proactive.emptyDesc', {

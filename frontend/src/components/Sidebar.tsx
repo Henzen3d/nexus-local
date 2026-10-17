@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import {
   MessageSquare, Trash2, Pencil, Check, X, ChevronRight,
   Sparkles, Globe, Image, Images, FileText, Atom, FileCode, Download, LogOut,
-  MoreVertical, Star, Sun, Moon, Folder, Search, PanelLeftClose, PanelLeftOpen, Plus, Bot, Cpu,
+  MoreVertical, Star, Sun, Moon, Folder, Search, PanelLeftClose, PanelLeftOpen, Plus,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useStore } from '../store/useStore'
@@ -49,8 +49,6 @@ export function Sidebar() {
     logout,
     theme,
     setTheme,
-    conversationsWithInsight,
-    pendingInsights,
   } = useStore()
 
   const isMobile = useIsMobile()
@@ -411,23 +409,6 @@ export function Sidebar() {
               }}
             >
               <span>{c.title}</span>
-              {conversationsWithInsight[c.id] ? (
-                <span
-                  className="conv-proactive-badge"
-                  title={t('proactive.unreadBadge')}
-                  aria-label={t('proactive.unreadBadge')}
-                >
-                  <Sparkles size={12} />
-                </span>
-              ) : c.origin_insight_id ? (
-                <span
-                  className="conv-proactive-badge origin"
-                  title={t('proactive.spawnedBadge')}
-                  aria-label={t('proactive.spawnedBadge')}
-                >
-                  <Sparkles size={12} />
-                </span>
-              ) : null}
             </button>
             <div className="conv-actions-dropdown-container">
               <button
@@ -689,6 +670,7 @@ export function Sidebar() {
             variant="ghost"
             size="icon"
             className="sidebar-rail-expand"
+            data-testid="hamburger"
             tooltip={t('chat.openSidebar', { defaultValue: 'Abrir menu' })}
             aria-label={t('chat.openSidebar', { defaultValue: 'Abrir menu' })}
             onClick={() => setSidebarOpen(true)}
@@ -846,37 +828,6 @@ export function Sidebar() {
           >
             <Sparkles size={20} />
             <span>{t('sidebar.artifacts')}</span>
-          </button>
-          <button
-            type="button"
-            className={`sidebar-fixed-nav-item custom-tooltip-trigger ${view === 'proactive' ? 'selected' : ''}`}
-            data-tooltip={t('proactive.hubTitle', { defaultValue: 'Assistente Proativo' })}
-            aria-label={t('proactive.hubTitle', { defaultValue: 'Assistente Proativo' })}
-            onClick={() => {
-              setView('proactive')
-              if (window.innerWidth <= MOBILE_BREAKPOINT) setSidebarOpen(false)
-            }}
-          >
-            <Bot size={20} />
-            <span>{t('proactive.hubTitle', { defaultValue: 'Assistente Proativo' })}</span>
-            {pendingInsights.length > 0 && (
-              <span className="nav-badge" aria-label={`${pendingInsights.length} novidades`}>
-                {pendingInsights.length}
-              </span>
-            )}
-          </button>
-          <button
-            type="button"
-            className={`sidebar-fixed-nav-item custom-tooltip-trigger ${view === 'agents' ? 'selected' : ''}`}
-            data-tooltip={t('sidebar.agents', { defaultValue: 'Multi-Agentes & Sandbox' })}
-            aria-label={t('sidebar.agents', { defaultValue: 'Multi-Agentes & Sandbox' })}
-            onClick={() => {
-              setView('agents')
-              setSidebarOpen(false)
-            }}
-          >
-            <Cpu size={20} />
-            <span>{t('sidebar.agents', { defaultValue: 'Multi-Agentes' })}</span>
           </button>
         </div>
 
