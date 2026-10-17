@@ -36,15 +36,27 @@ _RE_DEGREES = re.compile(
 
 # Currency
 _RE_CURRENCY_PAIR = re.compile(
-    r"(?:cota[çc][ãa]o|c[âa]mbio|valor|pre[çc]o)\s+(?:do|da|de)\s+(d[óo]lar|euro|libra|bitcoin|btc|usd|eur|gbp|ars|cad|jpy)(?:\s+(?:hoje|agora|em\s+reais?|em\s+brl))?",
+    r"(?:cota[çc][ãa]o|c[âa]mbio|valor|pre[çc]o)\s+(?:do|da|de|atual\s+do)?\s*(d[óo]lar|euro|libra|bitcoin|btc|usd|eur|gbp|ars|cad|jpy)(?:\s+(?:hoje|agora|em\s+reais?|em\s+brl))?",
+    re.IGNORECASE,
+)
+_RE_CURRENCY_QUERY = re.compile(
+    r"(?:a\s+quanto\s+(?:est[aá]|t[aá])|quanto\s+(?:est[aá]|t[aá]|vale)|como\s+est[aá]|qual\s+(?:[eé]\s+)?o\s+(?:valor|pre[çc]o)\s+do)\s+(d[óo]lar|euro|libra|bitcoin|btc|usd|eur|gbp)",
+    re.IGNORECASE,
+)
+_RE_CURRENCY_TODAY = re.compile(
+    r"\b(d[óo]lar|euro|libra|bitcoin|btc|usd|eur|gbp)\s+(?:hoje|agora|comercial|turismo)\b",
+    re.IGNORECASE,
+)
+_RE_HOW_MANY_CURRENCY = re.compile(
+    r"\bquantos?\s+(d[óo]lar(?:es)?|euro(?:s)?|libra(?:s)?|pesos?|usd|eur|gbp)\b",
     re.IGNORECASE,
 )
 _RE_CURRENCY_CONVERT = re.compile(
-    r"(?:quanto\s+(?:[eé]|est[aá]|vale)|converter?)\s+(\d+(?:[\.,]\d+)?)\s+(d[óo]lar(?:es)?|euro(?:s)?|libra(?:s)?|reais?|real|usd|eur|brl|gbp)\s+(?:em|para|to)\s+(d[óo]lar(?:es)?|euro(?:s)?|libra(?:s)?|reais?|real|usd|eur|brl|gbp)",
+    r"(?:quanto\s+(?:[eé]|est[aá]|vale|vai\s+dar|d[aá])|converter?)\s+(\d+(?:[\.,]\d+)?\s*(?:mil|k)?)\s*(d[óo]lar(?:es)?|euro(?:s)?|libra(?:s)?|reais?|real|usd|eur|brl|gbp)\s+(?:em|para|to)\s+(d[óo]lar(?:es)?|euro(?:s)?|libra(?:s)?|reais?|real|usd|eur|brl|gbp)",
     re.IGNORECASE,
 )
 _RE_CURRENCY_SHORT = re.compile(
-    r"\b(\d+(?:[\.,]\d+)?)\s*(usd|eur|brl|gbp)\s+(?:em|para|to|in)\s+(usd|eur|brl|gbp)\b",
+    r"\b(\d+(?:[\.,]\d+)?\s*(?:mil|k)?)\s*(usd|eur|brl|gbp)\s+(?:em|para|to|in)\s+(usd|eur|brl|gbp)\b",
     re.IGNORECASE,
 )
 
@@ -131,6 +143,23 @@ def _normalize_lang_code(name: str) -> str:
     return "en"
 
 
+def _parse_amount(raw_str: str) -> float:
+    s = raw_str.lower().strip()
+    is_mil = "mil" in s or s.endswith("k")
+    s = re.sub(r"[^\d,\.]", "", s)
+    if "." in s and "," in s:
+        s = s.replace(".", "").replace(",", ".")
+    elif "." in s and len(s.split(".")[-1]) == 3:
+        s = s.replace(".", "")
+    elif "," in s:
+        s = s.replace(",", ".")
+    try:
+        val = float(s)
+        return val * 1000.0 if is_mil else val
+    except ValueError:
+        return 1.0
+
+
 def detect_intents(message: str, lang: str = "pt") -> list[ToolIntent]:
     """Analisa o texto do usuário e detecta intenções que casam com famílias de ferramentas.
     
@@ -158,52 +187,60 @@ def detect_intents(message: str, lang: str = "pt") -> list[ToolIntent]:
             ))
 
     # 2. Currency
-    m_cp = _RE_CURRENCY_PAIR.search(text)
-    if m_cp:
-        curr = _normalize_currency_code(m_cp.group(1))
-        from_code = curr if curr != "BRL" else "USD"
-        to_code = "BRL" if from_code != "BRL" else "USD"
+    m_how_many = _RE_HOW_MANY_CURRENCY.search(text)
+    if m_how_many:
+        target_curr = _normalize_currency_code(m_how_many.group(1))
+        # Extrai quantia se presente (ex: "54mil reais", "54 mil reais", "R$ 54.000", "54000 reais")
+        m_amt = re.search(r"(\d+(?:[\.,]\d+)?\s*(?:mil|k)?)\s*(?:reais|real|brl|r\$)", text, re.IGNORECASE)
+        amount = _parse_amount(m_amt.group(1)) if m_amt else None
+
+        from_curr = target_curr if target_curr != "BRL" else "USD"
         intents.append(ToolIntent(
             family="currency",
-            action="quote",
-            params={"from": from_code, "to": to_code},
-            confidence=0.95,
-            raw_match=m_cp.group(0),
+            action="convert" if amount else "quote",
+            params={"from": from_curr, "to": "BRL", "amount": amount} if amount else {"from": from_curr, "to": "BRL"},
+            confidence=0.96,
+            raw_match=m_how_many.group(0),
         ))
     else:
-        m_cc = _RE_CURRENCY_CONVERT.search(text)
-        if m_cc:
-            amount_str = m_cc.group(1).replace(",", ".")
-            try:
-                amount = float(amount_str)
-            except ValueError:
-                amount = 1.0
-            from_code = _normalize_currency_code(m_cc.group(2))
-            to_code = _normalize_currency_code(m_cc.group(3))
+        m_cp = _RE_CURRENCY_PAIR.search(text) or _RE_CURRENCY_QUERY.search(text) or _RE_CURRENCY_TODAY.search(text)
+        if m_cp:
+            curr = _normalize_currency_code(m_cp.group(1))
+            from_code = curr if curr != "BRL" else "USD"
+            to_code = "BRL" if from_code != "BRL" else "USD"
             intents.append(ToolIntent(
                 family="currency",
-                action="convert",
-                params={"from": from_code, "to": to_code, "amount": amount},
+                action="quote",
+                params={"from": from_code, "to": to_code},
                 confidence=0.95,
-                raw_match=m_cc.group(0),
+                raw_match=m_cp.group(0),
             ))
         else:
-            m_cs = _RE_CURRENCY_SHORT.search(text)
-            if m_cs:
-                amount_str = m_cs.group(1).replace(",", ".")
-                try:
-                    amount = float(amount_str)
-                except ValueError:
-                    amount = 1.0
-                from_code = m_cs.group(2).upper()
-                to_code = m_cs.group(3).upper()
+            m_cc = _RE_CURRENCY_CONVERT.search(text)
+            if m_cc:
+                amount = _parse_amount(m_cc.group(1))
+                from_code = _normalize_currency_code(m_cc.group(2))
+                to_code = _normalize_currency_code(m_cc.group(3))
                 intents.append(ToolIntent(
                     family="currency",
                     action="convert",
                     params={"from": from_code, "to": to_code, "amount": amount},
-                    confidence=0.92,
-                    raw_match=m_cs.group(0),
+                    confidence=0.95,
+                    raw_match=m_cc.group(0),
                 ))
+            else:
+                m_cs = _RE_CURRENCY_SHORT.search(text)
+                if m_cs:
+                    amount = _parse_amount(m_cs.group(1))
+                    from_code = m_cs.group(2).upper()
+                    to_code = m_cs.group(3).upper()
+                    intents.append(ToolIntent(
+                        family="currency",
+                        action="convert",
+                        params={"from": from_code, "to": to_code, "amount": amount},
+                        confidence=0.92,
+                        raw_match=m_cs.group(0),
+                    ))
 
     # 3. Brasil (CEP, CNPJ, DDD, Feriados)
     m_cep = _RE_CEP.search(text) or _RE_CEP_SOLO.search(text)

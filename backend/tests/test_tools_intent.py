@@ -36,6 +36,16 @@ def test_intent_detection_currency_conversion():
     assert c_intent.params["amount"] == 100.0
 
 
+def test_intent_detection_conversational_currency():
+    intents = detect_intents("estou pensando em fazer uma viagem para os eua, tenho 54mil reais quantos dólares vai dar hoje ?")
+    assert len(intents) >= 1
+    c_intent = intents[0]
+    assert c_intent.family == "currency"
+    assert c_intent.params["from"] == "USD"
+    assert c_intent.params["to"] == "BRL"
+    assert c_intent.params["amount"] == 54000.0
+
+
 def test_intent_detection_brasil_cep():
     intents = detect_intents("Por favor, consulte o CEP 01310-100 na Paulista")
     assert len(intents) >= 1
