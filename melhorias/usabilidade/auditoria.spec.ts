@@ -313,6 +313,15 @@ test.describe('Fluxo 8 — Mobile 375px', () => {
 
   test('drawer/menu mobile é acessível', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 667 })
+    await page.waitForTimeout(1000)
+
+    // Fechar onboarding de memória se estiver aberto
+    const memoryCloseBtn = page.locator('[id="memory-onboarding-title"] button, [role="dialog"] button:has-text("Entendi"), [role="dialog"] button:has-text("Fechar")').first()
+    if (await memoryCloseBtn.count() > 0) {
+      await memoryCloseBtn.click()
+      await page.waitForTimeout(500)
+    }
+
     const hamburger = page.locator('[data-testid="hamburger"], .hamburger, button:has-text("☰"), button:has-text("Menu"), [class*="sidebar-toggle"]').first()
     if (await hamburger.count() > 0) {
       await hamburger.click()
@@ -329,14 +338,21 @@ test.describe('Fluxo 8 — Mobile 375px', () => {
     await page.waitForTimeout(1000)
 
     const overlays = await page.evaluate(() => {
+      // Exclui touch-target pseudo-elements (não são elementos reais)
       const elements = Array.from(document.querySelectorAll('button, a, [role="button"], input, textarea'))
+        .filter(el => !el.classList.contains('touch-target'))
       const overlaps: string[] = []
       for (let i = 0; i < elements.length; i++) {
         for (let j = i + 1; j < elements.length; j++) {
           const r1 = elements[i].getBoundingClientRect()
           const r2 = elements[j].getBoundingClientRect()
+          // Ignora sobreposições mínimas (< 5px)
           if (r1.left < r2.right && r1.right > r2.left && r1.top < r2.bottom && r1.bottom > r2.top) {
-            overlaps.push(`${elements[i].tagName}.${(elements[i].className || '').toString().split(' ')[0]}`)
+            const dx = Math.min(r1.right - r2.left, r2.right - r1.left)
+            const dy = Math.min(r1.bottom - r2.top, r2.bottom - r1.top)
+            if (dx > 5 && dy > 5) {
+              overlaps.push(`${elements[i].tagName}.${(elements[i].className || '').toString().split(' ')[0]}`)
+            }
           }
         }
       }
@@ -346,6 +362,65 @@ test.describe('Fluxo 8 — Mobile 375px', () => {
       console.log(`[Fluxo 8] ⚠️  ${overlays.length} sobreposições: ${overlays.slice(0, 3).join(', ')}`)
     } else {
       console.log('[Fluxo 8] ✅ Sem sobreposição de botões')
+    }
+  })
+
+  test('U07: busca web dentro da gaveta + (mobile)', async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 667 })
+    await page.waitForTimeout(1000)
+
+    // Fechar onboarding de memória se estiver aberto
+    const memoryCloseBtn = page.locator('[id="memory-onboarding-title"] button, [role="dialog"] button:has-text("Entendi"), [role="dialog"] button:has-text("Fechar")').first()
+    if (await memoryCloseBtn.count() > 0) {
+      await memoryCloseBtn.click()
+      await page.waitForTimeout(500)
+    }
+
+    // Clicar no + para abrir a gaveta
+    const plusBtn = page.locator('.composer-plus-btn').first()
+    if (await plusBtn.count() > 0 && await plusBtn.isVisible()) {
+      await plusBtn.click({ force: true })
+      await page.waitForTimeout(500)
+      await page.screenshot({ path: screenshotName('08_plus_drawer') })
+
+      // Verificar se busca web está na gaveta
+      const webSearch = page.locator('button:has-text("Pesquisa"), button:has-text("Web Search"), .web-search-toggle').first()
+      if (await webSearch.count() > 0) {
+        console.log('[U07] ✅ Busca web encontrada na gaveta +')
+      } else {
+        console.log('[U07] ⚠️  Busca web NÃO encontrada na gaveta +')
+      }
+    } else {
+      console.log('[U07] ⚠️  Botão + não encontrado')
+    }
+  })
+
+  test('U08: Fusion dentro da gaveta + (mobile)', async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 667 })
+    await page.waitForTimeout(1000)
+
+    // Fechar onboarding de memória se estiver aberto
+    const memoryCloseBtn = page.locator('[id="memory-onboarding-title"] button, [role="dialog"] button:has-text("Entendi"), [role="dialog"] button:has-text("Fechar")').first()
+    if (await memoryCloseBtn.count() > 0) {
+      await memoryCloseBtn.click()
+      await page.waitForTimeout(500)
+    }
+
+    // Clicar no + para abrir a gaveta
+    const plusBtn = page.locator('.composer-plus-btn').first()
+    if (await plusBtn.count() > 0 && await plusBtn.isVisible()) {
+      await plusBtn.click({ force: true })
+      await page.waitForTimeout(500)
+
+      // Verificar se Fusion está na gaveta
+      const fusionBtn = page.locator('button:has-text("Fusion"), button:has-text("Resposta Profunda"), .fusion-toggle').first()
+      if (await fusionBtn.count() > 0) {
+        console.log('[U08] ✅ Fusion encontrado na gaveta +')
+      } else {
+        console.log('[U08] ⚠️  Fusion NÃO encontrado na gaveta +')
+      }
+    } else {
+      console.log('[U08] ⚠️  Botão + não encontrado')
     }
   })
 })

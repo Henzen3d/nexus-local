@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import { Activity, BarChart3, Clock, AlertTriangle, Layers, Calendar, Target, Zap, ShieldCheck } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { api } from '../api/client'
-import { ProactiveDashboardSection } from './ProactiveDashboardSection'
 import {
   LineChart,
   Line,
@@ -310,9 +309,6 @@ export function UsageDashboard() {
           </div>
         </div>
       )}
-
-      {/* ── Assistente proativo — insights/dia, taxas, p95, tokens e alarme (F5.2.4/F5.2.5) ── */}
-      <ProactiveDashboardSection days={days} />
 
       {/* Quotas & Provider Status Section (Phase 8.4) */}
       <div className="admin-section" style={{ marginTop: '24px', padding: '16px', background: 'var(--surface)', borderRadius: '8px', border: '1px solid var(--hairline)' }}>

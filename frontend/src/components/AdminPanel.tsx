@@ -25,8 +25,6 @@ import { RankingsView } from './RankingsView'
 import { ToolsPanel } from './ToolsPanel'
 import { UserMemoryPanel } from './UserMemoryPanel'
 import { LogsPanel } from './LogsPanel'
-import { ProactiveSettings } from './ProactiveSettings'
-import { ProactiveAdminSettings } from './ProactiveAdminSettings'
 import { AutoRouterSettings } from './AutoRouterSettings'
 import { CreateFamilyUser, FamilyUserKeys } from './FamilyAccountTools'
 import { canShowRegisterUserButton } from '../lib/registerUser'
@@ -1534,17 +1532,6 @@ function AdminPanelMobile() {
         </div>
       )}
 
-      {/* SCREEN 16b: Assistente Proativo (F4) */}
-      {currentScreen === 'proactive' && (
-        <div className="settings-mobile-container-view">
-          <Header title={t('proactive.settingsTitle')} />
-          <div className="settings-mobile-content proactive-settings-screen" style={{ padding: '16px' }}>
-            <ProactiveSettings />
-            {user?.role === 'admin' && <ProactiveAdminSettings />}
-          </div>
-        </div>
-      )}
-
       {/* SCREEN 17: Roteador Inteligente Screen */}
       {currentScreen === 'router' && (
         <div className="settings-mobile-container-view">
@@ -2733,14 +2720,6 @@ function AdminPanelDesktop() {
             {/* 8. Memory Tab */}
             {tab === 'memory' && (
               <UserMemoryPanel />
-            )}
-
-            {/* 8b. Proactive Tab (F4): preferências do usuário + bloco admin */}
-            {tab === 'proactive' && (
-              <div className="proactive-settings-screen">
-                <ProactiveSettings />
-                {user?.role === 'admin' && <ProactiveAdminSettings />}
-              </div>
             )}
 
             {/* 8c. Logs Tab (admin) */}

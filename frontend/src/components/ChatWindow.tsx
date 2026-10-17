@@ -7,8 +7,6 @@ import { useShallow } from 'zustand/react/shallow'
 import { api } from '../api/client'
 import { MessageBubble } from './MessageBubble'
 import { StreamingTail } from './StreamingTail'
-import { ProactiveBubble, ProactiveResearching } from './ProactiveBubble'
-import { ProactiveWelcomeCard } from './ProactiveWelcomeCard'
 import { NotificationBell } from './NotificationBell'
 import { MessageInput } from './MessageInput'
 import { FusionStatusCard } from './FusionStatusCard'
@@ -253,7 +251,6 @@ export function ChatWindow() {
     setProjectName,
     setView,
     setActiveProjectId,
-    proactiveStatus,
   } = useStore(useShallow((s) => ({
     messages: s.messages,
     conversations: s.conversations,
@@ -271,7 +268,6 @@ export function ChatWindow() {
     setProjectName: s.setProjectName,
     setView: s.setView,
     setActiveProjectId: s.setActiveProjectId,
-    proactiveStatus: s.proactiveStatus,
   })))
   const { sendMessage, stopStream } = useChatContext()
   const isMobile = useIsMobile()
@@ -479,6 +475,7 @@ export function ChatWindow() {
               variant="ghost"
               size="icon"
               className="touch-target"
+              data-testid="hamburger"
               onClick={() => setSidebarOpen(true)}
               tooltip={t('chat.openSidebar')}
               aria-label={t('chat.openSidebar')}
@@ -652,8 +649,7 @@ export function ChatWindow() {
               {t('chat.welcomeSub')}
             </p>
 
-            {/* F3.5.3 — "Enquanto você esteve fora…" (só na tela inicial, só com pendentes) */}
-            {!activeConversationId && <ProactiveWelcomeCard />}
+            {/* F3.5.3 — removido: ProactiveWelcomeCard arquivado */}
           </div>
         )}
       </div>
@@ -673,15 +669,9 @@ export function ChatWindow() {
                   />
                 )
               }
-              if (m.kind === 'proactive') {
-                return <ProactiveBubble key={m.id} message={m} />
-              }
               return <MessageBubble key={m.id} message={m} />
             })}
             {isStreaming && <StreamingTail sentinelRef={bottomSentinelRef} messagesAreaRef={messagesAreaRef} />}
-            {!isStreaming && proactiveStatus && proactiveStatus.conversation_id === activeConversationId && (
-              <ProactiveResearching stage={proactiveStatus.stage} />
-            )}
           </>
         )}
         <div ref={bottomSentinelRef} style={{ height: 0, flexShrink: 0 }} aria-hidden="true" />
