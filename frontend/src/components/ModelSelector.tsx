@@ -680,7 +680,7 @@ export function ModelSelector({ compact = false, className = '' }: ModelSelector
   if (models.length === 0 && !isAuto) {
     return (
       <div className={`model-selector ${compact ? 'compact' : ''} ${className}`.trim()} ref={ref}>
-        <button className={`model-trigger ${compact ? 'compact' : ''}`} disabled>
+        <button className={`model-trigger ${compact ? 'compact' : ''}`} disabled aria-label={t('modelSelector.currentModel', { defaultValue: `Modelo atual: ${selectedModel?.display_name || ''}` })}>
           <span className="model-trigger-name" style={{ color: 'var(--muted-soft)' }}>
             {t('chat.noModel', { defaultValue: 'Sem modelo' })}
           </span>
@@ -695,6 +695,7 @@ export function ModelSelector({ compact = false, className = '' }: ModelSelector
       <button
         type="button"
         className={`model-trigger ${compact ? 'compact' : ''}`}
+        aria-label={t('modelSelector.selectModel', { defaultValue: `Selecionar modelo: ${selectedModel?.display_name || ''}` })}
         onClick={() => {
           if (open) {
             handleClose()

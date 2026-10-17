@@ -13,7 +13,7 @@
     "orientationAngle": 0,
     "orientationType": "landscape-primary"
   },
-  "timestamp": "2026-10-17T23:40:22.413Z",
+  "timestamp": "2026-10-17T23:54:39.902Z",
   "url": "http://localhost:5173/",
   "toolOptions": {
     "reporter": "v1"
@@ -1533,7 +1533,7 @@
             }
           ],
           "impact": null,
-          "html": "<button class=\"model-trigger \" type=\"button\" aria-expanded=\"false\" aria-haspopup=\"listbox\">",
+          "html": "<button class=\"model-trigger \" aria-label=\"Selecionar modelo: \" type=\"button\" aria-expanded=\"false\" aria-haspopup=\"listbox\">",
           "target": [
             ".model-trigger"
           ]
@@ -2150,7 +2150,7 @@
           ],
           "none": [],
           "impact": null,
-          "html": "<button class=\"model-trigger \" type=\"button\" aria-expanded=\"false\" aria-haspopup=\"listbox\">",
+          "html": "<button class=\"model-trigger \" aria-label=\"Selecionar modelo: \" type=\"button\" aria-expanded=\"false\" aria-haspopup=\"listbox\">",
           "target": [
             ".model-trigger"
           ]
@@ -2803,7 +2803,7 @@
             }
           ],
           "impact": null,
-          "html": "<button class=\"model-trigger \" type=\"button\" aria-expanded=\"false\" aria-haspopup=\"listbox\">",
+          "html": "<button class=\"model-trigger \" aria-label=\"Selecionar modelo: \" type=\"button\" aria-expanded=\"false\" aria-haspopup=\"listbox\">",
           "target": [
             ".model-trigger"
           ]
@@ -3563,7 +3563,7 @@
           ],
           "none": [],
           "impact": null,
-          "html": "<button class=\"model-trigger \" type=\"button\" aria-expanded=\"false\" aria-haspopup=\"listbox\">",
+          "html": "<button class=\"model-trigger \" aria-label=\"Selecionar modelo: \" type=\"button\" aria-expanded=\"false\" aria-haspopup=\"listbox\">",
           "target": [
             ".model-trigger"
           ]
@@ -4075,7 +4075,7 @@
           "all": [],
           "none": [],
           "impact": null,
-          "html": "<button class=\"model-trigger \" type=\"button\" aria-expanded=\"false\" aria-haspopup=\"listbox\">",
+          "html": "<button class=\"model-trigger \" aria-label=\"Selecionar modelo: \" type=\"button\" aria-expanded=\"false\" aria-haspopup=\"listbox\">",
           "target": [
             ".model-trigger"
           ]
@@ -4707,7 +4707,7 @@
     },
     {
       "id": "button-name",
-      "impact": "critical",
+      "impact": null,
       "tags": [
         "cat.name-role-value",
         "wcag2a",
@@ -5014,6 +5014,24 @@
           "html": "<button type=\"button\" class=\"composer-plus-btn touch-target \" aria-expanded=\"false\" aria-haspopup=\"menu\" aria-label=\"Actions and tools\" data-tooltip=\"Actions and tools\">",
           "target": [
             ".composer-plus-btn"
+          ]
+        },
+        {
+          "any": [
+            {
+              "id": "aria-label",
+              "data": null,
+              "relatedNodes": [],
+              "impact": "critical",
+              "message": "aria-label attribute exists and is not empty"
+            }
+          ],
+          "all": [],
+          "none": [],
+          "impact": null,
+          "html": "<button class=\"model-trigger \" aria-label=\"Selecionar modelo: \" type=\"button\" aria-expanded=\"false\" aria-haspopup=\"listbox\">",
+          "target": [
+            ".model-trigger"
           ]
         },
         {
@@ -7045,7 +7063,7 @@
           "all": [],
           "none": [],
           "impact": null,
-          "html": "<button class=\"model-trigger \" type=\"button\" aria-expanded=\"false\" aria-haspopup=\"listbox\">",
+          "html": "<button class=\"model-trigger \" aria-label=\"Selecionar modelo: \" type=\"button\" aria-expanded=\"false\" aria-haspopup=\"listbox\">",
           "target": [
             ".model-trigger"
           ]
@@ -9353,7 +9371,7 @@
           "all": [],
           "none": [],
           "impact": null,
-          "html": "<button class=\"model-trigger \" type=\"button\" aria-expanded=\"false\" aria-haspopup=\"listbox\">",
+          "html": "<button class=\"model-trigger \" aria-label=\"Selecionar modelo: \" type=\"button\" aria-expanded=\"false\" aria-haspopup=\"listbox\">",
           "target": [
             ".model-trigger"
           ]
@@ -11355,92 +11373,6 @@
     }
   ],
   "violations": [
-    {
-      "id": "button-name",
-      "impact": "critical",
-      "tags": [
-        "cat.name-role-value",
-        "wcag2a",
-        "wcag412",
-        "section508",
-        "section508.22.a",
-        "TTv5",
-        "TT6.a",
-        "EN-301-549",
-        "EN-9.4.1.2",
-        "ACT",
-        "RGAAv4",
-        "RGAA-11.9.1"
-      ],
-      "description": "Ensure buttons have discernible text",
-      "help": "Buttons must have discernible text",
-      "helpUrl": "https://dequeuniversity.com/rules/axe/4.14/button-name?application=playwright",
-      "nodes": [
-        {
-          "any": [
-            {
-              "id": "button-has-visible-text",
-              "data": null,
-              "relatedNodes": [],
-              "impact": "critical",
-              "message": "Element does not have inner text that is visible to screen readers"
-            },
-            {
-              "id": "aria-label",
-              "data": null,
-              "relatedNodes": [],
-              "impact": "critical",
-              "message": "aria-label attribute does not exist or is empty"
-            },
-            {
-              "id": "aria-labelledby",
-              "data": null,
-              "relatedNodes": [],
-              "impact": "critical",
-              "message": "aria-labelledby attribute does not exist, references elements that do not exist or references elements that are empty"
-            },
-            {
-              "id": "non-empty-title",
-              "data": {
-                "messageKey": "noAttr"
-              },
-              "relatedNodes": [],
-              "impact": "critical",
-              "message": "Element has no title attribute"
-            },
-            {
-              "id": "implicit-label",
-              "data": null,
-              "relatedNodes": [],
-              "impact": "critical",
-              "message": "Element does not have an implicit (wrapped) <label>"
-            },
-            {
-              "id": "explicit-label",
-              "data": null,
-              "relatedNodes": [],
-              "impact": "critical",
-              "message": "Element does not have an explicit <label>"
-            },
-            {
-              "id": "presentational-role",
-              "data": null,
-              "relatedNodes": [],
-              "impact": "critical",
-              "message": "Element's default semantics were not overridden with role=\"none\" or role=\"presentation\""
-            }
-          ],
-          "all": [],
-          "none": [],
-          "impact": "critical",
-          "html": "<button class=\"model-trigger \" type=\"button\" aria-expanded=\"false\" aria-haspopup=\"listbox\">",
-          "target": [
-            ".model-trigger"
-          ],
-          "failureSummary": "Fix any of the following:\n  Element does not have inner text that is visible to screen readers\n  aria-label attribute does not exist or is empty\n  aria-labelledby attribute does not exist, references elements that do not exist or references elements that are empty\n  Element has no title attribute\n  Element does not have an implicit (wrapped) <label>\n  Element does not have an explicit <label>\n  Element's default semantics were not overridden with role=\"none\" or role=\"presentation\""
-        }
-      ]
-    },
     {
       "id": "color-contrast",
       "impact": "serious",
