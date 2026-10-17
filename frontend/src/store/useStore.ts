@@ -337,6 +337,10 @@ interface AppState {
   toasts: ToastItem[]
   showToast: (message: string, type?: ToastItem['type'], options?: { title?: string; action?: ToastItem['action']; durationMs?: number; id?: string }) => void
   hideToast: (id?: string) => void
+  isOnline: boolean
+  setIsOnline: (online: boolean) => void
+  lastUserMessage: { text: string; conversationId: string | null; modelId: string | null; providerId: string | null; fusionMode: boolean; webSearchActive: boolean; projectId: string | null } | null
+  setLastUserMessage: (msg: { text: string; conversationId: string | null; modelId: string | null; providerId: string | null; fusionMode: boolean; webSearchActive: boolean; projectId: string | null } | null) => void
 
   // ── Assistente proativo (F2) ─────────────────────────────────────────────
   /** Status transitório ("pesquisando…") da conversa em pesquisa. */
@@ -565,6 +569,8 @@ export const useStore = create<AppState>((set, get) => ({
   processStartedAt: null,
   lastCacheHit: null,
   toasts: [],
+  isOnline: typeof window !== 'undefined' ? navigator.onLine : true,
+  lastUserMessage: null as { text: string; conversationId: string | null; modelId: string | null; providerId: string | null; fusionMode: boolean; webSearchActive: boolean; projectId: string | null } | null,
   proactiveStatus: null,
   conversationsWithInsight: {},
   pendingInlineInsights: [],
@@ -750,6 +756,9 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   hideToast: (id) => set((s) => ({ toasts: id ? s.toasts.filter((t) => t.id !== id) : [] })),
+
+  setIsOnline: (online) => set({ isOnline: online }),
+  setLastUserMessage: (msg) => set({ lastUserMessage: msg }),
 
   // ── Assistente proativo (F2) ─────────────────────────────────────────────
   setComposerPrefill: (text) => set({ composerPrefill: text }),

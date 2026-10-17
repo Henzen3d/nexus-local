@@ -6,6 +6,8 @@ import { useStore } from './store/useStore'
 import { usePWAStore } from './store/pwaStore'
 import { Sidebar } from './components/Sidebar'
 import { ChatWindow } from './components/ChatWindow'
+import { OfflineBanner } from './components/OfflineBanner'
+import { useOnlineStatus } from './hooks/useOnlineStatus'
 // AdminPanel puxa recharts (UsageDashboard/RankingsView). Lazy para a lib sair do
 // chunk do chat — assim só ChartCard (também lazy) e o admin pagam por ela.
 const AdminPanel = lazy(() => import('./components/AdminPanel').then((m) => ({ default: m.AdminPanel })))
@@ -197,6 +199,8 @@ export default function App() {
     document.documentElement.setAttribute('data-chat-font', chatFont)
   }, [chatFont])
 
+  useOnlineStatus()
+
   if (!token) {
     return <Login onLoginSuccess={setAuth} />
   }
@@ -211,6 +215,7 @@ export default function App() {
 
   return (
     <ChatProvider>
+      <OfflineBanner />
       {/* Overlay outside grid so it never steals a column */}
       <div
         className={`sidebar-overlay ${sidebarOpen ? 'is-visible' : ''}`}

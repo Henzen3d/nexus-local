@@ -368,7 +368,34 @@ export function useChat() {
           console.error('[WS error]', msg.message)
           s.setStreaming(false)
           s.setFusionActive(false)
-          s.showToast(msg.message, 'error')
+          // Toast com ação de retry
+          const retryAction = s.lastUserMessage
+            ? {
+                label: i18n.t('chat.retry', { defaultValue: 'Tentar novamente' }),
+                onClick: () => {
+                  s.hideToast()
+                  // Re-envia a última mensagem via WebSocket
+                  if (wsRef.current?.readyState === WebSocket.OPEN) {
+                    wsRef.current.send(JSON.stringify({
+                      conversation_id: s.lastUserMessage!.conversationId,
+                      message: s.lastUserMessage!.text,
+                      model_id: s.lastUserMessage!.modelId,
+                      provider_id: s.lastUserMessage!.providerId,
+                      fusion: s.lastUserMessage!.fusionMode,
+                      web_search: s.lastUserMessage!.webSearchActive,
+                      project_id: s.lastUserMessage!.projectId || undefined,
+                      use_memory: true,
+                      client_timezone_offset: new Date().getTimezoneOffset(),
+                    }))
+                  }
+                },
+              }
+            : undefined
+          s.showToast(
+            msg.message,
+            'error',
+            retryAction ? { action: retryAction, durationMs: 15000 } : undefined
+          )
           s.addErrorMessage(msg.message)
           break
       }
@@ -573,6 +600,17 @@ export function useChat() {
       // displayText: versão curta exibida no chat (ex: "✏️ Dashboard: adicionar dark mode")
       // text: prompt completo enviado ao modelo (inclui conteúdo do artifact)
       addUserMessage(displayText ?? text, attachments)
+
+      // Armazena a última mensagem para retry
+      useStore.getState().setLastUserMessage({
+        text: displayText ?? text,
+        conversationId: activeConversationId,
+        modelId: selectedModelId,
+        providerId: selectedProviderId,
+        fusionMode: fusionMode,
+        webSearchActive: webSearchActive,
+        projectId: activeProjectId || null,
+      })
 
       const safeAttachmentIds = (attachmentIds ?? []).filter(
         (id): id is string => typeof id === 'string' && id.length > 0
