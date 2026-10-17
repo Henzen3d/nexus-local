@@ -113,7 +113,7 @@ def get_all_families() -> list[str]:
 def auto_register_default_providers() -> None:
     """Instancia e registra todos os provedores embutidos das 10 famílias de ferramentas."""
     from backend.tools.families.brasil import BrasilAPIProvider, ViaCEPProvider
-    from backend.tools.families.code_exec import Judge0Provider, PistonProvider
+    from backend.tools.families.code_exec import Judge0Provider, PistonProvider, WandboxProvider
     from backend.tools.families.currency import AwesomeAPIProvider, FrankfurterProvider
     from backend.tools.families.diagrams import KrokiProvider, QuickChartProvider
     from backend.tools.families.fun import RandomFactsProvider
@@ -150,6 +150,7 @@ def auto_register_default_providers() -> None:
         # Fun
         RandomFactsProvider(),
         # Code Exec
+        WandboxProvider(),
         PistonProvider(),
         Judge0Provider(),
         # Diagrams

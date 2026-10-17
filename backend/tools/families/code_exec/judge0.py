@@ -39,7 +39,7 @@ class Judge0Provider(ToolProvider):
     provider_id = "judge0"
     family = "code_exec"
     base_url = "https://judge0-ce.p.rapidapi.com"
-    fallback_order = 2
+    fallback_order = 3
     requires_key = True
     env_key_name = "JUDGE0_RAPIDAPI_KEY"
 

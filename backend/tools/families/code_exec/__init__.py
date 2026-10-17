@@ -2,8 +2,10 @@
 """
 from backend.tools.families.code_exec.judge0 import Judge0Provider
 from backend.tools.families.code_exec.piston import PistonProvider
+from backend.tools.families.code_exec.wandbox import WandboxProvider
 
 __all__ = [
+    "WandboxProvider",
     "PistonProvider",
     "Judge0Provider",
 ]

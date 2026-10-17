@@ -42,11 +42,13 @@ LANGUAGE_FILES = {
 }
 
 
+import os
+
 class PistonProvider(ToolProvider):
     provider_id = "piston"
     family = "code_exec"
-    base_url = "https://emkc.org/api/v2/piston"
-    fallback_order = 1
+    base_url = os.getenv("PISTON_BASE_URL", "https://emkc.org/api/v2/piston")
+    fallback_order = 2
     requires_key = False
 
     def cache_key(self, params: dict) -> str:

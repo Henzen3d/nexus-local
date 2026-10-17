@@ -114,3 +114,31 @@ Espero que ajude!
     assert arts[0]["type"] == "diagram"
     assert arts[0]["title"] == "fluxo-autenticacao-jwt.mmd"
     assert "sequenceDiagram" in arts[0]["content"]
+
+
+@pytest.mark.asyncio
+async def test_wandbox_provider_executes_code(monkeypatch):
+    from backend.tools.families.code_exec.wandbox import WandboxProvider
+
+    p = WandboxProvider()
+
+    async def fake_http_post(url, json_data=None, **kwargs):
+        class FakeResp:
+            status_code = 200
+            text = '{"status":"0","program_output":"Hello Wandbox\\n","program_error":"","compiler_output":""}'
+            def json(self):
+                return {
+                    "status": "0",
+                    "program_output": "Hello Wandbox\n",
+                    "program_error": "",
+                    "compiler_output": "",
+                }
+        return FakeResp()
+
+    monkeypatch.setattr(p, "_http_post", fake_http_post)
+
+    result = await p.execute({"language": "python", "code": "print('Hello Wandbox')"})
+    assert result.success is True
+    assert result.data["stdout"] == "Hello Wandbox\n"
+    assert result.data["exit_code"] == 0
+    assert result.data["source"] == "Wandbox"

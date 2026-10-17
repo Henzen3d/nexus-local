@@ -2309,8 +2309,9 @@ INITIAL_TOOL_PROVIDERS = [
     # Fun
     ("random_facts", "fun", "Random Facts & Fun", "https://uselessfacts.jsph.pl", 0, None, 1, 1),
     # Code Exec
-    ("piston", "code_exec", "Piston Engine", "https://emkc.org/api/v2/piston", 0, None, 1, 1),
-    ("judge0", "code_exec", "Judge0 CE", "https://judge0-ce.p.rapidapi.com", 1, "JUDGE0_RAPIDAPI_KEY", 2, 1),
+    ("wandbox", "code_exec", "Wandbox Engine", "https://wandbox.org/api", 0, None, 1, 1),
+    ("piston", "code_exec", "Piston Engine", "https://emkc.org/api/v2/piston", 0, None, 2, 1),
+    ("judge0", "code_exec", "Judge0 CE", "https://judge0-ce.p.rapidapi.com", 1, "JUDGE0_RAPIDAPI_KEY", 3, 1),
     # Diagrams
     ("kroki", "diagrams", "Kroki", "https://kroki.io", 0, None, 1, 1),
     ("quickchart", "diagrams", "QuickChart", "https://quickchart.io", 0, None, 2, 1),
@@ -2492,6 +2493,12 @@ async def _migrate_tool_system_schema(db: aiosqlite.Connection) -> None:
 
     # 9. Seed inicial dos provedores (idempotente)
     try:
+        try:
+            await db.execute("UPDATE tool_providers SET fallback_order = fallback_order + 100")
+            await db.commit()
+        except Exception:
+            pass
+
         for pid, fid, dname, burl, reqk, envk, forder, en in INITIAL_TOOL_PROVIDERS:
             await db.execute(
                 """
