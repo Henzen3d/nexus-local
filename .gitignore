@@ -104,3 +104,6 @@ backend/storage/attachments/*
 !backend/storage/attachments/.gitkeep
 backend/storage/project_files/*
 !backend/storage/project_files/.gitkeep
+
+# Task tracking (agente interno)
+melhorias/TASK_ATUAL.md

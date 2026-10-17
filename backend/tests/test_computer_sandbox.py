@@ -1,5 +1,6 @@
 """Testes do Sandbox de Computador (F8.2) — Anti-SSRF e BaseComputer."""
 import pytest
+from unittest.mock import AsyncMock, patch
 from backend.computer.base import BaseComputer, is_safe_public_url
 
 
@@ -67,10 +68,20 @@ async def test_base_computer_actions():
     assert t_res["ok"]
     assert t_res["length"] == 11
 
-    # Screenshot
-    s_res = await comp.take_screenshot()
+    # Screenshot: mock para forçar fallback SVG (sem depender de rede/CDP)
+    with patch(
+        "backend.computer.base._capture_via_cdp",
+        new=AsyncMock(return_value=None),
+    ), patch(
+        "backend.computer.base._capture_via_web_render",
+        new=AsyncMock(return_value=None),
+    ):
+        s_res = await comp.take_screenshot()
     assert s_res["ok"]
-    assert "<svg" in s_res["svg_preview"]
+    # screenshot_url é data URI base64; decodifica para verificar tag SVG
+    import base64 as _b64
+    svg_data = s_res["screenshot_url"].split(",", 1)[1]
+    assert "<svg" in _b64.b64decode(svg_data).decode("utf-8")
 
     # Histórico registrado
     assert len(comp.action_history) == 5

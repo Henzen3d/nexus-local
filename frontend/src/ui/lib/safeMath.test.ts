@@ -12,10 +12,10 @@ import {
 } from './safeMath.ts'
 
 test('expressions parity against backend shared fixtures', () => {
-  const fixturePath = path.resolve(
-    process.cwd(),
-    '../backend/tests/fixtures/expressions.json'
-  )
+  const fixturePath = new URL(
+    '../../../../backend/tests/fixtures/expressions.json',
+    import.meta.url
+  ).pathname
   const fixtureContent = fs.readFileSync(fixturePath, 'utf-8')
   const cases = JSON.parse(fixtureContent)
 
