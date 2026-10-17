@@ -76,6 +76,34 @@ class AwesomeAPIProvider(ToolProvider):
                 "source": "AwesomeAPI",
             }
 
+            amount = params.get("amount")
+            if amount is not None:
+                try:
+                    amt = float(amount)
+                    if amt > 0 and rate > 0:
+                        # Se o par for USD-BRL e o valor estiver em reais (ou from=BRL), divide; se o valor for em USD, multiplica
+                        if (from_curr != "BRL" and to_curr == "BRL" and amt >= 1000 and "dólar" not in str(params.get("raw_unit", "")).lower()) or from_curr == "BRL":
+                            # Ex: R$ 132.000 -> US$ 26.073
+                            converted = round(amt / rate, 2)
+                            normalized["amount_brl"] = amt
+                            normalized["converted_amount"] = converted
+                            normalized["target_currency"] = from_curr if from_curr != "BRL" else to_curr
+                            normalized["conversion_summary"] = (
+                                f"R$ {amt:,.2f} equivale a aproximadamente {normalized['target_currency']} {converted:,.2f} "
+                                f"(cotação: 1 {from_curr if from_curr != 'BRL' else to_curr} = R$ {rate:.4f})."
+                            )
+                        else:
+                            # Ex: US$ 100 -> R$ 506
+                            converted = round(amt * rate, 2)
+                            normalized["amount_origin"] = amt
+                            normalized["converted_amount_brl"] = converted
+                            normalized["conversion_summary"] = (
+                                f"{from_curr} {amt:,.2f} equivale a aproximadamente R$ {converted:,.2f} "
+                                f"(cotação: 1 {from_curr} = R$ {rate:.4f})."
+                            )
+                except Exception:
+                    pass
+
             return ToolResult(
                 success=True,
                 data=normalized,

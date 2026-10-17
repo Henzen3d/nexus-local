@@ -46,10 +46,14 @@ class ToolRegistry:
 
     def get_providers(self, family: str) -> list[ToolProvider]:
         """Retorna lista de provedores para a família, ordenados por fallback_order."""
+        if not self._providers:
+            auto_register_default_providers()
         return list(self._families.get(family, []))
 
     def get_provider(self, provider_id: str) -> Optional[ToolProvider]:
         """Busca um provedor específico pelo ID."""
+        if not self._providers:
+            auto_register_default_providers()
         return self._providers.get(provider_id)
 
     def get_all_families(self) -> list[str]:

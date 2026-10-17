@@ -16,12 +16,16 @@ logger = get_logger(__name__)
 
 async def get_tool_provider_quota_status(provider_id: str, db: aiosqlite.Connection) -> dict:
     """Retorna o status de cota/saúde de um provedor de ferramenta."""
-    async with db.execute(
-        "SELECT status, consecutive_errors, exhausted_at, estimated_reset_at, last_error_message "
-        "FROM tool_provider_quota WHERE provider_id = ?",
-        (provider_id,)
-    ) as cur:
-        row = await cur.fetchone()
+    row = None
+    try:
+        async with db.execute(
+            "SELECT status, consecutive_errors, exhausted_at, estimated_reset_at, last_error_message "
+            "FROM tool_provider_quota WHERE provider_id = ?",
+            (provider_id,)
+        ) as cur:
+            row = await cur.fetchone()
+    except Exception:
+        row = None
 
     if not row:
         return {
@@ -103,38 +107,42 @@ async def mark_tool_provider_success(provider_id: str, db: aiosqlite.Connection)
 
 async def release_expired_tool_quotas(db: aiosqlite.Connection) -> int:
     """Reabilita provedores cujo tempo de exaustão já expirou."""
-    now = datetime.now(timezone.utc).isoformat()
-    async with db.execute(
-        """
-        SELECT provider_id FROM tool_provider_quota
-        WHERE status != 'available'
-          AND estimated_reset_at IS NOT NULL
-          AND estimated_reset_at <= ?
-        """,
-        (now,)
-    ) as cur:
-        rows = await cur.fetchall()
+    try:
+        now = datetime.now(timezone.utc).isoformat()
+        async with db.execute(
+            """
+            SELECT provider_id FROM tool_provider_quota
+            WHERE status != 'available'
+              AND estimated_reset_at IS NOT NULL
+              AND estimated_reset_at <= ?
+            """,
+            (now,)
+        ) as cur:
+            rows = await cur.fetchall()
 
-    if not rows:
+        if not rows:
+            return 0
+
+        provider_ids = [r[0] for r in rows]
+        placeholders = ",".join("?" for _ in provider_ids)
+        await db.execute(
+            f"""
+            UPDATE tool_provider_quota
+            SET status = 'available',
+                consecutive_errors = 0,
+                exhausted_at = NULL,
+                estimated_reset_at = NULL,
+                last_error_message = NULL
+            WHERE provider_id IN ({placeholders})
+            """,
+            provider_ids
+        )
+        await db.commit()
+        logger.info("[ToolFailover] Reabilitados %d provedores de ferramentas com cotas resetadas", len(provider_ids))
+        return len(provider_ids)
+    except Exception as e:
+        logger.warning("[ToolFailover] Erro ao liberar cotas expiradas: %s", e)
         return 0
-
-    provider_ids = [r[0] for r in rows]
-    placeholders = ",".join("?" for _ in provider_ids)
-    await db.execute(
-        f"""
-        UPDATE tool_provider_quota
-        SET status = 'available',
-            consecutive_errors = 0,
-            exhausted_at = NULL,
-            estimated_reset_at = NULL,
-            last_error_message = NULL
-        WHERE provider_id IN ({placeholders})
-        """,
-        provider_ids
-    )
-    await db.commit()
-    logger.info("[ToolFailover] Reabilitados %d provedores de ferramentas com cotas resetadas", len(provider_ids))
-    return len(provider_ids)
 
 
 async def resolve_tool(
