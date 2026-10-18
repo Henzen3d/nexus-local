@@ -487,6 +487,25 @@ async def stream_from_llm(
                         "Vision Relay fallback falhou após recusa de imagem",
                         exc_info=True,
                     )
+            from backend.ranking.quota import is_quota_exhausted_error
+            if is_quota_exhausted_error(error_msg):
+                logger.warning(
+                    "Cota/limite de uso esgotado no modelo '%s' (provedor '%s'): %s. Aplicando backoff longo de quota (mínimo 1h) e acionando failover...",
+                    current_model_id, current_provider_id, error_msg,
+                )
+                from backend.ranking.token_bucket import token_bucket_manager
+                await token_bucket_manager.on_rate_limit(current_provider_id)
+                await mark_model_exhausted(current_model_id, db, retry_after=3600, error_msg=error_msg)
+                attempted_model_ids.add(current_model_id)
+                next_failover_reason = "rate_limit"
+                if not first_token_received and attempt < _MAX_FAILOVER_ATTEMPTS:
+                    continue
+                await ws.send_json({
+                    "type": "error",
+                    "message": f"Limite de cota de uso atingido para o modelo '{current_model_id}'. Tente novamente mais tarde.",
+                })
+                return None
+
             from backend.database import check_and_deactivate_model
             await check_and_deactivate_model(current_model_id, error_msg, db)
 

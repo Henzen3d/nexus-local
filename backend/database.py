@@ -3786,7 +3786,18 @@ def classify_model_error(error_msg: str) -> dict:
             "status_message": status_msg,
         }
 
-    # 3. Erros reais de faturamento / assinatura / plano
+    # 3. Cota esgotada / limites de uso temporários (HTTP 402, usage limit, etc.)
+    # Não deve desativar permanentemente (enabled=0), apenas aplicar cooldown
+    from backend.ranking.quota import is_quota_exhausted_error
+    if is_quota_exhausted_error(error_msg):
+        return {
+            "is_deactivation": False,
+            "reason": "quota_exhausted",
+            "suggested_model": suggested_model,
+            "status_message": "quota_exhausted",
+        }
+
+    # 4. Erros reais de faturamento / assinatura / plano
     billing_triggers = [
         "requires a subscription",
         "upgrade for access",
@@ -3823,12 +3834,18 @@ async def check_and_deactivate_model(model_id: str, error_msg: str, db=None) -> 
     Verifica se o erro indica um modelo aposentado (deprecated), não encontrado (not found)
     ou erro financeiro/plano/assinatura (billing), desativando-o automaticamente no banco
     com a classificação e sugestão corretas.
+    Se for limite de cota temporário (quota_exhausted), registra em model_quota_status sem desativar.
     Retorna True se o modelo foi desativado, False caso contrário.
     """
     if not model_id:
         return False
         
     classification = classify_model_error(error_msg)
+    if classification.get("reason") == "quota_exhausted":
+        from backend.ranking.quota import mark_model_exhausted
+        await mark_model_exhausted(model_id, db, retry_after=3600, error_msg=error_msg)
+        return False
+
     if not classification["is_deactivation"]:
         return False
 

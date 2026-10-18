@@ -30,6 +30,46 @@ async def get_quota_status(model_id: str, db: aiosqlite.Connection) -> dict:
         "last_error_message": row[4]
     }
 
+def is_quota_exhausted_error(error_msg: str | None) -> bool:
+    """
+    Detecta se uma mensagem de erro ou código HTTP indica que a cota/limite de uso
+    do modelo foi atingida (ex: HTTP 402, usage limit reached, quota exceeded, too_many_requests).
+    """
+    if not error_msg:
+        return False
+    msg_lower = error_msg.lower()
+
+    # 1. Menção a HTTP 402 (ex: LongCat "Provider error 402" ou status code 402)
+    has_402 = (
+        "402" in msg_lower
+        and any(ctx in msg_lower for ctx in ("error", "status", "code", "http", "api", "provider"))
+    )
+    if has_402:
+        return True
+
+    # 2. Gatilhos de limite de uso e cota esgotada
+    quota_triggers = [
+        "usage limit reached",
+        "usage limit",
+        "limit reached",
+        "quota_exceeded",
+        "quota exceeded",
+        "exceeded your current quota",
+        "resource has been exhausted",
+        "daily limit reached",
+        "monthly limit reached",
+        "rate limit reached",
+    ]
+    if any(trigger in msg_lower for trigger in quota_triggers):
+        return True
+
+    # 3. too_many_requests acompanhado de rate_limit_error ou usage
+    if "too_many_requests" in msg_lower and any(kw in msg_lower for kw in ("rate_limit", "limit", "usage")):
+        return True
+
+    return False
+
+
 async def mark_model_exhausted(
     model_id: str, 
     db: aiosqlite.Connection,
@@ -39,9 +79,13 @@ async def mark_model_exhausted(
     """
     Marca um modelo como esgotado (status='exhausted').
     Calcula a estimativa de reset com base no retry_after ou um fallback.
+    Se o erro for de cota/limite de uso (ex: HTTP 402 / usage limit), aplica backoff mínimo de 1 hora.
     """
     now = datetime.now(timezone.utc)
     
+    if is_quota_exhausted_error(error_msg):
+        retry_after = max(retry_after or 0, 3600)
+
     if retry_after is not None and retry_after > 0:
         reset_time = now + timedelta(seconds=retry_after)
     else:

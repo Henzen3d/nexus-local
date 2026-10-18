@@ -4,7 +4,8 @@ from .quota import (
     get_quota_status,
     mark_model_exhausted,
     mark_model_success,
-    release_expired_quotas
+    release_expired_quotas,
+    is_quota_exhausted_error,
 )
 from .failover import (
     resolve_model_with_failover,
