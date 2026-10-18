@@ -217,7 +217,12 @@
       "missing_key": "chave não configurada",
       "preemptive_quota": "limite de cota próximo",
       "error": "indisponível"
-    }
+    },
+    "simpleFast": "Rápido",
+    "simpleFastDesc": "Obtenha respostas rápidas",
+    "simpleThink": "Pensativo",
+    "simpleThinkDesc": "Lide com tarefas complexas",
+    "modeSelect": "Modo do modelo: {{label}}"
   },
   "sidebar": {
     "newChat": "Nova conversa",
@@ -383,7 +388,7 @@
     "uiLevelTitle": "Nível da Interface",
     "uiLevelDesc": "Controle a complexidade visual e os recursos técnicos exibidos no chat.",
     "uiLevelSimpleTitle": "Simples",
-    "uiLevelSimpleDesc": "Chat direto e focado. Roteamento inteligente automático, sem escolha manual de modelos.",
+    "uiLevelSimpleDesc": "Chat direto com modo Rápido ou Pensativo. Roteamento inteligente automático sem nomes técnicos de modelos.",
     "uiLevelIntermediateTitle": "Intermediário",
     "uiLevelIntermediateDesc": "Equilibrado. Exibe o seletor compacto de modelos no chat para escolha rápida.",
     "uiLevelAdvancedTitle": "Avançado",

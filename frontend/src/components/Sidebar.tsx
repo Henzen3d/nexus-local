@@ -791,49 +791,45 @@ export function Sidebar() {
             <MessageSquare size={20} />
             {sidebarOpen && <span>{t('sidebar.conversations')}</span>}
           </button>
-          {uiLevel !== 'simple' && (
-            <>
-              <button
-                type="button"
-                className={`sidebar-fixed-nav-item custom-tooltip-trigger ${view === 'projects' ? 'selected' : ''}`}
-                data-tooltip={t('sidebar.projects', { defaultValue: 'Projetos' })}
-                aria-label={t('sidebar.projects', { defaultValue: 'Projetos' })}
-                onClick={() => {
-                  setView('projects')
-                  if (window.innerWidth <= MOBILE_BREAKPOINT) setSidebarOpen(false)
-                }}
-              >
-                <Folder size={20} />
-                {sidebarOpen && <span>{t('sidebar.projects', { defaultValue: 'Projetos' })}</span>}
-              </button>
-              <button
-                type="button"
-                className={`sidebar-fixed-nav-item custom-tooltip-trigger ${view === 'library' ? 'selected' : ''}`}
-                data-tooltip={t('sidebar.library', { defaultValue: 'Biblioteca' })}
-                aria-label={t('sidebar.library', { defaultValue: 'Biblioteca' })}
-                onClick={() => {
-                  setView('library')
-                  if (window.innerWidth <= MOBILE_BREAKPOINT) setSidebarOpen(false)
-                }}
-              >
-                <Images size={20} />
-                {sidebarOpen && <span>{t('sidebar.library', { defaultValue: 'Biblioteca' })}</span>}
-              </button>
-              <button
-                type="button"
-                className={`sidebar-fixed-nav-item custom-tooltip-trigger ${view === 'artifacts' ? 'selected' : ''}`}
-                data-tooltip={t('sidebar.artifacts')}
-                aria-label={t('sidebar.artifacts')}
-                onClick={() => {
-                  setView('artifacts')
-                  if (window.innerWidth <= MOBILE_BREAKPOINT) setSidebarOpen(false)
-                }}
-              >
-                <Sparkles size={20} />
-                {sidebarOpen && <span>{t('sidebar.artifacts')}</span>}
-              </button>
-            </>
-          )}
+          <button
+            type="button"
+            className={`sidebar-fixed-nav-item custom-tooltip-trigger ${view === 'projects' ? 'selected' : ''}`}
+            data-tooltip={t('sidebar.projects', { defaultValue: 'Projetos' })}
+            aria-label={t('sidebar.projects', { defaultValue: 'Projetos' })}
+            onClick={() => {
+              setView('projects')
+              if (window.innerWidth <= MOBILE_BREAKPOINT) setSidebarOpen(false)
+            }}
+          >
+            <Folder size={20} />
+            {sidebarOpen && <span>{t('sidebar.projects', { defaultValue: 'Projetos' })}</span>}
+          </button>
+          <button
+            type="button"
+            className={`sidebar-fixed-nav-item custom-tooltip-trigger ${view === 'library' ? 'selected' : ''}`}
+            data-tooltip={t('sidebar.library', { defaultValue: 'Biblioteca' })}
+            aria-label={t('sidebar.library', { defaultValue: 'Biblioteca' })}
+            onClick={() => {
+              setView('library')
+              if (window.innerWidth <= MOBILE_BREAKPOINT) setSidebarOpen(false)
+            }}
+          >
+            <Images size={20} />
+            {sidebarOpen && <span>{t('sidebar.library', { defaultValue: 'Biblioteca' })}</span>}
+          </button>
+          <button
+            type="button"
+            className={`sidebar-fixed-nav-item custom-tooltip-trigger ${view === 'artifacts' ? 'selected' : ''}`}
+            data-tooltip={t('sidebar.artifacts')}
+            aria-label={t('sidebar.artifacts')}
+            onClick={() => {
+              setView('artifacts')
+              if (window.innerWidth <= MOBILE_BREAKPOINT) setSidebarOpen(false)
+            }}
+          >
+            <Sparkles size={20} />
+            {sidebarOpen && <span>{t('sidebar.artifacts')}</span>}
+          </button>
         </div>
 
         {favorites.length > 0 && (

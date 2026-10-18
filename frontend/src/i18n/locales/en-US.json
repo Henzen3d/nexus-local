@@ -217,7 +217,12 @@
       "missing_key": "missing API key",
       "preemptive_quota": "near quota limit",
       "error": "unavailable"
-    }
+    },
+    "simpleFast": "Fast",
+    "simpleFastDesc": "Get fast answers",
+    "simpleThink": "Thinking",
+    "simpleThinkDesc": "Handle complex tasks",
+    "modeSelect": "Model mode: {{label}}"
   },
   "sidebar": {
     "newChat": "New conversation",
@@ -383,7 +388,7 @@
     "uiLevelTitle": "Interface Level",
     "uiLevelDesc": "Control visual complexity and technical tools displayed in chat.",
     "uiLevelSimpleTitle": "Simple",
-    "uiLevelSimpleDesc": "Direct and distraction-free chat. Automatic smart routing without manual model selection.",
+    "uiLevelSimpleDesc": "Direct chat with Fast or Thinking modes. Automatic smart routing without technical model names.",
     "uiLevelIntermediateTitle": "Intermediate",
     "uiLevelIntermediateDesc": "Balanced. Shows compact model selector in chat for quick switching.",
     "uiLevelAdvancedTitle": "Advanced",

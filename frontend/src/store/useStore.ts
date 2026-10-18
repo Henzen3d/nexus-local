@@ -194,6 +194,8 @@ interface AppState {
   isStreaming: boolean
   isGenerating: boolean
   uiLevel: 'simple' | 'intermediate' | 'advanced'
+  simpleSpeed: 'fast' | 'think'
+  setSimpleSpeed: (speed: 'fast' | 'think') => void
   processSteps: ProcessStep[]
   processStartedAt: number | null
   lastCacheHit: { type: string; similarity: number } | null
@@ -571,6 +573,7 @@ export const useStore = create<AppState>((set, get) => ({
   isStreaming: false,
   isGenerating: false,
   uiLevel: (typeof window !== 'undefined' ? (localStorage.getItem('nexuslocal_ui_level') as 'simple' | 'intermediate' | 'advanced') : null) || 'simple',
+  simpleSpeed: (typeof window !== 'undefined' ? (localStorage.getItem('nexuslocal_simple_speed') as 'fast' | 'think') : null) || 'fast',
   processSteps: [],
   processStartedAt: null,
   lastCacheHit: null,
@@ -1483,7 +1486,21 @@ export const useStore = create<AppState>((set, get) => ({
     ...(v ? {} : { processSteps: s.processSteps.map((step) => step.status === 'running' ? { ...step, status: 'failed' as const } : step), processStartedAt: null }),
   })),
   setIsGenerating: (v: boolean) => set({ isGenerating: v }),
-  setUiLevel: (level) => { localStorage.setItem('nexuslocal_ui_level', level); set({ uiLevel: level }) },
+  setUiLevel: (level) => {
+    localStorage.setItem('nexuslocal_ui_level', level)
+    set({ uiLevel: level })
+    if (level === 'simple') {
+      get().selectModel('auto', 'auto')
+      const sp = get().simpleSpeed || 'fast'
+      get().setReasoningEffortAuto(sp === 'fast' ? 'low' : 'high')
+    }
+  },
+  setSimpleSpeed: (speed) => {
+    localStorage.setItem('nexuslocal_simple_speed', speed)
+    set({ simpleSpeed: speed })
+    get().selectModel('auto', 'auto')
+    get().setReasoningEffortAuto(speed === 'fast' ? 'low' : 'high')
+  },
 
   setLastCacheHit: (hit) => set({ lastCacheHit: hit }),
 

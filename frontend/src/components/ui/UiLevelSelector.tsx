@@ -20,7 +20,7 @@ export function UiLevelSelector() {
       icon: Sparkles,
       title: t('settings.uiLevelSimpleTitle', { defaultValue: 'Simples' }),
       desc: t('settings.uiLevelSimpleDesc', {
-        defaultValue: 'Chat direto e focado. Roteamento inteligente automático, sem escolha manual de modelos.',
+        defaultValue: 'Chat direto com modo Rápido ou Pensativo. Roteamento inteligente automático sem nomes técnicos de modelos.',
       }),
     },
     {

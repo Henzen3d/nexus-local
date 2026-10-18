@@ -3,6 +3,7 @@ import { Square, Mic, AudioLines, AlertCircle } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useStore } from '../store/useStore'
 import { ModelSelector } from './ModelSelector'
+import { SimpleModeSelector } from './SimpleModeSelector'
 import { PlusActionMenu } from './PlusActionMenu'
 import { AttachmentChip } from './AttachmentChip'
 import { useIsMobile } from '../hooks/useIsMobile'
@@ -486,7 +487,7 @@ export function MessageInput({ onSend, onStop, isEmpty = false }: Props) {
               </div>
 
               <div className="composer-actions-right">
-                {isEmpty && uiLevel !== 'simple' && <ModelSelector />}
+                {isEmpty && (uiLevel === 'simple' ? <SimpleModeSelector /> : <ModelSelector />)}
                 {renderRightActions()}
               </div>
             </div>
@@ -509,11 +510,9 @@ export function MessageInput({ onSend, onStop, isEmpty = false }: Props) {
               defaultValue: 'O NexusLocal é uma IA e pode cometer erros. Por favor, verifique as fontes citadas.',
             })}
           </span>
-          {uiLevel !== 'simple' && (
-            <div className="input-footer-model">
-              <ModelSelector compact />
-            </div>
-          )}
+          <div className="input-footer-model">
+            {uiLevel === 'simple' ? <SimpleModeSelector compact /> : <ModelSelector compact />}
+          </div>
         </div>
       )}
     </div>

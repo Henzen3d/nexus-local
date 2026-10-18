@@ -32,6 +32,7 @@ export function PlusActionMenu({
     setFusionMode,
     webSearchActive,
     setWebSearchActive,
+    uiLevel,
   } = useStore()
 
   useEffect(() => {
@@ -148,35 +149,37 @@ export function PlusActionMenu({
         </div>
       </button>
 
-      {/* 4. Modo Fusion (Toggle estilo trogle-conectores.jpg) */}
-      <button
-        type="button"
-        className="plus-menu-item touch-target"
-        onClick={handleToggleFusion}
-        role="menuitemcheckbox"
-        aria-checked={fusionMode}
-        aria-label={t('chat.fusionMode', { defaultValue: 'Modo Fusion' })}
-      >
-        <span className="plus-menu-item-icon">
-          <Dna size={16} />
-        </span>
-        <div className="plus-menu-item-content">
-          <span className="plus-menu-item-label">
-            {t('chat.fusionMode', { defaultValue: 'Modo Fusion' })}
+      {/* 4. Modo Fusion (Disponível em intermediário e avançado) */}
+      {uiLevel !== 'simple' && (
+        <button
+          type="button"
+          className="plus-menu-item touch-target"
+          onClick={handleToggleFusion}
+          role="menuitemcheckbox"
+          aria-checked={fusionMode}
+          aria-label={t('chat.fusionMode', { defaultValue: 'Modo Fusion' })}
+        >
+          <span className="plus-menu-item-icon">
+            <Dna size={16} />
           </span>
-          <span className="plus-menu-item-sub">
-            {t('chat.fusionModeSub', { defaultValue: 'Combina respostas de múltiplos modelos' })}
-          </span>
-        </div>
-        <div className="plus-menu-item-right">
-          <span
-            className={`nexus-toggle-switch ${fusionMode ? 'active' : ''}`}
-            aria-hidden="true"
-          >
-            <span className="nexus-toggle-thumb" />
-          </span>
-        </div>
-      </button>
+          <div className="plus-menu-item-content">
+            <span className="plus-menu-item-label">
+              {t('chat.fusionMode', { defaultValue: 'Modo Fusion' })}
+            </span>
+            <span className="plus-menu-item-sub">
+              {t('chat.fusionModeSub', { defaultValue: 'Combina respostas de múltiplos modelos' })}
+            </span>
+          </div>
+          <div className="plus-menu-item-right">
+            <span
+              className={`nexus-toggle-switch ${fusionMode ? 'active' : ''}`}
+              aria-hidden="true"
+            >
+              <span className="nexus-toggle-thumb" />
+            </span>
+          </div>
+        </button>
+      )}
     </>
   )
 
