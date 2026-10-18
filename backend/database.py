@@ -1,6 +1,7 @@
 import aiosqlite
 import json
 import os
+import re
 import sqlite3
 from datetime import datetime
 from pathlib import Path
@@ -3708,17 +3709,85 @@ async def upsert_user_profile(
     return await get_user_profile(user_id)
 
 
-async def check_and_deactivate_model(model_id: str, error_msg: str, db=None) -> bool:
+def extract_suggested_model(error_msg: str) -> Optional[str]:
+    """Extrai via regex eventual modelo substituto sugerido pela API no corpo do erro."""
+    if not error_msg:
+        return None
+    patterns = [
+        r"(?:update(?:\s+your\s+code)?\s+to\s+use|switch\s+to|migrated?\s+to|replaced\s+by|recommend(?:ed)?\s+using)\s+[`'\"]?([a-zA-Z0-9_\.\-\/]+)[`'\"]?",
+        r"(?:use|try)\s+[`'\"]?([a-zA-Z0-9_\.\-\/]+)[`'\"]?\s+instead",
+    ]
+    for pattern in patterns:
+        m = re.search(pattern, error_msg, re.IGNORECASE)
+        if m:
+            candidate = m.group(1).rstrip(".,;'\"`)]")
+            if candidate and candidate.lower() not in ("the", "a", "an", "another", "our", "new"):
+                return candidate
+    return None
+
+
+def classify_model_error(error_msg: str) -> dict:
     """
-    Checks if the error indicates a subscription, upgrade, quota, or billing issue,
-    and automatically disables the model in the database.
-    Returns True if the model was deactivated, False otherwise.
+    Classifica erros de chamada a modelos para distinguir desativação permanente,
+    depreciação de modelos (404/deprecated), modelos inexistentes e erros de billing/quota.
     """
-    if not model_id:
-        return False
-        
+    if not error_msg:
+        return {
+            "is_deactivation": False,
+            "reason": "none",
+            "suggested_model": None,
+            "status_message": "unknown",
+        }
+
     error_lower = error_msg.lower()
-    deactivate_triggers = [
+    suggested_model = extract_suggested_model(error_msg)
+
+    # 1. Modelo aposentado / descontinuado (HTTP 404 / deprecated)
+    deprecated_triggers = [
+        "no longer available",
+        "deprecated",
+        "is sunset",
+        "has been sunset",
+        "has been shut down",
+        "no longer supported",
+        "discontinued",
+    ]
+    if any(trigger in error_lower for trigger in deprecated_triggers):
+        status_msg = "model_deprecated"
+        if suggested_model:
+            status_msg = f"model_deprecated: suggested replacement '{suggested_model}'"
+        return {
+            "is_deactivation": True,
+            "reason": "model_deprecated",
+            "suggested_model": suggested_model,
+            "status_message": status_msg,
+        }
+
+    # 2. Modelo inexistente / não encontrado (HTTP 404 / not found)
+    not_found_triggers = [
+        "model not found",
+        "not_found",
+        "not found",
+        "model_not_found",
+        "invalid_model",
+        "invalid model",
+        "404 page not found",
+        "function '",
+        "does not include the requested model",
+    ]
+    if any(trigger in error_lower for trigger in not_found_triggers):
+        status_msg = "model_not_found"
+        if suggested_model:
+            status_msg = f"model_not_found: suggested replacement '{suggested_model}'"
+        return {
+            "is_deactivation": True,
+            "reason": "model_not_found",
+            "suggested_model": suggested_model,
+            "status_message": status_msg,
+        }
+
+    # 3. Erros reais de faturamento / assinatura / plano
+    billing_triggers = [
         "requires a subscription",
         "upgrade for access",
         "ollama.com/upgrade",
@@ -3729,44 +3798,106 @@ async def check_and_deactivate_model(model_id: str, error_msg: str, db=None) -> 
         "credit limit",
         "billing limit",
         "payment required",
-        "invalid_model",
-        "invalid model",
-        "model not found",
-        "not_found",
-        "not found",
-        "model_not_found",
-        # Cloudflare Workers AI: Function UUID not found
-        "function '",
-        "404 page not found",
-        # Roteadores e provedores com planos/créditos restritos (Bynara, OpenRouter, etc.):
-        "does not include the requested model",
         "plan does not include",
         "insufficient credits",
         "insufficient balance",
     ]
-    
-    if any(trigger in error_lower for trigger in deactivate_triggers):
+    if any(trigger in error_lower for trigger in billing_triggers):
+        return {
+            "is_deactivation": True,
+            "reason": "billing_error",
+            "suggested_model": suggested_model,
+            "status_message": "billing_subscription_error",
+        }
+
+    return {
+        "is_deactivation": False,
+        "reason": "none",
+        "suggested_model": suggested_model,
+        "status_message": "none",
+    }
+
+
+async def check_and_deactivate_model(model_id: str, error_msg: str, db=None) -> bool:
+    """
+    Verifica se o erro indica um modelo aposentado (deprecated), não encontrado (not found)
+    ou erro financeiro/plano/assinatura (billing), desativando-o automaticamente no banco
+    com a classificação e sugestão corretas.
+    Retorna True se o modelo foi desativado, False caso contrário.
+    """
+    if not model_id:
+        return False
+        
+    classification = classify_model_error(error_msg)
+    if not classification["is_deactivation"]:
+        return False
+
+    reason = classification["reason"]
+    suggested = classification["suggested_model"]
+    status_msg = classification["status_message"]
+
+    try:
+        should_close = False
+        if db is None:
+            db = await get_db()
+            should_close = True
+
+        await db.execute("UPDATE models SET enabled = 0, confirmed_free = 0 WHERE id = ?", (model_id,))
+        
+        # Registra no status de cota/erro para auditoria e visibilidade
+        last_err = f"[{status_msg}] {error_msg}"
+        await db.execute(
+            """
+            INSERT INTO model_quota_status (model_id, status, consecutive_errors, last_error_message)
+            VALUES (?, 'exhausted', 1, ?)
+            ON CONFLICT(model_id) DO UPDATE SET
+                status = 'exhausted',
+                last_error_message = excluded.last_error_message
+            """,
+            (model_id, last_err)
+        )
+        await db.commit()
+
         try:
-            should_close = False
-            if db is None:
-                db = await get_db()
-                should_close = True
-            
-            await db.execute("UPDATE models SET enabled = 0, confirmed_free = 0 WHERE id = ?", (model_id,))
-            await db.commit()
-            try:
-                from backend.ranking.smart_router import invalidate_model_cache
-                invalidate_model_cache()
-            except Exception:
-                pass
-            logger.error("🚫 Model '%s' automatically disabled due to billing/subscription error: %s", model_id, error_msg)
-            
-            if should_close:
-                await db.close()
-            return True
-        except Exception as e:
-            logger.error("Error auto-disabling model '%s':", model_id, exc_info=e)
-    return False
+            from backend.ranking.smart_router import invalidate_model_cache
+            invalidate_model_cache()
+        except Exception:
+            pass
+
+        if reason == "model_deprecated":
+            if suggested:
+                logger.warning(
+                    "🚫 Model '%s' automatically disabled (model_deprecated). Suggested replacement: '%s'. Error: %s",
+                    model_id, suggested, error_msg
+                )
+            else:
+                logger.warning(
+                    "🚫 Model '%s' automatically disabled (model_deprecated): %s",
+                    model_id, error_msg
+                )
+        elif reason == "model_not_found":
+            if suggested:
+                logger.warning(
+                    "🚫 Model '%s' automatically disabled (model_not_found). Suggested replacement: '%s'. Error: %s",
+                    model_id, suggested, error_msg
+                )
+            else:
+                logger.warning(
+                    "🚫 Model '%s' automatically disabled (model_not_found): %s",
+                    model_id, error_msg
+                )
+        else:
+            logger.error(
+                "🚫 Model '%s' automatically disabled due to billing/subscription error: %s",
+                model_id, error_msg
+            )
+
+        if should_close:
+            await db.close()
+        return True
+    except Exception as e:
+        logger.error("Error auto-disabling model '%s':", model_id, exc_info=e)
+        return False
 
 
 async def get_router_policy(db=None) -> str:
