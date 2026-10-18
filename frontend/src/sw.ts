@@ -9,6 +9,7 @@ declare let self: ServiceWorkerGlobalScope
 
 cleanupOutdatedCaches()
 precacheAndRoute(self.__WB_MANIFEST)
+self.skipWaiting()
 
 // Runtime caching for Google Fonts
 registerRoute(
