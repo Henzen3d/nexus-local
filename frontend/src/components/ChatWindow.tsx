@@ -704,6 +704,7 @@ export function ChatWindow() {
                 key={chip.key}
                 type="button"
                 className={`welcome-chip-btn ${openChip === chip.key ? 'active' : ''}`}
+                tabIndex={-1}
                 onClick={() => setOpenChip((prev) => (prev === chip.key ? null : chip.key))}
               >
                 <chip.Icon size={18} strokeWidth={1.75} />
