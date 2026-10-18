@@ -25,6 +25,46 @@ from backend.ranking.availability import USABLE_KEY_CONDITION_SQL
 logger = logging.getLogger("nexuslocal.ranking.failover")
 
 
+def canonical_model_id(model_id: str) -> str:
+    """
+    Normaliza o ID do modelo removendo sufixos (como ':free', ':nitro') e
+    prefixos de provedores/organizações (simples ou duplicados como 'openrouter/nvidia/', 'nvidia/nvidia/'),
+    retornando um identificador canônico em minúsculas para comparação cross-provider
+    e matching de famílias no Tier 1 e Tier 2.
+    """
+    if not model_id:
+        return ""
+
+    cand = model_id.strip()
+
+    # 1. Remove sufixos como ':free', ':nitro'
+    if cand.lower().endswith(":free"):
+        cand = cand[:-5]
+    elif cand.lower().endswith(":nitro"):
+        cand = cand[:-6]
+
+    parts = cand.split("/")
+
+    KNOWN_PREFIXES = {
+        "openrouter", "nvidia", "gemini", "cloudflare", "siliconflow",
+        "groq", "cerebras", "zai", "ollama", "huggingface", "sambanova",
+        "longcat", "freetheai", "llm7", "deepseek", "qwen", "openai",
+        "together", "mistral", "cohere", "zenmux", "bynara", "local",
+        "lmstudio", "models", "google", "meta-llama", "deepseek-ai",
+        "moonshotai", "meta", "aisingapore", "ibm-granite", "nousresearch",
+        "defog", "microsoft", "nv-mistralai", "x-ai", "fta", "kai", "ocz"
+    }
+
+    while len(parts) > 1 and parts[0].lower() in KNOWN_PREFIXES:
+        parts.pop(0)
+
+    while len(parts) > 1 and parts[0].lower() == parts[1].lower():
+        parts.pop(0)
+
+    result = "/".join(parts) if parts else cand
+    return result.lower().strip()
+
+
 def _usable_key_clause(user_id: Optional[str]) -> tuple[str, list[Any], str]:
     """Gera cláusula SQL, parâmetros e join para validar se o provedor possui credenciais ativas."""
     if user_id:
@@ -85,17 +125,49 @@ async def _get_family_for_model(
     ordenado por fallback_order ASC, ou None se o modelo não pertence a nenhuma família.
     Garante que tanto o modelo (m.enabled = 1) quanto o provedor (p.enabled = 1) estejam ativos
     e que o provedor possua credenciais utilizáveis.
+    Utiliza canonical_model_id para suportar correspondência flexível com prefixos e sufixos.
     """
+    family_id: Optional[str] = None
+
+    # 1. Busca exata por model_id na tabela model_family_members
     async with db.execute(
         "SELECT family_id FROM model_family_members WHERE model_id = ?",
         (model_id,)
     ) as cur:
         row = await cur.fetchone()
+    if row and row[0]:
+        family_id = row[0]
 
-    if not row:
+    target_canon = canonical_model_id(model_id)
+
+    # 2. Se não encontrou exato, tenta matching canônico contra os membros cadastrados
+    if not family_id:
+        async with db.execute("SELECT family_id, model_id FROM model_family_members") as cur:
+            all_members = await cur.fetchall()
+        for fid, mid in all_members:
+            if canonical_model_id(mid) == target_canon:
+                family_id = fid
+                break
+
+    # 3. Se ainda não encontrou, tenta matching com as famílias cadastradas (model_families)
+    # para que famílias como 'gemini', 'nemotron', etc. sejam reconhecidas a partir do ID canônico
+    if not family_id:
+        async with db.execute("SELECT id FROM model_families") as cur:
+            all_fams = await cur.fetchall()
+        for (fid,) in all_fams:
+            fid_norm = fid.lower().strip()
+            if (
+                fid_norm == target_canon
+                or target_canon.startswith(f"{fid_norm}-")
+                or target_canon.startswith(f"{fid_norm}_")
+                or target_canon.startswith(f"{fid_norm}/")
+                or fid_norm in target_canon
+            ):
+                family_id = fid
+                break
+
+    if not family_id:
         return None
-
-    family_id = row[0]
 
     key_clause, _, join_keys = _usable_key_clause(user_id)
     query_params = ([user_id] if user_id else []) + [family_id]
@@ -118,6 +190,9 @@ async def _get_family_for_model(
     ) as cur:
         members = await cur.fetchall()
 
+    if not members:
+        return None
+
     return family_id, [(r[0], r[1], r[2]) for r in members]
 
 
@@ -134,6 +209,7 @@ async def _get_next_best_ranked_model(
     Tier 2: fallback para fora da família, baseado em nexuslocal_score.
     Garante que tanto o modelo (m.enabled = 1) quanto o provedor (p.enabled = 1) estejam ativos
     e que o provedor possua credenciais utilizáveis.
+    Evita selecionar candidatos cross-provider do mesmo modelo base falho se houver outro disponível.
     """
     # Constrói lista de exclusão por família (model_ids dos membros das famílias excluídas)
     family_excluded_model_ids: list[str] = []
@@ -145,6 +221,7 @@ async def _get_next_best_ranked_model(
         family_excluded_model_ids.extend(r[0] for r in rows)
 
     all_excluded = set(exclude_model_ids) | set(family_excluded_model_ids)
+    excluded_canonicals = {canonical_model_id(m) for m in all_excluded if m}
 
     key_clause, _, join_keys = _usable_key_clause(user_id)
     query_params = [user_id] if user_id else []
@@ -170,15 +247,23 @@ async def _get_next_best_ranked_model(
 
     from backend.ranking.token_bucket import token_bucket_manager
     candidate_fallback = None
+    same_canonical_fallback = None
+
     for row in rows:
         mid, pid, dname, _ = row
         if mid not in all_excluded:
+            # Se for o mesmo canonical_model_id de um modelo já tentado/excluído
+            if canonical_model_id(mid) in excluded_canonicals:
+                if same_canonical_fallback is None:
+                    same_canonical_fallback = (mid, pid, dname)
+                continue
+
             if token_bucket_manager.is_provider_available(pid):
                 return mid, pid, dname
             elif candidate_fallback is None:
                 candidate_fallback = (mid, pid, dname)
 
-    return candidate_fallback
+    return candidate_fallback or same_canonical_fallback
 
 
 async def resolve_model_with_failover(
@@ -293,9 +378,14 @@ async def resolve_model_with_failover(
         f"Iniciando cascata de failover..."
     )
 
+    excluded_canonicals = {canonical_model_id(m) for m in (exclude_model_ids or []) if m}
+    if requested_model_id:
+        excluded_canonicals.add(canonical_model_id(requested_model_id))
+
     # ── Tier 1 — Irmãos da mesma família ─────────────────────────────────────
     family_result = await _get_family_for_model(requested_model_id, db, user_id=user_id)
     family_id: Optional[str] = None
+    candidate_same_canonical = None
 
     if family_result:
         family_id, members = family_result
@@ -315,6 +405,23 @@ async def resolve_model_with_failover(
 
             member_quota = await get_quota_status(member_model_id, db)
             if member_quota["status"] == "available":
+                # Se for o mesmo canonical_model_id de um modelo já tentado/excluído,
+                # guarda como fallback para evitar alternar provedores do mesmo modelo base
+                # se houver outro modelo disponível
+                if canonical_model_id(member_model_id) in excluded_canonicals:
+                    if candidate_same_canonical is None:
+                        dname = await _get_display_name(member_model_id, db)
+                        candidate_same_canonical = ResolvedModel(
+                            model_id=member_model_id,
+                            provider_id=member_provider_id,
+                            display_name=dname,
+                            was_failover=True,
+                            original_model_id=requested_model_id,
+                            failover_reason=failover_reason,
+                            family_id=family_id,
+                        )
+                    continue
+
                 display_name = await _get_display_name(member_model_id, db)
                 logger.info(
                     f"✅ Tier 1 failover: '{requested_model_id}' → '{member_model_id}' "
@@ -364,6 +471,12 @@ async def resolve_model_with_failover(
             failover_reason=failover_reason,
             family_id=None,
         )
+
+    if candidate_same_canonical:
+        logger.info(
+            f"✅ Failover (último recurso cross-provider): '{requested_model_id}' → '{candidate_same_canonical.model_id}'"
+        )
+        return candidate_same_canonical
 
     # ── Nenhum modelo disponível ──────────────────────────────────────────────
     raise NoAvailableModelError(
