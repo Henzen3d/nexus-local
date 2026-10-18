@@ -238,6 +238,7 @@ export function ChatWindow() {
     messages,
     conversations,
     isStreaming,
+    isGenerating,
     sidebarOpen,
     setSidebarOpen,
     fusionMode,
@@ -255,6 +256,7 @@ export function ChatWindow() {
     messages: s.messages,
     conversations: s.conversations,
     isStreaming: s.isStreaming,
+    isGenerating: s.isGenerating,
     sidebarOpen: s.sidebarOpen,
     setSidebarOpen: s.setSidebarOpen,
     fusionMode: s.fusionMode,
@@ -671,6 +673,7 @@ export function ChatWindow() {
               }
               return <MessageBubble key={m.id} message={m} />
             })}
+            {isGenerating && <div className="generating-indicator" style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '12px 16px', backgroundColor: 'rgba(30, 30, 30, 0.8)', color: '#fff', borderRadius: '16px', fontSize: '14px' }} aria-busy="true" aria-label="Gerando resposta..."><div className="loading-spinner" style={{ width: '16px', height: '16px' }}></div><span>Gerando...</span></div>}
             {isStreaming && <StreamingTail sentinelRef={bottomSentinelRef} messagesAreaRef={messagesAreaRef} />}
           </>
         )}

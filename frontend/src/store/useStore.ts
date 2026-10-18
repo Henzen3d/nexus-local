@@ -274,6 +274,7 @@ interface AppState {
   lastAutoRouteDecision: AutoRouteDecisionInfo | null
   setAutoRouteDecision: (decision: AutoRouteDecisionInfo | null) => void
   setStreaming: (v: boolean) => void
+  setIsGenerating: (v: boolean) => void
   addUserMessage: (content: string, attachments?: Attachment[]) => void
   setConversationCreated: (id: string, title: string) => void
   setLastCacheHit: (hit: { type: string; similarity: number } | null) => void
@@ -565,6 +566,7 @@ export const useStore = create<AppState>((set, get) => ({
   messages: [],
   streamingContent: '',
   isStreaming: false,
+  isGenerating: false,
   processSteps: [],
   processStartedAt: null,
   lastCacheHit: null,
@@ -1341,6 +1343,7 @@ export const useStore = create<AppState>((set, get) => ({
         : [...s.processSteps, step]
       return {
         isStreaming: true,
+        isGenerating: false,
         processStartedAt: s.processStartedAt ?? Date.now(),
         processSteps: steps,
       }
@@ -1473,8 +1476,9 @@ export const useStore = create<AppState>((set, get) => ({
 
   setStreaming: (v: boolean) => set((s) => ({
     isStreaming: v,
-    ...(v ? {} : { processSteps: s.processSteps.map((step) => step.status === 'running' ? { ...step, status: 'failed' as const } : step), processStartedAt: null }),
+    ...(v ? {} : { processSteps: s.processSteps.map((step) => step.status === 'running' ? { ...step, status: 'failed' as const } : step), processStartedAt: null })),
   })),
+  setIsGenerating: (v: boolean) => set({ isGenerating: v }),
 
   setLastCacheHit: (hit) => set({ lastCacheHit: hit }),
 

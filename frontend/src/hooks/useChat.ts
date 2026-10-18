@@ -47,6 +47,7 @@ export function useChat() {
       const s = useStore.getState()
       if (s.isStreaming || s.fusionActive) {
         s.setStreaming(false)
+        s.setIsGenerating(false)
         s.setFusionActive(false)
         const timeoutMsg = i18n.t('chat.streamTimeout', {
           defaultValue: 'Tempo limite de resposta excedido. O modelo não respondeu.',
@@ -200,6 +201,7 @@ export function useChat() {
         case 'stream_start':
           resetWatchdog()
           s.beginProcess(i18n.t('chat.processThinking'))
+          s.setIsGenerating(false)
           break
         case 'token':
           resetWatchdog()
@@ -207,6 +209,8 @@ export function useChat() {
           break
         case 'stream_end':
           clearWatchdog()
+          isGeneratingRef.current = false
+          useStore.getState().setIsGenerating(false)
           isGeneratingRef.current = false
           s.setFusionActive(false)
           s.finalizeStream(
@@ -303,6 +307,7 @@ export function useChat() {
           s.setFusionStatuses(
             msg.models.map((m) => ({ model_id: m, provider_id: '', status: 'pending' as const }))
           )
+          s.setIsGenerating(false)
           break
         case 'fusion_phase':
           // Refining, proposers, grounding and judge stay in the inline timeline.
@@ -365,6 +370,7 @@ export function useChat() {
           clearWatchdog()
           if (!isGeneratingRef.current) return
           isGeneratingRef.current = false
+          useStore.getState().setIsGenerating(false)
           console.error('[WS error]', msg.message)
           s.setStreaming(false)
           s.setFusionActive(false)
@@ -376,6 +382,8 @@ export function useChat() {
                   s.hideToast()
                   // Re-envia a última mensagem via WebSocket
                   if (wsRef.current?.readyState === WebSocket.OPEN) {
+                    const { isGenerating } = useStore.getState()
+                    useStore.getState().setIsGenerating(true)
                     wsRef.current.send(JSON.stringify({
                       conversation_id: s.lastUserMessage!.conversationId,
                       message: s.lastUserMessage!.text,
@@ -461,6 +469,7 @@ export function useChat() {
         const st = useStore.getState()
         if (st.fusionActive || st.isStreaming) {
           st.setStreaming(false)
+          st.setIsGenerating(false)
           st.setFusionActive(false)
           st.showToast(
             i18n.t('chat.wsDroppedDuringStream', {
@@ -595,6 +604,7 @@ export function useChat() {
       }
 
       isGeneratingRef.current = true
+      useStore.getState().setIsGenerating(true)
       resetWatchdog()
 
       // displayText: versão curta exibida no chat (ex: "✏️ Dashboard: adicionar dark mode")
