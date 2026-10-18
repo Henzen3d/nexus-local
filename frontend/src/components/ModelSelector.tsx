@@ -720,7 +720,7 @@ export function ModelSelector({ compact = false, className = '' }: ModelSelector
             </span>
           ) : selectedModel ? (
             <span className="model-trigger-label">
-              <span className="model-trigger-model-title">{selectedModel.display_name}</span>
+              <span className="model-trigger-model-title" style={{ maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selectedModel.display_name}</span>
               {currentEffortLabel && activeEffortControl !== 'always_on' && currentEffortLevel !== 'off' && (
                 <span className="model-trigger-effort-tag">{currentEffortLabel}</span>
               )}

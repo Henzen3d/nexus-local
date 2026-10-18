@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useStore } from '../store/useStore'
+import { NexusLogoIcon } from './NexusLogoIcon'
 
 /**
  * Skeleton/Loading screen shown while the app initializes.
@@ -24,8 +25,7 @@ export function LoadingScreen() {
 
   return (
     <div className="loading-screen" aria-busy="true" aria-label="Carregando NexusLocal">
-      <div className="loading-spinner" />
-      <p className="loading-text">Carregando NexusLocal…</p>
+      <NexusLogoIcon className="loading-logo" />
     </div>
   )
 }

@@ -7,7 +7,6 @@ import { usePWAStore } from './store/pwaStore'
 import { Sidebar } from './components/Sidebar'
 import { ChatWindow } from './components/ChatWindow'
 import { OfflineBanner } from './components/OfflineBanner'
-import { LoadingScreen } from './components/LoadingScreen'
 import { useOnlineStatus } from './hooks/useOnlineStatus'
 // AdminPanel puxa recharts (UsageDashboard/RankingsView). Lazy para a lib sair do
 // chunk do chat — assim só ChartCard (também lazy) e o admin pagam por ela.
@@ -216,7 +215,6 @@ export default function App() {
 
   return (
     <ChatProvider>
-      <LoadingScreen />
       <OfflineBanner />
       {/* Overlay outside grid so it never steals a column */}
       <div

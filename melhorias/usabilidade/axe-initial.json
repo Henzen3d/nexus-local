@@ -13,7 +13,7 @@
     "orientationAngle": 0,
     "orientationType": "landscape-primary"
   },
-  "timestamp": "2026-10-18T03:08:30.285Z",
+  "timestamp": "2026-10-18T22:12:33.248Z",
   "url": "http://localhost:5173/",
   "toolOptions": {
     "reporter": "v1"
@@ -1121,126 +1121,6 @@
             }
           ],
           "impact": null,
-          "html": "<button type=\"button\" class=\"ui-level-btn active\" aria-label=\"界面级别: Simples\" aria-pressed=\"true\">Simples</button>",
-          "target": [
-            ".active"
-          ]
-        },
-        {
-          "any": [],
-          "all": [
-            {
-              "id": "aria-allowed-attr",
-              "data": null,
-              "relatedNodes": [],
-              "impact": "critical",
-              "message": "ARIA attributes are used correctly for the defined role"
-            },
-            {
-              "id": "aria-allowed-attr-elm",
-              "data": null,
-              "relatedNodes": [],
-              "message": "ARIA attributes are allowed for this element",
-              "impact": "critical"
-            },
-            {
-              "id": "aria-no-deprecated-attr",
-              "data": null,
-              "relatedNodes": [],
-              "impact": "critical",
-              "message": "No deprecated ARIA attributes are used"
-            }
-          ],
-          "none": [
-            {
-              "id": "aria-unsupported-attr",
-              "data": null,
-              "relatedNodes": [],
-              "impact": "critical",
-              "message": "ARIA attribute is supported"
-            }
-          ],
-          "impact": null,
-          "html": "<button type=\"button\" class=\"ui-level-btn \" aria-label=\"界面级别: Intermediario\" aria-pressed=\"false\">Intermediario</button>",
-          "target": [
-            "button[aria-label=\"界面级别: Intermediario\"]"
-          ]
-        },
-        {
-          "any": [],
-          "all": [
-            {
-              "id": "aria-allowed-attr",
-              "data": null,
-              "relatedNodes": [],
-              "impact": "critical",
-              "message": "ARIA attributes are used correctly for the defined role"
-            },
-            {
-              "id": "aria-allowed-attr-elm",
-              "data": null,
-              "relatedNodes": [],
-              "message": "ARIA attributes are allowed for this element",
-              "impact": "critical"
-            },
-            {
-              "id": "aria-no-deprecated-attr",
-              "data": null,
-              "relatedNodes": [],
-              "impact": "critical",
-              "message": "No deprecated ARIA attributes are used"
-            }
-          ],
-          "none": [
-            {
-              "id": "aria-unsupported-attr",
-              "data": null,
-              "relatedNodes": [],
-              "impact": "critical",
-              "message": "ARIA attribute is supported"
-            }
-          ],
-          "impact": null,
-          "html": "<button type=\"button\" class=\"ui-level-btn \" aria-label=\"界面级别: Avancado\" aria-pressed=\"false\">Avancado</button>",
-          "target": [
-            "button[aria-label=\"界面级别: Avancado\"]"
-          ]
-        },
-        {
-          "any": [],
-          "all": [
-            {
-              "id": "aria-allowed-attr",
-              "data": null,
-              "relatedNodes": [],
-              "impact": "critical",
-              "message": "ARIA attributes are used correctly for the defined role"
-            },
-            {
-              "id": "aria-allowed-attr-elm",
-              "data": null,
-              "relatedNodes": [],
-              "message": "ARIA attributes are allowed for this element",
-              "impact": "critical"
-            },
-            {
-              "id": "aria-no-deprecated-attr",
-              "data": null,
-              "relatedNodes": [],
-              "impact": "critical",
-              "message": "No deprecated ARIA attributes are used"
-            }
-          ],
-          "none": [
-            {
-              "id": "aria-unsupported-attr",
-              "data": null,
-              "relatedNodes": [],
-              "impact": "critical",
-              "message": "ARIA attribute is supported"
-            }
-          ],
-          "impact": null,
           "html": "<button type=\"button\" class=\"new-chat-btn custom-tooltip-trigger\" data-tooltip=\"New conversation\" aria-label=\"New conversation\">",
           "target": [
             ".new-chat-btn"
@@ -1641,9 +1521,9 @@
             }
           ],
           "impact": null,
-          "html": "<button class=\"model-trigger \" aria-label=\"Selecionar modelo: \" type=\"button\" aria-expanded=\"false\" aria-haspopup=\"listbox\">",
+          "html": "<button type=\"button\" class=\"simple-mode-trigger  \" aria-haspopup=\"menu\" aria-expanded=\"false\" aria-label=\"Model mode: {{label}}\">",
           "target": [
-            ".model-trigger"
+            ".simple-mode-trigger"
           ]
         },
         {
@@ -2078,60 +1958,6 @@
           ],
           "none": [],
           "impact": null,
-          "html": "<button type=\"button\" class=\"ui-level-btn active\" aria-label=\"界面级别: Simples\" aria-pressed=\"true\">Simples</button>",
-          "target": [
-            ".active"
-          ]
-        },
-        {
-          "any": [],
-          "all": [
-            {
-              "id": "aria-conditional-attr",
-              "data": null,
-              "relatedNodes": [],
-              "impact": "serious",
-              "message": "ARIA attribute is allowed"
-            }
-          ],
-          "none": [],
-          "impact": null,
-          "html": "<button type=\"button\" class=\"ui-level-btn \" aria-label=\"界面级别: Intermediario\" aria-pressed=\"false\">Intermediario</button>",
-          "target": [
-            "button[aria-label=\"界面级别: Intermediario\"]"
-          ]
-        },
-        {
-          "any": [],
-          "all": [
-            {
-              "id": "aria-conditional-attr",
-              "data": null,
-              "relatedNodes": [],
-              "impact": "serious",
-              "message": "ARIA attribute is allowed"
-            }
-          ],
-          "none": [],
-          "impact": null,
-          "html": "<button type=\"button\" class=\"ui-level-btn \" aria-label=\"界面级别: Avancado\" aria-pressed=\"false\">Avancado</button>",
-          "target": [
-            "button[aria-label=\"界面级别: Avancado\"]"
-          ]
-        },
-        {
-          "any": [],
-          "all": [
-            {
-              "id": "aria-conditional-attr",
-              "data": null,
-              "relatedNodes": [],
-              "impact": "serious",
-              "message": "ARIA attribute is allowed"
-            }
-          ],
-          "none": [],
-          "impact": null,
           "html": "<button type=\"button\" class=\"new-chat-btn custom-tooltip-trigger\" data-tooltip=\"New conversation\" aria-label=\"New conversation\">",
           "target": [
             ".new-chat-btn"
@@ -2312,9 +2138,9 @@
           ],
           "none": [],
           "impact": null,
-          "html": "<button class=\"model-trigger \" aria-label=\"Selecionar modelo: \" type=\"button\" aria-expanded=\"false\" aria-haspopup=\"listbox\">",
+          "html": "<button type=\"button\" class=\"simple-mode-trigger  \" aria-haspopup=\"menu\" aria-expanded=\"false\" aria-label=\"Model mode: {{label}}\">",
           "target": [
-            ".model-trigger"
+            ".simple-mode-trigger"
           ]
         },
         {
@@ -2561,7 +2387,7 @@
           "all": [],
           "none": [],
           "impact": null,
-          "html": "<body>",
+          "html": "<body style=\"background-color: #141413;\">",
           "target": [
             "body"
           ]
@@ -2681,6 +2507,70 @@
           "target": [
             "div[aria-hidden=\"true\"]"
           ]
+        },
+        {
+          "any": [],
+          "all": [
+            {
+              "id": "focusable-modal-open",
+              "data": null,
+              "relatedNodes": [],
+              "impact": "serious",
+              "message": "No focusable elements while a modal is open"
+            },
+            {
+              "id": "focusable-disabled",
+              "data": null,
+              "relatedNodes": [],
+              "impact": "serious",
+              "message": "No focusable elements contained within element"
+            },
+            {
+              "id": "focusable-not-tabbable",
+              "data": null,
+              "relatedNodes": [],
+              "impact": "serious",
+              "message": "No focusable elements contained within element"
+            }
+          ],
+          "none": [],
+          "impact": null,
+          "html": "<span class=\"simple-mode-trigger-icon\" aria-hidden=\"true\">",
+          "target": [
+            ".simple-mode-trigger-icon"
+          ]
+        },
+        {
+          "any": [],
+          "all": [
+            {
+              "id": "focusable-modal-open",
+              "data": null,
+              "relatedNodes": [],
+              "impact": "serious",
+              "message": "No focusable elements while a modal is open"
+            },
+            {
+              "id": "focusable-disabled",
+              "data": null,
+              "relatedNodes": [],
+              "impact": "serious",
+              "message": "No focusable elements contained within element"
+            },
+            {
+              "id": "focusable-not-tabbable",
+              "data": null,
+              "relatedNodes": [],
+              "impact": "serious",
+              "message": "No focusable elements contained within element"
+            }
+          ],
+          "none": [],
+          "impact": null,
+          "html": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"13\" height=\"13\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-chevron-down simple-mode-chevron \" aria-hidden=\"true\"><path d=\"m6 9 6 6 6-6\"></path></svg>",
+          "target": [
+            ".lucide-chevron-down"
+          ]
         }
       ]
     },
@@ -2770,60 +2660,6 @@
           "html": "<button class=\"btn btn-ghost btn-icon custom-tooltip-trigger\" data-tooltip=\"Collapse sidebar\" aria-label=\"Collapse sidebar\">",
           "target": [
             "button[data-tooltip=\"Collapse sidebar\"]"
-          ]
-        },
-        {
-          "any": [],
-          "all": [],
-          "none": [
-            {
-              "id": "aria-prohibited-attr",
-              "data": null,
-              "relatedNodes": [],
-              "impact": "serious",
-              "message": "ARIA attribute is allowed"
-            }
-          ],
-          "impact": null,
-          "html": "<button type=\"button\" class=\"ui-level-btn active\" aria-label=\"界面级别: Simples\" aria-pressed=\"true\">Simples</button>",
-          "target": [
-            ".active"
-          ]
-        },
-        {
-          "any": [],
-          "all": [],
-          "none": [
-            {
-              "id": "aria-prohibited-attr",
-              "data": null,
-              "relatedNodes": [],
-              "impact": "serious",
-              "message": "ARIA attribute is allowed"
-            }
-          ],
-          "impact": null,
-          "html": "<button type=\"button\" class=\"ui-level-btn \" aria-label=\"界面级别: Intermediario\" aria-pressed=\"false\">Intermediario</button>",
-          "target": [
-            "button[aria-label=\"界面级别: Intermediario\"]"
-          ]
-        },
-        {
-          "any": [],
-          "all": [],
-          "none": [
-            {
-              "id": "aria-prohibited-attr",
-              "data": null,
-              "relatedNodes": [],
-              "impact": "serious",
-              "message": "ARIA attribute is allowed"
-            }
-          ],
-          "impact": null,
-          "html": "<button type=\"button\" class=\"ui-level-btn \" aria-label=\"界面级别: Avancado\" aria-pressed=\"false\">Avancado</button>",
-          "target": [
-            "button[aria-label=\"界面级别: Avancado\"]"
           ]
         },
         {
@@ -3019,9 +2855,9 @@
             }
           ],
           "impact": null,
-          "html": "<button class=\"model-trigger \" aria-label=\"Selecionar modelo: \" type=\"button\" aria-expanded=\"false\" aria-haspopup=\"listbox\">",
+          "html": "<button type=\"button\" class=\"simple-mode-trigger  \" aria-haspopup=\"menu\" aria-expanded=\"false\" aria-label=\"Model mode: {{label}}\">",
           "target": [
-            ".model-trigger"
+            ".simple-mode-trigger"
           ]
         },
         {
@@ -3459,102 +3295,6 @@
           ],
           "none": [],
           "impact": null,
-          "html": "<button type=\"button\" class=\"ui-level-btn active\" aria-label=\"界面级别: Simples\" aria-pressed=\"true\">Simples</button>",
-          "target": [
-            ".active"
-          ]
-        },
-        {
-          "any": [],
-          "all": [
-            {
-              "id": "aria-valid-attr-value",
-              "data": null,
-              "relatedNodes": [],
-              "impact": "critical",
-              "message": "ARIA attribute values are valid"
-            },
-            {
-              "id": "aria-errormessage",
-              "data": null,
-              "relatedNodes": [],
-              "impact": "critical",
-              "message": "aria-errormessage exists and references elements visible to screen readers that use a supported aria-errormessage technique"
-            },
-            {
-              "id": "aria-level",
-              "data": null,
-              "relatedNodes": [],
-              "impact": "critical",
-              "message": "aria-level values are valid"
-            }
-          ],
-          "none": [],
-          "impact": null,
-          "html": "<button type=\"button\" class=\"ui-level-btn \" aria-label=\"界面级别: Intermediario\" aria-pressed=\"false\">Intermediario</button>",
-          "target": [
-            "button[aria-label=\"界面级别: Intermediario\"]"
-          ]
-        },
-        {
-          "any": [],
-          "all": [
-            {
-              "id": "aria-valid-attr-value",
-              "data": null,
-              "relatedNodes": [],
-              "impact": "critical",
-              "message": "ARIA attribute values are valid"
-            },
-            {
-              "id": "aria-errormessage",
-              "data": null,
-              "relatedNodes": [],
-              "impact": "critical",
-              "message": "aria-errormessage exists and references elements visible to screen readers that use a supported aria-errormessage technique"
-            },
-            {
-              "id": "aria-level",
-              "data": null,
-              "relatedNodes": [],
-              "impact": "critical",
-              "message": "aria-level values are valid"
-            }
-          ],
-          "none": [],
-          "impact": null,
-          "html": "<button type=\"button\" class=\"ui-level-btn \" aria-label=\"界面级别: Avancado\" aria-pressed=\"false\">Avancado</button>",
-          "target": [
-            "button[aria-label=\"界面级别: Avancado\"]"
-          ]
-        },
-        {
-          "any": [],
-          "all": [
-            {
-              "id": "aria-valid-attr-value",
-              "data": null,
-              "relatedNodes": [],
-              "impact": "critical",
-              "message": "ARIA attribute values are valid"
-            },
-            {
-              "id": "aria-errormessage",
-              "data": null,
-              "relatedNodes": [],
-              "impact": "critical",
-              "message": "aria-errormessage exists and references elements visible to screen readers that use a supported aria-errormessage technique"
-            },
-            {
-              "id": "aria-level",
-              "data": null,
-              "relatedNodes": [],
-              "impact": "critical",
-              "message": "aria-level values are valid"
-            }
-          ],
-          "none": [],
-          "impact": null,
           "html": "<button type=\"button\" class=\"new-chat-btn custom-tooltip-trigger\" data-tooltip=\"New conversation\" aria-label=\"New conversation\">",
           "target": [
             ".new-chat-btn"
@@ -3875,9 +3615,9 @@
           ],
           "none": [],
           "impact": null,
-          "html": "<button class=\"model-trigger \" aria-label=\"Selecionar modelo: \" type=\"button\" aria-expanded=\"false\" aria-haspopup=\"listbox\">",
+          "html": "<button type=\"button\" class=\"simple-mode-trigger  \" aria-haspopup=\"menu\" aria-expanded=\"false\" aria-label=\"Model mode: {{label}}\">",
           "target": [
-            ".model-trigger"
+            ".simple-mode-trigger"
           ]
         },
         {
@@ -4207,60 +3947,6 @@
           "all": [],
           "none": [],
           "impact": null,
-          "html": "<button type=\"button\" class=\"ui-level-btn active\" aria-label=\"界面级别: Simples\" aria-pressed=\"true\">Simples</button>",
-          "target": [
-            ".active"
-          ]
-        },
-        {
-          "any": [
-            {
-              "id": "aria-valid-attr",
-              "data": null,
-              "relatedNodes": [],
-              "impact": "critical",
-              "message": "ARIA attribute name is valid"
-            }
-          ],
-          "all": [],
-          "none": [],
-          "impact": null,
-          "html": "<button type=\"button\" class=\"ui-level-btn \" aria-label=\"界面级别: Intermediario\" aria-pressed=\"false\">Intermediario</button>",
-          "target": [
-            "button[aria-label=\"界面级别: Intermediario\"]"
-          ]
-        },
-        {
-          "any": [
-            {
-              "id": "aria-valid-attr",
-              "data": null,
-              "relatedNodes": [],
-              "impact": "critical",
-              "message": "ARIA attribute name is valid"
-            }
-          ],
-          "all": [],
-          "none": [],
-          "impact": null,
-          "html": "<button type=\"button\" class=\"ui-level-btn \" aria-label=\"界面级别: Avancado\" aria-pressed=\"false\">Avancado</button>",
-          "target": [
-            "button[aria-label=\"界面级别: Avancado\"]"
-          ]
-        },
-        {
-          "any": [
-            {
-              "id": "aria-valid-attr",
-              "data": null,
-              "relatedNodes": [],
-              "impact": "critical",
-              "message": "ARIA attribute name is valid"
-            }
-          ],
-          "all": [],
-          "none": [],
-          "impact": null,
           "html": "<button type=\"button\" class=\"new-chat-btn custom-tooltip-trigger\" data-tooltip=\"New conversation\" aria-label=\"New conversation\">",
           "target": [
             ".new-chat-btn"
@@ -4441,9 +4127,9 @@
           "all": [],
           "none": [],
           "impact": null,
-          "html": "<button class=\"model-trigger \" aria-label=\"Selecionar modelo: \" type=\"button\" aria-expanded=\"false\" aria-haspopup=\"listbox\">",
+          "html": "<button type=\"button\" class=\"simple-mode-trigger  \" aria-haspopup=\"menu\" aria-expanded=\"false\" aria-label=\"Model mode: {{label}}\">",
           "target": [
-            ".model-trigger"
+            ".simple-mode-trigger"
           ]
         },
         {
@@ -4589,6 +4275,38 @@
       "help": "Inline text spacing must be adjustable with custom stylesheets",
       "helpUrl": "https://dequeuniversity.com/rules/axe/4.14/avoid-inline-spacing?application=playwright",
       "nodes": [
+        {
+          "any": [],
+          "all": [
+            {
+              "id": "important-letter-spacing",
+              "data": null,
+              "relatedNodes": [],
+              "impact": "serious",
+              "message": "Letter-spacing in the style attribute is not set to !important, or meets the minimum"
+            },
+            {
+              "id": "important-word-spacing",
+              "data": null,
+              "relatedNodes": [],
+              "impact": "serious",
+              "message": "word-spacing in the style attribute is not set to !important, or meets the minimum"
+            },
+            {
+              "id": "important-line-height",
+              "data": null,
+              "relatedNodes": [],
+              "impact": "serious",
+              "message": "line-height in the style attribute is not set to !important, or meets the minimum"
+            }
+          ],
+          "none": [],
+          "impact": null,
+          "html": "<body style=\"background-color: #141413;\">",
+          "target": [
+            "body"
+          ]
+        },
         {
           "any": [],
           "all": [
@@ -5173,81 +4891,6 @@
           "all": [],
           "none": [],
           "impact": null,
-          "html": "<button type=\"button\" class=\"ui-level-btn active\" aria-label=\"界面级别: Simples\" aria-pressed=\"true\">Simples</button>",
-          "target": [
-            ".active"
-          ]
-        },
-        {
-          "any": [
-            {
-              "id": "button-has-visible-text",
-              "data": null,
-              "relatedNodes": [],
-              "impact": "critical",
-              "message": "Element has inner text that is visible to screen readers"
-            },
-            {
-              "id": "aria-label",
-              "data": null,
-              "relatedNodes": [],
-              "impact": "critical",
-              "message": "aria-label attribute exists and is not empty"
-            }
-          ],
-          "all": [],
-          "none": [],
-          "impact": null,
-          "html": "<button type=\"button\" class=\"ui-level-btn \" aria-label=\"界面级别: Intermediario\" aria-pressed=\"false\">Intermediario</button>",
-          "target": [
-            "button[aria-label=\"界面级别: Intermediario\"]"
-          ]
-        },
-        {
-          "any": [
-            {
-              "id": "button-has-visible-text",
-              "data": null,
-              "relatedNodes": [],
-              "impact": "critical",
-              "message": "Element has inner text that is visible to screen readers"
-            },
-            {
-              "id": "aria-label",
-              "data": null,
-              "relatedNodes": [],
-              "impact": "critical",
-              "message": "aria-label attribute exists and is not empty"
-            }
-          ],
-          "all": [],
-          "none": [],
-          "impact": null,
-          "html": "<button type=\"button\" class=\"ui-level-btn \" aria-label=\"界面级别: Avancado\" aria-pressed=\"false\">Avancado</button>",
-          "target": [
-            "button[aria-label=\"界面级别: Avancado\"]"
-          ]
-        },
-        {
-          "any": [
-            {
-              "id": "button-has-visible-text",
-              "data": null,
-              "relatedNodes": [],
-              "impact": "critical",
-              "message": "Element has inner text that is visible to screen readers"
-            },
-            {
-              "id": "aria-label",
-              "data": null,
-              "relatedNodes": [],
-              "impact": "critical",
-              "message": "aria-label attribute exists and is not empty"
-            }
-          ],
-          "all": [],
-          "none": [],
-          "impact": null,
           "html": "<button type=\"button\" class=\"new-chat-btn custom-tooltip-trigger\" data-tooltip=\"New conversation\" aria-label=\"New conversation\">",
           "target": [
             ".new-chat-btn"
@@ -5460,6 +5103,13 @@
         {
           "any": [
             {
+              "id": "button-has-visible-text",
+              "data": null,
+              "relatedNodes": [],
+              "impact": "critical",
+              "message": "Element has inner text that is visible to screen readers"
+            },
+            {
               "id": "aria-label",
               "data": null,
               "relatedNodes": [],
@@ -5470,9 +5120,9 @@
           "all": [],
           "none": [],
           "impact": null,
-          "html": "<button class=\"model-trigger \" aria-label=\"Selecionar modelo: \" type=\"button\" aria-expanded=\"false\" aria-haspopup=\"listbox\">",
+          "html": "<button type=\"button\" class=\"simple-mode-trigger  \" aria-haspopup=\"menu\" aria-expanded=\"false\" aria-label=\"Model mode: {{label}}\">",
           "target": [
-            ".model-trigger"
+            ".simple-mode-trigger"
           ]
         },
         {
@@ -5666,7 +5316,7 @@
               "data": null,
               "relatedNodes": [
                 {
-                  "html": "<h1 class=\"welcome-greeting\">Ready to explore new ideas, Test User?</h1>",
+                  "html": "<h1 class=\"welcome-greeting\">Good evening, Test User.</h1>",
                   "target": [
                     "h1"
                   ]
@@ -5730,49 +5380,24 @@
             {
               "id": "color-contrast",
               "data": {
-                "fgColor": "#444444",
+                "fgColor": "#121212",
                 "bgColor": "#f8f8f8",
-                "contrastRatio": 9.17,
-                "fontSize": "9.0pt (12px)",
+                "contrastRatio": 17.63,
+                "fontSize": "15.0pt (20px)",
                 "fontWeight": "normal",
                 "expectedContrastRatio": "4.5:1"
               },
               "relatedNodes": [],
               "impact": "serious",
-              "message": "Element has sufficient color contrast of 9.17"
+              "message": "Element has sufficient color contrast of 17.63"
             }
           ],
           "all": [],
           "none": [],
           "impact": null,
-          "html": "<button type=\"button\" class=\"ui-level-btn \" aria-label=\"界面级别: Intermediario\" aria-pressed=\"false\">Intermediario</button>",
+          "html": "<span class=\"brand-name\">NexusLocal</span>",
           "target": [
-            "button[aria-label=\"界面级别: Intermediario\"]"
-          ]
-        },
-        {
-          "any": [
-            {
-              "id": "color-contrast",
-              "data": {
-                "fgColor": "#444444",
-                "bgColor": "#f8f8f8",
-                "contrastRatio": 9.17,
-                "fontSize": "9.0pt (12px)",
-                "fontWeight": "normal",
-                "expectedContrastRatio": "4.5:1"
-              },
-              "relatedNodes": [],
-              "impact": "serious",
-              "message": "Element has sufficient color contrast of 9.17"
-            }
-          ],
-          "all": [],
-          "none": [],
-          "impact": null,
-          "html": "<button type=\"button\" class=\"ui-level-btn \" aria-label=\"界面级别: Avancado\" aria-pressed=\"false\">Avancado</button>",
-          "target": [
-            "button[aria-label=\"界面级别: Avancado\"]"
+            ".brand-name"
           ]
         },
         {
@@ -6045,7 +5670,7 @@
           "all": [],
           "none": [],
           "impact": null,
-          "html": "<h1 class=\"welcome-greeting\">Ready to explore new ideas, Test User?</h1>",
+          "html": "<h1 class=\"welcome-greeting\">Good evening, Test User.</h1>",
           "target": [
             "h1"
           ]
@@ -6115,9 +5740,34 @@
           "all": [],
           "none": [],
           "impact": null,
-          "html": "<textarea class=\"composer-textarea \" placeholder=\"Message for the model…\" rows=\"1\" enterkeyhint=\"send\" style=\"height: 46px;\"></textarea>",
+          "html": "<textarea class=\"composer-textarea \" placeholder=\"Pick a model in the selector to get started…\" rows=\"1\" enterkeyhint=\"send\" style=\"height: 46px;\"></textarea>",
           "target": [
             "textarea"
+          ]
+        },
+        {
+          "any": [
+            {
+              "id": "color-contrast",
+              "data": {
+                "fgColor": "#444444",
+                "bgColor": "#ffffff",
+                "contrastRatio": 9.73,
+                "fontSize": "10.1pt (13.5px)",
+                "fontWeight": "normal",
+                "expectedContrastRatio": "4.5:1"
+              },
+              "relatedNodes": [],
+              "impact": "serious",
+              "message": "Element has sufficient color contrast of 9.73"
+            }
+          ],
+          "all": [],
+          "none": [],
+          "impact": null,
+          "html": "<span class=\"simple-mode-trigger-label\">Fast</span>",
+          "target": [
+            ".simple-mode-trigger-label"
           ]
         },
         {
@@ -6421,7 +6071,7 @@
           "all": [],
           "none": [],
           "impact": null,
-          "html": "<h1 class=\"welcome-greeting\">Ready to explore new ideas, Test User?</h1>",
+          "html": "<h1 class=\"welcome-greeting\">Good evening, Test User.</h1>",
           "target": [
             "h1"
           ]
@@ -6477,7 +6127,7 @@
             }
           ],
           "impact": null,
-          "html": "<textarea class=\"composer-textarea \" placeholder=\"Message for the model…\" rows=\"1\" enterkeyhint=\"send\" style=\"height: 46px;\"></textarea>",
+          "html": "<textarea class=\"composer-textarea \" placeholder=\"Pick a model in the selector to get started…\" rows=\"1\" enterkeyhint=\"send\" style=\"height: 46px;\"></textarea>",
           "target": [
             "textarea"
           ]
@@ -6523,7 +6173,7 @@
           "all": [],
           "none": [],
           "impact": null,
-          "html": "<h1 class=\"welcome-greeting\">Ready to explore new ideas, Test User?</h1>",
+          "html": "<h1 class=\"welcome-greeting\">Good evening, Test User.</h1>",
           "target": [
             "h1"
           ]
@@ -6655,60 +6305,6 @@
           "all": [],
           "none": [],
           "impact": null,
-          "html": "<button type=\"button\" class=\"ui-level-btn active\" aria-label=\"界面级别: Simples\" aria-pressed=\"true\">Simples</button>",
-          "target": [
-            ".active"
-          ]
-        },
-        {
-          "any": [
-            {
-              "id": "label-content-name-mismatch",
-              "data": null,
-              "relatedNodes": [],
-              "impact": "serious",
-              "message": "Element contains visible text as part of its accessible name"
-            }
-          ],
-          "all": [],
-          "none": [],
-          "impact": null,
-          "html": "<button type=\"button\" class=\"ui-level-btn \" aria-label=\"界面级别: Intermediario\" aria-pressed=\"false\">Intermediario</button>",
-          "target": [
-            "button[aria-label=\"界面级别: Intermediario\"]"
-          ]
-        },
-        {
-          "any": [
-            {
-              "id": "label-content-name-mismatch",
-              "data": null,
-              "relatedNodes": [],
-              "impact": "serious",
-              "message": "Element contains visible text as part of its accessible name"
-            }
-          ],
-          "all": [],
-          "none": [],
-          "impact": null,
-          "html": "<button type=\"button\" class=\"ui-level-btn \" aria-label=\"界面级别: Avancado\" aria-pressed=\"false\">Avancado</button>",
-          "target": [
-            "button[aria-label=\"界面级别: Avancado\"]"
-          ]
-        },
-        {
-          "any": [
-            {
-              "id": "label-content-name-mismatch",
-              "data": null,
-              "relatedNodes": [],
-              "impact": "serious",
-              "message": "Element contains visible text as part of its accessible name"
-            }
-          ],
-          "all": [],
-          "none": [],
-          "impact": null,
           "html": "<button type=\"button\" class=\"new-chat-btn custom-tooltip-trigger\" data-tooltip=\"New conversation\" aria-label=\"New conversation\">",
           "target": [
             ".new-chat-btn"
@@ -6812,7 +6408,7 @@
             }
           ],
           "impact": null,
-          "html": "<textarea class=\"composer-textarea \" placeholder=\"Message for the model…\" rows=\"1\" enterkeyhint=\"send\" style=\"height: 46px;\"></textarea>",
+          "html": "<textarea class=\"composer-textarea \" placeholder=\"Pick a model in the selector to get started…\" rows=\"1\" enterkeyhint=\"send\" style=\"height: 46px;\"></textarea>",
           "target": [
             "textarea"
           ]
@@ -6861,7 +6457,7 @@
             }
           ],
           "impact": null,
-          "html": "<textarea class=\"composer-textarea \" placeholder=\"Message for the model…\" rows=\"1\" enterkeyhint=\"send\" style=\"height: 46px;\"></textarea>",
+          "html": "<textarea class=\"composer-textarea \" placeholder=\"Pick a model in the selector to get started…\" rows=\"1\" enterkeyhint=\"send\" style=\"height: 46px;\"></textarea>",
           "target": [
             "textarea"
           ]
@@ -7403,60 +6999,6 @@
           "all": [],
           "none": [],
           "impact": null,
-          "html": "<button type=\"button\" class=\"ui-level-btn active\" aria-label=\"界面级别: Simples\" aria-pressed=\"true\">Simples</button>",
-          "target": [
-            ".active"
-          ]
-        },
-        {
-          "any": [
-            {
-              "id": "no-focusable-content",
-              "data": null,
-              "relatedNodes": [],
-              "impact": "serious",
-              "message": "Element does not have focusable descendants"
-            }
-          ],
-          "all": [],
-          "none": [],
-          "impact": null,
-          "html": "<button type=\"button\" class=\"ui-level-btn \" aria-label=\"界面级别: Intermediario\" aria-pressed=\"false\">Intermediario</button>",
-          "target": [
-            "button[aria-label=\"界面级别: Intermediario\"]"
-          ]
-        },
-        {
-          "any": [
-            {
-              "id": "no-focusable-content",
-              "data": null,
-              "relatedNodes": [],
-              "impact": "serious",
-              "message": "Element does not have focusable descendants"
-            }
-          ],
-          "all": [],
-          "none": [],
-          "impact": null,
-          "html": "<button type=\"button\" class=\"ui-level-btn \" aria-label=\"界面级别: Avancado\" aria-pressed=\"false\">Avancado</button>",
-          "target": [
-            "button[aria-label=\"界面级别: Avancado\"]"
-          ]
-        },
-        {
-          "any": [
-            {
-              "id": "no-focusable-content",
-              "data": null,
-              "relatedNodes": [],
-              "impact": "serious",
-              "message": "Element does not have focusable descendants"
-            }
-          ],
-          "all": [],
-          "none": [],
-          "impact": null,
           "html": "<button type=\"button\" class=\"new-chat-btn custom-tooltip-trigger\" data-tooltip=\"New conversation\" aria-label=\"New conversation\">",
           "target": [
             ".new-chat-btn"
@@ -7637,9 +7179,9 @@
           "all": [],
           "none": [],
           "impact": null,
-          "html": "<button class=\"model-trigger \" aria-label=\"Selecionar modelo: \" type=\"button\" aria-expanded=\"false\" aria-haspopup=\"listbox\">",
+          "html": "<button type=\"button\" class=\"simple-mode-trigger  \" aria-haspopup=\"menu\" aria-expanded=\"false\" aria-label=\"Model mode: {{label}}\">",
           "target": [
-            ".model-trigger"
+            ".simple-mode-trigger"
           ]
         },
         {
@@ -8268,86 +7810,6 @@
           "html": "<path d=\"m16 15-3-3 3-3\"></path>",
           "target": [
             "path[d=\"m16 15-3-3 3-3\"]"
-          ]
-        },
-        {
-          "any": [
-            {
-              "id": "region",
-              "data": {
-                "isIframe": false
-              },
-              "relatedNodes": [],
-              "impact": "moderate",
-              "message": "All page content is contained by landmarks"
-            }
-          ],
-          "all": [],
-          "none": [],
-          "impact": null,
-          "html": "<div class=\"ui-level-selector\">",
-          "target": [
-            ".ui-level-selector"
-          ]
-        },
-        {
-          "any": [
-            {
-              "id": "region",
-              "data": {
-                "isIframe": false
-              },
-              "relatedNodes": [],
-              "impact": "moderate",
-              "message": "All page content is contained by landmarks"
-            }
-          ],
-          "all": [],
-          "none": [],
-          "impact": null,
-          "html": "<button type=\"button\" class=\"ui-level-btn active\" aria-label=\"界面级别: Simples\" aria-pressed=\"true\">Simples</button>",
-          "target": [
-            ".active"
-          ]
-        },
-        {
-          "any": [
-            {
-              "id": "region",
-              "data": {
-                "isIframe": false
-              },
-              "relatedNodes": [],
-              "impact": "moderate",
-              "message": "All page content is contained by landmarks"
-            }
-          ],
-          "all": [],
-          "none": [],
-          "impact": null,
-          "html": "<button type=\"button\" class=\"ui-level-btn \" aria-label=\"界面级别: Intermediario\" aria-pressed=\"false\">Intermediario</button>",
-          "target": [
-            "button[aria-label=\"界面级别: Intermediario\"]"
-          ]
-        },
-        {
-          "any": [
-            {
-              "id": "region",
-              "data": {
-                "isIframe": false
-              },
-              "relatedNodes": [],
-              "impact": "moderate",
-              "message": "All page content is contained by landmarks"
-            }
-          ],
-          "all": [],
-          "none": [],
-          "impact": null,
-          "html": "<button type=\"button\" class=\"ui-level-btn \" aria-label=\"界面级别: Avancado\" aria-pressed=\"false\">Avancado</button>",
-          "target": [
-            "button[aria-label=\"界面级别: Avancado\"]"
           ]
         },
         {
@@ -9705,7 +9167,7 @@
           "all": [],
           "none": [],
           "impact": null,
-          "html": "<h1 class=\"welcome-greeting\">Ready to explore new ideas, Test User?</h1>",
+          "html": "<h1 class=\"welcome-greeting\">Good evening, Test User.</h1>",
           "target": [
             "h1"
           ]
@@ -9825,7 +9287,7 @@
           "all": [],
           "none": [],
           "impact": null,
-          "html": "<textarea class=\"composer-textarea \" placeholder=\"Message for the model…\" rows=\"1\" enterkeyhint=\"send\" style=\"height: 46px;\"></textarea>",
+          "html": "<textarea class=\"composer-textarea \" placeholder=\"Pick a model in the selector to get started…\" rows=\"1\" enterkeyhint=\"send\" style=\"height: 46px;\"></textarea>",
           "target": [
             "textarea"
           ]
@@ -10005,9 +9467,9 @@
           "all": [],
           "none": [],
           "impact": null,
-          "html": "<div class=\"model-selector\">",
+          "html": "<div class=\"simple-mode-container \">",
           "target": [
-            ".model-selector"
+            ".simple-mode-container"
           ]
         },
         {
@@ -10025,9 +9487,9 @@
           "all": [],
           "none": [],
           "impact": null,
-          "html": "<button class=\"model-trigger \" aria-label=\"Selecionar modelo: \" type=\"button\" aria-expanded=\"false\" aria-haspopup=\"listbox\">",
+          "html": "<button type=\"button\" class=\"simple-mode-trigger  \" aria-haspopup=\"menu\" aria-expanded=\"false\" aria-label=\"Model mode: {{label}}\">",
           "target": [
-            ".model-trigger"
+            ".simple-mode-trigger"
           ]
         },
         {
@@ -10045,89 +9507,9 @@
           "all": [],
           "none": [],
           "impact": null,
-          "html": "<span class=\"model-trigger-name\"><span class=\"model-trigger-label\"><span class=\"model-trigger-model-title\"></span></span></span>",
+          "html": "<span class=\"simple-mode-trigger-label\">Fast</span>",
           "target": [
-            ".model-trigger-name"
-          ]
-        },
-        {
-          "any": [
-            {
-              "id": "region",
-              "data": {
-                "isIframe": false
-              },
-              "relatedNodes": [],
-              "impact": "moderate",
-              "message": "All page content is contained by landmarks"
-            }
-          ],
-          "all": [],
-          "none": [],
-          "impact": null,
-          "html": "<span class=\"model-trigger-label\"><span class=\"model-trigger-model-title\"></span></span>",
-          "target": [
-            ".model-trigger-label"
-          ]
-        },
-        {
-          "any": [
-            {
-              "id": "region",
-              "data": {
-                "isIframe": false
-              },
-              "relatedNodes": [],
-              "impact": "moderate",
-              "message": "All page content is contained by landmarks"
-            }
-          ],
-          "all": [],
-          "none": [],
-          "impact": null,
-          "html": "<span class=\"model-trigger-model-title\"></span>",
-          "target": [
-            ".model-trigger-model-title"
-          ]
-        },
-        {
-          "any": [
-            {
-              "id": "region",
-              "data": {
-                "isIframe": false
-              },
-              "relatedNodes": [],
-              "impact": "moderate",
-              "message": "All page content is contained by landmarks"
-            }
-          ],
-          "all": [],
-          "none": [],
-          "impact": null,
-          "html": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"13\" height=\"13\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-chevron-down chevron \"><path d=\"m6 9 6 6 6-6\"></path></svg>",
-          "target": [
-            ".lucide-chevron-down"
-          ]
-        },
-        {
-          "any": [
-            {
-              "id": "region",
-              "data": {
-                "isIframe": false
-              },
-              "relatedNodes": [],
-              "impact": "moderate",
-              "message": "All page content is contained by landmarks"
-            }
-          ],
-          "all": [],
-          "none": [],
-          "impact": null,
-          "html": "<path d=\"m6 9 6 6 6-6\"></path>",
-          "target": [
-            "path[d=\"m6 9 6 6 6-6\"]"
+            ".simple-mode-trigger-label"
           ]
         },
         {
@@ -12172,40 +11554,6 @@
             {
               "id": "color-contrast",
               "data": {
-                "fgColor": "#ffffff",
-                "bgColor": "#cc785c",
-                "contrastRatio": 3.27,
-                "fontSize": "9.0pt (12px)",
-                "fontWeight": "normal",
-                "messageKey": null,
-                "expectedContrastRatio": "4.5:1"
-              },
-              "relatedNodes": [
-                {
-                  "html": "<button type=\"button\" class=\"ui-level-btn active\" aria-label=\"界面级别: Simples\" aria-pressed=\"true\">Simples</button>",
-                  "target": [
-                    ".active"
-                  ]
-                }
-              ],
-              "impact": "serious",
-              "message": "Element has insufficient color contrast of 3.27 (foreground color: #ffffff, background color: #cc785c, font size: 9.0pt (12px), font weight: normal). Expected contrast ratio of 4.5:1"
-            }
-          ],
-          "all": [],
-          "none": [],
-          "impact": "serious",
-          "html": "<button type=\"button\" class=\"ui-level-btn active\" aria-label=\"界面级别: Simples\" aria-pressed=\"true\">Simples</button>",
-          "target": [
-            ".active"
-          ],
-          "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 3.27 (foreground color: #ffffff, background color: #cc785c, font size: 9.0pt (12px), font weight: normal). Expected contrast ratio of 4.5:1"
-        },
-        {
-          "any": [
-            {
-              "id": "color-contrast",
-              "data": {
                 "fgColor": "#e5e5e5",
                 "bgColor": "#a85538",
                 "contrastRatio": 4.14,
@@ -12266,9 +11614,47 @@
           "all": [],
           "none": [],
           "impact": "serious",
+          "html": "<button type=\"button\" class=\"sidebar-brand custom-tooltip-trigger\" data-tooltip=\"Home\" aria-label=\"Home\">",
+          "target": [
+            ".sidebar-brand"
+          ],
+          "failureSummary": "Fix any of the following:\n  Text inside the element is not included in the accessible name"
+        },
+        {
+          "any": [
+            {
+              "id": "label-content-name-mismatch",
+              "data": null,
+              "relatedNodes": [],
+              "impact": "serious",
+              "message": "Text inside the element is not included in the accessible name"
+            }
+          ],
+          "all": [],
+          "none": [],
+          "impact": "serious",
           "html": "<button type=\"button\" class=\"user-card-main-btn c...\" data-tooltip=\"Settings\" aria-label=\"Settings\" style=\"display: flex; align...\">",
           "target": [
             ".user-card-main-btn"
+          ],
+          "failureSummary": "Fix any of the following:\n  Text inside the element is not included in the accessible name"
+        },
+        {
+          "any": [
+            {
+              "id": "label-content-name-mismatch",
+              "data": null,
+              "relatedNodes": [],
+              "impact": "serious",
+              "message": "Text inside the element is not included in the accessible name"
+            }
+          ],
+          "all": [],
+          "none": [],
+          "impact": "serious",
+          "html": "<button type=\"button\" class=\"simple-mode-trigger  \" aria-haspopup=\"menu\" aria-expanded=\"false\" aria-label=\"Model mode: {{label}}\">",
+          "target": [
+            ".simple-mode-trigger"
           ],
           "failureSummary": "Fix any of the following:\n  Text inside the element is not included in the accessible name"
         }

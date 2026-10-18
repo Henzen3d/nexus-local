@@ -16312,3 +16312,17 @@ html[data-theme="light"] .model-option-provider-tag {
     word-break: break-word;
   }
 }
+
+
+/* Loading logo animation */
+@keyframes loadingLogoBreath {
+  0% { opacity: 0.5; }
+  50% { opacity: 1; }
+  100% { opacity: 0.5; }
+}
+.loading-logo {
+  width: 40px;
+  height: 40px;
+  animation: loadingLogoBreath 1.8s ease-in-out infinite;
+  animation-delay: 150ms;
+}
