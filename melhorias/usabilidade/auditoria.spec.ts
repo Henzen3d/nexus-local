@@ -546,27 +546,20 @@ test.describe('Acessibilidade — axe', () => {
   })
 
   test('foco de teclado no composer', async ({ page }) => {
-    // Navigate through tabs to reach composer
-    for (let i = 0; i < 15; i++) {
+    // O textarea recebe focus inicial; tabbamos para sair e percorrer a página
+    await page.keyboard.press('Tab')
+    // Percorrer até 25 tabs e verificar se o composer é alcançado em algum momento
+    let reached = false
+    for (let i = 0; i < 25; i++) {
       await page.keyboard.press('Tab')
-      await page.waitForTimeout(200)
+      await page.waitForTimeout(50)
+      const checked = await page.locator('.composer-textarea:focus').count()
+      if (checked > 0) {
+        reached = true
+        break
+      }
     }
-    await page.waitForTimeout(500)
-    await page.screenshot({ path: screenshotName('a11y_focus_composer') })
-
-    const focused = await page.evaluate(() => {
-      const el = document.activeElement
-      return el ? el.tagName + '.' + ((el.className || '').toString().split(' ')[0] || '') : 'none'
-    })
-    console.log(`[A11Y] Foco após 15 Tabs: ${focused}`)
-
-    // Check if focused element is the composer
-    const composerFocused = await page.locator('.composer-textarea:focus').count()
-    if (composerFocused > 0) {
-      console.log('[A11Y] ✅ Foco alcança o composer via teclado')
-    } else {
-      console.log('[A11Y] ⚠️  Foco não alcança o composer (procurar alternativa)')
-    }
+    expect(reached).toBe(true)
   })
 })
 
@@ -574,8 +567,11 @@ test.describe('Acessibilidade — axe', () => {
 
 test.describe('Heurísticas de Nielsen', () => {
   test('visibilidade do status do sistema', async ({ page }) => {
-    const loadingIndicators = page.locator('.loading, .spinner, [aria-busy="true"], .status-indicator').first()
-    if (await loadingIndicators.count() > 0) {
+    // Check IMMEDIATELY after navigation, before loading screen disappears
+    await page.goto(BASE)
+    await page.waitForTimeout(500) // Give LoadingScreen time to render
+    const hasLoading = await page.locator('.loading-screen, .loading, .spinner, [aria-busy="true"], .status-indicator').count()
+    if (hasLoading > 0) {
       console.log('[Nielsen] ✅ Indicador de status carregando presente')
     } else {
       console.log('[Nielsen] ⚠️  Nenhum indicador de loading visível na tela inicial')

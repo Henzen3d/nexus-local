@@ -13,7 +13,7 @@
     "orientationAngle": 0,
     "orientationType": "landscape-primary"
   },
-  "timestamp": "2026-10-17T23:54:39.902Z",
+  "timestamp": "2026-10-18T00:25:09.043Z",
   "url": "http://localhost:5173/",
   "toolOptions": {
     "reporter": "v1"
@@ -792,18 +792,6 @@
       "nodes": []
     },
     {
-      "id": "tabindex",
-      "impact": null,
-      "tags": [
-        "cat.keyboard",
-        "best-practice"
-      ],
-      "description": "Ensure tabindex attribute values are not greater than 0",
-      "help": "Elements should not have tabindex greater than zero",
-      "helpUrl": "https://dequeuniversity.com/rules/axe/4.14/tabindex?application=playwright",
-      "nodes": []
-    },
-    {
       "id": "table-duplicate-name",
       "impact": null,
       "tags": [
@@ -1373,7 +1361,7 @@
             }
           ],
           "impact": null,
-          "html": "<button class=\"btn btn-ghost btn-icon custom-tooltip-trigger\" data-tooltip=\"Use dark theme\" aria-label=\"Use dark theme\">",
+          "html": "<button class=\"btn btn-ghost btn-icon custom-tooltip-trigger\" data-tooltip=\"Use dark theme\" tabindex=\"-1\" aria-label=\"Use dark theme\">",
           "target": [
             "button[data-tooltip=\"Use dark theme\"]"
           ]
@@ -1413,7 +1401,7 @@
             }
           ],
           "impact": null,
-          "html": "<button class=\"btn btn-ghost btn-icon custom-tooltip-trigger\" data-tooltip=\"Sign out\" aria-label=\"Sign out\">",
+          "html": "<button class=\"btn btn-ghost btn-icon custom-tooltip-trigger\" data-tooltip=\"Sign out\" tabindex=\"-1\" aria-label=\"Sign out\">",
           "target": [
             "button[data-tooltip=\"Sign out\"]"
           ]
@@ -2078,7 +2066,7 @@
           ],
           "none": [],
           "impact": null,
-          "html": "<button class=\"btn btn-ghost btn-icon custom-tooltip-trigger\" data-tooltip=\"Use dark theme\" aria-label=\"Use dark theme\">",
+          "html": "<button class=\"btn btn-ghost btn-icon custom-tooltip-trigger\" data-tooltip=\"Use dark theme\" tabindex=\"-1\" aria-label=\"Use dark theme\">",
           "target": [
             "button[data-tooltip=\"Use dark theme\"]"
           ]
@@ -2096,7 +2084,7 @@
           ],
           "none": [],
           "impact": null,
-          "html": "<button class=\"btn btn-ghost btn-icon custom-tooltip-trigger\" data-tooltip=\"Sign out\" aria-label=\"Sign out\">",
+          "html": "<button class=\"btn btn-ghost btn-icon custom-tooltip-trigger\" data-tooltip=\"Sign out\" tabindex=\"-1\" aria-label=\"Sign out\">",
           "target": [
             "button[data-tooltip=\"Sign out\"]"
           ]
@@ -2731,7 +2719,7 @@
             }
           ],
           "impact": null,
-          "html": "<button class=\"btn btn-ghost btn-icon custom-tooltip-trigger\" data-tooltip=\"Use dark theme\" aria-label=\"Use dark theme\">",
+          "html": "<button class=\"btn btn-ghost btn-icon custom-tooltip-trigger\" data-tooltip=\"Use dark theme\" tabindex=\"-1\" aria-label=\"Use dark theme\">",
           "target": [
             "button[data-tooltip=\"Use dark theme\"]"
           ]
@@ -2749,7 +2737,7 @@
             }
           ],
           "impact": null,
-          "html": "<button class=\"btn btn-ghost btn-icon custom-tooltip-trigger\" data-tooltip=\"Sign out\" aria-label=\"Sign out\">",
+          "html": "<button class=\"btn btn-ghost btn-icon custom-tooltip-trigger\" data-tooltip=\"Sign out\" tabindex=\"-1\" aria-label=\"Sign out\">",
           "target": [
             "button[data-tooltip=\"Sign out\"]"
           ]
@@ -3435,7 +3423,7 @@
           ],
           "none": [],
           "impact": null,
-          "html": "<button class=\"btn btn-ghost btn-icon custom-tooltip-trigger\" data-tooltip=\"Use dark theme\" aria-label=\"Use dark theme\">",
+          "html": "<button class=\"btn btn-ghost btn-icon custom-tooltip-trigger\" data-tooltip=\"Use dark theme\" tabindex=\"-1\" aria-label=\"Use dark theme\">",
           "target": [
             "button[data-tooltip=\"Use dark theme\"]"
           ]
@@ -3467,7 +3455,7 @@
           ],
           "none": [],
           "impact": null,
-          "html": "<button class=\"btn btn-ghost btn-icon custom-tooltip-trigger\" data-tooltip=\"Sign out\" aria-label=\"Sign out\">",
+          "html": "<button class=\"btn btn-ghost btn-icon custom-tooltip-trigger\" data-tooltip=\"Sign out\" tabindex=\"-1\" aria-label=\"Sign out\">",
           "target": [
             "button[data-tooltip=\"Sign out\"]"
           ]
@@ -4003,7 +3991,7 @@
           "all": [],
           "none": [],
           "impact": null,
-          "html": "<button class=\"btn btn-ghost btn-icon custom-tooltip-trigger\" data-tooltip=\"Use dark theme\" aria-label=\"Use dark theme\">",
+          "html": "<button class=\"btn btn-ghost btn-icon custom-tooltip-trigger\" data-tooltip=\"Use dark theme\" tabindex=\"-1\" aria-label=\"Use dark theme\">",
           "target": [
             "button[data-tooltip=\"Use dark theme\"]"
           ]
@@ -4021,7 +4009,7 @@
           "all": [],
           "none": [],
           "impact": null,
-          "html": "<button class=\"btn btn-ghost btn-icon custom-tooltip-trigger\" data-tooltip=\"Sign out\" aria-label=\"Sign out\">",
+          "html": "<button class=\"btn btn-ghost btn-icon custom-tooltip-trigger\" data-tooltip=\"Sign out\" tabindex=\"-1\" aria-label=\"Sign out\">",
           "target": [
             "button[data-tooltip=\"Sign out\"]"
           ]
@@ -4950,7 +4938,7 @@
           "all": [],
           "none": [],
           "impact": null,
-          "html": "<button class=\"btn btn-ghost btn-icon custom-tooltip-trigger\" data-tooltip=\"Use dark theme\" aria-label=\"Use dark theme\">",
+          "html": "<button class=\"btn btn-ghost btn-icon custom-tooltip-trigger\" data-tooltip=\"Use dark theme\" tabindex=\"-1\" aria-label=\"Use dark theme\">",
           "target": [
             "button[data-tooltip=\"Use dark theme\"]"
           ]
@@ -4968,7 +4956,7 @@
           "all": [],
           "none": [],
           "impact": null,
-          "html": "<button class=\"btn btn-ghost btn-icon custom-tooltip-trigger\" data-tooltip=\"Sign out\" aria-label=\"Sign out\">",
+          "html": "<button class=\"btn btn-ghost btn-icon custom-tooltip-trigger\" data-tooltip=\"Sign out\" tabindex=\"-1\" aria-label=\"Sign out\">",
           "target": [
             "button[data-tooltip=\"Sign out\"]"
           ]
@@ -5083,7 +5071,7 @@
           "all": [],
           "none": [],
           "impact": null,
-          "html": "<button type=\"button\" class=\"welcome-chip-btn \">",
+          "html": "<button type=\"button\" class=\"welcome-chip-btn \" tabindex=\"-1\">",
           "target": [
             ".welcome-chip-btn[type=\"button\"]:nth-child(1)"
           ]
@@ -5101,7 +5089,7 @@
           "all": [],
           "none": [],
           "impact": null,
-          "html": "<button type=\"button\" class=\"welcome-chip-btn \">",
+          "html": "<button type=\"button\" class=\"welcome-chip-btn \" tabindex=\"-1\">",
           "target": [
             ".welcome-chip-btn[type=\"button\"]:nth-child(2)"
           ]
@@ -5119,7 +5107,7 @@
           "all": [],
           "none": [],
           "impact": null,
-          "html": "<button type=\"button\" class=\"welcome-chip-btn \">",
+          "html": "<button type=\"button\" class=\"welcome-chip-btn \" tabindex=\"-1\">",
           "target": [
             ".welcome-chip-btn[type=\"button\"]:nth-child(3)"
           ]
@@ -5137,7 +5125,7 @@
           "all": [],
           "none": [],
           "impact": null,
-          "html": "<button type=\"button\" class=\"welcome-chip-btn \">",
+          "html": "<button type=\"button\" class=\"welcome-chip-btn \" tabindex=\"-1\">",
           "target": [
             ".welcome-chip-btn[type=\"button\"]:nth-child(4)"
           ]
@@ -5225,7 +5213,7 @@
               "data": null,
               "relatedNodes": [
                 {
-                  "html": "<h1 class=\"welcome-greeting\">Hi Test User! How can I help?</h1>",
+                  "html": "<h1 class=\"welcome-greeting\">What are you thinking about today, Test User?</h1>",
                   "target": [
                     "h1"
                   ]
@@ -5579,7 +5567,7 @@
           "all": [],
           "none": [],
           "impact": null,
-          "html": "<h1 class=\"welcome-greeting\">Hi Test User! How can I help?</h1>",
+          "html": "<h1 class=\"welcome-greeting\">What are you thinking about today, Test User?</h1>",
           "target": [
             "h1"
           ]
@@ -5674,7 +5662,7 @@
           "all": [],
           "none": [],
           "impact": null,
-          "html": "<button type=\"button\" class=\"welcome-chip-btn \">",
+          "html": "<button type=\"button\" class=\"welcome-chip-btn \" tabindex=\"-1\">",
           "target": [
             ".welcome-chip-btn[type=\"button\"]:nth-child(1)"
           ]
@@ -5699,7 +5687,7 @@
           "all": [],
           "none": [],
           "impact": null,
-          "html": "<button type=\"button\" class=\"welcome-chip-btn \">",
+          "html": "<button type=\"button\" class=\"welcome-chip-btn \" tabindex=\"-1\">",
           "target": [
             ".welcome-chip-btn[type=\"button\"]:nth-child(2)"
           ]
@@ -5724,7 +5712,7 @@
           "all": [],
           "none": [],
           "impact": null,
-          "html": "<button type=\"button\" class=\"welcome-chip-btn \">",
+          "html": "<button type=\"button\" class=\"welcome-chip-btn \" tabindex=\"-1\">",
           "target": [
             ".welcome-chip-btn[type=\"button\"]:nth-child(3)"
           ]
@@ -5749,7 +5737,7 @@
           "all": [],
           "none": [],
           "impact": null,
-          "html": "<button type=\"button\" class=\"welcome-chip-btn \">",
+          "html": "<button type=\"button\" class=\"welcome-chip-btn \" tabindex=\"-1\">",
           "target": [
             ".welcome-chip-btn[type=\"button\"]:nth-child(4)"
           ]
@@ -5955,7 +5943,7 @@
           "all": [],
           "none": [],
           "impact": null,
-          "html": "<h1 class=\"welcome-greeting\">Hi Test User! How can I help?</h1>",
+          "html": "<h1 class=\"welcome-greeting\">What are you thinking about today, Test User?</h1>",
           "target": [
             "h1"
           ]
@@ -6057,7 +6045,7 @@
           "all": [],
           "none": [],
           "impact": null,
-          "html": "<h1 class=\"welcome-greeting\">Hi Test User! How can I help?</h1>",
+          "html": "<h1 class=\"welcome-greeting\">What are you thinking about today, Test User?</h1>",
           "target": [
             "h1"
           ]
@@ -6991,7 +6979,7 @@
           "all": [],
           "none": [],
           "impact": null,
-          "html": "<button class=\"btn btn-ghost btn-icon custom-tooltip-trigger\" data-tooltip=\"Use dark theme\" aria-label=\"Use dark theme\">",
+          "html": "<button class=\"btn btn-ghost btn-icon custom-tooltip-trigger\" data-tooltip=\"Use dark theme\" tabindex=\"-1\" aria-label=\"Use dark theme\">",
           "target": [
             "button[data-tooltip=\"Use dark theme\"]"
           ]
@@ -7009,7 +6997,7 @@
           "all": [],
           "none": [],
           "impact": null,
-          "html": "<button class=\"btn btn-ghost btn-icon custom-tooltip-trigger\" data-tooltip=\"Sign out\" aria-label=\"Sign out\">",
+          "html": "<button class=\"btn btn-ghost btn-icon custom-tooltip-trigger\" data-tooltip=\"Sign out\" tabindex=\"-1\" aria-label=\"Sign out\">",
           "target": [
             "button[data-tooltip=\"Sign out\"]"
           ]
@@ -7117,7 +7105,7 @@
           "all": [],
           "none": [],
           "impact": null,
-          "html": "<button type=\"button\" class=\"welcome-chip-btn \">",
+          "html": "<button type=\"button\" class=\"welcome-chip-btn \" tabindex=\"-1\">",
           "target": [
             ".welcome-chip-btn[type=\"button\"]:nth-child(1)"
           ]
@@ -7135,7 +7123,7 @@
           "all": [],
           "none": [],
           "impact": null,
-          "html": "<button type=\"button\" class=\"welcome-chip-btn \">",
+          "html": "<button type=\"button\" class=\"welcome-chip-btn \" tabindex=\"-1\">",
           "target": [
             ".welcome-chip-btn[type=\"button\"]:nth-child(2)"
           ]
@@ -7153,7 +7141,7 @@
           "all": [],
           "none": [],
           "impact": null,
-          "html": "<button type=\"button\" class=\"welcome-chip-btn \">",
+          "html": "<button type=\"button\" class=\"welcome-chip-btn \" tabindex=\"-1\">",
           "target": [
             ".welcome-chip-btn[type=\"button\"]:nth-child(3)"
           ]
@@ -7171,7 +7159,7 @@
           "all": [],
           "none": [],
           "impact": null,
-          "html": "<button type=\"button\" class=\"welcome-chip-btn \">",
+          "html": "<button type=\"button\" class=\"welcome-chip-btn \" tabindex=\"-1\">",
           "target": [
             ".welcome-chip-btn[type=\"button\"]:nth-child(4)"
           ]
@@ -8511,7 +8499,7 @@
           "all": [],
           "none": [],
           "impact": null,
-          "html": "<button class=\"btn btn-ghost btn-icon custom-tooltip-trigger\" data-tooltip=\"Use dark theme\" aria-label=\"Use dark theme\">",
+          "html": "<button class=\"btn btn-ghost btn-icon custom-tooltip-trigger\" data-tooltip=\"Use dark theme\" tabindex=\"-1\" aria-label=\"Use dark theme\">",
           "target": [
             "button[data-tooltip=\"Use dark theme\"]"
           ]
@@ -8571,7 +8559,7 @@
           "all": [],
           "none": [],
           "impact": null,
-          "html": "<button class=\"btn btn-ghost btn-icon custom-tooltip-trigger\" data-tooltip=\"Sign out\" aria-label=\"Sign out\">",
+          "html": "<button class=\"btn btn-ghost btn-icon custom-tooltip-trigger\" data-tooltip=\"Sign out\" tabindex=\"-1\" aria-label=\"Sign out\">",
           "target": [
             "button[data-tooltip=\"Sign out\"]"
           ]
@@ -9051,7 +9039,7 @@
           "all": [],
           "none": [],
           "impact": null,
-          "html": "<h1 class=\"welcome-greeting\">Hi Test User! How can I help?</h1>",
+          "html": "<h1 class=\"welcome-greeting\">What are you thinking about today, Test User?</h1>",
           "target": [
             "h1"
           ]
@@ -9811,7 +9799,7 @@
           "all": [],
           "none": [],
           "impact": null,
-          "html": "<button type=\"button\" class=\"welcome-chip-btn \">",
+          "html": "<button type=\"button\" class=\"welcome-chip-btn \" tabindex=\"-1\">",
           "target": [
             ".welcome-chip-btn[type=\"button\"]:nth-child(1)"
           ]
@@ -9891,7 +9879,7 @@
           "all": [],
           "none": [],
           "impact": null,
-          "html": "<button type=\"button\" class=\"welcome-chip-btn \">",
+          "html": "<button type=\"button\" class=\"welcome-chip-btn \" tabindex=\"-1\">",
           "target": [
             ".welcome-chip-btn[type=\"button\"]:nth-child(2)"
           ]
@@ -9971,7 +9959,7 @@
           "all": [],
           "none": [],
           "impact": null,
-          "html": "<button type=\"button\" class=\"welcome-chip-btn \">",
+          "html": "<button type=\"button\" class=\"welcome-chip-btn \" tabindex=\"-1\">",
           "target": [
             ".welcome-chip-btn[type=\"button\"]:nth-child(3)"
           ]
@@ -10071,7 +10059,7 @@
           "all": [],
           "none": [],
           "impact": null,
-          "html": "<button type=\"button\" class=\"welcome-chip-btn \">",
+          "html": "<button type=\"button\" class=\"welcome-chip-btn \" tabindex=\"-1\">",
           "target": [
             ".welcome-chip-btn[type=\"button\"]:nth-child(4)"
           ]
@@ -11294,6 +11282,127 @@
           "html": "<button type=\"button\" class=\"btn btn-primary\" style=\"width: 100%; padding: 12px 16px; font-weight: 600;\">Got it</button>",
           "target": [
             ".btn-primary"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tabindex",
+      "impact": null,
+      "tags": [
+        "cat.keyboard",
+        "best-practice"
+      ],
+      "description": "Ensure tabindex attribute values are not greater than 0",
+      "help": "Elements should not have tabindex greater than zero",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.14/tabindex?application=playwright",
+      "nodes": [
+        {
+          "any": [
+            {
+              "id": "tabindex",
+              "data": null,
+              "relatedNodes": [],
+              "impact": "serious",
+              "message": "Element does not have a tabindex greater than 0"
+            }
+          ],
+          "all": [],
+          "none": [],
+          "impact": null,
+          "html": "<button class=\"btn btn-ghost btn-icon custom-tooltip-trigger\" data-tooltip=\"Use dark theme\" tabindex=\"-1\" aria-label=\"Use dark theme\">",
+          "target": [
+            "button[data-tooltip=\"Use dark theme\"]"
+          ]
+        },
+        {
+          "any": [
+            {
+              "id": "tabindex",
+              "data": null,
+              "relatedNodes": [],
+              "impact": "serious",
+              "message": "Element does not have a tabindex greater than 0"
+            }
+          ],
+          "all": [],
+          "none": [],
+          "impact": null,
+          "html": "<button class=\"btn btn-ghost btn-icon custom-tooltip-trigger\" data-tooltip=\"Sign out\" tabindex=\"-1\" aria-label=\"Sign out\">",
+          "target": [
+            "button[data-tooltip=\"Sign out\"]"
+          ]
+        },
+        {
+          "any": [
+            {
+              "id": "tabindex",
+              "data": null,
+              "relatedNodes": [],
+              "impact": "serious",
+              "message": "Element does not have a tabindex greater than 0"
+            }
+          ],
+          "all": [],
+          "none": [],
+          "impact": null,
+          "html": "<button type=\"button\" class=\"welcome-chip-btn \" tabindex=\"-1\">",
+          "target": [
+            ".welcome-chip-btn[type=\"button\"]:nth-child(1)"
+          ]
+        },
+        {
+          "any": [
+            {
+              "id": "tabindex",
+              "data": null,
+              "relatedNodes": [],
+              "impact": "serious",
+              "message": "Element does not have a tabindex greater than 0"
+            }
+          ],
+          "all": [],
+          "none": [],
+          "impact": null,
+          "html": "<button type=\"button\" class=\"welcome-chip-btn \" tabindex=\"-1\">",
+          "target": [
+            ".welcome-chip-btn[type=\"button\"]:nth-child(2)"
+          ]
+        },
+        {
+          "any": [
+            {
+              "id": "tabindex",
+              "data": null,
+              "relatedNodes": [],
+              "impact": "serious",
+              "message": "Element does not have a tabindex greater than 0"
+            }
+          ],
+          "all": [],
+          "none": [],
+          "impact": null,
+          "html": "<button type=\"button\" class=\"welcome-chip-btn \" tabindex=\"-1\">",
+          "target": [
+            ".welcome-chip-btn[type=\"button\"]:nth-child(3)"
+          ]
+        },
+        {
+          "any": [
+            {
+              "id": "tabindex",
+              "data": null,
+              "relatedNodes": [],
+              "impact": "serious",
+              "message": "Element does not have a tabindex greater than 0"
+            }
+          ],
+          "all": [],
+          "none": [],
+          "impact": null,
+          "html": "<button type=\"button\" class=\"welcome-chip-btn \" tabindex=\"-1\">",
+          "target": [
+            ".welcome-chip-btn[type=\"button\"]:nth-child(4)"
           ]
         }
       ]

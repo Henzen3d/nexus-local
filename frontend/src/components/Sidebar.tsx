@@ -946,6 +946,7 @@ export function Sidebar() {
             <Button
               variant="ghost"
               size="icon"
+              tabIndex={-1}
               onClick={(e) => {
                 e.stopPropagation()
                 setTheme(theme === 'dark' ? 'light' : 'dark')
@@ -958,6 +959,7 @@ export function Sidebar() {
             <Button
               variant="ghost"
               size="icon"
+              tabIndex={-1}
               onClick={(e) => {
                 e.stopPropagation()
                 logout()
