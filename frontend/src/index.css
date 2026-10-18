@@ -10286,9 +10286,9 @@ html[data-theme="light"] .custom-tooltip-trigger.tooltip-up::before {
 
 /* Variants */
 .btn-primary {
-  background: var(--primary);
+  background: #a85538;
   color: var(--on-primary);
-  border-color: var(--primary);
+  border-color: #a85538;
 }
 .btn-primary:hover:not(:disabled) {
   background: var(--primary-active);

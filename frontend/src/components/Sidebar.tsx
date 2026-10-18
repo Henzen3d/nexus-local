@@ -788,7 +788,7 @@ export function Sidebar() {
             }}
           >
             <MessageSquare size={20} />
-            <span>{t('sidebar.conversations')}</span>
+            {sidebarOpen && <span>{t('sidebar.conversations')}</span>}
           </button>
           <button
             type="button"
@@ -801,7 +801,7 @@ export function Sidebar() {
             }}
           >
             <Folder size={20} />
-            <span>{t('sidebar.projects', { defaultValue: 'Projetos' })}</span>
+            {sidebarOpen && <span>{t('sidebar.projects', { defaultValue: 'Projetos' })}</span>}
           </button>
           <button
             type="button"
@@ -814,7 +814,7 @@ export function Sidebar() {
             }}
           >
             <Images size={20} />
-            <span>{t('sidebar.library', { defaultValue: 'Biblioteca' })}</span>
+            {sidebarOpen && <span>{t('sidebar.library', { defaultValue: 'Biblioteca' })}</span>}
           </button>
           <button
             type="button"
@@ -827,7 +827,7 @@ export function Sidebar() {
             }}
           >
             <Sparkles size={20} />
-            <span>{t('sidebar.artifacts')}</span>
+            {sidebarOpen && <span>{t('sidebar.artifacts')}</span>}
           </button>
         </div>
 

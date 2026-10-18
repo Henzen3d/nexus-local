@@ -83,6 +83,7 @@ export function PlusActionMenu({
         className="plus-menu-item touch-target"
         onClick={handleAttachClick}
         role="menuitem"
+        aria-label={t('chat.addFiles', { defaultValue: 'Adicionar arquivos ou fotos' })}
       >
         <span className="plus-menu-item-icon">
           <Paperclip size={16} />
@@ -101,6 +102,7 @@ export function PlusActionMenu({
         onClick={handleEnhanceClick}
         disabled={!hasText || !enhancerReady || enhancing}
         role="menuitem"
+        aria-label={t('chat.enhanceTitle', { defaultValue: 'Melhorar prompt atual' })}
       >
         <span className="plus-menu-item-icon">
           {enhancing ? <Loader2 size={16} className="spin" /> : <Sparkles size={16} />}
@@ -128,6 +130,7 @@ export function PlusActionMenu({
         onClick={handleToggleWebSearch}
         role="menuitemcheckbox"
         aria-checked={webSearchActive}
+        aria-label={t('chat.webSearch', { defaultValue: 'Busca na web' })}
       >
         <span className="plus-menu-item-icon">
           <Globe size={16} />
@@ -152,6 +155,7 @@ export function PlusActionMenu({
         onClick={handleToggleFusion}
         role="menuitemcheckbox"
         aria-checked={fusionMode}
+        aria-label={t('chat.fusionMode', { defaultValue: 'Modo Fusion' })}
       >
         <span className="plus-menu-item-icon">
           <Dna size={16} />

@@ -13,7 +13,7 @@
     "orientationAngle": 0,
     "orientationType": "landscape-primary"
   },
-  "timestamp": "2026-10-18T00:25:09.043Z",
+  "timestamp": "2026-10-18T02:08:30.695Z",
   "url": "http://localhost:5173/",
   "toolOptions": {
     "reporter": "v1"
@@ -4686,7 +4686,7 @@
           ],
           "none": [],
           "impact": null,
-          "html": "<button type=\"button\" class=\"btn btn-primary\" style=\"width: 100%; padding: 12px 16px; font-weight: 600;\">Got it</button>",
+          "html": "<button type=\"button\" class=\"btn btn-primary\" style=\"width: 100%; padding: 12px 16px; font-weight: 600; color: var(--hairline);\">Got it</button>",
           "target": [
             ".btn-primary"
           ]
@@ -5179,7 +5179,7 @@
           "all": [],
           "none": [],
           "impact": null,
-          "html": "<button type=\"button\" class=\"btn btn-primary\" style=\"width: 100%; padding: 12px 16px; font-weight: 600;\">Got it</button>",
+          "html": "<button type=\"button\" class=\"btn btn-primary\" style=\"width: 100%; padding: 12px 16px; font-weight: 600; color: var(--hairline);\">Got it</button>",
           "target": [
             ".btn-primary"
           ]
@@ -5213,7 +5213,7 @@
               "data": null,
               "relatedNodes": [
                 {
-                  "html": "<h1 class=\"welcome-greeting\">What are you thinking about today, Test User?</h1>",
+                  "html": "<h1 class=\"welcome-greeting\">Welcome back, Test User!</h1>",
                   "target": [
                     "h1"
                   ]
@@ -5567,7 +5567,7 @@
           "all": [],
           "none": [],
           "impact": null,
-          "html": "<h1 class=\"welcome-greeting\">What are you thinking about today, Test User?</h1>",
+          "html": "<h1 class=\"welcome-greeting\">Welcome back, Test User!</h1>",
           "target": [
             "h1"
           ]
@@ -5943,7 +5943,7 @@
           "all": [],
           "none": [],
           "impact": null,
-          "html": "<h1 class=\"welcome-greeting\">What are you thinking about today, Test User?</h1>",
+          "html": "<h1 class=\"welcome-greeting\">Welcome back, Test User!</h1>",
           "target": [
             "h1"
           ]
@@ -6045,7 +6045,7 @@
           "all": [],
           "none": [],
           "impact": null,
-          "html": "<h1 class=\"welcome-greeting\">What are you thinking about today, Test User?</h1>",
+          "html": "<h1 class=\"welcome-greeting\">Welcome back, Test User!</h1>",
           "target": [
             "h1"
           ]
@@ -7213,7 +7213,7 @@
           "all": [],
           "none": [],
           "impact": null,
-          "html": "<button type=\"button\" class=\"btn btn-primary\" style=\"width: 100%; padding: 12px 16px; font-weight: 600;\">Got it</button>",
+          "html": "<button type=\"button\" class=\"btn btn-primary\" style=\"width: 100%; padding: 12px 16px; font-weight: 600; color: var(--hairline);\">Got it</button>",
           "target": [
             ".btn-primary"
           ]
@@ -9039,7 +9039,7 @@
           "all": [],
           "none": [],
           "impact": null,
-          "html": "<h1 class=\"welcome-greeting\">What are you thinking about today, Test User?</h1>",
+          "html": "<h1 class=\"welcome-greeting\">Welcome back, Test User!</h1>",
           "target": [
             "h1"
           ]
@@ -11279,7 +11279,7 @@
           "all": [],
           "none": [],
           "impact": null,
-          "html": "<button type=\"button\" class=\"btn btn-primary\" style=\"width: 100%; padding: 12px 16px; font-weight: 600;\">Got it</button>",
+          "html": "<button type=\"button\" class=\"btn btn-primary\" style=\"width: 100%; padding: 12px 16px; font-weight: 600; color: var(--hairline);\">Got it</button>",
           "target": [
             ".btn-primary"
           ]
@@ -11506,9 +11506,9 @@
             {
               "id": "color-contrast",
               "data": {
-                "fgColor": "#ffffff",
+                "fgColor": "#e5e5e5",
                 "bgColor": "#cc785c",
-                "contrastRatio": 3.27,
+                "contrastRatio": 2.6,
                 "fontSize": "11.3pt (15px)",
                 "fontWeight": "normal",
                 "messageKey": null,
@@ -11516,24 +11516,24 @@
               },
               "relatedNodes": [
                 {
-                  "html": "<button type=\"button\" class=\"btn btn-primary\" style=\"width: 100%; padding: 12px 16px; font-weight: 600;\">Got it</button>",
+                  "html": "<button type=\"button\" class=\"btn btn-primary\" style=\"width: 100%; padding: 12px 16px; font-weight: 600; color: var(--hairline);\">Got it</button>",
                   "target": [
                     ".btn-primary"
                   ]
                 }
               ],
               "impact": "serious",
-              "message": "Element has insufficient color contrast of 3.27 (foreground color: #ffffff, background color: #cc785c, font size: 11.3pt (15px), font weight: normal). Expected contrast ratio of 4.5:1"
+              "message": "Element has insufficient color contrast of 2.6 (foreground color: #e5e5e5, background color: #cc785c, font size: 11.3pt (15px), font weight: normal). Expected contrast ratio of 4.5:1"
             }
           ],
           "all": [],
           "none": [],
           "impact": "serious",
-          "html": "<button type=\"button\" class=\"btn btn-primary\" style=\"width: 100%; padding: 12px 16px; font-weight: 600;\">Got it</button>",
+          "html": "<button type=\"button\" class=\"btn btn-primary\" style=\"width: 100%; padding: 12px 16px; font-weight: 600; color: var(--hairline);\">Got it</button>",
           "target": [
             ".btn-primary"
           ],
-          "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 3.27 (foreground color: #ffffff, background color: #cc785c, font size: 11.3pt (15px), font weight: normal). Expected contrast ratio of 4.5:1"
+          "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 2.6 (foreground color: #e5e5e5, background color: #cc785c, font size: 11.3pt (15px), font weight: normal). Expected contrast ratio of 4.5:1"
         }
       ]
     },
