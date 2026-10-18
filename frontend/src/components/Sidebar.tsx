@@ -12,6 +12,7 @@ import type { Artifact, Project } from '../types'
 import { InstallPWAButton } from './InstallPWAButton'
 import { Button } from './ui/Button'
 import { NexusLogoIcon } from './NexusLogoIcon'
+import { UiLevelSelector } from './ui/UiLevelSelector'
 import { useHaptic } from '../hooks/useHaptic'
 import { MOBILE_BREAKPOINT, useIsMobile } from '../hooks/useIsMobile'
 
@@ -725,6 +726,7 @@ export function Sidebar() {
                 <PanelLeftClose size={17} strokeWidth={1.75} />
               </Button>
             </div>
+            {sidebarOpen && <UiLevelSelector />}
           </>
         )}
       </div>

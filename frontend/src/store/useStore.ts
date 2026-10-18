@@ -193,6 +193,7 @@ interface AppState {
   streamingContent: string
   isStreaming: boolean
   isGenerating: boolean
+  uiLevel: 'simple' | 'intermediate' | 'advanced'
   processSteps: ProcessStep[]
   processStartedAt: number | null
   lastCacheHit: { type: string; similarity: number } | null
@@ -276,6 +277,7 @@ interface AppState {
   setAutoRouteDecision: (decision: AutoRouteDecisionInfo | null) => void
   setStreaming: (v: boolean) => void
   setIsGenerating: (v: boolean) => void
+  setUiLevel: (level: 'simple' | 'intermediate' | 'advanced') => void
   addUserMessage: (content: string, attachments?: Attachment[]) => void
   setConversationCreated: (id: string, title: string) => void
   setLastCacheHit: (hit: { type: string; similarity: number } | null) => void
@@ -568,6 +570,7 @@ export const useStore = create<AppState>((set, get) => ({
   streamingContent: '',
   isStreaming: false,
   isGenerating: false,
+  uiLevel: (typeof window !== 'undefined' ? (localStorage.getItem('nexuslocal_ui_level') as 'simple' | 'intermediate' | 'advanced') : null) || 'simple',
   processSteps: [],
   processStartedAt: null,
   lastCacheHit: null,
@@ -1480,6 +1483,7 @@ export const useStore = create<AppState>((set, get) => ({
     ...(v ? {} : { processSteps: s.processSteps.map((step) => step.status === 'running' ? { ...step, status: 'failed' as const } : step), processStartedAt: null }),
   })),
   setIsGenerating: (v: boolean) => set({ isGenerating: v }),
+  setUiLevel: (level) => { localStorage.setItem('nexuslocal_ui_level', level); set({ uiLevel: level }) },
 
   setLastCacheHit: (hit) => set({ lastCacheHit: hit }),
 

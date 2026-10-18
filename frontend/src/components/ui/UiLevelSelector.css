@@ -1,0 +1,31 @@
+.ui-level-selector {
+  display: flex;
+  gap: 4px;
+  padding: 8px 12px;
+  margin-top: 4px;
+  border-top: 1px solid var(--hairline);
+}
+
+.ui-level-btn {
+  flex: 1;
+  padding: 6px 8px;
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.ui-level-btn:hover {
+  background: var(--surface-raised);
+  color: var(--text-primary);
+}
+
+.ui-level-btn.active {
+  background: var(--primary);
+  color: var(--on-primary);
+  border-color: var(--primary);
+}
