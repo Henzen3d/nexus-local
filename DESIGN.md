@@ -451,7 +451,7 @@ Chat components use semantic CSS variables from `frontend/src/index.css` (`--can
 | Selection accent | `--selection` | `#4b8cff` |
 
 ### Shared color rules
-- The coral `--primary` (`#cc785c`) is reserved for primary brand actions. Use `--selection` for selected items, keyboard focus, and active-state indicators; do not use coral for selection.
+- The coral `--primary` (`#cc785c`) is reserved for primary brand actions (send button, upgrade CTA). Use `--selection` (`#4b8cff` dark / `#2563eb` light) for selected items, toggles ativos (switches com fundo azul vívido e thumb branco), checkmarks de seleção ("V" check em busca web, modelos, provedores, filtros), keyboard focus, and active-state indicators; do not use coral for selection or active toggles.
 - Elevation stays subtle: sidebar, canvas, composer, and popovers use neighboring neutral tones rather than cream panels or bright shadows.
 - Keep body text at WCAG AA contrast where practical; muted labels must remain legible in both themes.
 - **Default mode:** system preference / last user choice (`localStorage`).
@@ -838,6 +838,8 @@ When photography is used (rare — mostly testimonials), avatars crop to perfect
 6. **Memory:** on by default globally (`profile.memory_enabled`); **no** per-conversation brain control in the composer.
 7. **Providers UI:** when no API key → primary CTA `+ Obter API Key`; with key → `Sincronizar Modelos`. External-link icon beside provider name. Free tier badge = green dot that expands on hover to "Oferece Modelos Free".
 8. **Fusion:** icon button adjacent to provider selector; custom tooltip "Ativar/Desativar modo Fusion"; icon optically centered in 32×32 target.
+9. **Toggles / Switches ativos em azul vívido:** Toggles e switches (Roteamento Inteligente no ModelSelector, Modo Fusion no menu de ações, switches de ferramentas, conectores e preferências) utilizam trilho com fundo azul vibrante (`var(--selection)`: `#3b82f6` dark / `#2563eb` light) quando ativos (`.active`), com thumb circular branco puro (`#ffffff`). Trilho inativo permanece neutro discreto (`#343432` dark / `#d1d5db` light).
+10. **Checkmarks de Seleção ("V" Check) em azul:** Todos os indicadores `✓` de seleção ativa (Busca na web no menu de ações, modelos selecionados no ModelSelector, provedores selecionados em flyouts e bottom sheets, modos de operação Rápido/Pensativo, opções de esforço, etc.) devem obrigatoriamente utilizar a cor azul de seleção `var(--selection)` (`#4b8cff` dark / `#2563eb` light). É estritamente proibido o uso de terracota (`var(--primary)`) para indicar seleção, checkboxes ou checkmarks ativos, reservando o terracota unicamente para CTAs de ação de marca.
 
 ### Component CSS classes (implementation map)
 | Spec | CSS / component |
@@ -853,6 +855,8 @@ When photography is used (rare — mostly testimonials), avatars crop to perfect
 | Free badge | `.tier-badge.free`, `.tier-badge-dot`, `.tier-badge-label` |
 | Provider key link | `.provider-key-link` |
 | Fusion header | `.fusion-header-btn` |
+| Toggles / Switches | `.nexus-toggle-switch`, `.nexus-toggle-thumb`, `.toggle-btn.on` |
+| Checkmarks de Seleção | `.plus-menu-check`, `.nl-sheet-option-check`, `.simple-mode-item-check`, `.cockpit-model-right svg` |
 
 ## Chat Message Hierarchy (v-beta-3)
 

@@ -340,7 +340,7 @@ export function ModelSelector({ compact = false, className = '' }: ModelSelector
           }}
         >
           <span>{t('chat.allProvidersOption', { defaultValue: 'Todos os provedores' })}</span>
-          {providerFilter === 'all' && <Check size={14} color="var(--primary)" strokeWidth={2.5} />}
+          {providerFilter === 'all' && <Check size={14} color="var(--selection)" strokeWidth={2.5} />}
         </button>
         {availableProviders.map((prov) => {
           const isSelected = providerFilter === prov
@@ -357,7 +357,7 @@ export function ModelSelector({ compact = false, className = '' }: ModelSelector
               }}
             >
               <span>{provName}</span>
-              {isSelected && <Check size={14} color="var(--primary)" strokeWidth={2.5} />}
+              {isSelected && <Check size={14} color="var(--selection)" strokeWidth={2.5} />}
             </button>
           )
         })}
@@ -428,7 +428,7 @@ export function ModelSelector({ compact = false, className = '' }: ModelSelector
                 </div>
               </div>
               <div className="cockpit-model-right">
-                {isSelected && <Check size={15} color="var(--primary)" strokeWidth={2.5} />}
+                {isSelected && <Check size={15} color="var(--selection)" strokeWidth={2.5} />}
               </div>
             </button>
           )
@@ -504,7 +504,7 @@ export function ModelSelector({ compact = false, className = '' }: ModelSelector
                 </div>
                 <div className="cockpit-effort-item-right">
                   {isSelected && (
-                    <Check size={15} color="var(--primary)" strokeWidth={2.5} />
+                    <Check size={15} color="var(--selection)" strokeWidth={2.5} />
                   )}
                 </div>
               </button>
@@ -610,7 +610,7 @@ export function ModelSelector({ compact = false, className = '' }: ModelSelector
                 </div>
               </div>
               <div className="cockpit-model-right">
-                {isSelected && <Check size={15} color="var(--primary)" strokeWidth={2.5} />}
+                {isSelected && <Check size={15} color="var(--selection)" strokeWidth={2.5} />}
               </div>
             </button>
           )

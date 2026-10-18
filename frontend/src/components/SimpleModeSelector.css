@@ -156,7 +156,7 @@
 .simple-mode-item-check {
   display: flex;
   align-items: center;
-  color: var(--primary);
+  color: var(--selection);
   margin-top: 4px;
   flex-shrink: 0;
 }

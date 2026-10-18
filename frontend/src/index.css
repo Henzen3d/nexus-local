@@ -2768,11 +2768,17 @@ html[data-theme="dark"] .input-card.compact-mode {
 .web-search-toggle {
   border: 1px solid var(--hairline) !important;
   border-radius: var(--radius-sm) !important;
+  transition: all 0.15s ease;
 }
 .web-search-toggle.active {
-  border-color: rgba(93, 184, 166, 0.4) !important;
-  background: rgba(93, 184, 166, 0.12) !important;
-  color: var(--cyan) !important;
+  border-color: rgba(37, 99, 235, 0.45) !important;
+  background: rgba(37, 99, 235, 0.12) !important;
+  color: var(--selection, #2563eb) !important;
+}
+html[data-theme="dark"] .web-search-toggle.active {
+  border-color: rgba(75, 140, 255, 0.45) !important;
+  background: rgba(75, 140, 255, 0.16) !important;
+  color: var(--selection, #4b8cff) !important;
 }
 
 /* Botão enviar — compacto, circular, seta ↑ (Claude / ChatGPT / DeepSeek) */
@@ -3032,7 +3038,7 @@ html[data-theme="light"] .plus-menu-item:hover:not(:disabled) {
 }
 
 .plus-menu-check {
-  color: var(--primary);
+  color: var(--selection, #2563eb);
 }
 
 .plus-menu-divider {
@@ -3051,10 +3057,10 @@ html[data-theme="light"] .plus-menu-item:hover:not(:disabled) {
   width: 38px;
   height: 22px;
   border-radius: 9999px;
-  background: var(--surface-cream-strong, #3a3935);
-  border: 1px solid var(--hairline, rgba(255, 255, 255, 0.12));
+  background: rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   cursor: pointer;
-  transition: background-color 0.2s ease, border-color 0.2s ease;
+  transition: background-color 0.2s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.2s ease;
   flex-shrink: 0;
   padding: 0;
 }
@@ -3064,9 +3070,17 @@ html[data-theme="dark"] .nexus-toggle-switch {
   border-color: rgba(255, 255, 255, 0.15);
 }
 
-.nexus-toggle-switch.active {
-  background: #3b82f6;
-  border-color: #2563eb;
+html[data-theme="light"] .nexus-toggle-switch {
+  background: #d1d5db;
+  border-color: #9ca3af;
+}
+
+/* Fundo ativo azul estilo Claude.ai com especificidade reforcada */
+.nexus-toggle-switch.active,
+html[data-theme="dark"] .nexus-toggle-switch.active,
+html[data-theme="light"] .nexus-toggle-switch.active {
+  background: var(--selection, #2563eb) !important;
+  border-color: var(--selection, #2563eb) !important;
 }
 
 .nexus-toggle-thumb {
@@ -3081,8 +3095,11 @@ html[data-theme="dark"] .nexus-toggle-switch {
   transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.nexus-toggle-switch.active .nexus-toggle-thumb {
+.nexus-toggle-switch.active .nexus-toggle-thumb,
+html[data-theme="dark"] .nexus-toggle-switch.active .nexus-toggle-thumb,
+html[data-theme="light"] .nexus-toggle-switch.active .nexus-toggle-thumb {
   transform: translateX(16px);
+  background: #ffffff;
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -4306,7 +4323,7 @@ html[data-theme="light"] .nl-sheet-overlay {
 }
 
 .nl-sheet-option-check {
-  color: var(--primary);
+  color: var(--selection, #2563eb);
   flex-shrink: 0;
 }
 
@@ -4573,7 +4590,16 @@ html[data-theme="light"] .nl-sheet-overlay {
   white-space: nowrap;
   border: 1px solid;
 }
-.toggle-btn.on { background: rgba(204,120,92,0.10); border-color: rgba(204,120,92,0.20); color: var(--primary); }
+.toggle-btn.on {
+  background: rgba(37, 99, 235, 0.12);
+  border-color: rgba(37, 99, 235, 0.32);
+  color: var(--selection, #2563eb);
+}
+html[data-theme="dark"] .toggle-btn.on {
+  background: rgba(75, 140, 255, 0.15);
+  border-color: rgba(75, 140, 255, 0.38);
+  color: var(--selection, #4b8cff);
+}
 .toggle-btn.off { background: var(--surface-cream-strong); border-color: var(--hairline); color: var(--muted); }
 
 /* Models grid */
@@ -13545,8 +13571,8 @@ html[data-theme="light"] .model-option-provider-tag {
 }
 
 .nexus-ui-option-card[data-selected] .nexus-ui-option-card__indicator {
-  background: var(--primary);
-  border-color: var(--primary);
+  background: var(--selection, #2563eb);
+  border-color: var(--selection, #2563eb);
 }
 
 .nexus-ui-option-card__content {
