@@ -112,7 +112,7 @@ export function MemoryOnboarding() {
           type="button"
           className="btn btn-primary"
           onClick={dismiss}
-          style={{ width: '100%', padding: '12px 16px', fontWeight: 600 }}
+          style={{ width: '100%', padding: '12px 16px', fontWeight: 600, color: 'var(--hairline)' }}
         >
           {t('memory.onboardingCta')}
         </button>

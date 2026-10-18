@@ -152,11 +152,9 @@ export function MessageInput({ onSend, onStop, isEmpty = false }: Props) {
     return () => session.abort()
   }, [talk.epoch, talk.phase, showToast, t])
 
-  // Foco no input ao montar ou trocar de conversa no desktop
+  // Foco no input ao montar ou trocar de conversa
   useEffect(() => {
-    if (!isMobile) {
-      textareaRef.current?.focus()
-    }
+    textareaRef.current?.focus()
   }, [activeConversationId, isMobile])
 
   // Retorna foco quando o streaming termina no desktop
@@ -167,7 +165,7 @@ export function MessageInput({ onSend, onStop, isEmpty = false }: Props) {
     const wasBusy = prevIsStreaming.current || prevEnhancing.current
     const isBusy = isStreaming || enhancing
 
-    if (wasBusy && !isBusy && !isMobile) {
+    if (wasBusy && !isBusy) {
       const timer = setTimeout(() => {
         textareaRef.current?.focus()
       }, 50)
@@ -176,7 +174,7 @@ export function MessageInput({ onSend, onStop, isEmpty = false }: Props) {
 
     prevIsStreaming.current = isStreaming
     prevEnhancing.current = enhancing
-  }, [isStreaming, enhancing, isMobile])
+  }, [isStreaming, enhancing])
 
   useEffect(() => {
     api.getEnhancerConfig().then((cfg) => {

@@ -83,6 +83,7 @@ export function PlusActionMenu({
         className="plus-menu-item touch-target"
         onClick={handleAttachClick}
         role="menuitem"
+        aria-label={t('chat.addFiles', { defaultValue: 'Adicionar arquivos ou fotos' })}
       >
         <span className="plus-menu-item-icon">
           <Paperclip size={16} />
