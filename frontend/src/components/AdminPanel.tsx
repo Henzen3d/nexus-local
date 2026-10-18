@@ -30,6 +30,7 @@ import { CreateFamilyUser, FamilyUserKeys } from './FamilyAccountTools'
 import { canShowRegisterUserButton } from '../lib/registerUser'
 import { playSpeech, saveTtsPrefs, useTtsPrefs } from '../lib/ttsPlayer'
 import { useIsMobile } from '../hooks/useIsMobile'
+import { UiLevelSelector } from './ui/UiLevelSelector'
 
 type Tab = 'general' | 'providers' | 'router' | 'rankings' | 'cache' | 'tools' | 'users' | 'dashboard' | 'memory' | 'proactive' | 'logs'
 
@@ -51,13 +52,14 @@ function AdminPanelMobile() {
   const {
     setView, loadModels, user, theme, setTheme, chatFont, setChatFont,
     hapticFeedback, setHapticFeedback, displayName, fullName, occupation,
-    customInstructions, setProfile, logout, locale, setLocale
+    customInstructions, setProfile, logout, locale, setLocale,
+    uiLevel, setUiLevel, selectModel,
   } = useStore()
   const tts = useTtsPrefs()
 
   // Stack navigation state
   const [screenStack, setScreenStack] = useState<string[]>(['list'])
-  const [activeBottomSheet, setActiveBottomSheet] = useState<'theme' | 'font' | 'language' | null>(null)
+  const [activeBottomSheet, setActiveBottomSheet] = useState<'theme' | 'font' | 'language' | 'uiLevel' | null>(null)
   const handleLocaleChange = (code: string) => {
     setLocale(code)
     i18n.changeLanguage(code)
@@ -412,6 +414,19 @@ function AdminPanelMobile() {
             {/* General Preferences Section */}
             <div className="settings-card-section">
               <div className="settings-card-section-title">{t("settings.appearancePrefs")}</div>
+
+              <div className="settings-list-item" onClick={() => { setActiveBottomSheet('uiLevel'); triggerHaptic() }}>
+                <div className="settings-list-item-left">
+                  <Sliders size={16} className="settings-list-item-icon" />
+                  <div>
+                    <span className="settings-list-item-label">{t("settings.uiLevelTitle")}</span>
+                    <span className="settings-list-item-subtitle">
+                      {uiLevel === 'simple' ? t('settings.uiLevelSimpleTitle') : uiLevel === 'intermediate' ? t('settings.uiLevelIntermediateTitle') : t('settings.uiLevelAdvancedTitle')}
+                    </span>
+                  </div>
+                </div>
+                <ChevronRight size={16} />
+              </div>
               
               <div className="settings-list-item" onClick={() => { setActiveBottomSheet('theme'); triggerHaptic() }}>
                 <div className="settings-list-item-left">
@@ -1664,6 +1679,48 @@ function AdminPanelMobile() {
           </div>
         </div>
       )}
+
+      {/* UiLevel Bottom Sheet */}
+      {activeBottomSheet === 'uiLevel' && (
+        <div className="bottom-sheet-overlay" onClick={() => setActiveBottomSheet(null)}>
+          <div className="bottom-sheet-container" onClick={(e) => e.stopPropagation()}>
+            <div className="bottom-sheet-header">
+              <span className="bottom-sheet-title">{t('settings.uiLevelTitle')}</span>
+              <button 
+                style={{ padding: '6px', borderRadius: '50%', background: 'var(--surface-soft)' }} 
+                onClick={() => setActiveBottomSheet(null)}
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="bottom-sheet-options">
+              {[
+                { id: 'simple' as const, label: t('settings.uiLevelSimpleTitle'), desc: t('settings.uiLevelSimpleDesc') },
+                { id: 'intermediate' as const, label: t('settings.uiLevelIntermediateTitle'), desc: t('settings.uiLevelIntermediateDesc') },
+                { id: 'advanced' as const, label: t('settings.uiLevelAdvancedTitle'), desc: t('settings.uiLevelAdvancedDesc') },
+              ].map((opt) => (
+                <div 
+                  key={opt.id}
+                  className={`bottom-sheet-option ${uiLevel === opt.id ? 'active' : ''}`}
+                  onClick={() => {
+                    setUiLevel(opt.id)
+                    if (opt.id === 'simple') selectModel('auto', 'auto')
+                    triggerHaptic(15)
+                    setActiveBottomSheet(null)
+                  }}
+                  style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '4px' }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                    <span style={{ fontWeight: 600 }}>{opt.label}</span>
+                    {uiLevel === opt.id && <Check size={16} />}
+                  </div>
+                  <span style={{ fontSize: '12px', color: 'var(--muted)' }}>{opt.desc}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </>
   )
 }
@@ -2412,6 +2469,14 @@ function AdminPanelDesktop() {
 
                 <h3 style={{ borderBottom: '1px solid var(--hairline)', paddingBottom: '8px', marginBottom: '16px' }}>{t("settings.preferences")}</h3>
                 
+                <div style={{ marginBottom: '24px' }}>
+                  <div style={{ marginBottom: '12px' }}>
+                    <h4 style={{ fontSize: '14px', fontWeight: 500, color: 'var(--ink)', margin: 0 }}>{t("settings.uiLevelTitle")}</h4>
+                    <p style={{ fontSize: '12px', color: 'var(--muted)', margin: '4px 0 0 0' }}>{t("settings.uiLevelDesc")}</p>
+                  </div>
+                  <UiLevelSelector />
+                </div>
+
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
                   <div>
                     <h4 style={{ fontSize: '14px', fontWeight: 500, color: 'var(--ink)' }}>{t("settings.appearance")}</h4>

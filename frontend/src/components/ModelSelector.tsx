@@ -68,6 +68,7 @@ export function ModelSelector({ compact = false, className = '' }: ModelSelector
     reasoningEffortAuto,
     setReasoningEffortForModel,
     setReasoningEffortAuto,
+    uiLevel,
   } = useStore()
 
   const [open, setOpen] = useState(false)
@@ -552,25 +553,28 @@ export function ModelSelector({ compact = false, className = '' }: ModelSelector
 
       <div className="cockpit-divider" />
 
-      {/* Opção 2: Seletor de Provedor com Seta Lateral */}
-      <button
-        type="button"
-        className={`cockpit-nav-row ${activeSubmenu === 'providers' ? 'active' : ''}`}
-        onClick={() => setActiveSubmenu(activeSubmenu === 'providers' ? 'none' : 'providers')}
-        onMouseEnter={() => !isMobile && setActiveSubmenu('providers')}
-        aria-expanded={activeSubmenu === 'providers'}
-      >
-        <div className="cockpit-nav-left">
-          <Server size={14} strokeWidth={1.8} className="cockpit-row-icon" />
-          <span>{t('chat.providerLabel', { defaultValue: 'Provedor' })}</span>
-        </div>
-        <div className="cockpit-nav-right">
-          <span className="cockpit-nav-value">{currentProviderLabel}</span>
-          <ChevronRight size={14} className="cockpit-nav-chevron" />
-        </div>
-      </button>
-
-      <div className="cockpit-divider" />
+      {/* Opção 2: Seletor de Provedor com Seta Lateral (Apenas Avançado) */}
+      {uiLevel === 'advanced' && (
+        <>
+          <button
+            type="button"
+            className={`cockpit-nav-row ${activeSubmenu === 'providers' ? 'active' : ''}`}
+            onClick={() => setActiveSubmenu(activeSubmenu === 'providers' ? 'none' : 'providers')}
+            onMouseEnter={() => !isMobile && setActiveSubmenu('providers')}
+            aria-expanded={activeSubmenu === 'providers'}
+          >
+            <div className="cockpit-nav-left">
+              <Server size={14} strokeWidth={1.8} className="cockpit-row-icon" />
+              <span>{t('chat.providerLabel', { defaultValue: 'Provedor' })}</span>
+            </div>
+            <div className="cockpit-nav-right">
+              <span className="cockpit-nav-value">{currentProviderLabel}</span>
+              <ChevronRight size={14} className="cockpit-nav-chevron" />
+            </div>
+          </button>
+          <div className="cockpit-divider" />
+        </>
+      )}
 
       {/* Opção 3: Os 3 Principais Modelos */}
       <div className="cockpit-model-list-compact" role="listbox">
@@ -613,8 +617,8 @@ export function ModelSelector({ compact = false, className = '' }: ModelSelector
         })}
       </div>
 
-      {/* Opção 3.5: Linha de Esforço (se aplicável ao modelo ativo ou Auto) */}
-      {activeEffortControl !== 'none' && (
+      {/* Opção 3.5: Linha de Esforço (Apenas Avançado, se aplicável ao modelo ativo ou Auto) */}
+      {uiLevel === 'advanced' && activeEffortControl !== 'none' && (
         <>
           <div className="cockpit-divider" />
           {activeEffortControl === 'always_on' ? (

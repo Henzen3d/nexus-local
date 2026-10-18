@@ -49,6 +49,7 @@ export function MessageInput({ onSend, onStop, isEmpty = false }: Props) {
     composerPrefill,
     setComposerPrefill,
     noteTyping,
+    uiLevel,
   } = useStore()
 
   // Pré-preenchimento vindo do assistente proativo ("Quero saber mais")
@@ -485,7 +486,7 @@ export function MessageInput({ onSend, onStop, isEmpty = false }: Props) {
               </div>
 
               <div className="composer-actions-right">
-                {isEmpty && <ModelSelector />}
+                {isEmpty && uiLevel !== 'simple' && <ModelSelector />}
                 {renderRightActions()}
               </div>
             </div>
@@ -508,9 +509,11 @@ export function MessageInput({ onSend, onStop, isEmpty = false }: Props) {
               defaultValue: 'O NexusLocal é uma IA e pode cometer erros. Por favor, verifique as fontes citadas.',
             })}
           </span>
-          <div className="input-footer-model">
-            <ModelSelector compact />
-          </div>
+          {uiLevel !== 'simple' && (
+            <div className="input-footer-model">
+              <ModelSelector compact />
+            </div>
+          )}
         </div>
       )}
     </div>

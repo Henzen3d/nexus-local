@@ -2,6 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert'
 import fs from 'node:fs'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import {
   isExpression,
   validateExpression,
@@ -12,10 +13,9 @@ import {
 } from './safeMath.ts'
 
 test('expressions parity against backend shared fixtures', () => {
-  const fixturePath = new URL(
-    '../../../../backend/tests/fixtures/expressions.json',
-    import.meta.url
-  ).pathname
+  const fixturePath = fileURLToPath(
+    new URL('../../../../backend/tests/fixtures/expressions.json', import.meta.url)
+  )
   const fixtureContent = fs.readFileSync(fixturePath, 'utf-8')
   const cases = JSON.parse(fixtureContent)
 
