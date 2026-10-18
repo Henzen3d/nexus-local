@@ -192,6 +192,7 @@ interface AppState {
   messages: Message[]
   streamingContent: string
   isStreaming: boolean
+  isGenerating: boolean
   processSteps: ProcessStep[]
   processStartedAt: number | null
   lastCacheHit: { type: string; similarity: number } | null
@@ -1476,7 +1477,7 @@ export const useStore = create<AppState>((set, get) => ({
 
   setStreaming: (v: boolean) => set((s) => ({
     isStreaming: v,
-    ...(v ? {} : { processSteps: s.processSteps.map((step) => step.status === 'running' ? { ...step, status: 'failed' as const } : step), processStartedAt: null })),
+    ...(v ? {} : { processSteps: s.processSteps.map((step) => step.status === 'running' ? { ...step, status: 'failed' as const } : step), processStartedAt: null }),
   })),
   setIsGenerating: (v: boolean) => set({ isGenerating: v }),
 
