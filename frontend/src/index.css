@@ -16247,3 +16247,68 @@ html[data-theme="light"] .model-option-provider-tag {
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
+
+/* ════════════════════════════════════════════════════════════
+   Mobile scroll fix — prevents horizontal overflow
+   ════════════════════════════════════════════════════════════ */
+@media (max-width: 768px) {
+  .message {
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .message-body {
+    max-width: 100%;
+    overflow-wrap: break-word;
+    word-break: break-word;
+  }
+
+  .assistant-response {
+    max-width: 100%;
+    overflow-wrap: break-word;
+  }
+
+  /* Code blocks: scroll interno apenas se necessário */
+  .code-block {
+    max-width: 100%;
+    overflow: hidden;
+  }
+
+  .code-block-pre {
+    max-width: 100%;
+    overflow-x: auto;
+  }
+
+  .code-block-pre code {
+    max-width: 100%;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  /* Tables: scroll interno */
+  .message-body table {
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+
+  /* Preformatted text */
+  .message-body pre {
+    max-width: 100%;
+    overflow-x: auto;
+  }
+
+  .message-body pre code {
+    max-width: 100%;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  /* Inline code */
+  .message-body code:not([class*="language-"]) {
+    max-width: 100%;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+}
