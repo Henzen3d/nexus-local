@@ -28,7 +28,29 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_MAX_FAILOVER_ATTEMPTS = 3
+_MAX_FAILOVER_ATTEMPTS = 4
+DEFAULT_FAILOVER_TOTAL_BUDGET_SECONDS = 45.0
+DEFAULT_STREAM_TTFT_TIMEOUT_SECONDS = 25.0
+MIN_RETRY_BUDGET_SECONDS = 3.0
+
+
+async def get_failover_total_budget(db) -> float:
+    """Carrega o orçamento de tempo total para o turno/failover da tabela meta ou env."""
+    import os
+    env_budget = os.getenv("FAILOVER_TOTAL_BUDGET_SECONDS")
+    if env_budget:
+        try:
+            return float(env_budget)
+        except ValueError:
+            pass
+    try:
+        async with db.execute("SELECT value FROM meta WHERE key = 'failover_total_budget_sec'") as cur:
+            row = await cur.fetchone()
+        if row and row[0]:
+            return float(row[0])
+    except Exception:
+        pass
+    return DEFAULT_FAILOVER_TOTAL_BUDGET_SECONDS
 
 
 async def check_cache(
@@ -114,7 +136,24 @@ async def stream_from_llm(
     stream_started = False
     next_failover_reason = "rate_limit"
 
+    total_budget = await get_failover_total_budget(db)
+    turn_start_time = time.monotonic()
+
     while attempt < _MAX_FAILOVER_ATTEMPTS and not success:
+        now = time.monotonic()
+        elapsed = now - turn_start_time
+        remaining_budget = total_budget - elapsed
+        if remaining_budget < MIN_RETRY_BUDGET_SECONDS:
+            logger.warning(
+                "Orçamento total de failover esgotado (%.1fs decorridos de %.1fs) após %d tentativas.",
+                elapsed, total_budget, attempt
+            )
+            await ws.send_json({
+                "type": "error",
+                "message": "Tempo limite de resposta esgotado após tentativas de failover.",
+            })
+            return None
+
         attempt += 1
         full_response = ""
 
@@ -261,7 +300,14 @@ async def stream_from_llm(
                     current_model_id,
                 )
                 attempted_model_ids.add(current_model_id)
-                if attempt == _MAX_FAILOVER_ATTEMPTS:
+                elapsed_after = time.monotonic() - turn_start_time
+                if (total_budget - elapsed_after) < MIN_RETRY_BUDGET_SECONDS:
+                    await ws.send_json({
+                        "type": "error",
+                        "message": "Tempo limite de resposta esgotado após tentativas de failover.",
+                    })
+                    return None
+                if attempt >= _MAX_FAILOVER_ATTEMPTS:
                     await ws.send_json({
                         "type": "error",
                         "message": "Todos os provedores elegíveis atingiram o limite temporário de requisições por minuto (RPM). Aguarde alguns instantes.",
@@ -269,7 +315,20 @@ async def stream_from_llm(
                     return None
                 continue
 
-            STREAM_TTFT_TIMEOUT_SECONDS = 25.0
+            elapsed_now = time.monotonic() - turn_start_time
+            remaining_budget = total_budget - elapsed_now
+            if remaining_budget < MIN_RETRY_BUDGET_SECONDS:
+                logger.warning(
+                    "Orçamento total de failover esgotado (%.1fs decorridos de %.1fs) antes do início do stream.",
+                    elapsed_now, total_budget
+                )
+                await ws.send_json({
+                    "type": "error",
+                    "message": "Tempo limite de resposta esgotado após tentativas de failover.",
+                })
+                return None
+
+            stream_ttft_timeout = max(0.5, min(DEFAULT_STREAM_TTFT_TIMEOUT_SECONDS, remaining_budget))
             stream_start_time = time.perf_counter()
             first_token_received = False
             token_buffer: list[str] = []
@@ -286,11 +345,11 @@ async def stream_from_llm(
             try:
                 stream_iter = provider.stream_chat(model=model_name, messages=history, **stream_kwargs).__aiter__()
 
-                # Aguarda o primeiro token com prazo limite de TTFT (25s para acomodar prefill/reasoning)
+                # Aguarda o primeiro token com prazo limite de TTFT (clamped ao restante do orçamento de tempo)
                 try:
                     first_token = await asyncio.wait_for(
                         stream_iter.__anext__(),
-                        timeout=STREAM_TTFT_TIMEOUT_SECONDS,
+                        timeout=stream_ttft_timeout,
                     )
                     first_token_received = True
                     if request_context and hasattr(request_context, "record_phase"):
@@ -301,8 +360,8 @@ async def stream_from_llm(
                     await flush_tokens()
                 except (asyncio.TimeoutError, TimeoutError):
                     logger.warning(
-                        "TTFT Timeout (%ss excedido) no provedor '%s' (modelo '%s'). Acionando failover cascade precoce.",
-                        STREAM_TTFT_TIMEOUT_SECONDS, current_provider_id, current_model_id,
+                        "TTFT Timeout (%.1fs excedido) no provedor '%s' (modelo '%s'). Acionando failover cascade precoce.",
+                        stream_ttft_timeout, current_provider_id, current_model_id,
                     )
                     attempted_model_ids.add(current_model_id)
                     # Libera a conexão HTTP do pool imediatamente (não espera o GC finalizar o generator)
@@ -310,10 +369,16 @@ async def stream_from_llm(
                         await stream_iter.aclose()
                     except Exception:
                         pass
-                    if attempt >= _MAX_FAILOVER_ATTEMPTS:
+                    elapsed_after = time.monotonic() - turn_start_time
+                    if (total_budget - elapsed_after) < MIN_RETRY_BUDGET_SECONDS or attempt >= _MAX_FAILOVER_ATTEMPTS:
+                        msg = (
+                            "Tempo limite de resposta esgotado após tentativas de failover."
+                            if (total_budget - elapsed_after) < MIN_RETRY_BUDGET_SECONDS
+                            else f"Tempo limite de resposta excedido ({int(stream_ttft_timeout)}s) no modelo '{current_model_id}'."
+                        )
                         await ws.send_json({
                             "type": "error",
-                            "message": f"Tempo limite de resposta excedido ({int(STREAM_TTFT_TIMEOUT_SECONDS)}s) no modelo '{current_model_id}'.",
+                            "message": msg,
                         })
                         return None
                     continue
@@ -355,10 +420,16 @@ async def stream_from_llm(
                 )
                 attempted_model_ids.add(current_model_id)
                 next_failover_reason = "silent_failure"
-                if attempt >= _MAX_FAILOVER_ATTEMPTS:
+                elapsed_after = time.monotonic() - turn_start_time
+                if (total_budget - elapsed_after) < MIN_RETRY_BUDGET_SECONDS or attempt >= _MAX_FAILOVER_ATTEMPTS:
+                    msg = (
+                        "Tempo limite de resposta esgotado após tentativas de failover."
+                        if (total_budget - elapsed_after) < MIN_RETRY_BUDGET_SECONDS
+                        else f"O modelo '{current_model_id}' não retornou nenhuma resposta após o failover."
+                    )
                     await ws.send_json({
                         "type": "error",
-                        "message": f"O modelo '{current_model_id}' não retornou nenhuma resposta após o failover.",
+                        "message": msg,
                     })
                     return None
                 continue
@@ -409,10 +480,16 @@ async def stream_from_llm(
             await token_bucket_manager.on_rate_limit(current_provider_id)
             attempted_model_ids.add(current_model_id)
             await mark_model_exhausted(current_model_id, db, e.retry_after, str(e))
-            if attempt >= _MAX_FAILOVER_ATTEMPTS:
+            elapsed_after = time.monotonic() - turn_start_time
+            if (total_budget - elapsed_after) < MIN_RETRY_BUDGET_SECONDS or attempt >= _MAX_FAILOVER_ATTEMPTS:
+                msg = (
+                    "Tempo limite de resposta esgotado após tentativas de failover."
+                    if (total_budget - elapsed_after) < MIN_RETRY_BUDGET_SECONDS
+                    else "Limite de tentativas de failover excedido. O modelo está esgotado."
+                )
                 await ws.send_json({
                     "type": "error",
-                    "message": "Limite de tentativas de failover excedido. O modelo está esgotado.",
+                    "message": msg,
                 })
                 return None
             continue
@@ -498,6 +575,13 @@ async def stream_from_llm(
                 await mark_model_exhausted(current_model_id, db, retry_after=3600, error_msg=error_msg)
                 attempted_model_ids.add(current_model_id)
                 next_failover_reason = "rate_limit"
+                elapsed_after = time.monotonic() - turn_start_time
+                if (total_budget - elapsed_after) < MIN_RETRY_BUDGET_SECONDS:
+                    await ws.send_json({
+                        "type": "error",
+                        "message": "Tempo limite de resposta esgotado após tentativas de failover.",
+                    })
+                    return None
                 if not first_token_received and attempt < _MAX_FAILOVER_ATTEMPTS:
                     continue
                 await ws.send_json({
@@ -508,6 +592,14 @@ async def stream_from_llm(
 
             from backend.database import check_and_deactivate_model
             await check_and_deactivate_model(current_model_id, error_msg, db)
+
+            elapsed_after = time.monotonic() - turn_start_time
+            if (total_budget - elapsed_after) < MIN_RETRY_BUDGET_SECONDS:
+                await ws.send_json({
+                    "type": "error",
+                    "message": "Tempo limite de resposta esgotado após tentativas de failover.",
+                })
+                return None
 
             if not first_token_received and attempt < _MAX_FAILOVER_ATTEMPTS:
                 logger.warning(
