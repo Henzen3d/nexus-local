@@ -324,8 +324,8 @@ async def resolve_project_context(
         return None, system_instruction
 
     try:
+        from backend.projects.context_assembler import assemble_project_context
         from backend.projects.context_builder import (
-            build_project_context,
             compute_safe_input_tokens,
             estimate_tokens,
         )
@@ -370,7 +370,7 @@ async def resolve_project_context(
             provider_id=provider_id,
         )
 
-        pctx = await build_project_context(
+        pctx = await assemble_project_context(
             project_id=active_project_id,
             query=user_message or "",
             exclude_conversation_id=conversation_id,

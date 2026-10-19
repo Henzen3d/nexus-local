@@ -269,9 +269,27 @@ async def get_project(project_id: str, current_user: dict = Depends(get_current_
             "last_synthesized_at": mem[1] if mem else None,
             "scope_badge": "Apenas você",
         }
+        from backend.projects.context_assembler import calculate_project_capacity
+        data["capacity"] = await calculate_project_capacity(project_id)
         return data
     finally:
         await db.close()
+
+
+@router.get("/{project_id}/capacity")
+async def get_project_capacity(
+    project_id: str,
+    limit: Optional[int] = None,
+    current_user: dict = Depends(get_current_user),
+):
+    db = await get_db()
+    try:
+        await _get_owned_project(db, project_id, current_user["id"])
+    finally:
+        await db.close()
+    from backend.projects.context_assembler import calculate_project_capacity
+    return await calculate_project_capacity(project_id, capacity_limit=limit or 131072)
+
 
 
 @router.patch("/{project_id}")
@@ -396,26 +414,38 @@ async def list_project_files(project_id: str, current_user: dict = Depends(get_c
     try:
         await _get_owned_project(db, project_id, current_user["id"])
         async with db.execute(
-            """SELECT id, filename, mime_type, size_bytes, index_status, index_error,
+            """SELECT id, filename, mime_type, size_bytes, file_size, file_hash,
+                      token_count, extracted_text, index_status, index_error,
                       indexed_at, created_at
                FROM project_files WHERE project_id = ?
                ORDER BY created_at DESC""",
             (project_id,),
         ) as cur:
             rows = await cur.fetchall()
-        return [
-            {
+        
+        files_out = []
+        for r in rows:
+            size_b = r[3] or 0
+            f_size = r[4] or size_b
+            f_hash = r[5]
+            tok = r[6] or 0
+            ext_txt = r[7] or ""
+            if tok == 0 and ext_txt:
+                tok = max(1, len(ext_txt) // 4)
+            files_out.append({
                 "id": r[0],
                 "filename": r[1],
                 "mime_type": r[2],
-                "size_bytes": r[3],
-                "index_status": r[4],
-                "index_error": r[5],
-                "indexed_at": r[6],
-                "created_at": r[7],
-            }
-            for r in rows
-        ]
+                "size_bytes": f_size,
+                "file_size": f_size,
+                "file_hash": f_hash,
+                "token_count": tok,
+                "index_status": r[8],
+                "index_error": r[9],
+                "indexed_at": r[10],
+                "created_at": r[11],
+            })
+        return files_out
     finally:
         await db.close()
 
@@ -436,8 +466,23 @@ async def upload_project_file(
         if size_bytes > 25 * 1024 * 1024:
             raise HTTPException(status_code=400, detail="Arquivo excede 25MB.")
 
-        file_id = f"pf_{uuid.uuid4().hex}"
+        file_hash = hashlib.sha256(contents).hexdigest()
         safe_name = os.path.basename(file.filename or "arquivo.txt")
+
+        # Deduplicação por hash SHA-256 ou por nome + tamanho no mesmo projeto
+        async with db.execute(
+            """SELECT id, filename FROM project_files
+               WHERE project_id = ? AND (file_hash = ? OR (filename = ? AND size_bytes = ?))""",
+            (project_id, file_hash, safe_name, size_bytes),
+        ) as cur:
+            duplicate = await cur.fetchone()
+        if duplicate:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Arquivo duplicado: já existe um arquivo com o mesmo conteúdo ou nome ('{duplicate[1]}') neste projeto.",
+            )
+
+        file_id = f"pf_{uuid.uuid4().hex}"
         dest_dir = STORAGE_ROOT / project_id
         dest_dir.mkdir(parents=True, exist_ok=True)
         dest_path = dest_dir / f"{file_id}_{safe_name}"
@@ -447,20 +492,19 @@ async def upload_project_file(
         extracted = None
         try:
             from backend.attachments.extractors import extract_text
-
-
             extracted = await extract_text(str(dest_path), mime)
         except Exception as e:
             # Keep file; indexing will mark error if no text
             logger.warning("[projects] extract warning:", exc_info=e)
 
+        token_count = max(1, len(extracted) // 4) if (extracted and extracted.strip()) else 0
         rel_path = str(dest_path.relative_to(Path(__file__).resolve().parent.parent))
 
         await db.execute(
             """INSERT INTO project_files
                (id, project_id, filename, mime_type, raw_path, extracted_text,
-                size_bytes, index_status)
-               VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')""",
+                size_bytes, file_size, file_hash, token_count, index_status)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')""",
             (
                 file_id,
                 project_id,
@@ -469,6 +513,9 @@ async def upload_project_file(
                 rel_path.replace("\\", "/"),
                 extracted,
                 size_bytes,
+                size_bytes,
+                file_hash,
+                token_count,
             ),
         )
         await db.execute(
@@ -487,6 +534,9 @@ async def upload_project_file(
         "filename": safe_name,
         "mime_type": mime,
         "size_bytes": size_bytes,
+        "file_size": size_bytes,
+        "file_hash": file_hash,
+        "token_count": token_count,
         "index_status": "pending",
     }
 

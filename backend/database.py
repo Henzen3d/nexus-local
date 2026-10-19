@@ -449,6 +449,9 @@ CREATE TABLE IF NOT EXISTS project_files (
     raw_path        TEXT,
     extracted_text  TEXT,
     size_bytes      INTEGER DEFAULT 0,
+    file_size       INTEGER DEFAULT 0,
+    file_hash       TEXT,
+    token_count     INTEGER DEFAULT 0,
     index_status    TEXT DEFAULT 'pending',  -- pending | indexing | ready | error
     index_error     TEXT,
     indexed_at      TEXT,
@@ -481,6 +484,7 @@ CREATE TABLE IF NOT EXISTS project_memory (
     id                   TEXT PRIMARY KEY,
     project_id           TEXT NOT NULL UNIQUE REFERENCES projects(id) ON DELETE CASCADE,
     summary_text         TEXT DEFAULT '',
+    token_count          INTEGER DEFAULT 0,
     last_synthesized_at  TEXT,
     source_chat_ids      TEXT DEFAULT '[]'
 );
@@ -1131,6 +1135,54 @@ async def init_db():
             await db.commit()
         except Exception as e:
             logger.error("[database migration] erro ao migrar prompt do juiz:", exc_info=e)
+
+        # Incremental migrations: Projects schema enhancement (F1)
+        for col, col_def in [
+            ("file_hash", "TEXT"),
+            ("file_size", "INTEGER DEFAULT 0"),
+            ("token_count", "INTEGER DEFAULT 0"),
+        ]:
+            try:
+                await db.execute(f"SELECT {col} FROM project_files LIMIT 1")
+            except aiosqlite.OperationalError:
+                await db.execute(f"ALTER TABLE project_files ADD COLUMN {col} {col_def}")
+                await db.commit()
+
+        try:
+            await db.execute("SELECT token_count FROM project_memory LIMIT 1")
+        except aiosqlite.OperationalError:
+            await db.execute("ALTER TABLE project_memory ADD COLUMN token_count INTEGER DEFAULT 0")
+            await db.commit()
+
+        try:
+            await db.execute("SELECT description FROM projects LIMIT 1")
+        except aiosqlite.OperationalError:
+            await db.execute("ALTER TABLE projects ADD COLUMN description TEXT DEFAULT ''")
+            await db.commit()
+
+        # Indexes for incremental columns (must be after column migrations)
+        try:
+            await db.execute("CREATE INDEX IF NOT EXISTS idx_project_files_hash ON project_files(project_id, file_hash)")
+            await db.commit()
+        except Exception:
+            pass
+
+        # Backfill file_size and token_count for existing project_files
+        try:
+            await db.execute(
+                """UPDATE project_files 
+                   SET file_size = size_bytes 
+                   WHERE (file_size IS NULL OR file_size = 0) AND size_bytes > 0"""
+            )
+            await db.execute(
+                """UPDATE project_files 
+                   SET token_count = MAX(1, LENGTH(extracted_text) / 4) 
+                   WHERE (token_count IS NULL OR token_count = 0) 
+                     AND extracted_text IS NOT NULL AND LENGTH(extracted_text) > 0"""
+            )
+            await db.commit()
+        except Exception as e:
+            logger.warning("[database migration] backfill project_files warning: %s", e)
 
         # Load context registry
         registry_path = Path(__file__).parent / "data" / "context_registry.json"
