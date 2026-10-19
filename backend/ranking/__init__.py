@@ -21,4 +21,9 @@ from .smart_router import (
     classify_intent,
     select_best_model,
 )
+from .classifier import (
+    classify_failure,
+    extract_suggested_model,
+    FailureClassification,
+)
 

@@ -3935,12 +3935,12 @@ async def check_and_deactivate_model(model_id: str, error_msg: str, db=None) -> 
 
         if reason == "model_deprecated":
             if suggested:
-                logger.warning(
+                logger.info(
                     "🚫 Model '%s' automatically disabled (model_deprecated). Suggested replacement: '%s'. Error: %s",
                     model_id, suggested, error_msg
                 )
             else:
-                logger.warning(
+                logger.info(
                     "🚫 Model '%s' automatically disabled (model_deprecated): %s",
                     model_id, error_msg
                 )
