@@ -9,11 +9,15 @@ import uuid
 import hashlib
 from pathlib import Path
 from typing import Optional
+import mimetypes
+from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, Query, Response
+from fastapi.responses import FileResponse
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, ConfigDict, Field
 
-from backend.auth import get_current_user
+from backend.auth import get_current_user, _decode_claims, _current_role
 from backend.database import get_db
 from backend.projects.indexer import schedule_file_index, index_project_file
 from backend.projects.memory_job import maybe_synthesize_project_memory, upsert_project_memory
@@ -22,6 +26,34 @@ from backend.logging_config import get_logger
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
+
+_INLINE_SAFE_MIME = {
+    "image/png", "image/jpeg", "image/webp", "image/gif", "image/svg+xml",
+    "application/pdf", "text/plain", "text/csv", "text/markdown", "text/html",
+    "application/json", "application/javascript",
+}
+
+security_optional = HTTPBearer(auto_error=False)
+
+async def _get_user_with_token(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security_optional),
+    token: Optional[str] = Query(default=None),
+) -> dict:
+    raw_token = None
+    if credentials:
+        raw_token = credentials.credentials
+    elif token:
+        raw_token = token
+    if not raw_token:
+        raise HTTPException(status_code=401, detail="Token de autenticação não fornecido.")
+    user = _decode_claims(raw_token)
+    if not user:
+        raise HTTPException(status_code=401, detail="Token inválido ou expirado.")
+    role = await _current_role(user["id"])
+    if role is None:
+        raise HTTPException(status_code=401, detail="Usuário não encontrado.")
+    user["role"] = role
+    return user
 
 STORAGE_ROOT = Path(__file__).resolve().parent.parent / "storage" / "project_files"
 STORAGE_ROOT.mkdir(parents=True, exist_ok=True)
@@ -440,6 +472,7 @@ async def list_project_files(project_id: str, current_user: dict = Depends(get_c
                 "file_size": f_size,
                 "file_hash": f_hash,
                 "token_count": tok,
+                "extracted_text": ext_txt,
                 "index_status": r[8],
                 "index_error": r[9],
                 "indexed_at": r[10],
@@ -589,6 +622,105 @@ async def reindex_all_files(
 
     ok = sum(1 for r in results if r.get("ok"))
     return {"ok": ok == len(results), "total": len(results), "indexed": ok, "results": results}
+
+
+@router.get("/{project_id}/files/{file_id}/content")
+async def get_project_file_content(
+    project_id: str,
+    file_id: str,
+    user: dict = Depends(_get_user_with_token),
+):
+    """
+    Serve raw file content for inline browser viewing (PDFs, images, text) or download.
+    """
+    db = await get_db()
+    try:
+        await _get_owned_project(db, project_id, user["id"])
+        async with db.execute(
+            """SELECT filename, mime_type, raw_path, extracted_text
+               FROM project_files
+               WHERE id = ? AND project_id = ?""",
+            (file_id, project_id),
+        ) as cur:
+            row = await cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Arquivo não encontrado.")
+        filename, mime_type, raw_path, extracted_text = row
+
+        fp = None
+        if raw_path:
+            p = Path(raw_path)
+            if not p.is_absolute():
+                p = Path(__file__).resolve().parent.parent / raw_path
+            if p.exists() and p.is_file():
+                fp = p
+
+        safe_name = quote(filename or "document")
+        if fp:
+            media_type = mime_type or mimetypes.guess_type(filename)[0] or "application/octet-stream"
+            disposition = "inline" if media_type in _INLINE_SAFE_MIME else "attachment"
+            headers = {
+                "Content-Disposition": f"{disposition}; filename*=UTF-8''{safe_name}",
+                "X-Content-Type-Options": "nosniff",
+            }
+            return FileResponse(str(fp), media_type=media_type, headers=headers)
+
+        if extracted_text:
+            return Response(
+                content=extracted_text,
+                media_type="text/plain; charset=utf-8",
+                headers={"Content-Disposition": f"inline; filename*=UTF-8''{safe_name}.txt"},
+            )
+
+        raise HTTPException(status_code=404, detail="Conteúdo do arquivo não disponível no disco.")
+    finally:
+        await db.close()
+
+
+@router.get("/{project_id}/files/{file_id}/details")
+async def get_project_file_details(
+    project_id: str,
+    file_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Retrieve full file metadata including extracted text for modal previewing.
+    """
+    db = await get_db()
+    try:
+        await _get_owned_project(db, project_id, current_user["id"])
+        async with db.execute(
+            """SELECT id, filename, mime_type, size_bytes, file_size, file_hash,
+                      token_count, extracted_text, index_status, index_error,
+                      indexed_at, created_at
+               FROM project_files
+               WHERE id = ? AND project_id = ?""",
+            (file_id, project_id),
+        ) as cur:
+            r = await cur.fetchone()
+        if not r:
+            raise HTTPException(status_code=404, detail="Arquivo não encontrado.")
+        f_size = r[4] or r[3] or 0
+        tok = r[6] or 0
+        ext_txt = r[7] or ""
+        if tok == 0 and ext_txt:
+            tok = max(1, len(ext_txt) // 4)
+        return {
+            "id": r[0],
+            "filename": r[1],
+            "mime_type": r[2],
+            "size_bytes": f_size,
+            "file_size": f_size,
+            "file_hash": r[5],
+            "token_count": tok,
+            "extracted_text": ext_txt,
+            "index_status": r[8],
+            "index_error": r[9],
+            "indexed_at": r[10],
+            "created_at": r[11],
+        }
+    finally:
+        await db.close()
 
 
 @router.delete("/{project_id}/files/{file_id}")

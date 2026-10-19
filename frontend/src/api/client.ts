@@ -574,6 +574,12 @@ export const api = {
   },
   deleteProjectFile: (projectId: string, fileId: string) =>
     fetchJSON<{ ok: boolean }>(`/projects/${projectId}/files/${fileId}`, { method: 'DELETE' }),
+  getProjectFileContentUrl: (projectId: string, fileId: string) => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('nexuslocal_token') : null
+    return `/api/projects/${projectId}/files/${fileId}/content${token ? `?token=${encodeURIComponent(token)}` : ''}`
+  },
+  getProjectFileDetails: (projectId: string, fileId: string) =>
+    fetchJSON<import('../types').ProjectFile>(`/projects/${projectId}/files/${fileId}/details`),
   listProjectChats: (id: string) =>
     fetchJSON<import('../types').ProjectChat[]>(`/projects/${id}/chats`),
   createProjectChat: (projectId: string, data?: { title?: string; model_id?: string; provider_id?: string }) =>

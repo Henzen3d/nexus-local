@@ -848,10 +848,12 @@ export interface ProjectFile {
   file_size?: number
   file_hash?: string | null
   token_count?: number
+  token_estimate?: number
   index_status: 'pending' | 'indexing' | 'ready' | 'error' | string
   index_error?: string | null
   indexed_at?: string | null
   created_at?: string
+  extracted_text?: string | null
 }
 
 export interface ProjectChat {

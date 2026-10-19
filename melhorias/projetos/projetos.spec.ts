@@ -216,6 +216,26 @@ test.describe('PROJETOS - Paridade Completa Claude.ai (E2E)', () => {
 
         // 3. Files: /api/projects/:pid/files and /api/projects/:pid/files/:fid
         if (parts[1] === 'files') {
+          if (parts[3] === 'details') {
+            const f = (projectFiles[pid] || []).find((x) => x.id === parts[2])
+            return route.fulfill({
+              status: 200,
+              contentType: 'application/json',
+              body: JSON.stringify({
+                ...(f || {}),
+                extracted_text: f?.extracted_text || '# Manual de Motores ESP32\n\nEspecificações de corrente: 1.2A máximo.',
+              }),
+            })
+          }
+
+          if (parts[3] === 'content') {
+            return route.fulfill({
+              status: 200,
+              contentType: 'text/plain',
+              body: '# Raw Manual de Motores ESP32',
+            })
+          }
+
           if (parts[2] && method === 'DELETE') {
             const fid = parts[2]
             if (projectFiles[pid]) {
@@ -640,5 +660,62 @@ test.describe('PROJETOS - Paridade Completa Claude.ai (E2E)', () => {
     await page.screenshot({
       path: path.join(SCREENSHOTS_DIR, '08-responsivo-mobile.png'),
     })
+  })
+
+  test('Ações do Composer (+) e Inspeção de Documentos do Contexto', async ({ page }) => {
+    // Adiciona um arquivo mock ao proj-esp32
+    projectFiles['proj-esp32'] = [
+      {
+        id: 'file-doc-01',
+        project_id: 'proj-esp32',
+        filename: 'manual_motores.pdf',
+        file_size: 15400,
+        token_count: 850,
+        index_status: 'ready',
+        created_at: new Date().toISOString(),
+        extracted_text: '# Manual de Motores ESP32\n\nEspecificações de corrente: 1.2A máximo.',
+      },
+    ]
+
+    await page.goto(`${BASE}/?project=proj-esp32`)
+    await page.waitForTimeout(600)
+
+    // 1. Valida que o seletor de provedor NÃO está duplicado (apenas ModelSelector está presente)
+    await expect(page.locator('.claude-composer-selectors .provider-selector')).toHaveCount(0)
+    await expect(page.locator('.claude-composer-selectors .model-selector, .claude-composer-selectors .simple-mode-container')).toHaveCount(1)
+
+    // 2. Valida o botão "+" do composer abrindo o menu de ações PlusActionMenu
+    const plusBtn = page.locator('.claude-composer .composer-plus-btn')
+    await expect(plusBtn).toBeVisible()
+    await plusBtn.click()
+
+    const plusMenu = page.locator('.plus-menu-popover, .composer-tools-sheet')
+    await expect(plusMenu).toBeVisible()
+    await expect(plusMenu).toContainText(/Adicionar arquivos ou fotos|Add files/)
+    await expect(plusMenu).toContainText(/Melhorar prompt|Enhance/)
+    await expect(plusMenu).toContainText(/Busca na web|Web search/)
+
+    // Fecha o menu de ações
+    await page.keyboard.press('Escape')
+    await page.waitForTimeout(300)
+
+    // 3. Valida a inspeção e abertura de documentos anexados ao clicar no card de contexto
+    const fileCard = page.locator('.claude-context-card').first()
+    await expect(fileCard).toBeVisible()
+    await expect(fileCard).toContainText('manual_motores.pdf')
+
+    // Clica no card para abrir o modal de inspeção
+    await fileCard.click()
+
+    const fileModal = page.locator('.claude-file-modal')
+    await expect(fileModal).toBeVisible()
+    await expect(fileModal.locator('.claude-file-modal-title')).toHaveText('manual_motores.pdf')
+    await expect(fileModal.locator('.claude-file-text-content')).toContainText('Manual de Motores ESP32')
+    await expect(fileModal.locator('a', { hasText: /Abrir original|Open original/ })).toBeVisible()
+    await expect(fileModal.locator('a', { hasText: /Baixar|Download/ })).toBeVisible()
+
+    // Fecha o modal
+    await fileModal.locator('.claude-icon-btn').click()
+    await expect(fileModal).not.toBeVisible()
   })
 })

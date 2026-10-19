@@ -2,7 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Archive,
   ArrowLeft,
+  Check,
   ChevronDown,
+  Copy,
+  Download,
+  ExternalLink,
   FileText,
   Folder,
   Info,
@@ -21,9 +25,9 @@ import {
 import { useTranslation } from 'react-i18next'
 import { useStore } from '../store/useStore'
 import { api } from '../api/client'
-import { ProviderSelector } from './ProviderSelector'
 import { ModelSelector } from './ModelSelector'
 import { SimpleModeSelector } from './SimpleModeSelector'
+import { PlusActionMenu } from './PlusActionMenu'
 import type { Project, ProjectChat, ProjectFile, ProjectCapacity } from '../types'
 
 type SortKey = 'updated' | 'name' | 'created'
@@ -436,6 +440,12 @@ function ProjectDetailPage({
   const [loadError, setLoadError] = useState(false)
   const [isListening, setIsListening] = useState(false)
 
+  const [selectedFile, setSelectedFile] = useState<ProjectFile | null>(null)
+  const [fileTextCopied, setFileTextCopied] = useState(false)
+  const [loadingFileContent, setLoadingFileContent] = useState(false)
+  const [fileContentText, setFileContentText] = useState<string | null>(null)
+  const [enhancing, setEnhancing] = useState(false)
+
   const fileInputRef = useRef<HTMLInputElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -542,6 +552,37 @@ function ProjectDetailPage({
     const q = fileSearchQuery.trim().toLowerCase()
     return files.filter((f) => f.filename.toLowerCase().includes(q))
   }, [files, fileSearchQuery])
+
+  // Carrega texto extraído detalhado ao selecionar arquivo, se ainda não estiver presente
+  useEffect(() => {
+    if (!selectedFile) {
+      setFileContentText(null)
+      setFileTextCopied(false)
+      return
+    }
+    if (selectedFile.extracted_text) {
+      setFileContentText(selectedFile.extracted_text)
+      return
+    }
+    let active = true
+    setLoadingFileContent(true)
+    api
+      .getProjectFileDetails(projectId, selectedFile.id)
+      .then((details) => {
+        if (active) {
+          setFileContentText(details.extracted_text || '')
+        }
+      })
+      .catch(() => {
+        if (active) setFileContentText('')
+      })
+      .finally(() => {
+        if (active) setLoadingFileContent(false)
+      })
+    return () => {
+      active = false
+    }
+  }, [projectId, selectedFile])
 
   if (!project) {
     return (
@@ -794,6 +835,36 @@ function ProjectDetailPage({
     }
   }
 
+  const handleCopyFileText = async () => {
+    if (!fileContentText) return
+    try {
+      await navigator.clipboard.writeText(fileContentText)
+      setFileTextCopied(true)
+      setTimeout(() => setFileTextCopied(false), 2000)
+      showToast(t('common.copied', { defaultValue: 'Copiado para a área de transferência' }), 'success')
+    } catch {
+      showToast(t('common.error', { defaultValue: 'Erro ao copiar' }), 'error')
+    }
+  }
+
+  const handleEnhancePrompt = async () => {
+    const trimmed = composer.trim()
+    if (!trimmed || enhancing) return
+    setEnhancing(true)
+    try {
+      const res = await api.enhancePrompt(trimmed)
+      if (res.enhanced_prompt) {
+        setComposer(res.enhanced_prompt)
+        showToast(t('chat.enhanceSuccess', { defaultValue: 'Prompt melhorado!' }), 'success')
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : t('chat.enhanceError', { defaultValue: 'Erro ao melhorar prompt' })
+      showToast(msg, 'error')
+    } finally {
+      setEnhancing(false)
+    }
+  }
+
   const hasMemory = !!(project.memory?.summary_text || '').trim()
   const hasInstructions = !!(project.instructions || '').trim()
 
@@ -922,24 +993,21 @@ function ProjectDetailPage({
                   }}
                 />
                 <div className="claude-composer-toolbar">
-                  <button
-                    type="button"
-                    className="claude-composer-plus"
-                    title={t('projects.attachHint', { defaultValue: 'Anexar (na conversa)' })}
-                    onClick={() => startProjectChat()}
-                  >
-                    <Plus size={18} strokeWidth={1.8} />
-                  </button>
+                  <PlusActionMenu
+                    onOpenFilePicker={() => fileInputRef.current?.click()}
+                    onEnhance={handleEnhancePrompt}
+                    enhancing={enhancing}
+                    hasText={!!composer.trim()}
+                    enhancerReady={true}
+                    disabled={false}
+                  />
                   <div className="claude-composer-right">
-                    {/* Seletores respeitando o uiLevel */}
+                    {/* Seletor unificado de modelos (com provedores e esforço embutidos no flyout) */}
                     <div className="claude-composer-selectors">
                       {uiLevel === 'simple' ? (
                         <SimpleModeSelector compact />
                       ) : (
-                        <>
-                          <ProviderSelector />
-                          <ModelSelector compact />
-                        </>
+                        <ModelSelector compact />
                       )}
                     </div>
 
@@ -1253,7 +1321,20 @@ function ProjectDetailPage({
                   {filteredFiles.map((f) => {
                     const ext = getExtensionBadge(f.filename)
                     return (
-                      <div key={f.id} className="claude-context-card" title={f.filename}>
+                      <div
+                        key={f.id}
+                        className="claude-context-card"
+                        title={t('projects.viewDocumentHint', { defaultValue: `Clique para visualizar ${f.filename}` })}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => setSelectedFile(f)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault()
+                            setSelectedFile(f)
+                          }
+                        }}
+                      >
                         <div className="context-card-top">
                           <span className="context-file-name">{f.filename}</span>
                           <button
@@ -1357,6 +1438,134 @@ function ProjectDetailPage({
                   {t('common.save', { defaultValue: 'Salvar' })}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Visualização e Inspeção de Arquivo Anexado */}
+      {selectedFile && (
+        <div className="claude-modal-overlay" onClick={() => setSelectedFile(null)}>
+          <div
+            className="claude-modal claude-file-modal"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+          >
+            <div className="claude-file-modal-header">
+              <div className="claude-file-modal-title-wrap">
+                <span className="context-ext-badge">{getExtensionBadge(selectedFile.filename)}</span>
+                <h3 className="claude-file-modal-title" title={selectedFile.filename}>
+                  {selectedFile.filename}
+                </h3>
+              </div>
+              <button
+                type="button"
+                className="claude-icon-btn"
+                onClick={() => setSelectedFile(null)}
+                aria-label={t('common.close', { defaultValue: 'Fechar' })}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="claude-file-modal-meta">
+              <span>{formatBytes(selectedFile.file_size || selectedFile.size_bytes)}</span>
+              <span>•</span>
+              <span>~{selectedFile.token_estimate ?? selectedFile.token_count ?? 0} tokens</span>
+              <span>•</span>
+              <span>
+                {selectedFile.index_status === 'indexed'
+                  ? t('projects.indexed', { defaultValue: 'Indexado' })
+                  : selectedFile.index_status === 'indexing'
+                  ? t('projects.indexing', { defaultValue: 'Indexando…' })
+                  : selectedFile.index_status === 'error'
+                  ? t('projects.indexError', { defaultValue: 'Erro na indexação' })
+                  : t('projects.pending', { defaultValue: 'Pendente' })}
+              </span>
+            </div>
+
+            <div className="claude-file-modal-body">
+              {/* Se for PDF, renderiza visualizador embutido */}
+              {selectedFile.filename.toLowerCase().endsWith('.pdf') ? (
+                <iframe
+                  className="claude-file-pdf-frame"
+                  src={api.getProjectFileContentUrl(projectId, selectedFile.id)}
+                  title={selectedFile.filename}
+                />
+              ) : /\.(png|jpe?g|webp|gif|svg)$/i.test(selectedFile.filename) ? (
+                <img
+                  className="claude-file-img-preview"
+                  src={api.getProjectFileContentUrl(projectId, selectedFile.id)}
+                  alt={selectedFile.filename}
+                />
+              ) : null}
+
+              {/* Texto extraído do arquivo (usado pelo contexto do LLM) */}
+              <div className="claude-file-text-box">
+                <div className="claude-file-text-box-head">
+                  <strong>{t('projects.extractedTextLabel', { defaultValue: 'Texto Extraído (Injetado no Modelo):' })}</strong>
+                  {fileContentText && (
+                    <button
+                      type="button"
+                      className="claude-link-btn"
+                      onClick={handleCopyFileText}
+                      title={t('common.copy', { defaultValue: 'Copiar' })}
+                    >
+                      {fileTextCopied ? (
+                        <>
+                          <Check size={12} /> {t('common.copied', { defaultValue: 'Copiado!' })}
+                        </>
+                      ) : (
+                        <>
+                          <Copy size={12} /> {t('common.copyText', { defaultValue: 'Copiar texto' })}
+                        </>
+                      )}
+                    </button>
+                  )}
+                </div>
+
+                {loadingFileContent ? (
+                  <p className="placeholder-text">{t('common.loading', { defaultValue: 'Carregando conteúdo…' })}</p>
+                ) : fileContentText ? (
+                  <pre className="claude-file-text-content">{fileContentText}</pre>
+                ) : (
+                  <p className="placeholder-text">
+                    {selectedFile.index_status === 'indexing'
+                      ? t('projects.extractingText', { defaultValue: 'Extraindo e indexando texto…' })
+                      : t('projects.noExtractedText', { defaultValue: 'Nenhum texto extraído disponível para este arquivo.' })}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="claude-file-modal-footer">
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <a
+                  href={api.getProjectFileContentUrl(projectId, selectedFile.id)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="claude-btn-ghost sm"
+                  style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                >
+                  <ExternalLink size={14} /> {t('projects.openInNewTab', { defaultValue: 'Abrir original' })}
+                </a>
+                <a
+                  href={api.getProjectFileContentUrl(projectId, selectedFile.id)}
+                  download={selectedFile.filename}
+                  className="claude-btn-ghost sm"
+                  style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                >
+                  <Download size={14} /> {t('common.download', { defaultValue: 'Baixar' })}
+                </a>
+              </div>
+              <button
+                type="button"
+                className="claude-btn-primary sm"
+                onClick={() => setSelectedFile(null)}
+              >
+                {t('common.close', { defaultValue: 'Fechar' })}
+              </button>
             </div>
           </div>
         </div>
