@@ -246,23 +246,36 @@ async def _get_next_best_ranked_model(
     ) as cur:
         rows = await cur.fetchall()
 
-    from backend.ranking.token_bucket import token_bucket_manager
+    from backend.ranking.eligibility import check_candidate_eligibility
     candidate_fallback = None
     same_canonical_fallback = None
 
     for row in rows:
         mid, pid, dname, _ = row
-        if mid not in all_excluded:
-            # Se for o mesmo canonical_model_id de um modelo já tentado/excluído
-            if canonical_model_id(mid) in excluded_canonicals:
-                if same_canonical_fallback is None:
+        # Gate duro de elegibilidade (filtra breaker OPEN, quarentenas, cooldowns canônicos, saturação de quota)
+        elig = await check_candidate_eligibility(
+            model_id=mid,
+            provider_id=pid,
+            db=db,
+            excluded_model_ids=all_excluded,
+            excluded_canonicals=excluded_canonicals,
+            allow_same_canonical_last_resort=False,
+        )
+        if not elig:
+            if elig.reason == "same_canonical_already_failed" and same_canonical_fallback is None:
+                elig_last = await check_candidate_eligibility(
+                    model_id=mid,
+                    provider_id=pid,
+                    db=db,
+                    excluded_model_ids=all_excluded,
+                    excluded_canonicals=None,
+                    allow_same_canonical_last_resort=True,
+                )
+                if elig_last:
                     same_canonical_fallback = (mid, pid, dname)
-                continue
+            continue
 
-            if token_bucket_manager.is_provider_available(pid):
-                return mid, pid, dname
-            elif candidate_fallback is None:
-                candidate_fallback = (mid, pid, dname)
+        return mid, pid, dname
 
     return candidate_fallback or same_canonical_fallback
 
@@ -334,10 +347,17 @@ async def resolve_model_with_failover(
                 skip_reason = "missing_key"
             failover_reason = skip_reason
 
-    # ── Verificação do modelo solicitado ─────────────────────────────────────
-    quota = await get_quota_status(requested_model_id, db)
+    # ── Verificação do modelo solicitado via Gate de Elegibilidade ───────────
+    from backend.ranking.eligibility import check_candidate_eligibility
+    requested_eligibility = await check_candidate_eligibility(
+        model_id=requested_model_id,
+        provider_id=provider_id or "",
+        db=db,
+        excluded_model_ids=set(exclude_model_ids or []),
+        excluded_canonicals=None,
+    )
 
-    if quota["status"] == "available" and not force_skip:
+    if requested_eligibility and not force_skip:
         # Verifica cota preemptiva ANTES de tentar a chamada real
         from backend.ranking.quota_tracker import get_quota_health, QuotaHealth
         health = await get_quota_health(requested_model_id, db)
@@ -368,12 +388,12 @@ async def resolve_model_with_failover(
 
     # Modelo esgotado ou desabilitado — verificar se failover está habilitado
     if not failover_enabled:
-        status_label = skip_reason if force_skip else quota["status"]
+        status_label = requested_eligibility.reason if not requested_eligibility else (skip_reason if force_skip else "unavailable")
         raise NoAvailableModelError(
             f"Modelo '{requested_model_id}' está indisponível ({status_label}) e failover automático está desabilitado."
         )
 
-    status_label = skip_reason if force_skip else quota["status"]
+    status_label = requested_eligibility.reason if not requested_eligibility else (skip_reason if force_skip else "unavailable")
     logger.warning(
         f"Modelo '{requested_model_id}' está {status_label}. "
         f"Iniciando cascata de failover..."
@@ -400,17 +420,25 @@ async def resolve_model_with_failover(
             if member_model_id == requested_model_id or (exclude_model_ids and member_model_id in exclude_model_ids):
                 continue
 
-            from backend.ranking.token_bucket import token_bucket_manager
-            if not token_bucket_manager.is_provider_available(member_provider_id):
-                continue
-
-            member_quota = await get_quota_status(member_model_id, db)
-            if member_quota["status"] == "available":
-                # Se for o mesmo canonical_model_id de um modelo já tentado/excluído,
-                # guarda como fallback para evitar alternar provedores do mesmo modelo base
-                # se houver outro modelo disponível
-                if canonical_model_id(member_model_id) in excluded_canonicals:
-                    if candidate_same_canonical is None:
+            member_elig = await check_candidate_eligibility(
+                model_id=member_model_id,
+                provider_id=member_provider_id,
+                db=db,
+                excluded_model_ids=set(exclude_model_ids or []),
+                excluded_canonicals=excluded_canonicals,
+                allow_same_canonical_last_resort=False,
+            )
+            if not member_elig:
+                if member_elig.reason == "same_canonical_already_failed" and candidate_same_canonical is None:
+                    member_elig_last = await check_candidate_eligibility(
+                        model_id=member_model_id,
+                        provider_id=member_provider_id,
+                        db=db,
+                        excluded_model_ids=set(exclude_model_ids or []),
+                        excluded_canonicals=None,
+                        allow_same_canonical_last_resort=True,
+                    )
+                    if member_elig_last:
                         dname = await _get_display_name(member_model_id, db)
                         candidate_same_canonical = ResolvedModel(
                             model_id=member_model_id,
@@ -421,22 +449,22 @@ async def resolve_model_with_failover(
                             failover_reason=failover_reason,
                             family_id=family_id,
                         )
-                    continue
+                continue
 
-                display_name = await _get_display_name(member_model_id, db)
-                logger.info(
-                    f"✅ Tier 1 failover: '{requested_model_id}' → '{member_model_id}' "
-                    f"(fallback_order={fallback_order})"
-                )
-                return ResolvedModel(
-                    model_id=member_model_id,
-                    provider_id=member_provider_id,
-                    display_name=display_name,
-                    was_failover=True,
-                    original_model_id=requested_model_id,
-                    failover_reason=failover_reason,
-                    family_id=family_id,
-                )
+            display_name = await _get_display_name(member_model_id, db)
+            logger.info(
+                f"✅ Tier 1 failover: '{requested_model_id}' → '{member_model_id}' "
+                f"(fallback_order={fallback_order})"
+            )
+            return ResolvedModel(
+                model_id=member_model_id,
+                provider_id=member_provider_id,
+                display_name=display_name,
+                was_failover=True,
+                original_model_id=requested_model_id,
+                failover_reason=failover_reason,
+                family_id=family_id,
+            )
 
         logger.warning(
             f"Tier 1 esgotado: todos os membros da família '{family_id}' indisponíveis. "

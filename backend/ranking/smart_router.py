@@ -965,8 +965,12 @@ def rank_candidates(
     pontua cada candidato por adequação. Retorna a lista ordenada (melhor primeiro)
     de dicts com `model`, `profile`, `fit`, `breakdown`. Função sem I/O.
     """
-    # 2. Filtro de Sanidade e Cooldown (Descarta esgotados)
-    available_models = [m for m in models_data if m["quota_status"] not in ("exhausted", "cooldown")]
+    # 2. Filtro Duro de Elegibilidade (Gate da Seção 6.1: breaker, cooldown, quarentena, cota, admissão)
+    from backend.ranking.eligibility import is_candidate_eligible_in_memory
+    available_models = [
+        m for m in models_data
+        if is_candidate_eligible_in_memory(m).eligible
+    ]
     if not available_models:
         available_models = list(models_data)  # fallback se todos estiverem esgotados
 

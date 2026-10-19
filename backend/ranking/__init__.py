@@ -31,4 +31,10 @@ from .canonical import (
     extract_family_from_canonical,
     apply_zero_token_cooldown,
 )
+from .eligibility import (
+    check_candidate_eligibility,
+    is_candidate_eligible_in_memory,
+    EligibilityResult,
+)
+from .admission import admission_controller
 
