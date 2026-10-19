@@ -812,6 +812,32 @@ export interface Project {
     last_synthesized_at?: string | null
     scope_badge?: string
   }
+  capacity?: ProjectCapacity
+}
+
+export interface ProjectCapacity {
+  project_id: string
+  total_tokens: number
+  capacity_limit: number
+  usage_percent: number
+  mode: 'full' | 'rag'
+  is_amber: boolean
+  is_rag_active: boolean
+  breakdown: {
+    instructions_tokens: number
+    memory_tokens: number
+    files_tokens: number
+    file_count: number
+  }
+  files_manifest?: Array<{
+    id: string
+    filename: string
+    size_bytes: number
+    size_formatted?: string
+    token_count: number
+    index_status: string
+    file_hash?: string | null
+  }>
 }
 
 export interface ProjectFile {
@@ -819,6 +845,9 @@ export interface ProjectFile {
   filename: string
   mime_type?: string
   size_bytes?: number
+  file_size?: number
+  file_hash?: string | null
+  token_count?: number
   index_status: 'pending' | 'indexing' | 'ready' | 'error' | string
   index_error?: string | null
   indexed_at?: string | null

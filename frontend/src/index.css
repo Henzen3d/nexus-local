@@ -8483,6 +8483,37 @@ html[data-theme="dark"] .claude-project-card:hover {
   max-width: 720px;
   margin: 0 auto;
 }
+.claude-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+.claude-breadcrumb-link {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+  font-size: 13px;
+  transition: color 0.15s;
+}
+.claude-breadcrumb-link:hover {
+  color: var(--ink);
+}
+.claude-breadcrumb-sep {
+  color: color-mix(in srgb, var(--muted) 60%, transparent);
+}
+.claude-breadcrumb-current {
+  color: var(--ink);
+  font-weight: 500;
+  max-width: 320px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .claude-detail-header {
   margin-bottom: 4px;
 }
@@ -8510,7 +8541,11 @@ html[data-theme="dark"] .claude-project-card:hover {
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
-  margin: 10px 0 22px;
+  margin: 10px 0 20px;
+}
+.claude-title-left {
+  flex: 1;
+  min-width: 0;
 }
 .claude-detail-title {
   font-family: var(--font-serif, Georgia, "Times New Roman", serif);
@@ -8520,6 +8555,59 @@ html[data-theme="dark"] .claude-project-card:hover {
   margin: 0;
   line-height: 1.2;
   color: var(--ink);
+}
+.claude-detail-desc {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 13.5px;
+  color: var(--muted);
+  line-height: 1.4;
+  cursor: pointer;
+  border-radius: 6px;
+  padding: 2px 6px;
+  margin-left: -6px;
+  transition: background 0.15s, color 0.15s;
+}
+.claude-detail-desc:hover {
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+  color: var(--ink);
+}
+.claude-detail-desc.is-empty {
+  font-style: italic;
+  opacity: 0.8;
+}
+.claude-detail-desc .desc-edit-btn {
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.claude-detail-desc:hover .desc-edit-btn {
+  opacity: 1;
+}
+.claude-desc-edit-form {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.claude-desc-edit-form input {
+  width: 100%;
+  max-width: 520px;
+  padding: 8px 12px;
+  font-size: 13.5px;
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  border-radius: 8px;
+  background: var(--canvas);
+  color: var(--ink);
+  outline: none;
+}
+.claude-desc-edit-form input:focus {
+  border-color: color-mix(in srgb, var(--ink) 30%, var(--border));
+}
+.claude-desc-edit-btns {
+  display: flex;
+  gap: 6px;
 }
 .claude-detail-title-actions {
   position: relative;
@@ -8684,8 +8772,89 @@ html[data-theme="dark"] .claude-project-card:hover {
   opacity: .35;
   cursor: not-allowed;
 }
+.claude-composer-mic-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  background: transparent;
+  color: var(--muted);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.claude-composer-mic-btn:hover {
+  color: var(--ink);
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+}
+.claude-composer-mic-btn.listening {
+  color: #ef4444;
+  border-color: #ef4444;
+  background: color-mix(in srgb, #ef4444 12%, transparent);
+  animation: pulse 1.5s infinite;
+}
 
-/* Chat rows */
+/* Recentes - Compact Claude style single-line rows */
+.claude-recents-header {
+  margin: 28px 0 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.claude-recents-header h2 {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 0;
+}
+.claude-chat-single-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.claude-chat-single-row {
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 45%, transparent);
+  padding: 12px 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  transition: background 0.12s ease;
+  border-radius: 6px;
+}
+.claude-chat-single-row:hover {
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+}
+.claude-chat-single-row .claude-chat-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+}
+.claude-chat-single-row .claude-chat-date {
+  font-size: 12px;
+  color: var(--muted);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.claude-chat-empty {
+  font-size: 13px;
+  color: var(--muted);
+  padding: 12px 4px;
+}
+
+/* Chat rows (legacy compatibility) */
 .claude-chat-list {
   list-style: none;
   margin: 0;
@@ -8721,11 +8890,6 @@ html[data-theme="dark"] .claude-project-card:hover {
   font-size: 12.5px;
   color: var(--muted);
 }
-.claude-chat-empty {
-  font-size: 13px;
-  color: var(--muted);
-  padding: 12px 4px;
-}
 
 /* Right rail */
 .claude-detail-aside {
@@ -8737,26 +8901,41 @@ html[data-theme="dark"] .claude-project-card:hover {
   border-left: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
   background: transparent;
 }
-.claude-side-card {
+
+/* Unified right card */
+.claude-unified-side-card {
   border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
-  background: color-mix(in srgb, var(--surface) 55%, var(--canvas));
-  border-radius: var(--radius-lg);
-  padding: 14px 14px 12px;
+  background: color-mix(in srgb, var(--surface) 60%, var(--canvas));
+  border-radius: var(--radius-lg, 14px);
+  padding: 0;
+  overflow: hidden;
 }
-.claude-side-card-head {
+.claude-side-section {
+  padding: 14px 16px;
+}
+.claude-side-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.claude-side-head h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  letter-spacing: -0.01em;
+}
+.head-left-group {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 8px;
-  min-height: 28px;
 }
-.claude-side-card-head h3 {
+.claude-side-divider {
+  height: 1px;
+  background: color-mix(in srgb, var(--border) 55%, transparent);
   margin: 0;
-  font-size: 13.5px;
-  font-weight: 600;
-  color: var(--ink);
-  flex: 1;
-  letter-spacing: -0.01em;
 }
 .claude-scope-badge {
   display: inline-flex;
@@ -8770,41 +8949,63 @@ html[data-theme="dark"] .claude-project-card:hover {
   padding: 3px 8px 3px 7px;
   white-space: nowrap;
 }
-.claude-side-body {
-  margin: 0;
-  font-size: 13px;
+.claude-link-btn {
+  background: none;
+  border: none;
+  color: var(--primary, #3b82f6);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 0;
+  transition: opacity 0.15s;
+}
+.claude-link-btn:hover {
+  text-decoration: underline;
+  opacity: 0.9;
+}
+.claude-instructions-preview,
+.claude-memory-preview {
+  font-size: 12.5px;
   line-height: 1.45;
   color: var(--ink);
-  white-space: pre-wrap;
-  word-break: break-word;
-  border: none;
-  background: transparent;
-  text-align: left;
-  width: 100%;
-  padding: 0;
-  font-family: inherit;
-}
-.claude-side-body.is-placeholder,
-.claude-side-body.clickable.is-placeholder {
-  color: var(--muted);
-}
-.claude-side-body.clickable {
+  max-height: 90px;
+  overflow-y: hidden;
+  position: relative;
   cursor: pointer;
+  border-radius: 6px;
+  padding: 4px 6px;
+  margin: -4px -6px;
+  transition: background 0.12s;
 }
-.claude-side-body.clickable:hover {
-  color: var(--ink);
+.claude-instructions-preview:hover,
+.claude-memory-preview:hover {
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
 }
-.claude-side-footnote {
-  margin: 10px 0 0;
-  font-size: 11.5px;
+.claude-instructions-preview p,
+.claude-memory-preview p {
+  margin: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.claude-instructions-preview.is-placeholder,
+.claude-memory-preview.is-placeholder {
   color: var(--muted);
 }
+.claude-instructions-preview .placeholder-text {
+  font-style: italic;
+  opacity: 0.85;
+}
+
+/* Edit textarea in side card */
 .claude-side-edit textarea {
   width: 100%;
+  box-sizing: border-box;
   border: 1px solid color-mix(in srgb, var(--border) 85%, transparent);
   background: var(--canvas);
   color: var(--ink);
-  border-radius: 12px;
+  border-radius: 10px;
   padding: 10px;
   font-size: 13px;
   line-height: 1.4;
@@ -8813,10 +9014,260 @@ html[data-theme="dark"] .claude-project-card:hover {
   outline: none;
   margin-bottom: 8px;
 }
+.claude-side-edit textarea:focus {
+  border-color: color-mix(in srgb, var(--ink) 30%, var(--border));
+}
 .claude-side-edit-actions {
   display: flex;
   justify-content: flex-end;
   gap: 6px;
+}
+
+/* Capacity bar */
+.claude-capacity-box {
+  background: color-mix(in srgb, var(--surface) 90%, var(--canvas));
+  border: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+}
+.claude-capacity-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.claude-capacity-label {
+  font-size: 11.5px;
+  color: var(--ink);
+  font-weight: 500;
+  line-height: 1.3;
+}
+.claude-capacity-tooltip-trigger {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  color: var(--muted);
+}
+.claude-capacity-tooltip-trigger:hover {
+  color: var(--ink);
+}
+.claude-capacity-tooltip-popup {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 280px;
+  background: var(--surface);
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  border-radius: 10px;
+  box-shadow: 0 10px 28px rgba(0,0,0,0.22);
+  padding: 12px 14px;
+  z-index: 100;
+  display: none;
+  pointer-events: none;
+  font-size: 12px;
+}
+.claude-capacity-tooltip-trigger:hover .claude-capacity-tooltip-popup,
+.claude-capacity-tooltip-trigger:focus-within .claude-capacity-tooltip-popup {
+  display: block;
+}
+.claude-capacity-tooltip-popup h4 {
+  margin: 0 0 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.tooltip-stat-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 3px 0;
+  color: var(--muted);
+  font-size: 11.5px;
+}
+.tooltip-stat-row strong {
+  color: var(--ink);
+}
+.tooltip-stat-row.total-row {
+  border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+  margin-top: 4px;
+  padding-top: 6px;
+  font-weight: 600;
+}
+.tooltip-mode-desc {
+  margin: 8px 0 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--muted);
+  border-top: 1px dashed color-mix(in srgb, var(--border) 50%, transparent);
+  padding-top: 6px;
+}
+.claude-capacity-bar-track {
+  width: 100%;
+  height: 6px;
+  background: color-mix(in srgb, var(--border) 50%, transparent);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.claude-capacity-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.3s ease, background 0.3s ease;
+}
+.claude-capacity-bar-fill.fill-normal {
+  background: #10b981;
+}
+.claude-capacity-bar-fill.fill-amber {
+  background: #f59e0b;
+}
+.claude-capacity-bar-fill.fill-rag {
+  background: #6366f1;
+}
+
+/* Quick search and 2-column context grid */
+.context-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.claude-context-search-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--canvas);
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  border-radius: 8px;
+  padding: 6px 10px;
+  margin-bottom: 10px;
+  color: var(--muted);
+}
+.claude-context-search-row input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  outline: none;
+  font-size: 12px;
+  color: var(--ink);
+}
+.claude-context-search-row button {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+  display: grid;
+  place-items: center;
+}
+.claude-context-search-row button:hover {
+  color: var(--ink);
+}
+.claude-files-not-found {
+  font-size: 12px;
+  color: var(--muted);
+  text-align: center;
+  padding: 12px 0;
+}
+.claude-context-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+@media (max-width: 1200px) and (min-width: 961px) {
+  .claude-context-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.claude-context-card {
+  border: 1px solid color-mix(in srgb, var(--border) 65%, transparent);
+  background: color-mix(in srgb, var(--surface) 95%, var(--canvas));
+  border-radius: 8px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 72px;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.claude-context-card:hover {
+  border-color: color-mix(in srgb, var(--ink) 25%, var(--border));
+  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+}
+.context-card-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 6px;
+}
+.context-file-name {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink);
+  line-height: 1.3;
+  word-break: break-all;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.context-file-delete-btn {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 4px;
+  opacity: 0.6;
+  flex-shrink: 0;
+  transition: opacity 0.15s, color 0.15s;
+}
+.claude-context-card:hover .context-file-delete-btn {
+  opacity: 1;
+}
+.context-file-delete-btn:hover {
+  color: var(--error, #ef4444);
+}
+.context-card-sub {
+  margin-top: 2px;
+}
+.context-file-size {
+  font-size: 10.5px;
+  color: var(--muted);
+}
+.context-card-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 6px;
+}
+.context-ext-badge {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--ink) 7%, transparent);
+  color: var(--ink);
+}
+.context-status-pill {
+  font-size: 10px;
+  padding: 1px 4px;
+  border-radius: 4px;
+}
+.context-status-pill.status-indexing {
+  display: inline-flex;
+  align-items: center;
+}
+.context-status-pill.status-error {
+  color: #ef4444;
+  font-weight: bold;
+}
+.indexing-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #f59e0b;
+  animation: pulse 1s infinite;
 }
 
 /* Files empty — Claude knowledge illustration */
@@ -8850,76 +9301,78 @@ html[data-theme="dark"] .claude-project-card:hover {
   user-select: none;
 }
 
-.claude-file-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+/* Memory modal */
+.claude-memory-modal {
+  max-width: 580px;
+  width: 90vw;
 }
-.claude-file-item {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 6px 2px;
-}
-.claude-file-icon {
-  color: var(--muted);
-  margin-top: 2px;
-  flex-shrink: 0;
-}
-.claude-file-meta {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.claude-file-name {
-  font-size: 13px;
-  color: var(--ink);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.claude-file-status {
-  font-size: 11.5px;
-  color: var(--muted);
-}
-.claude-file-status.status-ready { color: #3d9a64; }
-.claude-file-status.status-error { color: var(--error, #c64545); }
-.claude-index-bar {
-  display: block;
-  width: 48px;
-  height: 3px;
-  margin-top: 4px;
-  border-radius: 99px;
-  background: linear-gradient(90deg, color-mix(in srgb, var(--ink) 35%, transparent), transparent);
-  animation: claude-index-pulse 1.15s ease-in-out infinite;
-}
-@keyframes claude-index-pulse {
-  0%, 100% { opacity: .3; }
-  50% { opacity: 1; }
-}
-.claude-add-more-files {
-  width: 100%;
+.claude-modal-title-row {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 6px;
-  border: 1px dashed color-mix(in srgb, var(--border) 90%, transparent);
-  background: transparent;
-  color: var(--muted);
-  border-radius: 10px;
-  padding: 9px;
-  font-size: 12.5px;
-  cursor: pointer;
-  margin-top: 4px;
+  gap: 10px;
 }
-.claude-add-more-files:hover {
+.claude-memory-editor textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  background: var(--canvas);
   color: var(--ink);
-  border-color: color-mix(in srgb, var(--ink) 25%, var(--border));
+  border-radius: 10px;
+  padding: 12px;
+  font-size: 13.5px;
+  line-height: 1.5;
+  resize: vertical;
+  outline: none;
+  font-family: inherit;
+  margin: 12px 0 16px;
+}
+.claude-memory-editor textarea:focus {
+  border-color: color-mix(in srgb, var(--ink) 30%, var(--border));
+}
+.claude-memory-modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.claude-memory-modal-footer .footer-left,
+.claude-memory-modal-footer .footer-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.claude-btn-synthesize {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  font-size: 12.5px;
+  font-weight: 500;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, #6366f1 40%, transparent);
+  background: color-mix(in srgb, #6366f1 10%, var(--surface));
+  color: #4f46e5;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+html[data-theme="dark"] .claude-btn-synthesize {
+  color: #818cf8;
+  border-color: color-mix(in srgb, #818cf8 40%, transparent);
+  background: color-mix(in srgb, #818cf8 15%, var(--surface));
+}
+.claude-btn-synthesize:hover:not(:disabled) {
+  background: color-mix(in srgb, #6366f1 18%, var(--surface));
+}
+.claude-btn-synthesize:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.claude-btn-synthesize .spin {
+  animation: spin 1s linear infinite;
+}
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 /* Legacy hook */

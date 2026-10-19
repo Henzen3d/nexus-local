@@ -543,6 +543,14 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify({ summary_text }),
     }),
+  synthesizeProjectMemory: (id: string) =>
+    fetchJSON<{ ok: boolean; summary_text: string }>(`/projects/${id}/memory/synthesize`, {
+      method: 'POST',
+    }),
+  getProjectCapacity: (id: string, limit?: number) =>
+    fetchJSON<import('../types').ProjectCapacity>(
+      `/projects/${id}/capacity${limit ? `?limit=${limit}` : ''}`
+    ),
   listProjectFiles: (id: string) =>
     fetchJSON<import('../types').ProjectFile[]>(`/projects/${id}/files`),
   uploadProjectFile: (projectId: string, file: File) => {
@@ -555,8 +563,12 @@ export const api = {
       method: 'POST',
       headers,
       body: formData,
-    }).then((res) => {
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    }).then(async (res) => {
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => null)
+        const msg = errJson?.detail || `HTTP ${res.status}`
+        throw new Error(msg)
+      }
       return res.json() as Promise<import('../types').ProjectFile>
     })
   },
