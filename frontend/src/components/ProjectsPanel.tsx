@@ -145,7 +145,10 @@ function ProjectsListPage({
     ;(async () => {
       try {
         const list = await api.listProjects(sort, search || undefined)
-        if (!cancelled) setProjects(list)
+        if (!cancelled) {
+          const arr = Array.isArray(list) ? list : (list as any)?.projects || []
+          setProjects(arr)
+        }
       } catch (e) {
         console.error(e)
         if (!cancelled) {
@@ -534,6 +537,12 @@ function ProjectDetailPage({
     return () => document.removeEventListener('mousedown', handler)
   }, [menuOpen])
 
+  const filteredFiles = useMemo(() => {
+    if (!fileSearchQuery.trim()) return files
+    const q = fileSearchQuery.trim().toLowerCase()
+    return files.filter((f) => f.filename.toLowerCase().includes(q))
+  }, [files, fileSearchQuery])
+
   if (!project) {
     return (
       <div className="claude-projects claude-project-detail">
@@ -784,12 +793,6 @@ function ProjectDetailPage({
       setIsListening(false)
     }
   }
-
-  const filteredFiles = useMemo(() => {
-    if (!fileSearchQuery.trim()) return files
-    const q = fileSearchQuery.trim().toLowerCase()
-    return files.filter((f) => f.filename.toLowerCase().includes(q))
-  }, [files, fileSearchQuery])
 
   const hasMemory = !!(project.memory?.summary_text || '').trim()
   const hasInstructions = !!(project.instructions || '').trim()

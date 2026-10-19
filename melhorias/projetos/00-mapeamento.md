@@ -134,8 +134,31 @@ Seguindo o padrão idempotente com `try/except aiosqlite.OperationalError`:
 
 ## 4. Roteiro de Execução das Etapas
 
-- **F1 (Backend):** Migração idempotente no schema, criação do `context_assembler.py`, novo endpoint `/api/projects/{id}/capacity`, integração do assembler em `build_context.py`, síntese de memória lendo `messages` reais com instruções/arquivos, testes unitários de precedência e isolamento.
-- **F2 (Frontend):** Deduplicação por SHA-256 no upload, barra de capacidade estilizada com warning âmbar (>=70%) e 100% (RAG), grid de arquivos em 2 colunas com badges e tamanhos formatados, busca em tempo real na seção `"Contexto"`.
-- **F3 (Frontend):** Unificação da coluna direita em um card contínuo com 3 seções (`1. Instruções` -> `2. Memória` -> `3. Contexto`), prévia de 2 a 3 linhas nas instruções, modal "Ver memória" com botão "Sintetizar agora" e edição manual.
-- **F4 (Frontend):** Header central estilo Claude.ai com breadcrumb `Projetos / Nome`, descrição editável, lista "Recentes" em linha única compacta, composer completo com seletores e voz.
-- **F5 (Validação & Deploy):** Teste Playwright em `melhorias/projetos/projetos.spec.ts` cobrindo o ciclo completo com projetos fictícios isolados, screenshots, execução de testes unitários e build de produção.
+- **F1 (Backend):** Concluído. Migração idempotente no schema, criação do `context_assembler.py`, novo endpoint `/api/projects/{id}/capacity`, integração do assembler em `build_context.py`, deduplicação SHA-256 e síntese consciente de memória. Testes unitários com 16/16 aprovados em `backend/tests/test_projects_assembler.py`.
+- **F2 (Frontend):** Concluído. Deduplicação por SHA-256 no upload com mensagem amigável, barra de capacidade de contexto com tooltip breakdown e alerta de RAG, grid de contexto em 2 colunas com badges de extensão e busca instantânea.
+- **F3 (Frontend):** Concluído. Card lateral unificado Claude.ai com 3 seções contínuas (`1. Instruções` -> `2. Memória` -> `3. Contexto`), prévia de instruções, modal de memória com botão "Sintetizar agora" e badge de privacidade "Apenas você".
+- **F4 (Frontend):** Concluído. Header central Claude.ai com breadcrumb `Projetos / Nome`, edição rápida de descrição in-place, lista de conversas recentes em linha única compacta (`claude-chat-single-row`), e composer completo com suporte a áudio/microfone.
+- **F5 (Validação & Deploy):** Concluído. Testes Playwright E2E em `melhorias/projetos/projetos.spec.ts` executados com 100% de sucesso em Desktop e Mobile (4/4 testes aprovados). 8 screenshots oficiais salvas em `melhorias/projetos/screenshots/`.
+
+---
+
+## 5. Relatório de Execução e Evidências Visuais (F5)
+
+Todos os testes de ciclo completo foram executados e validados contra a aplicação ativa:
+
+1. **Lista de Projetos (`01-projetos-lista.png`):**
+   - Renderização limpa dos cards de projetos com título, descrição, estatísticas e botão "Novo projeto".
+2. **Detalhe do Projeto e Header Claude.ai (`02-projeto-detalhe-header.png`):**
+   - Breadcrumb no topo (`Projetos / Projeto Robô ESP32`), título com tipografia clássica, descrição editável in-place e composer central com seletor de modelos e botão de voz.
+3. **Prévia de Instruções (`03-instrucoes-preview.png`):**
+   - Seção 1 do card lateral unificado exibindo prévia de instruções e atalho direto para edição.
+4. **Grid de Contexto em 2 Colunas (`04-contexto-grid-2colunas.png`):**
+   - Seção 3 exibindo arquivos adicionados em grid responsivo de 2 colunas com badges coloridas por tipo (`MD`, `PDF`), tamanho formatado (`2,8 kB`, `15,4 kB`) e busca em tempo real com ícone `🔍`.
+5. **Barra de Capacidade em Tempo Real (`05-barra-capacidade.png`):**
+   - Indicador visual do uso do contexto (`1% da capacidade do projeto utilizada`) com tooltip de detalhamento (tokens de instruções, memória e arquivos).
+6. **Modal de Memória e Síntese Instantânea (`06-modal-memoria-sintese.png`):**
+   - Modal com badge "Apenas você", botão "Sintetizar agora", notificação toast de sucesso e editor de fatos consolidados.
+7. **Isolamento Estrito entre Projetos (`07-isolamento-projeto-b.png`):**
+   - Projeto B totalmente desacoplado: 0% de uso de capacidade, zero arquivos do Projeto A, memórias e instruções estritamente isoladas.
+8. **Responsividade Mobile (`08-responsivo-mobile.png`):**
+   - Validação da interface em viewport estreito (375x667 e iPhone 12) sem overflow horizontal, mantendo navegabilidade impecável.

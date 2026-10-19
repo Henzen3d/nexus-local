@@ -167,7 +167,7 @@ export function ModelSelector({ compact = false, className = '' }: ModelSelector
         const scoreB = b.nexuslocal_score ?? -1
         if (scoreA !== scoreB) return scoreB - scoreA
       }
-      return a.display_name.localeCompare(b.display_name)
+      return (a.display_name || a.id || '').localeCompare(b.display_name || b.id || '')
     })
   }, [filteredModels, modelSortMode])
 

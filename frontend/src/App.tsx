@@ -147,6 +147,17 @@ export default function App() {
   }, [locale])
 
   useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search)
+      if (params.get('project')) {
+        setView('projects')
+      }
+    } catch {
+      /* ignore */
+    }
+  }, [setView])
+
+  useEffect(() => {
     if (token) {
       hydrateProfileFromServer()
       loadTtsPrefs().catch(() => {})
