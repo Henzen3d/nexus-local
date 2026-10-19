@@ -347,11 +347,11 @@ async def stream_from_llm(
                     "Modelo '%s' (provedor '%s') não gerou nenhum token de resposta. Acionando failover cascade...",
                     current_model_id, current_provider_id,
                 )
-                await mark_model_exhausted(
+                from backend.ranking.canonical import apply_zero_token_cooldown
+                await apply_zero_token_cooldown(
                     current_model_id,
                     db,
                     retry_after=600,
-                    error_msg="Silent failure: 0 tokens returned",
                 )
                 attempted_model_ids.add(current_model_id)
                 next_failover_reason = "silent_failure"

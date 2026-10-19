@@ -26,4 +26,9 @@ from .classifier import (
     extract_suggested_model,
     FailureClassification,
 )
+from .canonical import (
+    canonical_model_id,
+    extract_family_from_canonical,
+    apply_zero_token_cooldown,
+)
 

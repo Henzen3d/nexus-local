@@ -24,45 +24,10 @@ from backend.ranking.availability import USABLE_KEY_CONDITION_SQL
 
 logger = logging.getLogger("nexuslocal.ranking.failover")
 
-
-def canonical_model_id(model_id: str) -> str:
-    """
-    Normaliza o ID do modelo removendo sufixos (como ':free', ':nitro') e
-    prefixos de provedores/organizações (simples ou duplicados como 'openrouter/nvidia/', 'nvidia/nvidia/'),
-    retornando um identificador canônico em minúsculas para comparação cross-provider
-    e matching de famílias no Tier 1 e Tier 2.
-    """
-    if not model_id:
-        return ""
-
-    cand = model_id.strip()
-
-    # 1. Remove sufixos como ':free', ':nitro'
-    if cand.lower().endswith(":free"):
-        cand = cand[:-5]
-    elif cand.lower().endswith(":nitro"):
-        cand = cand[:-6]
-
-    parts = cand.split("/")
-
-    KNOWN_PREFIXES = {
-        "openrouter", "nvidia", "gemini", "cloudflare", "siliconflow",
-        "groq", "cerebras", "zai", "ollama", "huggingface", "sambanova",
-        "longcat", "freetheai", "llm7", "deepseek", "qwen", "openai",
-        "together", "mistral", "cohere", "zenmux", "bynara", "local",
-        "lmstudio", "models", "google", "meta-llama", "deepseek-ai",
-        "moonshotai", "meta", "aisingapore", "ibm-granite", "nousresearch",
-        "defog", "microsoft", "nv-mistralai", "x-ai", "fta", "kai", "ocz"
-    }
-
-    while len(parts) > 1 and parts[0].lower() in KNOWN_PREFIXES:
-        parts.pop(0)
-
-    while len(parts) > 1 and parts[0].lower() == parts[1].lower():
-        parts.pop(0)
-
-    result = "/".join(parts) if parts else cand
-    return result.lower().strip()
+from backend.ranking.canonical import (
+    canonical_model_id,
+    extract_family_from_canonical,
+)
 
 
 def _usable_key_clause(user_id: Optional[str]) -> tuple[str, list[Any], str]:
@@ -150,7 +115,6 @@ async def _get_family_for_model(
                 break
 
     # 3. Se ainda não encontrou, tenta matching com as famílias cadastradas (model_families)
-    # para que famílias como 'gemini', 'nemotron', etc. sejam reconhecidas a partir do ID canônico
     if not family_id:
         async with db.execute("SELECT id FROM model_families") as cur:
             all_fams = await cur.fetchall()
@@ -163,8 +127,10 @@ async def _get_family_for_model(
                 or target_canon.startswith(f"{fid_norm}/")
                 or fid_norm in target_canon
             ):
-                family_id = fid
-                break
+                async with db.execute("SELECT 1 FROM model_family_members WHERE family_id = ? LIMIT 1", (fid,)) as mcur:
+                    if await mcur.fetchone():
+                        family_id = fid
+                        break
 
     if not family_id:
         return None
@@ -173,27 +139,62 @@ async def _get_family_for_model(
     query_params = ([user_id] if user_id else []) + [family_id]
 
     # Busca todos os membros da família cujo modelo e provedor estejam habilitados e utilizáveis
-    async with db.execute(
-        f"""
-        SELECT mfm.model_id, m.provider_id, mfm.fallback_order
-        FROM model_family_members mfm
-        JOIN models m ON m.id = mfm.model_id
-        JOIN providers p ON p.id = m.provider_id
-        {join_keys}
-        WHERE mfm.family_id = ?
-          AND m.enabled = 1
-          AND p.enabled = 1
-          AND {key_clause}
-        ORDER BY mfm.fallback_order ASC
-        """,
-        tuple(query_params),
-    ) as cur:
-        members = await cur.fetchall()
+    members = []
+    try:
+        async with db.execute(
+            f"""
+            SELECT mfm.model_id, m.provider_id, mfm.fallback_order
+            FROM model_family_members mfm
+            JOIN models m ON m.id = mfm.model_id
+            JOIN providers p ON p.id = m.provider_id
+            {join_keys}
+            WHERE mfm.family_id = ?
+              AND m.enabled = 1
+              AND p.enabled = 1
+              AND {key_clause}
+            ORDER BY mfm.fallback_order ASC
+            """,
+            tuple(query_params),
+        ) as cur:
+            raw_members = await cur.fetchall()
+            if raw_members:
+                members = [(r[0], r[1], r[2]) for r in raw_members]
+    except Exception as e:
+        logger.debug("[_get_family_for_model] Erro ao consultar model_family_members: %s", e)
+
+    # Se não encontrou membros diretamente (ex: IDs com prefixos divergentes)
+    if not members:
+        try:
+            async with db.execute(
+                "SELECT model_id, fallback_order FROM model_family_members WHERE family_id = ? ORDER BY fallback_order ASC",
+                (family_id,)
+            ) as cur:
+                mfm_rows = await cur.fetchall()
+            if mfm_rows:
+                async with db.execute(
+                    f"""
+                    SELECT m.id, m.provider_id
+                    FROM models m
+                    JOIN providers p ON p.id = m.provider_id
+                    {join_keys}
+                    WHERE m.enabled = 1 AND p.enabled = 1 AND {key_clause}
+                    """,
+                    tuple([user_id] if user_id else [])
+                ) as cur:
+                    active_db_models = await cur.fetchall()
+                active_by_canon = {canonical_model_id(mid): (mid, pid) for mid, pid in active_db_models}
+                for raw_mid, f_order in mfm_rows:
+                    raw_canon = canonical_model_id(raw_mid)
+                    if raw_canon in active_by_canon:
+                        real_mid, real_pid = active_by_canon[raw_canon]
+                        members.append((real_mid, real_pid, f_order))
+        except Exception:
+            pass
 
     if not members:
         return None
 
-    return family_id, [(r[0], r[1], r[2]) for r in members]
+    return family_id, members
 
 
 async def _get_next_best_ranked_model(
