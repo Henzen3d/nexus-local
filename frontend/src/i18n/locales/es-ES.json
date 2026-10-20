@@ -187,6 +187,7 @@
     "effortDroppedFailover": "El modelo de respaldo no admite control de esfuerzo; respuesta generada por defecto.",
     "effortDroppedUnsupported": "El modelo seleccionado no admite control de esfuerzo de razonamiento.",
     "effortDroppedProvider": "El proveedor rechazó el parámetro de esfuerzo; reintentando sin él.",
+    "failover": "Failover",
     "failoverNotice": "Failover: {{model}} ({{reason}}). Cambiando a {{fallback}}...",
     "failoverTooltip": "Atendido vía modelo de reserva (failover)",
     "failoverTooltipDetailed": "Failover activo: solicitado {{requested}}, atendido por {{served}}",

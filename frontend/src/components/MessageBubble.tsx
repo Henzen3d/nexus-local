@@ -475,7 +475,7 @@ export const MessageBubble = React.memo(function MessageBubble({ message }: Prop
                   border: '1px solid rgba(204, 120, 92, 0.3)',
                   marginLeft: '6px',
                 }}>
-                  <RefreshCw size={11} /> {t('chat.failover')}
+                  <RefreshCw size={11} /> {t('chat.failover', 'Failover')}
                 </span>
               )}
 

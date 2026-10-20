@@ -67,6 +67,23 @@
     "tooManyAttempts": "로그인 시도가 너무 많습니다. 몇 분 후에 다시 시도하세요."
   },
   "chat": {
+    "failover": "Failover",
+    "failoverNotice": "장애 조치(Failover): {{model}} ({{reason}}). {{fallback}}(으)로 전환 중...",
+    "failoverTooltip": "대체 모델을 통해 제공됨 (Failover)",
+    "failoverTooltipDetailed": "활성 장애 조치: 요청 {{requested}}, 제공 {{served}}",
+    "failoverReason": {
+      "invalid_request": "호환되지 않는 요청",
+      "auth": "인증 실패",
+      "rate_limit": "한도 소진",
+      "upstream": "업스트림 서비스 오류",
+      "timeout": "요청 시간 초과",
+      "connection": "연결 실패",
+      "model_disabled": "모델 비활성화됨",
+      "provider_disabled": "제공자 비활성화됨",
+      "missing_key": "API 키 누락",
+      "preemptive_quota": "할당량 한도 근접",
+      "error": "사용 불가"
+    },
     "openSidebar": "사이드바 열기",
     "greetingMorning": "좋은 아침입니다",
     "greetingAfternoon": "안녕하세요",

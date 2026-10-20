@@ -67,6 +67,23 @@
     "tooManyAttempts": "Zu viele Anmeldeversuche. Warten Sie einige Minuten und versuchen Sie es erneut."
   },
   "chat": {
+    "failover": "Failover",
+    "failoverNotice": "Failover: {{model}} ({{reason}}). Wechsel zu {{fallback}}...",
+    "failoverTooltip": "Über Fallback-Modell bereitgestellt (Failover)",
+    "failoverTooltipDetailed": "Aktives Failover: angefordert {{requested}}, bedient von {{served}}",
+    "failoverReason": {
+      "invalid_request": "Inkompatible Anfrage",
+      "auth": "Authentifizierungsfehler",
+      "rate_limit": "Erschöpft",
+      "upstream": "Upstream-Dienstproblem",
+      "timeout": "Zeitüberschreitung der Anfrage",
+      "connection": "Verbindungsfehler",
+      "model_disabled": "Modell deaktiviert",
+      "provider_disabled": "Anbieter deaktiviert",
+      "missing_key": "Fehlender API-Schlüssel",
+      "preemptive_quota": "Nahe dem Kontingentlimit",
+      "error": "Nicht verfügbar"
+    },
     "openSidebar": "Seitenleiste öffnen",
     "greetingMorning": "Guten Morgen",
     "greetingAfternoon": "Guten Tag",

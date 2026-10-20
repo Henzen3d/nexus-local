@@ -67,6 +67,23 @@
     "tooManyAttempts": "Demasiados intentos de inicio de sesión. Espera unos minutos e inténtalo de nuevo."
   },
   "chat": {
+    "failover": "Failover",
+    "failoverNotice": "Failover: {{model}} ({{reason}}). Cambiando a {{fallback}}...",
+    "failoverTooltip": "Atendido vía modelo de reserva (failover)",
+    "failoverTooltipDetailed": "Failover activo: solicitado {{requested}}, atendido por {{served}}",
+    "failoverReason": {
+      "invalid_request": "solicitud incompatible",
+      "auth": "fallo de autenticación",
+      "rate_limit": "agotado",
+      "upstream": "inestabilidad del servicio",
+      "timeout": "tiempo de espera agotado",
+      "connection": "fallo de conexión",
+      "model_disabled": "modelo desactivado",
+      "provider_disabled": "proveedor desactivado",
+      "missing_key": "clave no configurada",
+      "preemptive_quota": "límite de cuota cercano",
+      "error": "no disponible"
+    },
     "openSidebar": "Abrir barra lateral",
     "greetingMorning": "Buenos días",
     "greetingAfternoon": "Buenas tardes",

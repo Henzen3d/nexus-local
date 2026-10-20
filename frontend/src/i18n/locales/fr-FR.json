@@ -67,6 +67,23 @@
     "tooManyAttempts": "Trop de tentatives de connexion. Patientez quelques minutes puis réessayez."
   },
   "chat": {
+    "failover": "Failover",
+    "failoverNotice": "Failover: {{model}} ({{reason}}). Basculement vers {{fallback}}...",
+    "failoverTooltip": "Servi via modèle de secours (failover)",
+    "failoverTooltipDetailed": "Failover actif: demandé {{requested}}, servi par {{served}}",
+    "failoverReason": {
+      "invalid_request": "requête incompatible",
+      "auth": "échec d'authentification",
+      "rate_limit": "épuisé",
+      "upstream": "problème de service amont",
+      "timeout": "délai d'attente dépassé",
+      "connection": "échec de connexion",
+      "model_disabled": "modèle désactivé",
+      "provider_disabled": "fournisseur désactivé",
+      "missing_key": "clé API manquante",
+      "preemptive_quota": "proche de la limite de quota",
+      "error": "indisponible"
+    },
     "openSidebar": "Ouvrir la barre latérale",
     "greetingMorning": "Bonjour",
     "greetingAfternoon": "Bon après-midi",
