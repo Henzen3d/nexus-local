@@ -204,6 +204,7 @@
     "effortDroppedFailover": "The fallback model does not support reasoning control; generated with default settings.",
     "effortDroppedUnsupported": "The selected model does not support reasoning effort control.",
     "effortDroppedProvider": "Provider rejected reasoning parameter; retrying without it.",
+    "failover": "Failover",
     "failoverNotice": "Failover: {{model}} ({{reason}}). Switching to {{fallback}}...",
     "failoverTooltip": "Served via fallback model (failover)",
     "failoverTooltipDetailed": "Active failover: requested {{requested}}, served by {{served}}",

@@ -67,6 +67,23 @@
     "tooManyAttempts": "ログイン試行回数が多すぎます。数分待ってからもう一度お試しください。"
   },
   "chat": {
+    "failover": "Failover",
+    "failoverNotice": "フェイルオーバー: {{model}} ({{reason}})。{{fallback}} に切り替えています...",
+    "failoverTooltip": "フォールバックモデル経由で提供中 (フェイルオーバー)",
+    "failoverTooltipDetailed": "アクティブなフェイルオーバー: 要求 {{requested}}、対応 {{served}}",
+    "failoverReason": {
+      "invalid_request": "互換性のないリクエスト",
+      "auth": "認証エラー",
+      "rate_limit": "クォータ枯渇",
+      "upstream": "アップストリームの障害",
+      "timeout": "タイムアウト",
+      "connection": "接続障害",
+      "model_disabled": "モデルが無効化されています",
+      "provider_disabled": "プロバイダーが無効化されています",
+      "missing_key": "APIキーが設定されていません",
+      "preemptive_quota": "クォータ上限間近",
+      "error": "利用不可"
+    },
     "openSidebar": "サイドバーを開く",
     "greetingMorning": "おはようございます",
     "greetingAfternoon": "こんにちは",
