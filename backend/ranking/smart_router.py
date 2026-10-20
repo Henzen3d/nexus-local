@@ -41,6 +41,9 @@ from backend.ranking.model_profile import (
     SIZE_FRONTIER,
 )
 from backend.reasoning.families import VALID_REASONING_LEVELS
+from backend.ranking.health_registry import health_registry
+from backend.ranking.admission import admission_controller
+from backend.ranking.eligibility import is_candidate_eligible_in_memory
 
 logger = get_logger(__name__)
 
@@ -955,6 +958,26 @@ def _decision(
     )
 
 
+_ADAPTIVE_ROUTING_OVERRIDE: Optional[bool] = None
+
+
+def set_adaptive_routing_enabled(enabled: Optional[bool]) -> None:
+    """Permite ligar/desligar o score adaptativo por saúde (C1) para testes e feature flag."""
+    global _ADAPTIVE_ROUTING_OVERRIDE
+    _ADAPTIVE_ROUTING_OVERRIDE = enabled
+
+
+def is_adaptive_routing_enabled() -> bool:
+    """Verifica se o score adaptativo por saúde (C1) está ativado."""
+    if _ADAPTIVE_ROUTING_OVERRIDE is not None:
+        return _ADAPTIVE_ROUTING_OVERRIDE
+    import os
+    env_val = os.getenv("ENABLE_ADAPTIVE_HEALTH_ROUTING")
+    if env_val is not None:
+        return env_val.lower() in ("true", "1", "yes")
+    return True
+
+
 def rank_candidates(
     models_data: List[Dict[str, Any]],
     intent_result: IntentClassificationResult,
@@ -994,19 +1017,46 @@ def rank_candidates(
 
     # 5. Pontuação de adequação por intenção × complexidade × política
     ranked: List[Dict[str, Any]] = []
+    adaptive_active = is_adaptive_routing_enabled()
+
     for m in working_pool:
         prof = profiles[m["id"]]
         fit, breakdown = score_candidate(m, prof, intent_result.intent, intent_result.complexity, policy_str)
-        ranked.append({"model": m, "profile": prof, "fit": fit, "breakdown": breakdown})
+        entry = {"model": m, "profile": prof, "fit": fit, "breakdown": breakdown}
+        if adaptive_active:
+            base_score = float(m.get("nexuslocal_score") or m.get("quality_score") or 50.0)
+            score_val, h_val, factors = health_registry.calculate_shadow_score(
+                model_id=m["id"],
+                provider_id=m["provider_id"],
+                base_score=base_score,
+                fit_score=fit,
+            )
+            in_flight_m, in_flight_p = admission_controller.get_in_flight_counts(m["id"], m["provider_id"])
+            load_penalty = (in_flight_m * 4.0) + (in_flight_p * 1.5)
+            entry["effective_score"] = round(score_val - load_penalty, 2)
+            entry["H"] = round(h_val, 3)
+            entry["in_flight_m"] = in_flight_m
+            entry["in_flight_p"] = in_flight_p
+        ranked.append(entry)
 
-    ranked.sort(
-        key=lambda c: (
-            -c["fit"],
-            -float(c["model"].get("quality_score") or 0.0),
-            -float(c["model"].get("nexuslocal_score") or 0.0),
-            str(c["model"]["id"]),
+    if adaptive_active:
+        ranked.sort(
+            key=lambda c: (
+                -c.get("effective_score", c["fit"]),
+                -c["fit"],
+                -float(c["model"].get("quality_score") or 0.0),
+                str(c["model"]["id"]),
+            )
         )
-    )
+    else:
+        ranked.sort(
+            key=lambda c: (
+                -c["fit"],
+                -float(c["model"].get("quality_score") or 0.0),
+                -float(c["model"].get("nexuslocal_score") or 0.0),
+                str(c["model"]["id"]),
+            )
+        )
     return ranked
 
 
@@ -1121,32 +1171,42 @@ async def select_best_model(
                 user_effort=user_reasoning_effort,
             )
 
-    # ── Modo SOMBRA (Health Registry B2): calcula e loga a decisão sombra sem alterar rota real ──
-    try:
-        from backend.ranking.health_registry import health_registry
-        shadow_chosen = None
-        highest_shadow_score = -1.0
-        shadow_h_val = 1.0
-
-        for candidate in ranked[:5]:
-            m = candidate["model"]
-            s_score, s_h, s_factors = health_registry.calculate_shadow_score(
-                model_id=m["id"],
-                provider_id=m["provider_id"],
-                base_score=float(m.get("nexuslocal_score") or 50.0),
-                fit_score=float(candidate.get("fit") or 1.0),
-            )
-            if s_score > highest_shadow_score:
-                highest_shadow_score = s_score
-                shadow_chosen = m["id"]
-                shadow_h_val = s_h
-
+    if is_adaptive_routing_enabled():
         logger.info(
-            "SHADOW ROUTING [B2]: actual_chosen='%s' (fit=%.2f) | shadow_choice='%s' (shadow_score=%.2f, H=%.3f)",
-            best["model"]["id"], best["fit"], shadow_chosen, highest_shadow_score, shadow_h_val
+            "ADAPTIVE ROUTING [C1]: chosen='%s' (effective_score=%.2f, fit=%.2f, H=%.3f, in_flight=%s)",
+            best["model"]["id"],
+            best.get("effective_score", best["fit"]),
+            best["fit"],
+            best.get("H", 1.0),
+            best.get("in_flight_m", 0),
         )
-    except Exception as e:
-        logger.debug("Shadow routing calculation failed: %s", e)
+    else:
+        # Modo SOMBRA (Health Registry B2): calcula e loga a decisão sombra sem alterar rota real
+        try:
+            from backend.ranking.health_registry import health_registry
+            shadow_chosen = None
+            highest_shadow_score = -1.0
+            shadow_h_val = 1.0
+
+            for candidate in ranked[:5]:
+                m = candidate["model"]
+                s_score, s_h, s_factors = health_registry.calculate_shadow_score(
+                    model_id=m["id"],
+                    provider_id=m["provider_id"],
+                    base_score=float(m.get("nexuslocal_score") or 50.0),
+                    fit_score=float(candidate.get("fit") or 1.0),
+                )
+                if s_score > highest_shadow_score:
+                    highest_shadow_score = s_score
+                    shadow_chosen = m["id"]
+                    shadow_h_val = s_h
+
+            logger.info(
+                "SHADOW ROUTING [B2]: actual_chosen='%s' (fit=%.2f) | shadow_choice='%s' (shadow_score=%.2f, H=%.3f)",
+                best["model"]["id"], best["fit"], shadow_chosen, highest_shadow_score, shadow_h_val
+            )
+        except Exception as e:
+            logger.debug("Shadow routing calculation failed: %s", e)
 
     signals = list(intent_result.matched_signals)
     if previous_model_id and previous_model_id != best["model"]["id"]:

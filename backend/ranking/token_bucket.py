@@ -151,6 +151,13 @@ class TokenBucketManager:
             }
         return res
 
+    def reset(self) -> None:
+        """Restaura todos os buckets para capacidade total (útil para isolamento de testes)."""
+        for b in self._buckets.values():
+            b.tokens = float(b.config.burst_size)
+            b.last_refill = time.monotonic()
+            b._throttled = False
+
 
 # Singleton global
 token_bucket_manager = TokenBucketManager()

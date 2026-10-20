@@ -343,6 +343,8 @@ async def stream_from_llm(
                     token_buffer.clear()
                     last_flush = time.perf_counter()
 
+            from backend.ranking.admission import admission_controller
+            admission_acquired = admission_controller.acquire(current_model_id, current_provider_id)
             stream_iter = None
             try:
                 try:
@@ -407,6 +409,9 @@ async def stream_from_llm(
                 except StopAsyncIteration:
                     await flush_tokens()
             finally:
+                if admission_acquired:
+                    admission_controller.release(current_model_id, current_provider_id)
+                    admission_acquired = False
                 if stream_iter is not None:
                     try:
                         if hasattr(stream_iter, "aclose"):

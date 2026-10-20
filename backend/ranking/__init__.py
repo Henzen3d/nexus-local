@@ -20,6 +20,8 @@ from .smart_router import (
     AutoRouteDecision,
     classify_intent,
     select_best_model,
+    is_adaptive_routing_enabled,
+    set_adaptive_routing_enabled,
 )
 from .classifier import (
     classify_failure,

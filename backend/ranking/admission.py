@@ -16,8 +16,29 @@ class AdmissionController:
         self._lock = threading.Lock()
         self._inflight_by_model: Dict[str, int] = {}
         self._inflight_by_provider: Dict[str, int] = {}
+        self._active_canary_probes: set[str] = set()
         self.max_per_model = default_max_per_model
         self.max_per_provider = default_max_per_provider
+
+    def try_acquire_canary_probe(self, scope_key: str) -> bool:
+        """
+        Adquire um probe canary single-flight por escopo (model_id ou provider_id).
+        Garante que apenas UM probe concorra para recuperar o modelo/provedor após cooldown.
+        """
+        with self._lock:
+            if scope_key in self._active_canary_probes:
+                return False
+            self._active_canary_probes.add(scope_key)
+            return True
+
+    def release_canary_probe(self, scope_key: str) -> None:
+        """Libera o lock do probe canary após a conclusão da requisição."""
+        with self._lock:
+            self._active_canary_probes.discard(scope_key)
+
+    def is_canary_in_flight(self, scope_key: str) -> bool:
+        with self._lock:
+            return scope_key in self._active_canary_probes
 
     def is_admission_available(self, model_id: str, provider_id: str) -> bool:
         """Verifica se há capacidade de admissão disponível para o modelo e provedor."""
@@ -60,6 +81,9 @@ class AdmissionController:
         with self._lock:
             self._inflight_by_model.clear()
             self._inflight_by_provider.clear()
+            self._active_canary_probes.clear()
+            self.max_per_model = 10
+            self.max_per_provider = 30
 
 
 admission_controller = AdmissionController()

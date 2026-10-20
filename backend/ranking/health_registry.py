@@ -329,7 +329,8 @@ class InMemoryHealthRegistry:
             provider_id=provider_id,
             quota_pressure=quota_pressure,
         )
-        shadow_score = float(base_score) * float(fit_score) * h_val
+        norm_fit = float(fit_score) / 100.0 if fit_score > 1.5 else float(fit_score)
+        shadow_score = float(base_score) * norm_fit * h_val
         return shadow_score, h_val, factors
 
     async def flush_dirty_records(self, db: aiosqlite.Connection) -> int:
