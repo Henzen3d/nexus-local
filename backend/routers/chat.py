@@ -312,6 +312,19 @@ async def _run_turn(
     from backend.context import RequestContext
     req_ctx = RequestContext(user_id=user_id, conversation_id=conversation_id)
 
+    # ── Temporal Grounding (Fuso do Cliente / Sistema) ──────────────
+    import datetime
+    client_tz_offset = req.get("client_timezone_offset")
+    turn_now = None
+    if client_tz_offset is not None:
+        try:
+            tz = datetime.timezone(datetime.timedelta(minutes=-int(client_tz_offset)))
+            turn_now = datetime.datetime.now(tz)
+        except Exception:
+            turn_now = datetime.datetime.now()
+    else:
+        turn_now = datetime.datetime.now()
+
     # ── Image Generation Intent Check ───────────────────────────────
     image_job_created = False
     img_prompt = None
@@ -549,6 +562,7 @@ async def _run_turn(
         provider_id, user_message, history, project_context_debug,
         BASE_SYSTEM_PROMPT, user_mem_text,
         request_context=req_ctx,
+        now=turn_now,
     )
     req_ctx.record_phase("rag_memory", t_rag_start)
 
