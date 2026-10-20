@@ -2,6 +2,7 @@ import asyncio
 import json
 import time
 import uuid
+from typing import Any, Optional
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
@@ -534,7 +535,8 @@ async def _run_turn(
     # ── Web Search ──────────────────────────────────────────────────
     web_search_used, web_search_query, web_search_sources, search_results, search_config, process_steps = (
         await _resolve_web_search(
-            ws, db, req, user_message, user_msg_id, user_id, conversation_id
+            ws, db, req, user_message, user_msg_id, user_id, conversation_id,
+            intent_res=intent_res if is_auto else None,
         )
     )
 
@@ -933,7 +935,8 @@ async def _run_turn(
 
 
 async def _resolve_web_search(
-    ws, db, req, user_message, user_msg_id, user_id, conversation_id
+    ws, db, req, user_message, user_msg_id, user_id, conversation_id,
+    intent_res: Any | None = None,
 ) -> tuple[bool, str, list, list, dict | None, list]:
     """Resolve e executa web search se aplicável.
 
@@ -953,9 +956,13 @@ async def _resolve_web_search(
     trigger_type = None
 
     if search_config and search_config["enabled"]:
+        intent_val = getattr(getattr(intent_res, "intent", None), "value", None) or str(getattr(intent_res, "intent", ""))
         if web_search_requested:
             should_do_search = True
             trigger_type = "manual"
+        elif intent_val == "web_research":
+            should_do_search = True
+            trigger_type = "auto_router"
         elif search_config["heuristic_enabled"]:
             should, _score = should_search(
                 user_message, search_config["heuristic_sensitivity"]

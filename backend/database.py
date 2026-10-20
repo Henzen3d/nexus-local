@@ -215,7 +215,7 @@ CREATE TABLE IF NOT EXISTS web_search_config (
     search_provider       TEXT DEFAULT 'duckduckgo',
     api_key               TEXT DEFAULT '',
     max_results           INTEGER DEFAULT 5,
-    heuristic_enabled     INTEGER DEFAULT 0,
+    heuristic_enabled     INTEGER DEFAULT 1,
     heuristic_sensitivity TEXT DEFAULT 'medium',
     injection_template    TEXT DEFAULT 'Resultados de busca para "{query}":\n\n{results}\n\n--- Use essas informações para responder a pergunta do usuário.'
 );
@@ -1302,9 +1302,19 @@ async def init_db():
             if count == 0:
                 await db.execute(
                     """INSERT INTO web_search_config (id, enabled, search_provider, api_key, max_results, heuristic_enabled, heuristic_sensitivity)
-                       VALUES (1, 1, 'duckduckgo', '', 5, 0, 'medium')"""
+                       VALUES (1, 1, 'duckduckgo', '', 5, 1, 'medium')"""
                 )
                 await db.commit()
+            else:
+                # Migração incremental: web_search_config heuristic_enabled padrão 1
+                try:
+                    async with db.execute("SELECT heuristic_enabled FROM web_search_config WHERE id = 1") as cur:
+                        h_row = await cur.fetchone()
+                        if h_row and h_row[0] == 0:
+                            await db.execute("UPDATE web_search_config SET heuristic_enabled = 1 WHERE id = 1")
+                            await db.commit()
+                except Exception as mig_err:
+                    logger.debug("Migration heuristic_enabled: %s", mig_err)
         except Exception as e:
             logger.error("Error initializing web search config:", exc_info=e)
 
