@@ -41,7 +41,37 @@ def clean_model_display_name(display_name: str | None, provider: str | None = No
     return cleaned.strip()
 
 
+DIAS_SEMANA_PT = [
+    "Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira",
+    "Sexta-feira", "Sábado", "Domingo",
+]
+MESES_PT = [
+    "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+    "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
+]
+
+
+def get_current_temporal_context(now: Any | None = None) -> tuple[str, str]:
+    """Retorna (current_date_str, current_year) para ancoragem temporal do modelo."""
+    import datetime
+    if now is None:
+        now = datetime.datetime.now()
+    try:
+        dia_semana = DIAS_SEMANA_PT[now.weekday()]
+        mes = MESES_PT[now.month - 1]
+        date_str = f"{dia_semana}, {now.day:02d} de {mes} de {now.year}"
+        year_str = str(now.year)
+        return date_str, year_str
+    except Exception:
+        fallback_year = str(getattr(now, "year", 2026))
+        return f"{now.day:02d}/{now.month:02d}/{fallback_year}", fallback_year
+
+
 BASE_SYSTEM_PROMPT_TEMPLATE = (
+    "CONTEXTO TEMPORAL\n"
+    "- Data atual do sistema: {current_date_str} (Ano: {current_year}).\n"
+    "- Quaisquer menções a \"hoje\", \"este ano\", \"atualmente\" ou \"recente\" referem-se estritamente ao ano de {current_year}.\n"
+    "- Seu conhecimento pré-treinado possui uma data de corte no passado. Eventos, fatos e datas referentes a {current_year} pertencem à realidade presente e NÃO devem ser considerados \"conteúdo futuro\", \"simulado\" ou \"hipotético\".\n\n"
     "IDENTIDADE E TRANSPARÊNCIA\n"
     "- Você é o assistente do NexusLocal. O modelo de inteligência artificial em execução neste turno é: {active_model} (via {active_provider}).\n"
     "- NUNCA inicie suas respostas se apresentando, saudando formalmente ou anunciando qual modelo ou assistente você é, a menos que o usuário pergunte explicitamente sobre sua identidade ou sobre o modelo.\n"
@@ -63,11 +93,18 @@ BASE_SYSTEM_PROMPT_TEMPLATE = (
 )
 
 
-def format_base_system_prompt(active_model: str = "Padrão", active_provider: str = "NexusLocal") -> str:
-    """Retorna o system prompt base interpolado com o modelo e provedor ativos."""
+def format_base_system_prompt(
+    active_model: str = "Padrão",
+    active_provider: str = "NexusLocal",
+    now: Any | None = None,
+) -> str:
+    """Retorna o system prompt base interpolado com modelo, provedor e ancoragem temporal."""
+    current_date_str, current_year = get_current_temporal_context(now)
     return BASE_SYSTEM_PROMPT_TEMPLATE.format(
         active_model=active_model or "Padrão",
         active_provider=active_provider or "NexusLocal",
+        current_date_str=current_date_str,
+        current_year=current_year,
     )
 
 
@@ -254,6 +291,7 @@ async def resolve_project_context(
     base_system: str,
     user_mem_text: str,
     request_context: Any | None = None,
+    now: Any | None = None,
 ) -> tuple[str | None, str]:
     """Resolve o project_id ativo e, se houver, constrói o context RAG.
 
@@ -310,9 +348,26 @@ async def resolve_project_context(
     family = detect_model_family(model_id)
     profile_directive = MODEL_FAMILY_PROFILES.get(family, "")
 
-    formatted_base = base_system
-    if "{active_model}" in formatted_base or "{active_provider}" in formatted_base:
-        formatted_base = formatted_base.format(active_model=model_disp, active_provider=prov_disp)
+    cur_date_str, cur_year = get_current_temporal_context(now)
+    if base_system == BASE_SYSTEM_PROMPT:
+        formatted_base = format_base_system_prompt(
+            active_model=model_disp,
+            active_provider=prov_disp,
+            now=now,
+        )
+    else:
+        formatted_base = base_system
+        fmt_kwargs = {}
+        if "{active_model}" in formatted_base:
+            fmt_kwargs["active_model"] = model_disp
+        if "{active_provider}" in formatted_base:
+            fmt_kwargs["active_provider"] = prov_disp
+        if "{current_date_str}" in formatted_base:
+            fmt_kwargs["current_date_str"] = cur_date_str
+        if "{current_year}" in formatted_base:
+            fmt_kwargs["current_year"] = cur_year
+        if fmt_kwargs:
+            formatted_base = formatted_base.format(**fmt_kwargs)
 
     system_instruction = build_composed_system_prompt(
         base_prompt=formatted_base,
