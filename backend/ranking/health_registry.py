@@ -139,6 +139,10 @@ class InMemoryHealthRegistry:
                 )
             return self._records[model_id]
 
+    def get_record(self, model_id: str) -> Optional[ModelHealthRecord]:
+        with self._lock:
+            return self._records.get(model_id)
+
     def record_success(
         self,
         model_id: str,

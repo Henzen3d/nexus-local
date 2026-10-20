@@ -587,6 +587,17 @@ async def startup():
     except Exception as e:
         logger.warning("[ImageGen Worker] Falha ao iniciar worker de imagem", exc_info=e)
 
+    # Iniciar background flush do HealthRegistry (B2/B3)
+    try:
+        from backend.ranking.health_registry import health_registry
+        from backend.database import get_db
+        health_registry._flush_task = asyncio.create_task(
+            health_registry.start_background_flush_loop(get_db)
+        )
+        logger.info("[HealthRegistry] Loop de flush em background iniciado")
+    except Exception as e:
+        logger.warning("[HealthRegistry] Falha ao iniciar loop de flush", exc_info=e)
+
 
 @app.on_event("shutdown")
 async def shutdown():
@@ -596,6 +607,23 @@ async def shutdown():
         logger.info("[ImageGen Worker] Worker finalizado no shutdown")
     except Exception as e:
         logger.warning("[ImageGen Worker] Falha ao parar worker de imagem", exc_info=e)
+    try:
+        from backend.ranking.health_registry import health_registry
+        health_registry.stop_background_flush()
+        if getattr(health_registry, "_flush_task", None) and not health_registry._flush_task.done():
+            try:
+                await health_registry._flush_task
+            except (asyncio.CancelledError, Exception):
+                pass
+        from backend.database import get_db
+        db = await get_db()
+        try:
+            await health_registry.flush_dirty_records(db)
+        finally:
+            await db.close()
+        logger.info("[HealthRegistry] Flush no shutdown concluído com sucesso")
+    except Exception as e:
+        logger.warning("[HealthRegistry] Falha ao persistir no shutdown", exc_info=e)
     try:
         from backend.providers.base import close_http_client
         await close_http_client()

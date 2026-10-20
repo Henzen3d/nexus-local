@@ -12,6 +12,7 @@ import uuid
 from typing import TYPE_CHECKING, Any
 
 from backend.logging_config import get_logger
+from starlette.websockets import WebSocketDisconnect
 from backend.providers.base import RateLimitError
 from backend.providers.registry import get_provider, get_model_name
 from backend.ranking import (
@@ -342,72 +343,76 @@ async def stream_from_llm(
                     token_buffer.clear()
                     last_flush = time.perf_counter()
 
+            stream_iter = None
             try:
-                stream_iter = provider.stream_chat(model=model_name, messages=history, **stream_kwargs).__aiter__()
-
-                # Aguarda o primeiro token com prazo limite de TTFT (clamped ao restante do orçamento de tempo)
                 try:
-                    first_token = await asyncio.wait_for(
-                        stream_iter.__anext__(),
-                        timeout=stream_ttft_timeout,
-                    )
-                    first_token_received = True
-                    if request_context and hasattr(request_context, "record_phase"):
-                        request_context.record_phase("llm_ttfb", stream_start_time)
-                    token_str = str(first_token)
-                    full_response += token_str
-                    token_buffer.append(token_str)
-                    await flush_tokens()
-                except (asyncio.TimeoutError, TimeoutError):
-                    logger.warning(
-                        "TTFT Timeout (%.1fs excedido) no provedor '%s' (modelo '%s'). Acionando failover cascade precoce.",
-                        stream_ttft_timeout, current_provider_id, current_model_id,
-                    )
-                    from backend.ranking.health_registry import health_registry
-                    health_registry.record_failure(current_model_id, current_provider_id, "TIMEOUT", stage="pre_stream")
-                    attempted_model_ids.add(current_model_id)
-                    # Libera a conexão HTTP do pool imediatamente (não espera o GC finalizar o generator)
-                    try:
-                        await stream_iter.aclose()
-                    except Exception:
-                        pass
-                    elapsed_after = time.monotonic() - turn_start_time
-                    if (total_budget - elapsed_after) < MIN_RETRY_BUDGET_SECONDS or attempt >= _MAX_FAILOVER_ATTEMPTS:
-                        msg = (
-                            "Tempo limite de resposta esgotado após tentativas de failover."
-                            if (total_budget - elapsed_after) < MIN_RETRY_BUDGET_SECONDS
-                            else f"Tempo limite de resposta excedido ({int(stream_ttft_timeout)}s) no modelo '{current_model_id}'."
-                        )
-                        await ws.send_json({
-                            "type": "error",
-                            "message": msg,
-                        })
-                        return None
-                    continue
+                    stream_iter = provider.stream_chat(model=model_name, messages=history, **stream_kwargs).__aiter__()
 
-                # Consome o restante do stream com micro-lotes de coalescência (~35ms ou 8 tokens)
-                # e guarda timeout entre tokens para não travar conexões abandonadas
-                while True:
+                    # Aguarda o primeiro token com prazo limite de TTFT (clamped ao restante do orçamento de tempo)
                     try:
-                        token = await asyncio.wait_for(stream_iter.__anext__(), timeout=35.0)
-                    except StopAsyncIteration:
-                        break
+                        first_token = await asyncio.wait_for(
+                            stream_iter.__anext__(),
+                            timeout=stream_ttft_timeout,
+                        )
+                        first_token_received = True
+                        if request_context and hasattr(request_context, "record_phase"):
+                            request_context.record_phase("llm_ttfb", stream_start_time)
+                        token_str = str(first_token)
+                        full_response += token_str
+                        token_buffer.append(token_str)
+                        await flush_tokens()
                     except (asyncio.TimeoutError, TimeoutError):
                         logger.warning(
-                            "Timeout entre tokens (35s) no provedor '%s' (modelo '%s'). Finalizando stream.",
-                            current_provider_id, current_model_id,
+                            "TTFT Timeout (%.1fs excedido) no provedor '%s' (modelo '%s'). Acionando failover cascade precoce.",
+                            stream_ttft_timeout, current_provider_id, current_model_id,
                         )
-                        break
+                        from backend.ranking.health_registry import health_registry
+                        health_registry.record_failure(current_model_id, current_provider_id, "TIMEOUT", stage="pre_stream")
+                        attempted_model_ids.add(current_model_id)
+                        elapsed_after = time.monotonic() - turn_start_time
+                        if (total_budget - elapsed_after) < MIN_RETRY_BUDGET_SECONDS or attempt >= _MAX_FAILOVER_ATTEMPTS:
+                            msg = (
+                                "Tempo limite de resposta esgotado após tentativas de failover."
+                                if (total_budget - elapsed_after) < MIN_RETRY_BUDGET_SECONDS
+                                else f"Tempo limite de resposta excedido ({int(stream_ttft_timeout)}s) no modelo '{current_model_id}'."
+                            )
+                            await ws.send_json({
+                                "type": "error",
+                                "message": msg,
+                            })
+                            return None
+                        continue
 
-                    token_str = str(token)
-                    full_response += token_str
-                    token_buffer.append(token_str)
-                    if len(token_buffer) >= 8 or (time.perf_counter() - last_flush) >= 0.035:
-                        await flush_tokens()
+                    # Consome o restante do stream com micro-lotes de coalescência (~35ms ou 8 tokens)
+                    # e guarda timeout entre tokens para não travar conexões abandonadas
+                    while True:
+                        try:
+                            token = await asyncio.wait_for(stream_iter.__anext__(), timeout=35.0)
+                        except StopAsyncIteration:
+                            break
+                        except (asyncio.TimeoutError, TimeoutError):
+                            logger.warning(
+                                "Timeout entre tokens (35s) no provedor '%s' (modelo '%s'). Finalizando stream.",
+                                current_provider_id, current_model_id,
+                            )
+                            break
 
-                await flush_tokens()
-            except StopAsyncIteration:
-                await flush_tokens()
+                        token_str = str(token)
+                        full_response += token_str
+                        token_buffer.append(token_str)
+                        if len(token_buffer) >= 8 or (time.perf_counter() - last_flush) >= 0.035:
+                            await flush_tokens()
+
+                    await flush_tokens()
+                except StopAsyncIteration:
+                    await flush_tokens()
+            finally:
+                if stream_iter is not None:
+                    try:
+                        if hasattr(stream_iter, "aclose"):
+                            await stream_iter.aclose()
+                    except Exception:
+                        pass
 
             if not full_response.strip():
                 logger.warning(
@@ -482,6 +487,18 @@ async def stream_from_llm(
             model_id = current_model_id
             provider_id = current_provider_id
 
+        except asyncio.CancelledError:
+            logger.info(
+                "Streaming cancelado pelo cliente/sistema no modelo '%s' (provedor '%s'). Limpando recursos e propagando cancelamento sem failover.",
+                current_model_id, current_provider_id,
+            )
+            raise
+        except (WebSocketDisconnect, ConnectionResetError, BrokenPipeError) as ws_err:
+            logger.info(
+                "Conexão do cliente perdida durante streaming no modelo '%s' (provedor '%s'): %s. Encerrando sem penalizar modelo nem failover.",
+                current_model_id, current_provider_id, ws_err,
+            )
+            return None
         except RateLimitError as e:
             next_failover_reason = getattr(e, "failover_reason", None) or "rate_limit"
             from backend.ranking.token_bucket import token_bucket_manager
@@ -503,6 +520,23 @@ async def stream_from_llm(
             continue
         except Exception as e:
             error_msg = str(e)
+            if isinstance(e, RuntimeError) and any(
+                term in error_msg.lower() for term in ("websocket", "disconnect", "close message", "not connected")
+            ):
+                logger.info(
+                    "Conexão do cliente encerrada durante streaming (%s). Finalizando sem penalizar modelo nem failover.",
+                    error_msg,
+                )
+                return None
+
+            stage = "mid_stream" if first_token_received else "pre_stream"
+            from backend.ranking.health_registry import health_registry
+            health_registry.record_failure(
+                current_model_id,
+                current_provider_id,
+                "PRE_STREAM_ERR" if stage == "pre_stream" else "MID_STREAM_DROP",
+                stage=stage,
+            )
             next_failover_reason = getattr(e, "failover_reason", None) or "error"
             # Rede de segurança HTTP 400 com termos de reasoning:
             # Se a chamada falhou com erro citando parâmetros de reasoning, emite effort_dropped
