@@ -215,10 +215,20 @@ function cleanModelName(displayName: string, provider?: string): { cleanName: st
   return { cleanName, detectedProvider }
 }
 
-function ModelBadge({ modelId, provider, displayName }: {
+function ModelBadge({
+  modelId,
+  provider,
+  displayName,
+  requestedModel,
+  wasFallback,
+  uiLevel,
+}: {
   modelId?: string
   provider?: string
   displayName?: string
+  requestedModel?: string | null
+  wasFallback?: boolean
+  uiLevel?: string
 }) {
   const { t } = useTranslation()
   if (!displayName) return null
@@ -226,12 +236,25 @@ function ModelBadge({ modelId, provider, displayName }: {
   const { cleanName, detectedProvider } = cleanModelName(displayName, provider)
   const formattedProvider = formatProviderName(detectedProvider)
 
-  const tooltipText = formattedProvider
+  let tooltipText = formattedProvider
     ? t('chat.providerModel', {
         provider: formattedProvider,
         defaultValue: `${t('chat.providerLabel', { defaultValue: 'Provedor' })}: ${formattedProvider}`,
       })
     : cleanName
+
+  if (uiLevel === 'advanced' && wasFallback) {
+    const fallbackDesc = requestedModel
+      ? t('chat.failoverTooltipDetailed', {
+          requested: requestedModel,
+          served: cleanName,
+          defaultValue: `Failover ativo: solicitado ${requestedModel}, atendido por ${cleanName}`,
+        })
+      : t('chat.failoverTooltip', {
+          defaultValue: 'Atendido via modelo reserva (failover)',
+        })
+    tooltipText = `${tooltipText} · ${fallbackDesc}`
+  }
 
   return (
     <span
@@ -362,6 +385,7 @@ export const MessageBubble = React.memo(function MessageBubble({ message }: Prop
   const [copied, setCopied] = useState(false)
   const ttsPlay = useTtsPlay()
   const lastCacheHit = useStore((s) => s.lastCacheHit)
+  const uiLevel = useStore((s) => s.uiLevel)
   const setActiveArtifact = useStore((s) => s.setActiveArtifact)
   const setArtifactPanelOpen = useStore((s) => s.setArtifactPanelOpen)
   const loadArtifactHistory = useStore((s) => s.loadArtifactHistory)
@@ -437,7 +461,7 @@ export const MessageBubble = React.memo(function MessageBubble({ message }: Prop
                 </div>
               )}
 
-              {message.was_fallback && (
+              {uiLevel !== 'simple' && message.was_fallback && (
                 <span className="failover-badge" style={{
                   display: 'inline-flex',
                   alignItems: 'center',
@@ -652,18 +676,21 @@ export const MessageBubble = React.memo(function MessageBubble({ message }: Prop
               {formatTime(message.created_at)}
             </span>
           )}
-          {message.model_display_name && (
+          {uiLevel !== 'simple' && message.model_display_name && (
             <>
               <span className="meta-sep">·</span>
               <ModelBadge
                 modelId={message.model_id}
                 provider={message.provider}
                 displayName={message.model_display_name}
+                requestedModel={message.requested_model}
+                wasFallback={message.was_fallback}
+                uiLevel={uiLevel}
               />
             </>
           )}
 
-          {message.auto_route && (
+          {uiLevel !== 'simple' && message.auto_route && (
             <>
               <span className="meta-sep">·</span>
               <AutoRouteBadge decision={message.auto_route} />

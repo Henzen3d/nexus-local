@@ -755,7 +755,11 @@ async def _run_turn(
     if result is None:
         return
 
-    full_response, cache_hit, model_id, provider_id = result
+    full_response = result[0]
+    cache_hit = result[1]
+    model_id = result[2]
+    provider_id = result[3]
+    failover_meta = getattr(result, "failover_meta", {}) if hasattr(result, "failover_meta") else (result[4] if len(result) > 4 else {})
 
     # ── Intelligent UI: extração de fence antes de persistir ──────────
     # Só com a flag ligada. Desligada, o texto é persistido intacto (um fence
@@ -858,7 +862,14 @@ async def _run_turn(
     # Qual modelo RESpondeu de fato (pós-failover) — o badge da resposta no
     # frontend usa estes campos em vez do modelo solicitado.
     stream_end_payload.update(await build_final_model_metadata(
-        db, requested_model_id, model_id, requested_provider_id,
+        db,
+        requested_model_id,
+        model_id,
+        requested_provider_id,
+        failover_tier=failover_meta.get("failover_tier"),
+        spliced=failover_meta.get("spliced", False),
+        outcome=failover_meta.get("outcome", "success"),
+        attempt_count=failover_meta.get("attempt_count", 1),
     ))
     if ui_envelope:
         stream_end_payload["ui_blocks"] = ui_envelope

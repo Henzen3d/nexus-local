@@ -205,6 +205,8 @@
     "effortDroppedUnsupported": "O modelo selecionado não suporta controle de esforço.",
     "effortDroppedProvider": "O provedor rejeitou o parâmetro de esforço; retentando sem ele.",
     "failoverNotice": "Failover: {{model}} ({{reason}}). Alternando para {{fallback}}...",
+    "failoverTooltip": "Atendido via modelo reserva (failover)",
+    "failoverTooltipDetailed": "Failover ativo: solicitado {{requested}}, atendido por {{served}}",
     "failoverReason": {
       "invalid_request": "requisição incompatível",
       "auth": "falha de autenticação",

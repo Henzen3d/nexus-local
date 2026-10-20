@@ -246,12 +246,12 @@ async def test_stream_iter_aclose_guaranteed_on_error(setup_b3_db):
     from backend.orchestration.resolve_request import stream_from_llm
     db = setup_b3_db
 
-    stream_iter = MockStreamIterWithAclose(["token 1"])
+    stream_iter = MockStreamIterWithAclose(["token 1 with plenty of characters to pass commit threshold"])
     # Simula erro após primeiro token
     async def exploding_anext():
         if stream_iter.step == 0:
             stream_iter.step += 1
-            return "token 1"
+            return "token 1 with plenty of characters to pass commit threshold"
         raise RuntimeError("LLM exploded mid-stream")
 
     stream_iter.__anext__ = exploding_anext

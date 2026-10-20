@@ -9,6 +9,7 @@ import asyncio
 import json
 import re
 import uuid
+import os
 from typing import TYPE_CHECKING, Any
 
 from backend.logging_config import get_logger
@@ -33,6 +34,28 @@ _MAX_FAILOVER_ATTEMPTS = 4
 DEFAULT_FAILOVER_TOTAL_BUDGET_SECONDS = 45.0
 DEFAULT_STREAM_TTFT_TIMEOUT_SECONDS = 25.0
 MIN_RETRY_BUDGET_SECONDS = 3.0
+DEFAULT_MIN_COMMIT_CHARS = int(os.getenv("FAILOVER_MIN_COMMIT_CHARS", "24"))
+DEFAULT_MAX_PRECOMMIT_HOLD_MS = float(os.getenv("FAILOVER_MAX_PRECOMMIT_HOLD_MS", "450.0"))
+
+
+class StreamLlmResult(tuple):
+    """Tupla de retorno de stream_from_llm: (full_response, model_id, provider_id) com failover_meta acessível."""
+    failover_meta: dict
+
+    def __new__(cls, full_response: str, model_id: str, provider_id: str, failover_meta: dict | None = None):
+        inst = super().__new__(cls, (full_response, model_id, provider_id))
+        inst.failover_meta = failover_meta or {}
+        return inst
+
+
+class ResolveAndStreamResult(tuple):
+    """Tupla de retorno de resolve_and_stream: (full_response, cache_hit, resolved_model_id, resolved_provider_id) com failover_meta acessível."""
+    failover_meta: dict
+
+    def __new__(cls, full_response: str, cache_hit: Any | None, resolved_model_id: str, resolved_provider_id: str, failover_meta: dict | None = None):
+        inst = super().__new__(cls, (full_response, cache_hit, resolved_model_id, resolved_provider_id))
+        inst.failover_meta = failover_meta or {}
+        return inst
 
 
 async def get_failover_total_budget(db) -> float:
@@ -172,12 +195,9 @@ async def stream_from_llm(
             return None
 
         if resolved.was_failover:
-            await ws.send_json({
-                "type": "failover_notice",
-                "original_model": original_model_id,
-                "fallback_model": resolved.display_name,
-                "reason": resolved.failover_reason or "rate_limit",
-            })
+            # UX C2: Failover invisível. Não emitimos failover_notice antecipado para não
+            # poluir o cliente com toasts caso o modelo reserva responda com sucesso.
+            # O modelo que respondeu é identificado no metadata terminal (stream_end).
             if history and isinstance(history, list) and history[0].get("role") == "system":
                 sys_content = history[0].get("content") or ""
                 new_ident = f"O modelo de inteligência artificial em execução neste turno é: {resolved.display_name} (via {resolved.provider_id})."
@@ -332,6 +352,10 @@ async def stream_from_llm(
             stream_ttft_timeout = max(0.5, min(DEFAULT_STREAM_TTFT_TIMEOUT_SECONDS, remaining_budget))
             stream_start_time = time.perf_counter()
             first_token_received = False
+            is_committed = False
+            precommit_buffer: list[str] = []
+            precommit_chars = 0
+            candidate_response = ""
             token_buffer: list[str] = []
             last_flush = time.perf_counter()
 
@@ -342,6 +366,19 @@ async def stream_from_llm(
                     await ws.send_json({"type": "token", "content": batch_text})
                     token_buffer.clear()
                     last_flush = time.perf_counter()
+
+            def commit_if_needed(force: bool = False):
+                nonlocal is_committed, precommit_buffer, precommit_chars, token_buffer, candidate_response
+                if is_committed:
+                    return
+                elapsed_ms = (time.perf_counter() - stream_start_time) * 1000.0
+                if force or precommit_chars >= DEFAULT_MIN_COMMIT_CHARS or elapsed_ms >= DEFAULT_MAX_PRECOMMIT_HOLD_MS:
+                    is_committed = True
+                    if precommit_buffer:
+                        buffered_str = "".join(precommit_buffer)
+                        candidate_response += buffered_str
+                        token_buffer.append(buffered_str)
+                        precommit_buffer.clear()
 
             from backend.ranking.admission import admission_controller
             admission_acquired = admission_controller.acquire(current_model_id, current_provider_id)
@@ -360,9 +397,11 @@ async def stream_from_llm(
                         if request_context and hasattr(request_context, "record_phase"):
                             request_context.record_phase("llm_ttfb", stream_start_time)
                         token_str = str(first_token)
-                        full_response += token_str
-                        token_buffer.append(token_str)
-                        await flush_tokens()
+                        precommit_buffer.append(token_str)
+                        precommit_chars += len(token_str)
+                        commit_if_needed()
+                        if is_committed:
+                            await flush_tokens()
                     except (asyncio.TimeoutError, TimeoutError):
                         logger.warning(
                             "TTFT Timeout (%.1fs excedido) no provedor '%s' (modelo '%s'). Acionando failover cascade precoce.",
@@ -400,15 +439,32 @@ async def stream_from_llm(
                             break
 
                         token_str = str(token)
-                        full_response += token_str
-                        token_buffer.append(token_str)
-                        if len(token_buffer) >= 8 or (time.perf_counter() - last_flush) >= 0.035:
-                            await flush_tokens()
+                        if not is_committed:
+                            precommit_buffer.append(token_str)
+                            precommit_chars += len(token_str)
+                            commit_if_needed()
+                            if is_committed:
+                                await flush_tokens()
+                        else:
+                            candidate_response += token_str
+                            token_buffer.append(token_str)
+                            if len(token_buffer) >= 8 or (time.perf_counter() - last_flush) >= 0.035:
+                                await flush_tokens()
 
+                    # Final de stream: se completou antes do threshold de commit (respostas muito curtas), força o commit
+                    if not is_committed and precommit_buffer:
+                        commit_if_needed(force=True)
                     await flush_tokens()
                 except StopAsyncIteration:
+                    if not is_committed and precommit_buffer:
+                        commit_if_needed(force=True)
                     await flush_tokens()
             finally:
+                if not is_committed:
+                    # UX C2: buffer do candidato descartado integralmente se falhou antes do commit
+                    precommit_buffer.clear()
+                    token_buffer.clear()
+                    candidate_response = ""
                 if admission_acquired:
                     admission_controller.release(current_model_id, current_provider_id)
                     admission_acquired = False
@@ -419,7 +475,7 @@ async def stream_from_llm(
                     except Exception:
                         pass
 
-            if not full_response.strip():
+            if not candidate_response.strip():
                 logger.warning(
                     "Modelo '%s' (provedor '%s') não gerou nenhum token de resposta. Acionando failover cascade...",
                     current_model_id, current_provider_id,
@@ -448,6 +504,7 @@ async def stream_from_llm(
                     return None
                 continue
 
+            full_response = candidate_response
             from backend.ranking.health_registry import health_registry
             ttft_measured_ms = (time.perf_counter() - stream_start_time) * 1000.0 if first_token_received else None
             health_registry.record_success(current_model_id, current_provider_id, ttft_ms=ttft_measured_ms)
@@ -534,7 +591,7 @@ async def stream_from_llm(
                 )
                 return None
 
-            stage = "mid_stream" if first_token_received else "pre_stream"
+            stage = "mid_stream" if is_committed else "pre_stream"
             from backend.ranking.health_registry import health_registry
             health_registry.record_failure(
                 current_model_id,
@@ -648,9 +705,9 @@ async def stream_from_llm(
                 })
                 return None
 
-            if not first_token_received and attempt < _MAX_FAILOVER_ATTEMPTS:
+            if not is_committed and attempt < _MAX_FAILOVER_ATTEMPTS:
                 logger.warning(
-                    "Erro antes do primeiro token no modelo '%s' (provedor '%s'): %s. Tentando próximo modelo...",
+                    "Erro antes do commit no modelo '%s' (provedor '%s'): %s. Tentando próximo modelo...",
                     current_model_id, current_provider_id, error_msg,
                 )
                 attempted_model_ids.add(current_model_id)
@@ -673,7 +730,15 @@ async def stream_from_llm(
         })
         return None
 
-    return full_response, model_id, provider_id
+    failover_meta = {
+        "requested_model": original_model_id,
+        "served_by": model_id,
+        "failover_tier": getattr(resolved, "failover_tier", None),
+        "spliced": False,
+        "outcome": "success",
+        "attempt_count": attempt,
+    }
+    return StreamLlmResult(full_response, model_id, provider_id, failover_meta=failover_meta)
 
 
 async def resolve_and_stream(
@@ -715,7 +780,10 @@ async def resolve_and_stream(
     if result is None:
         return None
 
-    full_response, resolved_model_id, resolved_provider_id = result
+    full_response = result[0]
+    resolved_model_id = result[1]
+    resolved_provider_id = result[2]
+    failover_meta = getattr(result, "failover_meta", {}) if hasattr(result, "failover_meta") else (result[3] if len(result) > 3 else {})
 
     # Save to cache in background (semantic key includes memory fingerprint)
     if full_response:
@@ -735,7 +803,7 @@ async def resolve_and_stream(
             logger.warning("Não foi possível agendar cache.set em background",
                            exc_info=True)
 
-    return full_response, None, resolved_model_id, resolved_provider_id
+    return ResolveAndStreamResult(full_response, None, resolved_model_id, resolved_provider_id, failover_meta=failover_meta)
 
 
 async def build_final_model_metadata(
@@ -743,6 +811,10 @@ async def build_final_model_metadata(
     requested_model_id: str,
     resolved_model_id: str,
     resolved_provider_id: str,
+    failover_tier: str | None = None,
+    spliced: bool = False,
+    outcome: str = "success",
+    attempt_count: int = 1,
 ) -> dict:
     """Campos do payload ``stream_end`` que identificam o modelo que RESpondeu
     (pós-failover) — usado pelo badge de modelo da resposta no frontend.
@@ -768,4 +840,10 @@ async def build_final_model_metadata(
         "final_model_id": resolved_model_id,
         "final_model_name": display_name or resolved_model_id,
         "final_provider_id": resolved_provider_id,
+        "requested_model": requested_model_id,
+        "served_by": resolved_model_id,
+        "failover_tier": failover_tier,
+        "spliced": spliced,
+        "outcome": outcome,
+        "attempt_count": attempt_count,
     }

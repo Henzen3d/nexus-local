@@ -79,6 +79,12 @@ export interface Message {
   process_steps?: ProcessStep[]
   process_duration_ms?: number
   was_fallback?: boolean
+  requested_model?: string | null
+  served_by?: string | null
+  failover_tier?: string | null
+  spliced?: boolean
+  outcome?: string
+  attempt_count?: number
   auto_route?: AutoRouteDecisionInfo | null
   ui_errors?: UiError[]
   ui_dropped?: number
@@ -986,7 +992,7 @@ export type WSMessage =
   | { type: 'conversation_created'; conversation_id: string; title: string; project_id?: string | null }
   | { type: 'stream_start'; conversation_id: string; from_cache?: boolean; cache_type?: string | null; cache_similarity?: number | null }
   | { type: 'token'; content: string }
-  | { type: 'stream_end'; message_id: string; conversation_id: string; artifact_id?: string | null; artifact_type?: string | null; artifact_title?: string | null; artifacts?: { id: string; type: string; title: string }[]; relay_used?: boolean; relay_model?: string | null; web_search_used?: boolean; web_search_query?: string; web_search_sources?: WebSearchSource[]; process_steps?: ProcessStep[]; was_fallback?: boolean; final_model_id?: string | null; final_model_name?: string | null; final_provider_id?: string | null; ui_errors?: UiError[]; ui_dropped?: number; ui_blocks?: UiEnvelope | null; process_duration_ms?: number; source_count?: number }
+  | { type: 'stream_end'; message_id: string; conversation_id: string; artifact_id?: string | null; artifact_type?: string | null; artifact_title?: string | null; artifacts?: { id: string; type: string; title: string }[]; relay_used?: boolean; relay_model?: string | null; web_search_used?: boolean; web_search_query?: string; web_search_sources?: WebSearchSource[]; process_steps?: ProcessStep[]; was_fallback?: boolean; final_model_id?: string | null; final_model_name?: string | null; final_provider_id?: string | null; requested_model?: string | null; served_by?: string | null; failover_tier?: string | null; spliced?: boolean; outcome?: string; attempt_count?: number; ui_errors?: UiError[]; ui_dropped?: number; ui_blocks?: UiEnvelope | null; process_duration_ms?: number; source_count?: number }
   | { type: 'ui_progress'; block: ProgressBlock }
   | { type: 'error'; message: string }
   | { type: 'failover_notice'; original_model: string; fallback_model: string; reason: string }

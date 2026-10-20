@@ -228,23 +228,27 @@ async def _get_next_best_ranked_model(
     query_params = [user_id] if user_id else []
 
     # Query: modelos e provedores habilitados com registro de ranking, não esgotados, não excluídos
-    async with db.execute(
-        f"""
-        SELECT m.id, m.provider_id, m.display_name, r.nexuslocal_score
-        FROM models m
-        JOIN providers p ON p.id = m.provider_id
-        JOIN model_rankings r ON r.model_id = m.id
-        LEFT JOIN model_quota_status q ON q.model_id = m.id
-        {join_keys}
-        WHERE m.enabled = 1
-          AND p.enabled = 1
-          AND (q.status IS NULL OR q.status = 'available')
-          AND {key_clause}
-        ORDER BY r.nexuslocal_score DESC
-        """,
-        tuple(query_params),
-    ) as cur:
-        rows = await cur.fetchall()
+    try:
+        async with db.execute(
+            f"""
+            SELECT m.id, m.provider_id, m.display_name, r.nexuslocal_score
+            FROM models m
+            JOIN providers p ON p.id = m.provider_id
+            JOIN model_rankings r ON r.model_id = m.id
+            LEFT JOIN model_quota_status q ON q.model_id = m.id
+            {join_keys}
+            WHERE m.enabled = 1
+              AND p.enabled = 1
+              AND (q.status IS NULL OR q.status = 'available')
+              AND {key_clause}
+            ORDER BY r.nexuslocal_score DESC
+            """,
+            tuple(query_params),
+        ) as cur:
+            rows = await cur.fetchall()
+    except Exception as err:
+        logger.warning("Falha ao consultar model_rankings para Tier 2: %s", err)
+        rows = []
 
     from backend.ranking.eligibility import check_candidate_eligibility
     candidate_fallback = None

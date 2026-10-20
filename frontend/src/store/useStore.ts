@@ -273,7 +273,7 @@ interface AppState {
   startProcessStep: (step: ProcessStep) => void
   updateProcessStep: (id: string, update: Partial<Pick<ProcessStep, 'detail' | 'subSteps' | 'status'>>) => void
   uiCorrectionRequested: Record<string, boolean>
-  finalizeStream: (messageId: string, artifactMeta?: { id: string; type: string; title: string }, artifacts?: { id: string; type: string; title: string }[], relayUsed?: boolean, relayModel?: string | null, webSearchUsed?: boolean, webSearchQuery?: string, webSearchSources?: WebSearchSource[], wasFallback?: boolean, uiBlocks?: UiEnvelope | null, processDurationMs?: number, serverSteps?: ProcessStep[], uiErrors?: UiError[], uiDropped?: number, finalModelId?: string | null, finalModelName?: string | null, finalProviderId?: string | null) => void
+  finalizeStream: (messageId: string, artifactMeta?: { id: string; type: string; title: string }, artifacts?: { id: string; type: string; title: string }[], relayUsed?: boolean, relayModel?: string | null, webSearchUsed?: boolean, webSearchQuery?: string, webSearchSources?: WebSearchSource[], wasFallback?: boolean, uiBlocks?: UiEnvelope | null, processDurationMs?: number, serverSteps?: ProcessStep[], uiErrors?: UiError[], uiDropped?: number, finalModelId?: string | null, finalModelName?: string | null, finalProviderId?: string | null, requestedModel?: string | null, servedBy?: string | null, failoverTier?: string | null, spliced?: boolean, outcome?: string, attemptCount?: number) => void
   handleUiProgress: (block: ProgressBlock) => void
   lastAutoRouteDecision: AutoRouteDecisionInfo | null
   setAutoRouteDecision: (decision: AutoRouteDecisionInfo | null) => void
@@ -1381,7 +1381,13 @@ export const useStore = create<AppState>((set, get) => ({
     uiDropped?: number,
     finalModelId?: string | null,
     finalModelName?: string | null,
-    finalProviderId?: string | null
+    finalProviderId?: string | null,
+    requestedModel?: string | null,
+    servedBy?: string | null,
+    failoverTier?: string | null,
+    spliced?: boolean,
+    outcome?: string,
+    attemptCount?: number
   ) => {
     const { streamingContent, selectedModelId, models, lastAutoRouteDecision, processSteps, processStartedAt, streamingUiBlocks } = get()
     const resolvedModelId = lastAutoRouteDecision?.chosen_model_id || selectedModelId
@@ -1437,6 +1443,12 @@ export const useStore = create<AppState>((set, get) => ({
       process_steps: completedSteps,
       process_duration_ms: processDurationMs ?? (processStartedAt ? Date.now() - processStartedAt : undefined),
       was_fallback: wasFallback,
+      requested_model: requestedModel ?? undefined,
+      served_by: (servedBy || finalModelId || resolvedModelId) ?? undefined,
+      failover_tier: failoverTier ?? undefined,
+      spliced: spliced ?? false,
+      outcome: outcome ?? 'success',
+      attempt_count: attemptCount ?? 1,
       auto_route: lastAutoRouteDecision,
       ui_errors: uiErrors,
       ui_dropped: uiDropped,

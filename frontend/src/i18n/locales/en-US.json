@@ -205,6 +205,8 @@
     "effortDroppedUnsupported": "The selected model does not support reasoning effort control.",
     "effortDroppedProvider": "Provider rejected reasoning parameter; retrying without it.",
     "failoverNotice": "Failover: {{model}} ({{reason}}). Switching to {{fallback}}...",
+    "failoverTooltip": "Served via fallback model (failover)",
+    "failoverTooltipDetailed": "Active failover: requested {{requested}}, served by {{served}}",
     "failoverReason": {
       "invalid_request": "incompatible request",
       "auth": "authentication failure",

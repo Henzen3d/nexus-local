@@ -232,7 +232,13 @@ export function useChat() {
             msg.ui_dropped,
             msg.final_model_id,
             msg.final_model_name,
-            msg.final_provider_id
+            msg.final_provider_id,
+            msg.requested_model,
+            msg.served_by,
+            msg.failover_tier,
+            msg.spliced,
+            msg.outcome,
+            msg.attempt_count
           )
           s.loadConversations()
           break
