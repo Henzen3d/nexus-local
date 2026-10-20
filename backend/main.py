@@ -88,21 +88,23 @@ async def run_auto_sync():
     from backend.database import get_db
     from backend.routers.admin import sync_provider_models
     import datetime
-    
+
     async def sync_task(pid):
         conn = await get_db()
         try:
-            await sync_provider_models(pid, conn)
+            # Não recalcula scores durante cada provedor individual
+            await sync_provider_models(pid, conn, recompute_scores=False)
         except Exception as e:
             logger.error("Failed background sync for %s", pid, exc_info=e)
         finally:
             await conn.close()
-            
+
     db = await get_db()
+    providers_to_sync = []
     try:
         async with db.execute("SELECT id FROM providers WHERE enabled = 1 AND api_key != ''") as cur:
             providers = await cur.fetchall()
-        
+
         for (provider_id,) in providers:
             last_sync = None
             try:
@@ -112,7 +114,7 @@ async def run_auto_sync():
                         last_sync = row[0]
             except Exception:
                 pass
-            
+
             should_sync = False
             if not last_sync:
                 should_sync = True
@@ -124,14 +126,34 @@ async def run_auto_sync():
                         should_sync = True
                 except Exception:
                     should_sync = True
-            
+
             if should_sync:
-                logger.info("Auto-sync: iniciando sync em background para o provider '%s'", provider_id)
-                asyncio.create_task(sync_task(provider_id))
+                providers_to_sync.append(provider_id)
     except Exception as e:
         logger.error("Error initiating auto sync", exc_info=e)
     finally:
         await db.close()
+
+    if providers_to_sync:
+        logger.info(
+            "Auto-sync: iniciando sincronização consolidada para %d provedores: %s",
+            len(providers_to_sync), providers_to_sync
+        )
+        for pid in providers_to_sync:
+            await sync_task(pid)
+
+        # Colapso da tempestade de escrita (B2 / BUG-5):
+        # Recalcula e persiste o scorer exatamente UMA ÚNICA VEZ ao final de todos os syncs
+        final_conn = await get_db()
+        try:
+            from backend.ranking.scorer import compute_all_scores, persist_scores
+            scored = await compute_all_scores(final_conn)
+            persisted = await persist_scores(final_conn, scored)
+            logger.info("Auto-sync: scores consolidados recalculados e persistidos (%d modelos).", persisted)
+        except Exception as sc_err:
+            logger.error("Erro ao consolidar scores após auto-sync: %s", sc_err)
+        finally:
+            await final_conn.close()
 
 
 async def run_quota_release_job():

@@ -1377,6 +1377,17 @@ async def init_db():
             ("day_window_reset", "TEXT"),
             ("confirmed_free", "INTEGER DEFAULT 0"),
             ("registry_source", "TEXT"),
+            ("breaker_state", "TEXT DEFAULT 'CLOSED'"),
+            ("penalty_score", "REAL DEFAULT 0.0"),
+            ("half_life_sec", "REAL DEFAULT 300.0"),
+            ("last_failure_ts", "REAL DEFAULT 0.0"),
+            ("consecutive_failures", "INTEGER DEFAULT 0"),
+            ("ewma_ttft_ms", "REAL DEFAULT 1500.0"),
+            ("ewma_tps", "REAL DEFAULT 30.0"),
+            ("sr_10m", "REAL DEFAULT 1.0"),
+            ("sr_1h", "REAL DEFAULT 1.0"),
+            ("sr_24h", "REAL DEFAULT 1.0"),
+            ("canonical_id", "TEXT"),
         ]:
             try:
                 await db.execute(f"SELECT {col} FROM model_quota_status LIMIT 1")
@@ -1386,6 +1397,21 @@ async def init_db():
                     await db.commit()
                 except Exception:
                     pass
+
+        # provider_quarantine — quarentena por credencial/provedor (Escopo 1 da Seção 5.1)
+        try:
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS provider_quarantine (
+                    provider_id        TEXT PRIMARY KEY,
+                    quarantined_until  TEXT NOT NULL,
+                    reason             TEXT,
+                    updated_at         TEXT DEFAULT (datetime('now'))
+                )
+            """)
+            await db.commit()
+        except Exception:
+            pass
+
 
         # models — coluna confirmed_free
         try:

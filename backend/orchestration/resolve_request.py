@@ -363,6 +363,8 @@ async def stream_from_llm(
                         "TTFT Timeout (%.1fs excedido) no provedor '%s' (modelo '%s'). Acionando failover cascade precoce.",
                         stream_ttft_timeout, current_provider_id, current_model_id,
                     )
+                    from backend.ranking.health_registry import health_registry
+                    health_registry.record_failure(current_model_id, current_provider_id, "TIMEOUT", stage="pre_stream")
                     attempted_model_ids.add(current_model_id)
                     # Libera a conexão HTTP do pool imediatamente (não espera o GC finalizar o generator)
                     try:
@@ -412,6 +414,8 @@ async def stream_from_llm(
                     "Modelo '%s' (provedor '%s') não gerou nenhum token de resposta. Acionando failover cascade...",
                     current_model_id, current_provider_id,
                 )
+                from backend.ranking.health_registry import health_registry
+                health_registry.record_failure(current_model_id, current_provider_id, "ZERO_TOKEN", stage="pre_stream")
                 from backend.ranking.canonical import apply_zero_token_cooldown
                 await apply_zero_token_cooldown(
                     current_model_id,
@@ -433,6 +437,10 @@ async def stream_from_llm(
                     })
                     return None
                 continue
+
+            from backend.ranking.health_registry import health_registry
+            ttft_measured_ms = (time.perf_counter() - stream_start_time) * 1000.0 if first_token_received else None
+            health_registry.record_success(current_model_id, current_provider_id, ttft_ms=ttft_measured_ms)
 
             await mark_model_success(current_model_id, db)
             await record_request(current_model_id, db)

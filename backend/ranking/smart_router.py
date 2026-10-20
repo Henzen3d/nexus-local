@@ -1121,10 +1121,37 @@ async def select_best_model(
                 user_effort=user_reasoning_effort,
             )
 
-    # 8. Escolha pelo maior fit
+    # ── Modo SOMBRA (Health Registry B2): calcula e loga a decisão sombra sem alterar rota real ──
+    try:
+        from backend.ranking.health_registry import health_registry
+        shadow_chosen = None
+        highest_shadow_score = -1.0
+        shadow_h_val = 1.0
+
+        for candidate in ranked[:5]:
+            m = candidate["model"]
+            s_score, s_h, s_factors = health_registry.calculate_shadow_score(
+                model_id=m["id"],
+                provider_id=m["provider_id"],
+                base_score=float(m.get("nexuslocal_score") or 50.0),
+                fit_score=float(candidate.get("fit") or 1.0),
+            )
+            if s_score > highest_shadow_score:
+                highest_shadow_score = s_score
+                shadow_chosen = m["id"]
+                shadow_h_val = s_h
+
+        logger.info(
+            "SHADOW ROUTING [B2]: actual_chosen='%s' (fit=%.2f) | shadow_choice='%s' (shadow_score=%.2f, H=%.3f)",
+            best["model"]["id"], best["fit"], shadow_chosen, highest_shadow_score, shadow_h_val
+        )
+    except Exception as e:
+        logger.debug("Shadow routing calculation failed: %s", e)
+
     signals = list(intent_result.matched_signals)
     if previous_model_id and previous_model_id != best["model"]["id"]:
         signals.append("model_switch")
+
     return _decision(
         best["model"], intent_result, policy_str,
         reason_pt=intent_result.reason_label_pt,

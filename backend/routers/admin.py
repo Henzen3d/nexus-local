@@ -52,7 +52,7 @@ def derive_display_name(model_id: str) -> str:
     return " ".join(formatted_words)
 
 
-async def sync_provider_models(provider_id: str, db, custom_api_key: str = None) -> dict:
+async def sync_provider_models(provider_id: str, db, custom_api_key: str = None, recompute_scores: bool = True) -> dict:
     async with db.execute(
         "SELECT base_url, api_key, enabled FROM providers WHERE id = ?", (provider_id,)
     ) as cur:
@@ -241,7 +241,7 @@ async def sync_provider_models(provider_id: str, db, custom_api_key: str = None)
     from backend.ranking.scorer import compute_all_scores, persist_scores
     from backend.ranking.sync import seed_missing_rankings
     seeded = await seed_missing_rankings(db)
-    if seeded:
+    if seeded and recompute_scores:
         # Recalculate scores
         scored_models = await compute_all_scores(db)
         await persist_scores(db, scored_models)

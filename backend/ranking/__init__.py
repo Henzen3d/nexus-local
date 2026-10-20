@@ -37,4 +37,9 @@ from .eligibility import (
     EligibilityResult,
 )
 from .admission import admission_controller
+from .health_registry import (
+    health_registry,
+    InMemoryHealthRegistry,
+    HealthConfig,
+)
 
