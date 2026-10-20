@@ -293,413 +293,481 @@ async def executar_fusion(
     force_grounding: bool = False,
     web_search_already_done: bool = False,
     client_timezone_offset: int | None = None,
+    user_msg_id: str | None = None,
+    web_search_used: bool = False,
+    web_search_query: str | None = None,
+    web_search_sources: list[dict] | None = None,
+    process_steps: list[dict] | None = None,
 ):
-    db = await get_db()
+    ws_lock = asyncio.Lock()
+
+    async def safe_send_json(payload: dict) -> bool:
+        try:
+            async with ws_lock:
+                await websocket.send_json(payload)
+            return True
+        except Exception as e:
+            logger.debug("fusion safe_send_json failed: %s", e)
+            return False
+
     try:
-        async with db.execute(
-            "SELECT id, provider_id, model_id, position FROM fusion_models ORDER BY position"
-        ) as cur:
-            modelos_rows = await cur.fetchall()
+        db = await get_db()
+        try:
+            async with db.execute(
+                "SELECT id, provider_id, model_id, position FROM fusion_models ORDER BY position"
+            ) as cur:
+                modelos_rows = await cur.fetchall()
 
-        async with db.execute(
-            "SELECT judge_provider_id, judge_model_id, judge_system_prompt, grounding_enabled "
-            "FROM fusion_config WHERE id = 1"
-        ) as cur:
-            juiz_row = await cur.fetchone()
+            async with db.execute(
+                "SELECT judge_provider_id, judge_model_id, judge_system_prompt, grounding_enabled "
+                "FROM fusion_config WHERE id = 1"
+            ) as cur:
+                juiz_row = await cur.fetchone()
 
-        from backend.web_search import get_web_search_config
-        search_config = await get_web_search_config(db)
-    finally:
-        await db.close()
+            from backend.web_search import get_web_search_config
+            search_config = await get_web_search_config(db)
+        finally:
+            await db.close()
 
-    if not modelos_rows:
-        await websocket.send_json({"type": "error", "message": "Nenhum modelo paralelo configurado para o Fusion."})
-        return
+        if not modelos_rows:
+            await safe_send_json({"type": "error", "message": "Nenhum modelo paralelo configurado para o Fusion."})
+            await safe_send_json({"type": "stream_end", "conversation_id": conversation_id, "finish_reason": "error"})
+            return
 
-    if not juiz_row:
-        await websocket.send_json({"type": "error", "message": "Modelo Juiz não configurado."})
-        return
+        if not juiz_row:
+            await safe_send_json({"type": "error", "message": "Modelo Juiz não configurado."})
+            await safe_send_json({"type": "stream_end", "conversation_id": conversation_id, "finish_reason": "error"})
+            return
 
-    judge_provider_id, judge_model_id, judge_system_prompt, config_grounding = juiz_row
-    judge_system_prompt = judge_system_prompt or JUDGE_SYSTEM_PROMPT_DEFAULT
-    config_grounding = True if config_grounding is None else bool(config_grounding)
+        judge_provider_id, judge_model_id, judge_system_prompt, config_grounding = juiz_row
+        judge_system_prompt = judge_system_prompt or JUDGE_SYSTEM_PROMPT_DEFAULT
+        config_grounding = True if config_grounding is None else bool(config_grounding)
 
-    # Grounding roda se estiver habilitado na config do Fusion OU se o usuário
-    # ativou a busca web nesta mensagem — sempre condicionado à busca web global.
-    # Se a busca web global já foi executada para o prompt inicial, pulamos
-    # a verificação factual para não repetir o trabalho e economizar tempo e quota.
-    web_search_ok = bool(search_config and search_config.get("enabled"))
-    grounding_enabled = (config_grounding or force_grounding) and web_search_ok and not web_search_already_done
+        # Grounding roda se estiver habilitado na config do Fusion OU se o usuário
+        # ativou a busca web nesta mensagem — sempre condicionado à busca web global.
+        # Se a busca web global já foi executada para o prompt inicial, pulamos
+        # a verificação factual para não repetir o trabalho e economizar tempo e quota.
+        web_search_ok = bool(search_config and search_config.get("enabled"))
+        grounding_enabled = (config_grounding or force_grounding) and web_search_ok and not web_search_already_done
 
-    modelos = [
-        {"id": r[0], "provider_id": r[1], "model_id": r[2], "position": r[3]}
-        for r in modelos_rows
-    ]
+        modelos = [
+            {"id": r[0], "provider_id": r[1], "model_id": r[2], "position": r[3]}
+            for r in modelos_rows
+        ]
 
-    # ── Instanciar o Juiz (necessário para refinamento e fases posteriores) ──
-    conn = await get_db()
-    try:
-        provider_juiz = await get_provider(judge_provider_id, conn, user_id=user_id)
-        judge_model_name = await get_model_name(judge_model_id, conn)
-    finally:
-        await conn.close()
+        # ── Instanciar o Juiz (necessário para refinamento e fases posteriores) ──
+        conn = await get_db()
+        try:
+            provider_juiz = await get_provider(judge_provider_id, conn, user_id=user_id)
+            judge_model_name = await get_model_name(judge_model_id, conn)
+        finally:
+            await conn.close()
 
-    # ── Refinamento da Pergunta (condicional) ────────────────────────────
-    # Só refina se houver sinais de ambiguidade (pronomes, referências a
-    # contexto anterior). Perguntas auto-contidas pulam direto pro fan-out,
-    # evitando 5-45s de latência desnecessária no free-tier.
-    prompt_refinado = prompt
-    if _precisa_refinar(prompt, history):
-        await websocket.send_json({"type": "fusion_phase", "phase": "refining"})
-        prompt_refinado = await _refinar_pergunta(provider_juiz, judge_model_name, prompt, history)
+        # ── Refinamento da Pergunta (condicional) ────────────────────────────
+        # Só refina se houver sinais de ambiguidade (pronomes, referências a
+        # contexto anterior). Perguntas auto-contidas pulam direto pro fan-out,
+        # evitando 5-45s de latência desnecessária no free-tier.
+        prompt_refinado = prompt
+        if _precisa_refinar(prompt, history):
+            await safe_send_json({"type": "fusion_phase", "phase": "refining"})
+            prompt_refinado = await _refinar_pergunta(provider_juiz, judge_model_name, prompt, history)
 
-    # ── Agora sim mostra os modelos — sem espera fantasma ────────────────
-    await websocket.send_json({
-        "type": "fusion_start",
-        "models": [m["model_id"] for m in modelos],
-    })
-    await websocket.send_json({"type": "fusion_phase", "phase": "proposers"})
+        # ── Agora sim mostra os modelos — sem espera fantasma ────────────────
+        await safe_send_json({
+            "type": "fusion_start",
+            "models": [m["model_id"] for m in modelos],
+        })
+        await safe_send_json({"type": "fusion_phase", "phase": "proposers"})
 
-    # Substituir no history apenas para os modelos (o bd ainda guarda o original)
-    history_para_modelos = [dict(m) for m in history]
-    if history_para_modelos and history_para_modelos[-1].get("role") == "user":
-        original_content = history_para_modelos[-1]["content"]
-        if isinstance(original_content, str):
-            history_para_modelos[-1]["content"] = original_content.replace(prompt, prompt_refinado)
-        elif isinstance(original_content, list):
-            # Caso seja multimodal (com imagens), substituímos na parte de texto
-            for part in original_content:
-                if part.get("type") == "text":
-                    part["text"] = part["text"].replace(prompt, prompt_refinado)
+        # Substituir no history apenas para os modelos (o bd ainda guarda o original)
+        history_para_modelos = [dict(m) for m in history]
+        if history_para_modelos and history_para_modelos[-1].get("role") == "user":
+            original_content = history_para_modelos[-1]["content"]
+            if isinstance(original_content, str):
+                history_para_modelos[-1]["content"] = original_content.replace(prompt, prompt_refinado)
+            elif isinstance(original_content, list):
+                # Caso seja multimodal (com imagens), substituímos na parte de texto
+                for part in original_content:
+                    if part.get("type") == "text":
+                        part["text"] = part["text"].replace(prompt, prompt_refinado)
 
-    if prompt_refinado != prompt:
-        await websocket.send_json({
-            "type": "fusion_refined_prompt",
-            "prompt": prompt_refinado
+        if prompt_refinado != prompt:
+            await safe_send_json({
+                "type": "fusion_refined_prompt",
+                "prompt": prompt_refinado
+            })
+
+        async def chamar_modelo(modelo: dict) -> dict:
+            from backend.ranking.failover import resolve_model_with_failover
+            original_model_id = modelo["model_id"]
+
+            try:
+                conn = await get_db()
+                try:
+                    resolved = await resolve_model_with_failover(original_model_id, conn, user_id=user_id)
+                    final_model_id = resolved.model_id
+                    final_provider_id = resolved.provider_id
+
+                    await safe_send_json({
+                        "type": "fusion_status",
+                        "model_id": original_model_id,
+                        "resolved_model_id": final_model_id,
+                        "provider_id": final_provider_id,
+                        "status": "running",
+                        "was_fallback": resolved.was_failover,
+                        "original_model_id": resolved.original_model_id if resolved.was_failover else None
+                    })
+
+                    provider = await get_provider(final_provider_id, conn, user_id=user_id)
+                    model_name = await get_model_name(final_model_id, conn)
+                finally:
+                    await conn.close()
+
+                # Injeta a instrução de auto-crítica na última mensagem do usuário,
+                # usando o histórico já refinado (se foi).
+                history_com_critica = [dict(m) for m in history_para_modelos]
+                if history_com_critica and history_com_critica[-1].get("role") == "user":
+                    last_content = history_com_critica[-1].get("content")
+                    if isinstance(last_content, str):
+                        history_com_critica[-1]["content"] = last_content + SELF_CRITIQUE_SUFFIX
+                    elif isinstance(last_content, list):
+                        new_parts = []
+                        appended = False
+                        for part in last_content:
+                            if isinstance(part, dict) and part.get("type") == "text" and not appended:
+                                new_parts.append({**part, "text": part.get("text", "") + SELF_CRITIQUE_SUFFIX})
+                                appended = True
+                            else:
+                                new_parts.append(part)
+                        if not appended:
+                            new_parts.append({"type": "text", "text": SELF_CRITIQUE_SUFFIX.strip()})
+                        history_com_critica[-1]["content"] = new_parts
+
+                async def _stream():
+                    texto = ""
+                    async for token in provider.stream_chat(model=model_name, messages=history_com_critica):
+                        texto += str(token)
+                    return texto
+
+                resposta = await asyncio.wait_for(_stream(), timeout=TIMEOUT_MODELO_PARALELO)
+
+                # Extrai a auto-crítica [CONFIANCA: ...] — o frontend recebe o campo
+                # estruturado (badge) e o texto limpo, sem a marcação crua.
+                resposta_limpa, confianca, motivo_confianca = _extrair_confianca(resposta)
+
+                await safe_send_json({
+                    "type": "fusion_status",
+                    "model_id": original_model_id,
+                    "resolved_model_id": final_model_id,
+                    "provider_id": final_provider_id,
+                    "status": "done",
+                    "response": resposta_limpa,
+                    "confidence": confianca,
+                    "confidence_reason": motivo_confianca,
+                    "was_fallback": resolved.was_failover,
+                })
+                return {
+                    "model_id": original_model_id,
+                    "resolved_model_id": final_model_id,
+                    "provider_id": final_provider_id,
+                    "response": resposta_limpa,
+                    "confidence": confianca,
+                    "confidence_reason": motivo_confianca,
+                    "status": "done",
+                    "was_fallback": resolved.was_failover,
+                }
+
+            except asyncio.TimeoutError:
+                logger.warning("fusion: timeout no modelo %s", original_model_id)
+                await safe_send_json({
+                    "type": "fusion_status",
+                    "model_id": original_model_id,
+                    "status": "error",
+                    "error_reason": "timeout",
+                })
+                return {"model_id": original_model_id, "response": "", "status": "error"}
+
+            except Exception as e:
+                error_msg = str(e)
+                logger.error("fusion: erro no modelo %s: %s", original_model_id, error_msg)
+                try:
+                    await check_and_deactivate_model(original_model_id, error_msg)
+                except Exception:
+                    pass
+                await safe_send_json({
+                    "type": "fusion_status",
+                    "model_id": original_model_id,
+                    "status": "error",
+                })
+                return {"model_id": original_model_id, "response": "", "status": "error"}
+
+        resultados = await asyncio.gather(*[chamar_modelo(m) for m in modelos])
+        respostas_validas = [r for r in resultados if r["status"] == "done" and r["response"]]
+
+        if not respostas_validas:
+            await safe_send_json({"type": "error", "message": "Nenhum modelo retornou resposta válida."})
+            await safe_send_json({"type": "stream_end", "conversation_id": conversation_id, "finish_reason": "error"})
+            return
+
+        # ── Grounding: detectar claims verificáveis e buscar na web ────────
+        grounding_texto = ""
+        queries: list[str] = []
+        if grounding_enabled:
+            await safe_send_json({"type": "fusion_grounding", "status": "checking"})
+            try:
+                queries = await asyncio.wait_for(
+                    _detectar_claims_verificaveis(
+                        provider_juiz, judge_model_name, prompt, respostas_validas
+                    ),
+                    timeout=TIMEOUT_DETECCAO_CLAIMS,
+                )
+            except asyncio.TimeoutError:
+                logger.warning("fusion grounding: timeout na detecção de claims — seguindo sem grounding")
+                queries = []
+
+            if queries:
+                await safe_send_json({
+                    "type": "fusion_grounding",
+                    "status": "searching",
+                    "queries": queries,
+                })
+                resultados_busca = await asyncio.gather(
+                    *[_buscar_web(q, search_config) for q in queries], return_exceptions=False
+                )
+                partes = [
+                    f"Busca: \"{q}\"\n{res}"
+                    for q, res in zip(queries, resultados_busca) if res
+                ]
+                if partes:
+                    grounding_texto = "\n\n".join(partes)
+
+            await safe_send_json({
+                "type": "fusion_grounding",
+                "status": "done",
+                "found": bool(grounding_texto),
+            })
+
+        # ── Monta mensagens do Juiz: system separado do conteúdo ───────────
+        def _cabecalho_resposta(r: dict) -> str:
+            if r.get("confidence"):
+                motivo = f" — {r['confidence_reason']}" if r.get("confidence_reason") else ""
+                return f"--- RESPOSTA: {r['model_id']} [CONFIANCA: {r['confidence']}{motivo}] ---"
+            return f"--- RESPOSTA: {r['model_id']} ---"
+
+        blocos = "\n\n".join([
+            f"{_cabecalho_resposta(r)}\n{cap_judge_block(r['response'])}"
+            for r in respostas_validas
+        ])
+
+        import datetime
+        if client_timezone_offset is not None:
+            try:
+                tz = datetime.timezone(datetime.timedelta(minutes=-int(client_timezone_offset)))
+                current_date = datetime.datetime.now(tz).strftime("%d/%m/%Y %H:%M")
+            except Exception:
+                current_date = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
+        else:
+            current_date = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
+
+        mensagens_juiz = [dict(m) for m in history]
+        
+        judge_system_prompt_final = (
+            f"{judge_system_prompt}\n\n"
+            f"[INFORMAÇÃO DO SISTEMA]\n"
+            f"Data atual do sistema: {current_date}. Você deve usar esta data como referência para o tempo presente."
+        )
+
+        original_system = ""
+        if mensagens_juiz and mensagens_juiz[0].get("role") == "system":
+            original_system = mensagens_juiz[0].get("content") or ""
+
+        if original_system and original_system.strip():
+            combined_judge_system = (
+                f"{original_system.strip()}\n\n"
+                f"=== DIRETRIZES DO JUIZ DE CONSOLIDAÇÃO (FUSION JUDGE) ===\n"
+                f"{judge_system_prompt_final}"
+            )
+        else:
+            combined_judge_system = judge_system_prompt_final
+
+        if mensagens_juiz and mensagens_juiz[0].get("role") == "system":
+            mensagens_juiz[0]["content"] = combined_judge_system
+        else:
+            mensagens_juiz.insert(0, {"role": "system", "content": combined_judge_system})
+
+        # Anexa as respostas para consolidação na última mensagem do usuário
+        if mensagens_juiz and mensagens_juiz[-1].get("role") == "user":
+            extra_content = f"\n\n--- RESPOSTAS DOS MODELOS PARALELOS PARA CONSOLIDAÇÃO ---\n{blocos}"
+            if grounding_texto:
+                extra_content += (
+                    f"\n\n--- RESULTADOS DE BUSCA WEB (FACT-CHECKING POSTERIOR) ---\n"
+                    f"Priorize essas informações factuais sobre as respostas dos modelos:\n{grounding_texto}"
+                )
+            
+            orig_content = mensagens_juiz[-1]["content"]
+            if isinstance(orig_content, str):
+                mensagens_juiz[-1]["content"] = orig_content + extra_content
+            elif isinstance(orig_content, list):
+                for part in reversed(orig_content):
+                    if part.get("type") == "text":
+                        part["text"] += extra_content
+                        break
+
+        await safe_send_json({
+            "type": "fusion_judge_start",
+            "model_id": judge_model_id,
         })
 
-    async def chamar_modelo(modelo: dict) -> dict:
-        from backend.ranking.failover import resolve_model_with_failover
-
+        full_response = ""
         try:
-            conn = await get_db()
-            try:
-                resolved = await resolve_model_with_failover(modelo["model_id"], conn, user_id=user_id)
-                final_model_id = resolved.model_id
-                final_provider_id = resolved.provider_id
-
-                await websocket.send_json({
-                    "type": "fusion_status",
-                    "model_id": final_model_id,
-                    "provider_id": final_provider_id,
-                    "status": "running",
-                    "was_fallback": resolved.was_failover,
-                    "original_model_id": resolved.original_model_id if resolved.was_failover else None
-                })
-
-                provider = await get_provider(final_provider_id, conn, user_id=user_id)
-                model_name = await get_model_name(final_model_id, conn)
-            finally:
-                await conn.close()
-
-            # Injeta a instrução de auto-crítica na última mensagem do usuário,
-            # usando o histórico já refinado (se foi).
-            history_com_critica = [dict(m) for m in history_para_modelos]
-            if history_com_critica and history_com_critica[-1].get("role") == "user":
-                last_content = history_com_critica[-1].get("content")
-                if isinstance(last_content, str):
-                    history_com_critica[-1]["content"] = last_content + SELF_CRITIQUE_SUFFIX
-                elif isinstance(last_content, list):
-                    # Multimodal parts: list of dicts, e.g. [{"type": "text", "text": "..."}, {"type": "image_url", ...}]
-                    new_parts = []
-                    appended = False
-                    for part in last_content:
-                        if isinstance(part, dict) and part.get("type") == "text" and not appended:
-                            new_parts.append({**part, "text": part.get("text", "") + SELF_CRITIQUE_SUFFIX})
-                            appended = True
-                        else:
-                            new_parts.append(part)
-                    if not appended:
-                        new_parts.append({"type": "text", "text": SELF_CRITIQUE_SUFFIX.strip()})
-                    history_com_critica[-1]["content"] = new_parts
-
-
-            async def _stream():
-                texto = ""
-                async for token in provider.stream_chat(model=model_name, messages=history_com_critica):
-                    texto += str(token)
-                return texto
-
-            resposta = await asyncio.wait_for(_stream(), timeout=TIMEOUT_MODELO_PARALELO)
-
-            # Extrai a auto-crítica [CONFIANCA: ...] — o frontend recebe o campo
-            # estruturado (badge) e o texto limpo, sem a marcação crua.
-            resposta_limpa, confianca, motivo_confianca = _extrair_confianca(resposta)
-
-            await websocket.send_json({
-                "type": "fusion_status",
-                "model_id": final_model_id,
-                "status": "done",
-                "response": resposta_limpa,
-                "confidence": confianca,
-                "confidence_reason": motivo_confianca,
+            await safe_send_json({
+                "type": "stream_start",
+                "conversation_id": conversation_id,
+                "from_cache": False,
             })
-            return {
-                "model_id": final_model_id,
-                "response": resposta_limpa,
-                "confidence": confianca,
-                "confidence_reason": motivo_confianca,
-                "status": "done",
-            }
+
+            async def _stream_juiz():
+                nonlocal full_response
+                async for token in provider_juiz.stream_chat(
+                    model=judge_model_name,
+                    messages=mensagens_juiz,
+                ):
+                    token_str = str(token)
+                    full_response += token_str
+                    await safe_send_json({"type": "token", "content": token_str})
+
+            await asyncio.wait_for(_stream_juiz(), timeout=TIMEOUT_JUIZ)
 
         except asyncio.TimeoutError:
-            logger.warning("fusion: timeout no modelo %s", modelo['model_id'])
-            await websocket.send_json({
+            logger.error(
+                "Fusion: timeout do juiz (%ss) conversation=%s judge=%s",
+                TIMEOUT_JUIZ, conversation_id, judge_model_id,
+            )
+            if judge_timeout_action(full_response) == "error":
+                await safe_send_json({
+                    "type": "error",
+                    "message": f"O juiz do Fusion excedeu o tempo limite ({TIMEOUT_JUIZ}s). Tente novamente.",
+                })
+                await safe_send_json({"type": "stream_end", "conversation_id": conversation_id, "finish_reason": "timeout"})
+                return
+            await safe_send_json({
                 "type": "fusion_status",
-                "model_id": modelo["model_id"],
-                "status": "error",
-                "error_reason": "timeout",
+                "message": f"Juiz interrompido no limite de {TIMEOUT_JUIZ}s. Resposta parcial salva.",
             })
-            return {"model_id": modelo["model_id"], "response": "", "status": "error"}
-
         except Exception as e:
             error_msg = str(e)
-            logger.error("fusion: erro no modelo %s: %s", modelo["model_id"], error_msg)
-            await check_and_deactivate_model(modelo["model_id"], error_msg)
-            await websocket.send_json({
-                "type": "fusion_status",
-                "model_id": modelo["model_id"],
-                "status": "error",
-            })
-            return {"model_id": modelo["model_id"], "response": "", "status": "error"}
+            try:
+                await check_and_deactivate_model(judge_model_id, error_msg)
+            except Exception:
+                pass
+            await safe_send_json({"type": "error", "message": f"Erro no modelo Juiz: {error_msg}"})
+            await safe_send_json({"type": "stream_end", "conversation_id": conversation_id, "finish_reason": "error"})
+            return
 
-    resultados = await asyncio.gather(*[chamar_modelo(m) for m in modelos])
-    respostas_validas = [r for r in resultados if r["status"] == "done" and r["response"]]
+        # Guarda anti-vazamento: o Juiz é instruído a não citar [CONFIANCA: ...],
+        # mas removemos qualquer ocorrência residual antes de persistir.
+        if CONFIDENCE_RE.search(full_response):
+            full_response = CONFIDENCE_RE.sub("", full_response).strip()
 
-    if not respostas_validas:
-        await websocket.send_json({"type": "error", "message": "Nenhum modelo retornou resposta válida."})
-        return
+        assistant_msg_id = str(uuid.uuid4())
 
-    # provider_juiz e judge_model_name já instanciados antes do fan-out
-
-    # ── Grounding: detectar claims verificáveis e buscar na web ────────
-    grounding_texto = ""
-    if grounding_enabled:
-        await websocket.send_json({"type": "fusion_grounding", "status": "checking"})
-        try:
-            queries = await asyncio.wait_for(
-                _detectar_claims_verificaveis(
-                    provider_juiz, judge_model_name, prompt, respostas_validas
-                ),
-                timeout=TIMEOUT_DETECCAO_CLAIMS,
-            )
-        except asyncio.TimeoutError:
-            logger.warning("fusion grounding: timeout na detecção de claims — seguindo sem grounding")
-            queries = []
-
-        if queries:
-            await websocket.send_json({
-                "type": "fusion_grounding",
-                "status": "searching",
+        # Prepara o objeto fusion_metadata com todo o histórico de raciocínio
+        fusion_metadata = {
+            "statuses": [
+                {
+                    "model_id": r.get("model_id"),
+                    "resolved_model_id": r.get("resolved_model_id", r.get("model_id")),
+                    "provider_id": r.get("provider_id", ""),
+                    "status": r.get("status", "done"),
+                    "response": r.get("response", ""),
+                    "confidence": r.get("confidence"),
+                    "confidence_reason": r.get("confidence_reason"),
+                    "was_fallback": r.get("was_fallback", False),
+                }
+                for r in resultados
+            ],
+            "judge_model_id": judge_model_id,
+            "grounding": {
+                "status": "done",
                 "queries": queries,
-            })
-            resultados_busca = await asyncio.gather(
-                *[_buscar_web(q, search_config) for q in queries], return_exceptions=False
-            )
-            partes = [
-                f"Busca: \"{q}\"\n{res}"
-                for q, res in zip(queries, resultados_busca) if res
-            ]
-            if partes:
-                grounding_texto = "\n\n".join(partes)
+                "found": bool(grounding_texto),
+            } if grounding_enabled else None,
+            "refined_prompt": str(prompt_refinado) if (prompt_refinado and prompt_refinado != prompt) else None,
+        }
+        fusion_metadata_json = json.dumps(fusion_metadata, default=str, ensure_ascii=False)
 
-        await websocket.send_json({
-            "type": "fusion_grounding",
-            "status": "done",
-            "found": bool(grounding_texto),
-        })
-
-    # ── Monta mensagens do Juiz: system separado do conteúdo ───────────
-    def _cabecalho_resposta(r: dict) -> str:
-        if r.get("confidence"):
-            motivo = f" — {r['confidence_reason']}" if r.get("confidence_reason") else ""
-            return f"--- RESPOSTA: {r['model_id']} [CONFIANCA: {r['confidence']}{motivo}] ---"
-        return f"--- RESPOSTA: {r['model_id']} ---"
-
-    blocos = "\n\n".join([
-        f"{_cabecalho_resposta(r)}\n{cap_judge_block(r['response'])}"
-        for r in respostas_validas
-    ])
-
-    import datetime
-    if client_timezone_offset is not None:
+        db = await get_db()
         try:
-            # client_timezone_offset is in minutes (positive for west of UTC, negative for east)
-            # In Python timedelta, positive is east, so we invert the sign.
-            tz = datetime.timezone(datetime.timedelta(minutes=-int(client_timezone_offset)))
-            current_date = datetime.datetime.now(tz).strftime("%d/%m/%Y %H:%M")
-        except Exception:
-            current_date = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
-    else:
-        current_date = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
-
-    # O Juiz precisa do histórico da conversa para manter contexto, além
-    # de receber os resultados da busca web inicial (que estão na última
-    # mensagem do usuário em `history`).
-    mensagens_juiz = [dict(m) for m in history]
-    
-    judge_system_prompt_final = (
-        f"{judge_system_prompt}\n\n"
-        f"[INFORMAÇÃO DO SISTEMA]\n"
-        f"Data atual do sistema: {current_date}. Você deve usar esta data como referência para o tempo presente."
-    )
-
-    # Preserva o contexto do sistema original (regras do projeto, RAG, memórias)
-    # combinando-o com as diretrizes do Juiz, em vez de sobrescrever e perder as fontes.
-    original_system = ""
-    if mensagens_juiz and mensagens_juiz[0].get("role") == "system":
-        original_system = mensagens_juiz[0].get("content") or ""
-
-    if original_system and original_system.strip():
-        combined_judge_system = (
-            f"{original_system.strip()}\n\n"
-            f"=== DIRETRIZES DO JUIZ DE CONSOLIDAÇÃO (FUSION JUDGE) ===\n"
-            f"{judge_system_prompt_final}"
-        )
-    else:
-        combined_judge_system = judge_system_prompt_final
-
-    if mensagens_juiz and mensagens_juiz[0].get("role") == "system":
-        mensagens_juiz[0]["content"] = combined_judge_system
-    else:
-        mensagens_juiz.insert(0, {"role": "system", "content": combined_judge_system})
-
-
-    # Anexa as respostas para consolidação na última mensagem do usuário
-    if mensagens_juiz and mensagens_juiz[-1].get("role") == "user":
-        extra_content = f"\n\n--- RESPOSTAS DOS MODELOS PARALELOS PARA CONSOLIDAÇÃO ---\n{blocos}"
-        if grounding_texto:
-            extra_content += (
-                f"\n\n--- RESULTADOS DE BUSCA WEB (FACT-CHECKING POSTERIOR) ---\n"
-                f"Priorize essas informações factuais sobre as respostas dos modelos:\n{grounding_texto}"
+            await db.execute(
+                """INSERT INTO messages (id, conversation_id, role, content, model_id, fusion_metadata)
+                   VALUES (?, ?, 'assistant', ?, ?, ?)""",
+                (assistant_msg_id, conversation_id, full_response, judge_model_id, fusion_metadata_json),
             )
-        
-        orig_content = mensagens_juiz[-1]["content"]
-        if isinstance(orig_content, str):
-            mensagens_juiz[-1]["content"] = orig_content + extra_content
-        elif isinstance(orig_content, list):
-            for part in reversed(orig_content):
-                if part.get("type") == "text":
-                    part["text"] += extra_content
-                    break
+            await db.execute(
+                "UPDATE conversations SET updated_at = datetime('now') WHERE id = ?",
+                (conversation_id,),
+            )
+            await db.commit()
 
-    await websocket.send_json({
-        "type": "fusion_judge_start",
-        "model_id": judge_model_id,
-    })
+            # Salva metadados de busca na web e passos de processamento
+            from backend.orchestration.persist_turn import save_web_search_metadata, save_process_steps
+            if user_msg_id and web_search_used:
+                await save_web_search_metadata(
+                    db, user_msg_id, web_search_used, web_search_query or "", web_search_sources or []
+                )
+            if process_steps:
+                await save_process_steps(db, assistant_msg_id, process_steps)
+        finally:
+            await db.close()
 
-    full_response = ""
-    try:
-        await websocket.send_json({
-            "type": "stream_start",
+        # ── Detectar e salvar múltiplos artifacts (após consolidar no Juiz) ───
+        artifacts_list = []
+
+        if full_response:
+            try:
+                from backend.orchestration.artifacts import detect_artifacts, save_artifact
+                db = await get_db()
+                try:
+                    detected_list = detect_artifacts(full_response, user_message=prompt)
+                    for detected in detected_list:
+                        art_id = await save_artifact(
+                            db, conversation_id, assistant_msg_id, detected
+                        )
+                        artifacts_list.append({
+                            "id": art_id,
+                            "type": detected["type"],
+                            "title": detected["title"]
+                        })
+
+                        await safe_send_json({
+                            "type": "artifact",
+                            "id": art_id,
+                            "artifact_type": detected["type"],
+                            "title": detected["title"],
+                            "conv_id": conversation_id,
+                            "msg_id": assistant_msg_id,
+                        })
+                finally:
+                    await db.close()
+            except Exception:
+                logger.exception("fusion artifact detect/save failed")
+
+        await safe_send_json({
+            "type": "stream_end",
+            "message_id": assistant_msg_id,
             "conversation_id": conversation_id,
             "from_cache": False,
+            "web_search_used": web_search_used,
+            "web_search_query": web_search_query,
+            "web_search_sources": web_search_sources or [],
+            "process_steps": process_steps or [],
+            # Retrocompatibilidade
+            "artifact_id": artifacts_list[0]["id"] if artifacts_list else None,
+            "artifact_type": artifacts_list[0]["type"] if artifacts_list else None,
+            "artifact_title": artifacts_list[0]["title"] if artifacts_list else None,
+            "artifacts": artifacts_list
         })
-
-        async def _stream_juiz():
-            nonlocal full_response
-            async for token in provider_juiz.stream_chat(
-                model=judge_model_name,
-                messages=mensagens_juiz,
-            ):
-                token_str = str(token)
-                full_response += token_str
-                await websocket.send_json({"type": "token", "content": token_str})
-
-        await asyncio.wait_for(_stream_juiz(), timeout=TIMEOUT_JUIZ)
-
-    except asyncio.TimeoutError:
-        logger.error(
-            "Fusion: timeout do juiz (%ss) conversation=%s judge=%s",
-            TIMEOUT_JUIZ, conversation_id, judge_model_id,
-        )
-        if judge_timeout_action(full_response) == "error":
-            await websocket.send_json({
-                "type": "error",
-                "message": f"O juiz do Fusion excedeu o tempo limite ({TIMEOUT_JUIZ}s). Tente novamente.",
-            })
-            return
-        await websocket.send_json({
-            "type": "fusion_status",
-            "message": f"Juiz interrompido no limite de {TIMEOUT_JUIZ}s. Resposta parcial salva.",
-        })
-    except Exception as e:
-        error_msg = str(e)
-        await check_and_deactivate_model(judge_model_id, error_msg)
-        await websocket.send_json({"type": "error", "message": f"Erro no modelo Juiz: {error_msg}"})
-        return
-
-    # Guarda anti-vazamento: o Juiz é instruído a não citar [CONFIANCA: ...],
-    # mas removemos qualquer ocorrência residual antes de persistir.
-    if CONFIDENCE_RE.search(full_response):
-        full_response = CONFIDENCE_RE.sub("", full_response).strip()
-
-    assistant_msg_id = str(uuid.uuid4())
-    db = await get_db()
-    try:
-        await db.execute(
-            """INSERT INTO messages (id, conversation_id, role, content, model_id)
-               VALUES (?, ?, 'assistant', ?, ?)""",
-            (assistant_msg_id, conversation_id, full_response, judge_model_id),
-        )
-        await db.execute(
-            "UPDATE conversations SET updated_at = datetime('now') WHERE id = ?",
-            (conversation_id,),
-        )
-        await db.commit()
-    finally:
-        await db.close()
-
-    # ── Detectar e salvar múltiplos artifacts (após consolidar no Juiz) ───
-    artifacts_list = []
-
-    if full_response:
-        try:
-            from backend.orchestration.artifacts import detect_artifacts, save_artifact
-            db = await get_db()
-            try:
-                detected_list = detect_artifacts(full_response, user_message=prompt)
-                for detected in detected_list:
-                    art_id = await save_artifact(
-                        db, conversation_id, assistant_msg_id, detected
-                    )
-                    artifacts_list.append({
-                        "id": art_id,
-                        "type": detected["type"],
-                        "title": detected["title"]
-                    })
-
-                    await websocket.send_json({
-                        "type": "artifact",
-                        "id": art_id,
-                        "artifact_type": detected["type"],
-                        "title": detected["title"],
-                        "conv_id": conversation_id,
-                        "msg_id": assistant_msg_id,
-                    })
-            finally:
-                await db.close()
-        except Exception:
-            logger.exception("fusion artifact detect/save failed")
-
-    await websocket.send_json({
-        "type": "stream_end",
-        "message_id": assistant_msg_id,
-        "conversation_id": conversation_id,
-        "from_cache": False,
-        # Retrocompatibilidade
-        "artifact_id": artifacts_list[0]["id"] if artifacts_list else None,
-        "artifact_type": artifacts_list[0]["type"] if artifacts_list else None,
-        "artifact_title": artifacts_list[0]["title"] if artifacts_list else None,
-        "artifacts": artifacts_list
-    })
+    except Exception as err:
+        logger.exception("Erro crítico no fluxo do Fusion")
+        await safe_send_json({"type": "error", "message": f"Erro no modo Fusion: {err}"})
+        await safe_send_json({"type": "stream_end", "conversation_id": conversation_id, "finish_reason": "error"})

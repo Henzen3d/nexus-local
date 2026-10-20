@@ -94,7 +94,7 @@ async def get_conversation(conversation_id: str, current_user: dict = Depends(ge
         async with db.execute(
             """SELECT m.id, m.role, m.content, m.model_id, m.created_at, mod.display_name, p.name, m.provider, m.relay_used, m.relay_model,
                       m.web_search_used, m.web_search_query, m.web_search_sources, m.process_steps,
-                      COALESCE(m.kind, 'normal'), m.proactive_insight_id
+                      COALESCE(m.kind, 'normal'), m.proactive_insight_id, m.fusion_metadata
                FROM messages m
                LEFT JOIN models mod ON m.model_id = mod.id
                LEFT JOIN providers p ON mod.provider_id = p.id
@@ -249,6 +249,22 @@ async def get_conversation(conversation_id: str, current_user: dict = Depends(ge
                 if not item["web_search_sources"]:
                     item["web_search_sources"] = pending_search["web_search_sources"]
                 pending_search = None
+
+            # Reconstrói a bolha virtual de status do Fusion para reter histórico completo após refresh
+            if item["role"] == "assistant" and len(m) > 16 and m[16]:
+                fdata = _loads(m[16])
+                if isinstance(fdata, dict):
+                    built.append({
+                        "id": f"fusion-{m[0]}",
+                        "role": "fusion_status",
+                        "content": "",
+                        "fusion_statuses": fdata.get("statuses", []),
+                        "fusion_judge_model_id": fdata.get("judge_model_id"),
+                        "fusion_grounding": fdata.get("grounding"),
+                        "fusion_refined_prompt": fdata.get("refined_prompt"),
+                        "created_at": m[4],
+                    })
+
             built.append(item)
 
         return {

@@ -1,10 +1,70 @@
 import asyncio
+import re
 from typing import Any, Callable, Awaitable
 from loguru import logger
 
 from backend.web_search.planner import plan_search_queries, extract_domains_and_urls
 from backend.web_search.providers import resolve_and_execute_search
 from backend.web_search.reader import deep_read_target
+
+COMMON_STOPWORDS = {
+    "como", "para", "uma", "com", "por", "que", "dos", "das", "aos", "nas",
+    "nos", "mais", "sobre", "qual", "quem", "esse", "essa", "isso", "esta",
+    "este", "está", "estao", "estão", "onde", "quando", "seus", "suas", "você",
+    "voce", "pode", "fazer", "faco", "faço", "criar", "ter", "ser", "tem",
+    "sucesso", "bom", "boa", "tudo", "aqui", "diga", "informe", "favor",
+    "qual", "quais", "dele", "dela", "deles", "delas", "pelo", "pela",
+    "pelos", "pelas", "entre", "contra", "sem", "sob", "atrás"
+}
+
+
+def score_search_result(user_message: str, result: dict, target_domain: str | None = None) -> float:
+    """Calcula a relevância de um resultado da busca para o prompt do usuário."""
+    url = result.get("url", "").lower()
+    title = result.get("title", "").lower()
+    snippet = result.get("snippet", "").lower()
+    combined_text = f"{title} {snippet} {url}"
+
+    score = 0.0
+
+    # 1. Bônus por domínio alvo
+    if target_domain and target_domain in url:
+        score += 50.0
+
+    # 2. Extrai termos de conteúdo do prompt do usuário
+    msg_words = re.findall(r"\b[a-zA-ZÀ-ÿ0-9_-]{3,}\b", user_message.lower())
+    content_terms = [w for w in msg_words if w not in COMMON_STOPWORDS]
+
+    if not content_terms:
+        return 1.0  # Se não há termos de conteúdo discerníveis, mantém neutro
+
+    # 3. Identifica entidades de destaque (ex: Fix, Blumenau, termos entre aspas ou próprios)
+    specific_entities = []
+    if "fix serviços" in user_message.lower() or "fix servicos" in user_message.lower():
+        specific_entities.append("fix serviços")
+    elif re.search(r"\bfix\b", user_message.lower()):
+        specific_entities.append("fix")
+    if "blumenau" in user_message.lower():
+        specific_entities.append("blumenau")
+
+    # Se há entidades específicas na consulta (como Fix, Blumenau)
+    if specific_entities:
+        has_entity_match = any(ent in combined_text for ent in specific_entities)
+        if not has_entity_match:
+            # Se o resultado NÃO menciona nenhuma das entidades essenciais, descarta!
+            return 0.0
+        score += 20.0
+
+    # 4. Proporção de termos de conteúdo encontrados
+    matched_terms = [t for t in content_terms if t in combined_text]
+    match_ratio = len(matched_terms) / len(content_terms)
+    score += match_ratio * 30.0
+
+    # Penalidade para PDFs ou formatos não textuais
+    if url.endswith((".pdf", ".zip", ".jpg", ".png")):
+        score -= 100.0
+
+    return score
 
 
 async def execute_agentic_search(
@@ -87,11 +147,22 @@ async def execute_agentic_search(
         else:
             target_urls_to_read.append(f"https://{main_domain}/blog/")
 
-    for r in all_results[:4]:
+    # Avalia relevância dos demais resultados antes de despachar o Deep Reader
+    main_domain_str = domains_info[0]["domain"] if domains_info else None
+    scored_candidates = []
+    for r in all_results:
         url = r.get("url", "")
         if url and url not in target_urls_to_read and not url.endswith((".pdf", ".zip", ".jpg", ".png")):
-            target_urls_to_read.append(url)
+            rel_score = score_search_result(user_message, r, target_domain=main_domain_str)
+            if rel_score > 5.0:  # limiar mínimo de relevância
+                scored_candidates.append((rel_score, url))
+
+    # Ordena pelo maior score e pega os melhores
+    scored_candidates.sort(key=lambda x: x[0], reverse=True)
+    for _, best_url in scored_candidates:
+        if len(target_urls_to_read) >= 2:
             break
+        target_urls_to_read.append(best_url)
 
     target_urls_to_read = target_urls_to_read[:2]
 

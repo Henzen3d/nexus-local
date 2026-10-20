@@ -317,7 +317,7 @@ interface AppState {
   setFusionMode: (v: boolean) => void
   setFusionActive: (v: boolean) => void
   setFusionStatuses: (statuses: FusionStatusEntry[]) => void
-  updateFusionStatus: (modelId: string, status: FusionStatusEntry['status'], response?: string, confidence?: FusionStatusEntry['confidence'], confidenceReason?: string | null) => void
+  updateFusionStatus: (modelId: string, status: FusionStatusEntry['status'], response?: string, confidence?: FusionStatusEntry['confidence'], confidenceReason?: string | null, originalModelId?: string | null) => void
   setFusionJudgeModelId: (id: string | null) => void
   updateFusionGrounding: (status: 'checking' | 'searching' | 'done', queries?: string[], found?: boolean) => void
   setFusionRefinedPrompt: (prompt: string) => void
@@ -1841,7 +1841,7 @@ export const useStore = create<AppState>((set, get) => ({
       messages: [...s.messages, msg],
     }))
   },
-  updateFusionStatus: (modelId: string, status: FusionStatusEntry['status'], response?: string, confidence?: FusionStatusEntry['confidence'], confidenceReason?: string | null) => {
+  updateFusionStatus: (modelId: string, status: FusionStatusEntry['status'], response?: string, confidence?: FusionStatusEntry['confidence'], confidenceReason?: string | null, originalModelId?: string | null) => {
     set((s) => {
       const idx = [...s.messages].reverse().findIndex((m) => m.role === 'fusion_status')
       if (idx === -1) return {}
@@ -1852,7 +1852,7 @@ export const useStore = create<AppState>((set, get) => ({
         updatedMessages[actualIdx] = {
           ...msg,
           fusion_statuses: msg.fusion_statuses.map((fs) =>
-            fs.model_id === modelId
+            (fs.model_id === modelId || (originalModelId && fs.model_id === originalModelId))
               ? {
                   ...fs,
                   status,

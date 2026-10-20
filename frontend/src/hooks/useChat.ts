@@ -325,7 +325,7 @@ export function useChat() {
           })
           break
         case 'fusion_status':
-          s.updateFusionStatus(msg.model_id, msg.status, msg.response, msg.confidence, msg.confidence_reason)
+          s.updateFusionStatus(msg.model_id, msg.status, msg.response, msg.confidence, msg.confidence_reason, (msg as any).original_model_id)
           break
         case 'fusion_judge_start':
           s.setFusionJudgeModelId(msg.model_id)

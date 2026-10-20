@@ -20,6 +20,35 @@ FILLER_WORDS = [
     r"\bpode fazer perguntas adicionais\b",
     r"\bperguntas adicionais\b",
     r"\bcomo fazer\b",
+    r"\bcomo faço para\b",
+    r"\bcomo faço pra\b",
+    r"\bcomo eu faço para\b",
+    r"\bcomo eu faço pra\b",
+    r"\bcomo faço\b",
+    r"\bcomo criar\b",
+    r"\bcomo montar\b",
+    r"\bcomo ter\b",
+    r"\bcomo abrir\b",
+    r"\bcomo começar\b",
+    r"\bcomo conseguir\b",
+    r"\bcomo posso\b",
+    r"\bde sucesso\b",
+    r"\bme ajude a\b",
+    r"\bme ajude com\b",
+    r"\bvocê pode me dizer\b",
+    r"\bvocê sabe\b",
+    r"\bsabe me dizer\b",
+    r"\bqual o\b",
+    r"\bqual é o\b",
+    r"\bqual a\b",
+    r"\bqual é a\b",
+    r"\bquem é o\b",
+    r"\bquem é a\b",
+    r"\bquem foi o\b",
+    r"\bo que é\b",
+    r"\bo que foi\b",
+    r"\búltimas notícias sobre\b",
+    r"\bnotícias sobre\b",
 ]
 
 DOMAIN_REGEX = re.compile(
@@ -69,26 +98,29 @@ def plan_search_queries(user_message: str) -> list[str]:
     # 1. Se houver domínio/site mencionado (ex: fixblu.com.br)
     if domains_info:
         main_domain = domains_info[0]["domain"]
-        
-        # Sub-query 1: Focada no site/blog do domínio alvo
         if any(w in msg_lower for w in ["blog", "post", "artigo", "notícia", "dica"]):
             queries.append(f"site:{main_domain} (blog OR postagens OR artigos OR noticias)")
         else:
             queries.append(f"site:{main_domain}")
 
-        # Se houver menção de marca/nome associado (ex: "fix serviços", "blumenau")
-        brand_parts = []
-        if "fix serviços" in msg_lower or "fix servicos" in msg_lower:
-            brand_parts.append('"fix serviços"')
-        elif "fix" in msg_lower:
-            brand_parts.append('"fix"')
-        if "blumenau" in msg_lower:
-            brand_parts.append("Blumenau")
-        
-        if brand_parts:
-            queries.append(f"{' '.join(brand_parts)} blog OR notícias")
+    # 2. Identificação global de marcas, entidades e cidades
+    brand_parts = []
+    if "fix serviços" in msg_lower or "fix servicos" in msg_lower:
+        brand_parts.append('"fix serviços"')
+    elif re.search(r"\bfix\b", msg_lower):
+        brand_parts.append('"fix"')
+    if "blumenau" in msg_lower:
+        brand_parts.append("Blumenau")
 
-    # 2. Sub-query para tendências / temas secundários (ex: "tendências de postagens similares")
+    if brand_parts:
+        if domains_info:
+            queries.append(f"{' '.join(brand_parts)} blog OR notícias")
+        else:
+            queries.append(f"{' '.join(brand_parts)}")
+            if any(w in msg_lower for w in ["empresa", "negócio", "loja", "serviço", "serviços"]):
+                queries.append(f"{' '.join(brand_parts)} empresa")
+
+    # 3. Sub-query para tendências / temas secundários (ex: "tendências de postagens similares")
     if any(w in msg_lower for w in ["tendência", "tendencias", "similar", "similares", "próximos meses", "2026", "2025"]):
         # Tenta identificar o nicho no texto
         niche_terms = []
@@ -104,13 +136,13 @@ def plan_search_queries(user_message: str) -> list[str]:
         niche_str = " OR ".join(niche_terms) if niche_terms else "serviços residenciais manutenção"
         queries.append(f'tendências conteúdo blog ({niche_str}) 2026')
 
-    # 3. Fallback ou se não gerou queries: limpa o texto geral do usuário
+    # 4. Query limpa do texto geral do usuário
+    cleaned = clean_query_text(user_message)
+    if cleaned and cleaned not in queries:
+        queries.append(cleaned[:120])
+
     if not queries:
-        cleaned = clean_query_text(user_message)
-        if cleaned:
-            queries.append(cleaned[:120])
-        else:
-            queries.append(user_message[:100])
+        queries.append(user_message[:100])
 
     # Deduplica preservando ordem e limita a 3 queries para manter velocidade máxima
     seen = set()

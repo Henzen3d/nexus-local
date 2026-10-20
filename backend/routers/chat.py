@@ -741,6 +741,11 @@ async def _run_turn(
             force_grounding=req.get("web_search", False),
             web_search_already_done=bool(web_search_used),
             client_timezone_offset=req.get("client_timezone_offset"),
+            user_msg_id=user_msg_id,
+            web_search_used=bool(web_search_used),
+            web_search_query=web_search_query,
+            web_search_sources=web_search_sources,
+            process_steps=process_steps,
         )
         return
 

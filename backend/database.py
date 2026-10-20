@@ -890,6 +890,16 @@ async def init_db():
             await db.execute("ALTER TABLE messages ADD COLUMN provider TEXT")
             await db.commit()
 
+        # Incremental migration check for messages.fusion_metadata
+        try:
+            await db.execute("SELECT fusion_metadata FROM messages LIMIT 1")
+        except aiosqlite.OperationalError:
+            try:
+                await db.execute("ALTER TABLE messages ADD COLUMN fusion_metadata TEXT")
+                await db.commit()
+            except Exception:
+                pass
+
         # Incremental migration check for providers.is_local
         try:
             await db.execute("SELECT is_local FROM providers LIMIT 1")
