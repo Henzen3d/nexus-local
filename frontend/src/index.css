@@ -2945,45 +2945,72 @@ html[data-theme="dark"] .composer-plus-btn.active {
   align-items: center;
 }
 
+.plus-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 110;
+  background: transparent;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ── ChatGPT Desktop Popover ── */
 .plus-menu-popover {
   position: absolute;
-  bottom: calc(100% + 8px);
+  bottom: calc(100% + 10px);
   left: 0;
-  width: 272px;
-  background: var(--surface-dark-elevated, #1e1e1c);
+  width: 390px;
+  max-width: calc(100vw - 32px);
+  max-height: 440px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--surface-dark-elevated, #212121);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 14px;
-  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.45);
-  padding: 6px;
+  border-radius: 20px;
+  box-shadow: 0 16px 40px -8px rgba(0, 0, 0, 0.45), 0 4px 16px rgba(0, 0, 0, 0.15);
+  padding: 8px 6px;
   z-index: 120;
-  animation: actionSwapFadeIn 0.16s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: plusMenuPopIn 0.16s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  transform-origin: bottom left;
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
 }
 
 html[data-theme="light"] .plus-menu-popover {
   background: var(--surface-card, #ffffff);
-  border: 1px solid var(--hairline);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.12);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 16px 36px -6px rgba(0, 0, 0, 0.14), 0 2px 10px rgba(0, 0, 0, 0.06);
+}
+
+@keyframes plusMenuPopIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
 }
 
 .plus-menu-item {
   display: flex;
   align-items: center;
   width: 100%;
-  min-height: 40px;
-  padding: 8px 10px;
-  border-radius: 9px;
+  min-height: 46px;
+  padding: 8px 12px;
+  border-radius: 12px;
   background: transparent;
   border: none;
   cursor: pointer;
   text-align: left;
-  gap: 10px;
+  gap: 12px;
   transition: background 0.12s ease;
   color: var(--ink);
   font-family: var(--font-body);
 }
 
 .plus-menu-item:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.08);
 }
 
 html[data-theme="light"] .plus-menu-item:hover:not(:disabled) {
@@ -2999,14 +3026,15 @@ html[data-theme="light"] .plus-menu-item:hover:not(:disabled) {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
-  color: var(--muted);
+  width: 22px;
+  height: 22px;
+  color: var(--ink);
   flex-shrink: 0;
+  opacity: 0.88;
 }
 
 .plus-menu-item:hover:not(:disabled) .plus-menu-item-icon {
-  color: var(--ink);
+  opacity: 1;
 }
 
 .plus-menu-item-content {
@@ -3024,17 +3052,17 @@ html[data-theme="light"] .plus-menu-item:hover:not(:disabled) {
 }
 
 .plus-menu-item-sub {
-  font-size: 11px;
+  font-size: 11.5px;
   color: var(--muted-soft);
   line-height: 1.2;
-  margin-top: 1px;
+  margin-top: 2px;
 }
 
 .plus-menu-item-right {
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  margin-left: 6px;
+  margin-left: 8px;
 }
 
 .plus-menu-check {
@@ -3044,8 +3072,124 @@ html[data-theme="light"] .plus-menu-item:hover:not(:disabled) {
 .plus-menu-divider {
   height: 1px;
   background: var(--hairline);
-  margin: 4px 6px;
+  margin: 6px 8px;
   opacity: 0.7;
+}
+
+/* ── ChatGPT Mobile Floating Island Menu (anexar-sem-teclado.jpg / anexar-sobre-teclado.jpg) ── */
+.plus-mobile-menu {
+  position: absolute;
+  bottom: calc(100% + 12px);
+  left: 0;
+  width: 224px;
+  max-width: calc(100vw - 24px);
+  max-height: min(440px, calc(100vh - 120px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: rgba(36, 36, 36, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 26px;
+  box-shadow: 0 16px 38px rgba(0, 0, 0, 0.42), 0 4px 12px rgba(0, 0, 0, 0.2);
+  padding: 8px 6px;
+  z-index: 120;
+  animation: plusMobilePopIn 0.18s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  transform-origin: bottom left;
+  backdrop-filter: blur(24px) saturate(190%);
+  -webkit-backdrop-filter: blur(24px) saturate(190%);
+}
+
+html[data-theme="light"] .plus-mobile-menu {
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 16px 36px -6px rgba(0, 0, 0, 0.16), 0 4px 14px rgba(0, 0, 0, 0.08);
+}
+
+@keyframes plusMobilePopIn {
+  from {
+    opacity: 0;
+    transform: scale(0.92) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.plus-mobile-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 44px;
+  padding: 4px 8px;
+  border-radius: 18px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  gap: 12px;
+  transition: background 0.12s ease, transform 0.08s ease;
+  color: var(--ink);
+  font-family: var(--font-body);
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.plus-mobile-item:active {
+  transform: scale(0.97);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+html[data-theme="light"] .plus-mobile-item:active {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.plus-mobile-item:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.plus-mobile-item-icon-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  min-height: 36px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--ink);
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+}
+
+html[data-theme="light"] .plus-mobile-item-icon-badge {
+  background: rgba(0, 0, 0, 0.05);
+  color: var(--ink);
+}
+
+.plus-mobile-item-icon-badge.active-web {
+  background: rgba(59, 130, 246, 0.2);
+  color: #3b82f6;
+}
+
+.plus-mobile-item-icon-badge.active-fusion {
+  background: rgba(168, 85, 247, 0.2);
+  color: #a855f7;
+}
+
+.plus-mobile-item-label {
+  flex: 1;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--ink);
+  line-height: 1.25;
+}
+
+.plus-mobile-item-right {
+  display: flex;
+  align-items: center;
+  margin-right: 4px;
 }
 
 /* ════════════════════════════════════════════════════════════

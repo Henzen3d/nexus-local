@@ -41,6 +41,8 @@ export function MessageInput({ onSend, onStop, isEmpty = false }: Props) {
 
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const photoInputRef = useRef<HTMLInputElement>(null)
+  const cameraInputRef = useRef<HTMLInputElement>(null)
 
   const {
     isStreaming,
@@ -249,6 +251,26 @@ export function MessageInput({ onSend, onStop, isEmpty = false }: Props) {
     fileInputRef.current?.click()
   }
 
+  const handleOpenPhotoPicker = () => {
+    if (!selectedModelId) {
+      showToast(t('artifacts.selectModelFirst', { defaultValue: 'Selecione um modelo antes de anexar fotos' }), 'info')
+      return
+    }
+    photoInputRef.current?.click()
+  }
+
+  const handleOpenCameraPicker = () => {
+    if (!selectedModelId) {
+      showToast(t('artifacts.selectModelFirst', { defaultValue: 'Selecione um modelo antes de usar a câmera' }), 'info')
+      return
+    }
+    cameraInputRef.current?.click()
+  }
+
+  const handleOpenLibrary = () => {
+    useStore.getState().setView('library')
+  }
+
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
     if (!files || files.length === 0 || !selectedModelId) return
@@ -386,14 +408,30 @@ export function MessageInput({ onSend, onStop, isEmpty = false }: Props) {
 
   return (
     <div className="input-wrapper" style={wrapperStyle}>
-      {/* Input oculto para upload de arquivos através do menu '+' */}
+      {/* Inputs ocultos para upload de arquivos através do menu '+' */}
       <input
         type="file"
         ref={fileInputRef}
         onChange={handleFileChange}
         style={{ display: 'none' }}
         multiple
-        accept=".pdf,.docx,.txt,.csv,.md,.png,.jpg,.jpeg,.webp"
+        accept=".pdf,.docx,.txt,.csv,.md,.json,.xml,.yaml,.yml,.png,.jpg,.jpeg,.webp"
+      />
+      <input
+        type="file"
+        ref={photoInputRef}
+        onChange={handleFileChange}
+        style={{ display: 'none' }}
+        multiple
+        accept="image/*"
+      />
+      <input
+        type="file"
+        ref={cameraInputRef}
+        onChange={handleFileChange}
+        style={{ display: 'none' }}
+        accept="image/*"
+        capture="environment"
       />
 
       <div className={`input-card ${isCompact ? 'compact-mode' : 'empty-mode'} ${enhanceFlash ? 'enhance-flash' : ''}`}>
@@ -418,6 +456,9 @@ export function MessageInput({ onSend, onStop, isEmpty = false }: Props) {
             <div className="composer-actions-left">
               <PlusActionMenu
                 onOpenFilePicker={handleOpenFilePicker}
+                onOpenPhotoPicker={handleOpenPhotoPicker}
+                onOpenCameraPicker={handleOpenCameraPicker}
+                onOpenLibrary={handleOpenLibrary}
                 onEnhance={handleEnhance}
                 enhancing={enhancing}
                 hasText={!!text.trim()}
@@ -478,6 +519,9 @@ export function MessageInput({ onSend, onStop, isEmpty = false }: Props) {
               <div className="composer-actions-left">
                 <PlusActionMenu
                   onOpenFilePicker={handleOpenFilePicker}
+                  onOpenPhotoPicker={handleOpenPhotoPicker}
+                  onOpenCameraPicker={handleOpenCameraPicker}
+                  onOpenLibrary={handleOpenLibrary}
                   onEnhance={handleEnhance}
                   enhancing={enhancing}
                   hasText={!!text.trim()}
