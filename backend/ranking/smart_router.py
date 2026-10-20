@@ -209,6 +209,29 @@ _RE_CREATIVE = re.compile(
 
 _RE_ENUMERATION = re.compile(r"(?m)^\s*(?:[-*•]|\d+[.)])\s+\S")
 
+# Sinais de Pesquisa Web & Fatos em Tempo Real (PT + EN)
+_RE_WEB_FACTUAL = re.compile(
+    r"\b("
+    r"quem\s+(é|são|foi|foram|será|serão|está|estão)\s+(o|a|os|as)?\s*(atual|candidatos?|presidente|prefeito|governador|ministro)|"
+    r"quem\s+(é\s+o\s+atual|são\s+os\s+candidatos|são\s+os\s+atuais)|"
+    r"quem\s+são\s+(os|as)?\s*(candidatos?|participantes?|jogadores?|ministros?)|"
+    r"quais\s+são\s+(os|as)?\s*(candidatos?|últimas|notícias|preços|regras|resultados)|"
+    r"candidatos?\s+(do|de|deste|desse)?\s*(segundo|1º|2º|primeiro)?\s*turno|"
+    r"elei[cç][õo]es?\s+(deste|desse|neste|nesse|de|em)?\s*(2025|2026|ano|atual)|"
+    r"cota[cç][aã]o\s+(hoje|atual|do|da|de)|"
+    r"[uú]ltimas?\s+not[ií]cias?|"
+    r"not[ií]cias?\s+(de\s+hoje|recentes?|atualizadas?)|"
+    r"resultado\s+(do|da|das|dos)?\s*(jogo|partida|elei[cç][aã]o|elei[cç][õo]es?|loto|loteria)|"
+    r"como\s+est[aá]\s+(o|a|o\s+tempo|o\s+clima|o\s+tr[aâ]nsito|a\s+situa[cç][aã]o|o\s+dólar|a\s+bolsa)|"
+    r"como\s+est[aã]o\s+(os|as)?\s*(candidatos?|elei[cç][õo]es?|pesquisas?|jogos?)|"
+    r"o\s+que\s+aconteceu\s+(hoje|recentemente|com)|"
+    r"placar\s+(do|de|ao\s+vivo)|"
+    r"pre[cç]o\s+(do|da|de|atual|hoje)|"
+    r"who\s+is\s+the\s+current|who\s+are\s+the\s+candidates|latest\s+news|stock\s+price|today'?s\s+news"
+    r")\b",
+    re.IGNORECASE,
+)
+
 # Preferências de família por intenção (bônus leve de afinidade; o perfil do
 # modelo faz o trabalho pesado). Substrings casadas contra id/nome em minúsculas.
 INTENT_FAMILY_MAPPING: Dict[IntentKey, List[str]] = {
@@ -524,6 +547,30 @@ def classify_intent(
             reason_label_pt="Redação & Conteúdo Criativo",
             suggested_family="kimi-k2",
             recommended_temperature=0.7,
+            complexity_score=cscore,
+        )
+
+    # Pesquisa Web & Fatos em Tempo Real (Auto-Trigger Factual)
+    web_factual_match = _RE_WEB_FACTUAL.search(prompt_str)
+    heuristic_ok = False
+    h_score = 0.0
+    try:
+        from backend.web_search.heuristics import should_search as _heuristic_should_search
+        heuristic_ok, h_score = _heuristic_should_search(prompt_str, sensitivity="medium")
+    except Exception:
+        pass
+
+    if web_factual_match or (heuristic_ok and h_score >= 0.55):
+        sig = f"web_factual:{web_factual_match.group(0)}" if web_factual_match else f"web_heuristic:{h_score}"
+        signals.append(sig)
+        complexity = ComplexityTier.HEAVY if cscore >= 0.6 else ComplexityTier.MEDIUM
+        return _done(
+            intent=IntentKey.WEB_RESEARCH,
+            complexity=complexity,
+            confidence=0.94 if web_factual_match else 0.88,
+            reason_label_pt="Pesquisa Web & Fatos em Tempo Real",
+            suggested_family="gemini-2.5-flash",
+            recommended_temperature=0.4,
             complexity_score=cscore,
         )
 
