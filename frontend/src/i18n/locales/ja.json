@@ -126,6 +126,8 @@
     "fusionModeSub": "複数モデルの回答を組み合わせます",
     "searchingWeb": "ウェブ検索中: 「{{query}}」...",
     "thinking": "思考中...",
+    "generating": "生成中...",
+    "generatingResponse": "回答を生成中...",
     "done": "完了",
     "cancelled": "キャンセル済み",
     "regenerating": "再生成中...",

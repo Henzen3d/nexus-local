@@ -205,6 +205,10 @@ export function useChat() {
           break
         case 'token':
           resetWatchdog()
+          if (isGeneratingRef.current) {
+            isGeneratingRef.current = false
+            s.setIsGenerating(false)
+          }
           s.appendToken(msg.content)
           break
         case 'stream_end':
@@ -279,6 +283,10 @@ export function useChat() {
           break
         }
         case 'search_start':
+          if (isGeneratingRef.current) {
+            isGeneratingRef.current = false
+            s.setIsGenerating(false)
+          }
           s.startProcessStep({
             id: 'web-search',
             type: 'search',
@@ -288,6 +296,10 @@ export function useChat() {
           })
           break
         case 'process_step_start':
+          if (isGeneratingRef.current) {
+            isGeneratingRef.current = false
+            s.setIsGenerating(false)
+          }
           s.startProcessStep({
             id: msg.id,
             type: msg.step_type,

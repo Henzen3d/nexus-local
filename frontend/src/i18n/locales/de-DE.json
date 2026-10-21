@@ -126,6 +126,8 @@
     "fusionModeSub": "Kombiniert Antworten mehrerer Modelle",
     "searchingWeb": "Websuche nach: „{{query}}“...",
     "thinking": "Denke nach...",
+    "generating": "Wird generiert...",
+    "generatingResponse": "Antwort wird generiert...",
     "done": "Fertig",
     "cancelled": "Abgebrochen",
     "regenerating": "Wird neu generiert...",

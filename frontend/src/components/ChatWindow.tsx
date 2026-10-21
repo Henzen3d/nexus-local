@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
-import { PanelLeftOpen, Code2, BookOpen, Pencil, Lightbulb, X, ChevronRight, MoreVertical, Folder, Cpu } from 'lucide-react'
+import { PanelLeftOpen, Code2, BookOpen, Pencil, Lightbulb, X, ChevronRight, MoreVertical, Folder, Cpu, LoaderCircle } from 'lucide-react'
 import { BuyCoffeeIcon } from './BuyCoffeeIcon'
 import { useTranslation } from 'react-i18next'
 import { useStore } from '../store/useStore'
 import { useShallow } from 'zustand/react/shallow'
 import { api } from '../api/client'
 import { MessageBubble } from './MessageBubble'
+import { AssistantAvatar } from './Avatars'
 import { StreamingTail } from './StreamingTail'
 import { NotificationBell } from './NotificationBell'
 import { MessageInput } from './MessageInput'
@@ -423,6 +424,13 @@ export function ChatWindow() {
     }
   }, [messages, isStreaming])
 
+  useEffect(() => {
+    if (!isGenerating) return
+    const container = messagesAreaRef.current
+    if (!container) return
+    container.scrollTop = container.scrollHeight
+  }, [isGenerating])
+
   const spokenConv = useRef<string | null>(null)
   const spokenIds = useRef<Set<string>>(new Set())
   useEffect(() => {
@@ -673,7 +681,23 @@ export function ChatWindow() {
               }
               return <MessageBubble key={m.id} message={m} />
             })}
-            {isGenerating && <div className="generating-indicator" style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '12px 16px', backgroundColor: 'rgba(30, 30, 30, 0.8)', color: '#fff', borderRadius: '16px', fontSize: '14px' }} aria-busy="true" aria-label="Gerando resposta..."><div className="loading-spinner" style={{ width: '16px', height: '16px' }}></div><span>Gerando...</span></div>}
+            {isGenerating && !isStreaming && (
+              <div
+                className="message assistant generating"
+                aria-busy="true"
+                aria-label={t('chat.generatingResponse', { defaultValue: 'Gerando resposta...' })}
+              >
+                <AssistantAvatar />
+                <div className="message-body-wrapper">
+                  <div className="message-body">
+                    <div className="generating-indicator">
+                      <LoaderCircle className="generating-spinner" size={14} aria-hidden="true" />
+                      <span>{t('chat.generating', { defaultValue: 'Gerando...' })}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
             {isStreaming && <StreamingTail sentinelRef={bottomSentinelRef} messagesAreaRef={messagesAreaRef} />}
           </>
         )}

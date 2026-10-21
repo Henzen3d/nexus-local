@@ -126,6 +126,8 @@
     "fusionModeSub": "여러 모델의 응답을 결합합니다",
     "searchingWeb": "웹 검색 중: \"{{query}}\"...",
     "thinking": "생각 중...",
+    "generating": "생성 중...",
+    "generatingResponse": "답변 생성 중...",
     "done": "완료",
     "cancelled": "취소됨",
     "regenerating": "재생성 중...",

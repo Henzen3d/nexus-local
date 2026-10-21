@@ -125,6 +125,8 @@
     "micStop": "Stop recording",
     "searchingWeb": "Searching the web for: \"{{query}}\"…",
     "thinking": "Thinking…",
+    "generating": "Generating…",
+    "generatingResponse": "Generating response…",
     "processLabel": "Response steps",
     "processThinking": "Reasoning",
     "processSearching": "Searching the web",

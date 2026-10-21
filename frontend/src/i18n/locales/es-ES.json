@@ -120,6 +120,8 @@
     "micStop": "Detener grabación",
     "searchingWeb": "Buscando en la web: \"{{query}}\"...",
     "thinking": "Pensando...",
+    "generating": "Generando...",
+    "generatingResponse": "Generando respuesta...",
     "processLabel": "Pasos de la respuesta",
     "processThinking": "Razonando",
     "processSearching": "Buscando en la web",
