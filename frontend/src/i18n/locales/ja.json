@@ -133,6 +133,8 @@
     "regenerating": "再生成中...",
     "expandThinking": "推論を展開",
     "collapseThinking": "推論を折りたたむ",
+    "reasoningExhausted": "推論は完了しましたが、トークン制限のためモデルが最終回答を生成しませんでした。",
+    "retryLowerEffort": "再試行（推論を減らす）",
     "unknown": "不明",
     "providerModel": "プロバイダー: {{provider}}",
     "webSearchOn": "ウェブ検索オン",

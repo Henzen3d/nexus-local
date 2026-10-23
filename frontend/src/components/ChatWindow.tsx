@@ -333,8 +333,25 @@ export function ChatWindow() {
       const text = (e as CustomEvent<{ text?: string }>).detail?.text
       if (text?.trim()) sendMessage(text.trim())
     }
+    const retryHandler = (e: Event) => {
+      const detail = (e as CustomEvent<{ text?: string; effort?: string }>).detail
+      if (detail?.text?.trim()) {
+        if (detail.effort) {
+          useStore.getState().setReasoningEffortAuto(detail.effort)
+          const selId = useStore.getState().selectedModelId
+          if (selId) {
+            useStore.getState().setReasoningEffortForModel(selId, detail.effort)
+          }
+        }
+        sendMessage(detail.text.trim())
+      }
+    }
     window.addEventListener('nexus:send-project-message', handler)
-    return () => window.removeEventListener('nexus:send-project-message', handler)
+    window.addEventListener('nexus:retry-message', retryHandler)
+    return () => {
+      window.removeEventListener('nexus:send-project-message', handler)
+      window.removeEventListener('nexus:retry-message', retryHandler)
+    }
   }, [sendMessage])
 
   // Analisa o histórico dinamicamente para obter a relevância das categorias

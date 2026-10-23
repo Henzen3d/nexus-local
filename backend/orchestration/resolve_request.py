@@ -409,7 +409,24 @@ async def stream_from_llm(
             stream_kwargs: dict[str, Any] = {}
             if temperature is not None:
                 stream_kwargs["temperature"] = float(temperature)
-            if max_tokens is not None:
+            is_reasoning_capable = bool(
+                active_effort
+                or (ctrl and ctrl not in ("none", ""))
+                or any(k in current_model_id.lower() for k in ("deepseek-r1", "deepseek-reasoner", "qwq", "hy4", "hunyuan", "qwen-max", "thinking", "reasoning", "reasoner"))
+                or any(k in str(model_name).lower() for k in ("deepseek-r1", "deepseek-reasoner", "qwq", "hy4", "hunyuan", "qwen-max", "thinking", "reasoning", "reasoner"))
+                or re.search(r"(?:^|[\/\-_])(o1|o3|o4|r1)(?:[\-_]|$)", current_model_id.lower())
+                or re.search(r"(?:^|[\/\-_])(o1|o3|o4|r1)(?:[\-_]|$)", str(model_name).lower())
+            )
+            if is_reasoning_capable:
+                curr_max = int(max_tokens) if max_tokens is not None else 4096
+                # Não altera se o usuário estiver em voice_mode (onde max_tokens é propositalmente <= 300)
+                if curr_max > 300 and curr_max <= 4096:
+                    stream_kwargs["max_tokens"] = 8192
+                elif max_tokens is not None:
+                    stream_kwargs["max_tokens"] = int(max_tokens)
+                else:
+                    stream_kwargs["max_tokens"] = 8192
+            elif max_tokens is not None:
                 stream_kwargs["max_tokens"] = int(max_tokens)
             if active_effort is not None:
                 stream_kwargs["reasoning_effort"] = active_effort
@@ -630,6 +647,49 @@ async def stream_from_llm(
                             await stream_iter.aclose()
                     except Exception:
                         pass
+
+            # Salvaguarda de truncamento no raciocínio (R1)
+            open_th = re.findall(r"<(think|thinking|reasoning|analysis)\b[^>]*>", candidate_response, re.IGNORECASE)
+            close_th = re.findall(r"</(think|thinking|reasoning|analysis)>", candidate_response, re.IGNORECASE)
+            if len(open_th) > len(close_th):
+                tag_to_close = open_th[-1]
+                closed_suffix = f"</{tag_to_close}>\n\n"
+                candidate_response += closed_suffix
+                token_buffer.append(closed_suffix)
+                await flush_tokens()
+
+            pure_answer = re.sub(
+                r"<(think|thinking|reasoning|analysis)\b[^>]*>[\s\S]*?</\1>",
+                "",
+                candidate_response,
+                flags=re.IGNORECASE,
+            ).strip()
+
+            if candidate_response.strip() and not pure_answer:
+                logger.warning(
+                    "Modelo '%s' (provedor '%s') esgotou tokens no raciocínio sem gerar resposta visível.",
+                    current_model_id, current_provider_id,
+                )
+                elapsed_now = time.monotonic() - turn_start_time
+                if attempt < _MAX_FAILOVER_ATTEMPTS and (total_budget - elapsed_now) >= MIN_RETRY_BUDGET_SECONDS:
+                    cascade_history.append({
+                        "attempt": attempt,
+                        "model_id": current_model_id,
+                        "provider_id": current_provider_id,
+                        "detail": "Modelo esgotou o limite de tokens durante o raciocínio sem gerar resposta.",
+                    })
+                    attempted_model_ids.add(current_model_id)
+                    tokens_flushed_to_client = True
+                    next_failover_reason = "length_exhaustion"
+                    continue
+                else:
+                    notice = (
+                        "\n\n[Aviso: O modelo esgotou seu limite de geração durante a etapa de raciocínio. "
+                        "Tente reduzir o esforço de raciocínio ou reformular a pergunta.]"
+                    )
+                    candidate_response += notice
+                    token_buffer.append(notice)
+                    await flush_tokens()
 
             if not candidate_response.strip():
                 logger.warning(

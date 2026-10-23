@@ -133,6 +133,8 @@
     "regenerating": "Régénération...",
     "expandThinking": "Développer le raisonnement",
     "collapseThinking": "Réduire le raisonnement",
+    "reasoningExhausted": "Le raisonnement est terminé, mais le modèle n'a pas généré de réponse finale en raison de la limite de jetons.",
+    "retryLowerEffort": "Réessayer (moins de raisonnement)",
     "unknown": "Inconnu",
     "providerModel": "Fournisseur : {{provider}}",
     "webSearchOn": "Recherche web active",

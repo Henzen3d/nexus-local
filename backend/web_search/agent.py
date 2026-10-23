@@ -3,7 +3,7 @@ import re
 from typing import Any, Callable, Awaitable
 from loguru import logger
 
-from backend.web_search.planner import plan_search_queries, extract_domains_and_urls
+from backend.web_search.planner import plan_search_queries, extract_domains_and_urls, extract_context_entities
 from backend.web_search.providers import resolve_and_execute_search
 from backend.web_search.reader import deep_read_target
 
@@ -14,53 +14,84 @@ COMMON_STOPWORDS = {
     "voce", "pode", "fazer", "faco", "faço", "criar", "ter", "ser", "tem",
     "sucesso", "bom", "boa", "tudo", "aqui", "diga", "informe", "favor",
     "qual", "quais", "dele", "dela", "deles", "delas", "pelo", "pela",
-    "pelos", "pelas", "entre", "contra", "sem", "sob", "atrás"
+    "pelos", "pelas", "entre", "contra", "sem", "sob", "atrás", "pegar", "buscar"
+}
+
+GENERIC_TUTORIAL_DOMAINS = {
+    "tecnobits.com", "melhorplano.net", "falemaisvoip.com.br", "blacktel.io",
+    "telefones.net.br", "ligarnumeros.com", "guiamais.com.br", "tudocelular.com",
+    "techtudo.com.br", "tecmundo.com.br", "canaltech.com.br", "wikihow.com",
+    "voip.com.br", "voipdobrasil.com.br"
 }
 
 
-def score_search_result(user_message: str, result: dict, target_domain: str | None = None) -> float:
-    """Calcula a relevância de um resultado da busca para o prompt do usuário."""
+def score_search_result(
+    user_message: str,
+    result: dict,
+    target_domain: str | None = None,
+    history: list[dict] | None = None,
+) -> float:
+    """Calcula a relevância de um resultado da busca para o prompt do usuário e histórico."""
     url = result.get("url", "").lower()
     title = result.get("title", "").lower()
     snippet = result.get("snippet", "").lower()
     combined_text = f"{title} {snippet} {url}"
 
+    # 1. Filtro rígido contra sites de tutoriais genéricos e VoIP quando o assunto é comercial/contato
+    is_contact_or_business = any(
+        w in user_message.lower() for w in ["telefone", "whatsapp", "contato", "endereço", "endereco", "contratar", "falar com"]
+    ) or (history and any(
+        w in str(m.get("content", "")).lower() for m in history[-2:] for w in ["fix", "blumenau", "contratar", "empresa", "telefone"]
+    ))
+    if is_contact_or_business and any(d in url for d in GENERIC_TUTORIAL_DOMAINS):
+        return 0.0
+
     score = 0.0
 
-    # 1. Bônus por domínio alvo
+    # 2. Bônus por domínio alvo
     if target_domain and target_domain in url:
         score += 50.0
 
-    # 2. Extrai termos de conteúdo do prompt do usuário
-    msg_words = re.findall(r"\b[a-zA-ZÀ-ÿ0-9_-]{3,}\b", user_message.lower())
-    content_terms = [w for w in msg_words if w not in COMMON_STOPWORDS]
-
-    if not content_terms:
-        return 1.0  # Se não há termos de conteúdo discerníveis, mantém neutro
-
-    # 3. Identifica entidades de destaque (ex: Fix, Blumenau, termos entre aspas ou próprios)
+    # 3. Identifica entidades de destaque no prompt corrente OU no histórico (R4)
     specific_entities = []
-    if "fix serviços" in user_message.lower() or "fix servicos" in user_message.lower():
+    msg_lower = user_message.lower()
+    if "fix serviços" in msg_lower or "fix servicos" in msg_lower:
         specific_entities.append("fix serviços")
-    elif re.search(r"\bfix\b", user_message.lower()):
+    elif re.search(r"\bfix\b", msg_lower):
         specific_entities.append("fix")
-    if "blumenau" in user_message.lower():
+    if "blumenau" in msg_lower:
         specific_entities.append("blumenau")
 
-    # Se há entidades específicas na consulta (como Fix, Blumenau)
+    # Injeta entidades resolvidas do histórico se houver
+    if history:
+        for ent in extract_context_entities(history):
+            e_lower = ent.lower()
+            if "fix" in e_lower and "fix" not in specific_entities:
+                specific_entities.append("fix")
+            if "blumenau" in e_lower and "blumenau" not in specific_entities:
+                specific_entities.append("blumenau")
+            for token in re.findall(r"\b[a-zA-ZÀ-ÿ0-9_-]{3,}\b", e_lower):
+                if token not in COMMON_STOPWORDS and token not in specific_entities:
+                    specific_entities.append(token)
+
+    # Validação obrigatória de entidade: se busca uma empresa/local específico,
+    # resultados que não mencionam a entidade nem o município são descartados com 0.0
     if specific_entities:
         has_entity_match = any(ent in combined_text for ent in specific_entities)
         if not has_entity_match:
-            # Se o resultado NÃO menciona nenhuma das entidades essenciais, descarta!
             return 0.0
-        score += 20.0
+        score += 25.0
 
-    # 4. Proporção de termos de conteúdo encontrados
-    matched_terms = [t for t in content_terms if t in combined_text]
-    match_ratio = len(matched_terms) / len(content_terms)
-    score += match_ratio * 30.0
+    # 4. Extrai termos de conteúdo do prompt do usuário
+    msg_words = re.findall(r"\b[a-zA-ZÀ-ÿ0-9_-]{3,}\b", msg_lower)
+    content_terms = [w for w in msg_words if w not in COMMON_STOPWORDS]
 
-    # Penalidade para PDFs ou formatos não textuais
+    if content_terms:
+        matched_terms = [t for t in content_terms if t in combined_text]
+        match_ratio = len(matched_terms) / len(content_terms)
+        score += match_ratio * 30.0
+
+    # Penalidade severa para PDFs ou formatos não textuais
     if url.endswith((".pdf", ".zip", ".jpg", ".png")):
         score -= 100.0
 
@@ -72,15 +103,16 @@ async def execute_agentic_search(
     db: Any,
     search_config: dict,
     on_event: Callable[[dict], Awaitable[None]] | None = None,
+    history: list[dict] | None = None,
 ) -> dict:
     """
     Executa busca agêntica multi-passo:
-    1. Query Planner: decompõe em sub-consultas especializadas.
+    1. Query Planner: decompõe em sub-consultas especializadas com histórico.
     2. Multi-Search: executa cada busca e emite eventos em tempo real.
     3. Deep Reader: faz scraping e extração de artigos/datas reais nos sites-alvo.
     """
-    # 1. Planejamento de consultas
-    planned_queries = plan_search_queries(user_message)
+    # 1. Planejamento de consultas com resolução de contexto conversacional (R2)
+    planned_queries = plan_search_queries(user_message, history=history)
     logger.info(f"[agentic_search] Consultas planejadas ({len(planned_queries)}): {planned_queries}")
 
     all_results: list[dict] = []
@@ -153,7 +185,7 @@ async def execute_agentic_search(
     for r in all_results:
         url = r.get("url", "")
         if url and url not in target_urls_to_read and not url.endswith((".pdf", ".zip", ".jpg", ".png")):
-            rel_score = score_search_result(user_message, r, target_domain=main_domain_str)
+            rel_score = score_search_result(user_message, r, target_domain=main_domain_str, history=history)
             if rel_score > 5.0:  # limiar mínimo de relevância
                 scored_candidates.append((rel_score, url))
 

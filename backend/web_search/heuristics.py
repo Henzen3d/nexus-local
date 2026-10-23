@@ -33,6 +33,18 @@ DOMAIN_SIGNALS = [
     "jogo", "placar", "campeonato", "futebol", "weather", "clima", "tempo",
 ]
 
+COMMERCIAL_CONTACT_PATTERNS = [
+    r"\b(telefone|whatsapp|contato|email|e-mail|endere[cç]o|site\s+oficial|site\s+deles)\b",
+    r"\bcomo\s+(?:posso|eu\s+posso|fazer\s+para|faço\s+pra|faço\s+para|consigo)?\s*(contratar|comprar|falar\s+com|agendar)\b",
+    r"\b(hor[aá]rio\s+de\s+atendimento|localiza[cç][aã]o|onde\s+fica|fica\s+em)\b",
+]
+
+EXPLICIT_SEARCH_ORDERS = [
+    r"\b(acesse|acessar|consulte|consultar|veja|olhe|busque|pesquise|v[aá]\s+at[eé]|entre\s+no|olhar\s+no)\s+(a\s+|na\s+|no\s+|o\s+)?\s*(web|internet|google|online|site)\b",
+    r"\b(pesquise|busque|procure)\s+(na\s+internet|no\s+google|online)\b",
+]
+
+
 def should_search(message: str, sensitivity: str = "medium") -> tuple[bool, float]:
     """
     Retorna (deve_buscar, confiança).
@@ -44,6 +56,10 @@ def should_search(message: str, sensitivity: str = "medium") -> tuple[bool, floa
     score = 0.0
     msg_lower = message.lower()
 
+    if any(re.search(p, msg_lower) for p in EXPLICIT_SEARCH_ORDERS):
+        score += 0.50
+    if any(re.search(p, msg_lower) for p in COMMERCIAL_CONTACT_PATTERNS):
+        score += 0.45
     if any(kw in msg_lower for kw in TEMPORAL_KEYWORDS):
         score += 0.3
     if any(re.search(p, msg_lower) for p in FACTUAL_QUERY_PATTERNS):

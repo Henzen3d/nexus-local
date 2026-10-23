@@ -116,6 +116,16 @@ class OpenAICompatProvider(BaseProvider):
         from backend.providers.reflection import strip_provider_private_fields
         messages = strip_provider_private_fields(messages)
 
+        model_lower = (model or "").lower()
+        is_reasoning_capable = bool(
+            reasoning_effort
+            or (reasoning_control and reasoning_control not in ("none", ""))
+            or any(k in model_lower for k in ("deepseek-r1", "deepseek-reasoner", "qwq", "hy4", "hunyuan", "qwen-max", "thinking", "reasoning", "reasoner"))
+            or re.search(r"(?:^|[\/\-_])(o1|o3|o4|r1)(?:[\-_]|$)", model_lower)
+        )
+        if is_reasoning_capable and (max_tokens is None or max_tokens <= 4096):
+            max_tokens = 8192
+
         payload = {
             "model": model,
             "messages": messages,
@@ -158,6 +168,8 @@ class OpenAICompatProvider(BaseProvider):
                     )
 
                 in_thinking = False
+                has_yielded_answer = False
+                finish_reason = None
                 async for line in response.aiter_lines():
                     if not line.startswith("data: "):
                         continue
@@ -167,7 +179,13 @@ class OpenAICompatProvider(BaseProvider):
                     try:
                         import json
                         chunk = json.loads(data)
-                        delta = chunk["choices"][0]["delta"]
+                        choices = chunk.get("choices") or []
+                        if choices:
+                            choice = choices[0]
+                            finish_reason = choice.get("finish_reason") or finish_reason
+                            delta = choice.get("delta", {})
+                        else:
+                            delta = {}
                         
                         # 1. Check for OpenAI/DeepSeek standard `reasoning_content`
                         reasoning_content = delta.get("reasoning_content")
@@ -240,7 +258,7 @@ class OpenAICompatProvider(BaseProvider):
                                                         if isinstance(n, dict) and n.get("type") == "text":
                                                             structured_thinking += n.get("text", "")
                                                 elif isinstance(nested, str):
-                                                                structured_thinking += nested
+                                                    structured_thinking += nested
                                             elif item_type == "text":
                                                 structured_text += parsed_content.get("text", "")
                                     except Exception:
@@ -265,6 +283,7 @@ class OpenAICompatProvider(BaseProvider):
                             if in_thinking:
                                 chunk_to_yield += "</think>"
                                 in_thinking = False
+                            has_yielded_answer = True
                             chunk_to_yield += content
                             
                         if chunk_to_yield:
@@ -275,7 +294,11 @@ class OpenAICompatProvider(BaseProvider):
 
                 # Close thinking tag if it was left open
                 if in_thinking:
-                    yield "</think>"
+                    yield "</think>\n\n"
+                    in_thinking = False
+
+                if (finish_reason == "length" or not has_yielded_answer) and not has_yielded_answer:
+                    yield "\n\n[Aviso: O modelo esgotou seu limite de geração durante a etapa de raciocínio. Tente reduzir o esforço de raciocínio ou reformular a pergunta.]"
 
 
 class CloudflareProvider(BaseProvider):

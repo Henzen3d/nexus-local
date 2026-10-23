@@ -133,6 +133,8 @@
     "regenerating": "Wird neu generiert...",
     "expandThinking": "Überlegung ausklappen",
     "collapseThinking": "Überlegung einklappen",
+    "reasoningExhausted": "Die Überlegung wurde abgeschlossen, aber das Modell hat aufgrund des Token-Limits keine endgültige Antwort generiert.",
+    "retryLowerEffort": "Erneut versuchen (weniger Überlegung)",
     "unknown": "Unbekannt",
     "providerModel": "Anbieter: {{provider}}",
     "webSearchOn": "Websuche aktiv",

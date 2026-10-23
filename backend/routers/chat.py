@@ -533,10 +533,25 @@ async def _run_turn(
         )
 
     # ── Web Search ──────────────────────────────────────────────────
+    recent_history = []
+    if conversation_id:
+        try:
+            async with db.execute(
+                """SELECT role, content FROM messages
+                   WHERE conversation_id = ? AND id != ?
+                   ORDER BY created_at DESC, rowid DESC LIMIT 4""",
+                (conversation_id, user_msg_id),
+            ) as cur:
+                rows = await cur.fetchall()
+                recent_history = [{"role": r[0], "content": r[1]} for r in reversed(rows)]
+        except Exception:
+            recent_history = []
+
     web_search_used, web_search_query, web_search_sources, search_results, search_config, process_steps = (
         await _resolve_web_search(
             ws, db, req, user_message, user_msg_id, user_id, conversation_id,
             intent_res=intent_res if is_auto else None,
+            history=recent_history,
         )
     )
 
@@ -942,6 +957,7 @@ async def _run_turn(
 async def _resolve_web_search(
     ws, db, req, user_message, user_msg_id, user_id, conversation_id,
     intent_res: Any | None = None,
+    history: list[dict] | None = None,
 ) -> tuple[bool, str, list, list, dict | None, list]:
     """Resolve e executa web search se aplicável.
 
@@ -1004,7 +1020,7 @@ async def _resolve_web_search(
 
         try:
             agent_result = await execute_agentic_search(
-                user_message, db, search_config, on_event=send_ws_event
+                user_message, db, search_config, on_event=send_ws_event, history=history
             )
             search_results = agent_result.get("search_results", [])
             scraped_pages = agent_result.get("scraped_pages", [])

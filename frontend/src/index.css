@@ -17131,3 +17131,53 @@ html[data-theme="light"] .model-option-provider-tag {
   animation: loadingLogoBreath 1.8s ease-in-out infinite;
   animation-delay: 150ms;
 }
+
+/* Card de resgate para esgotamento de tokens no raciocínio */
+.reasoning-exhausted-card {
+  margin-top: 10px;
+  padding: 12px 14px;
+  border-radius: var(--radius-md, 8px);
+  background: rgba(234, 154, 40, 0.08);
+  border: 1px solid rgba(234, 154, 40, 0.25);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  backdrop-filter: blur(8px);
+}
+
+.reasoning-exhausted-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--ink, #1f2328);
+}
+
+.reasoning-exhausted-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.reasoning-exhausted-retry-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: var(--radius-sm, 6px);
+  background: var(--surface-soft, rgba(0, 0, 0, 0.04));
+  color: var(--primary, #cc785c);
+  border: 1px solid var(--hairline, rgba(0, 0, 0, 0.12));
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.reasoning-exhausted-retry-btn:hover {
+  background: var(--primary, #cc785c);
+  color: #ffffff;
+  border-color: var(--primary, #cc785c);
+}
+

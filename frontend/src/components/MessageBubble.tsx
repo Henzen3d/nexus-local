@@ -503,7 +503,7 @@ export const MessageBubble = React.memo(function MessageBubble({ message }: Prop
                 />
               ) : null}
 
-              {cleanedContent && (
+              {cleanedContent ? (
                 <div className="assistant-response">
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm]}
@@ -512,7 +512,44 @@ export const MessageBubble = React.memo(function MessageBubble({ message }: Prop
                     {cleanedContent}
                   </ReactMarkdown>
                 </div>
-              )}
+              ) : reasoning ? (
+                <div className="reasoning-exhausted-card">
+                  <div className="reasoning-exhausted-header">
+                    <AlertCircle size={15} className="text-warning flex-shrink-0" />
+                    <span>
+                      {t('chat.reasoningExhausted', {
+                        defaultValue: 'O raciocínio foi concluído, mas o modelo não gerou a resposta final devido ao limite de tokens.',
+                      })}
+                    </span>
+                  </div>
+                  <div className="reasoning-exhausted-actions">
+                    <button
+                      type="button"
+                      className="reasoning-exhausted-retry-btn"
+                      onClick={() => {
+                        const store = useStore.getState()
+                        store.setReasoningEffortAuto('low')
+                        if (message.model_id) {
+                          store.setReasoningEffortForModel(message.model_id, 'low')
+                        }
+                        const prevUserMsg = store.lastUserMessage?.text
+                        if (prevUserMsg) {
+                          window.dispatchEvent(
+                            new CustomEvent('nexus:retry-message', {
+                              detail: { text: prevUserMsg, effort: 'low' },
+                            })
+                          )
+                        }
+                      }}
+                    >
+                      <RefreshCw size={12} />
+                      {t('chat.retryLowerEffort', {
+                        defaultValue: 'Tentar novamente (menos raciocínio)',
+                      })}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
 
               {message.role === 'assistant' && message.web_search_sources && message.web_search_sources.length > 0 && (
                 <SourceShelf sources={message.web_search_sources} />

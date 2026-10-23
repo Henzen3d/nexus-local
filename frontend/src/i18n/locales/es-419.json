@@ -133,6 +133,8 @@
     "regenerating": "Regenerando...",
     "expandThinking": "Expandir razonamiento",
     "collapseThinking": "Contraer razonamiento",
+    "reasoningExhausted": "El razonamiento se completó, pero el modelo no generó una respuesta final debido al límite de tokens.",
+    "retryLowerEffort": "Intentar de nuevo (menos razonamiento)",
     "unknown": "Desconocido",
     "providerModel": "Proveedor: {{provider}}",
     "webSearchOn": "Búsqueda web activa",

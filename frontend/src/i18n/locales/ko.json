@@ -133,6 +133,8 @@
     "regenerating": "재생성 중...",
     "expandThinking": "추론 펼치기",
     "collapseThinking": "추론 접기",
+    "reasoningExhausted": "추론은 완료되었으나 토큰 한도로 인해 모델이 최종 답변을 생성하지 못했습니다.",
+    "retryLowerEffort": "다시 시도 (추론 줄이기)",
     "unknown": "알 수 없음",
     "providerModel": "제공자: {{provider}}",
     "webSearchOn": "웹 검색 켜짐",

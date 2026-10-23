@@ -151,6 +151,8 @@
     "regenerating": "Regenerating…",
     "expandThinking": "Expand reasoning",
     "collapseThinking": "Collapse reasoning",
+    "reasoningExhausted": "Reasoning was completed, but the model did not generate a final response due to the token limit.",
+    "retryLowerEffort": "Try again (less reasoning)",
     "unknown": "Unknown",
     "providerModel": "Provider: {{provider}}",
     "webSearchOn": "Web search on",

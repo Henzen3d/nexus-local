@@ -232,6 +232,18 @@ _RE_WEB_FACTUAL = re.compile(
     re.IGNORECASE,
 )
 
+# Sinais de Consulta Comercial, Dados de Contato e Ordens Explícitas de Busca (R3)
+_RE_WEB_COMMERCIAL_CONTACT = re.compile(
+    r"\b("
+    r"(telefone|whatsapp|contato|email|e-mail|endere[cç]o|site\s+oficial|site\s+deles)|"
+    r"como\s+(?:posso|eu\s+posso|fazer\s+para|faço\s+pra|faço\s+para|consigo)?\s*(contratar|comprar|falar\s+com|agendar)|"
+    r"(hor[aá]rio\s+de\s+atendimento|localiza[cç][aã]o|onde\s+fica|fica\s+em)|"
+    r"(acesse|acessar|consulte|consultar|veja|olhe|busque|pesquise|v[aá]\s+at[eé]|entre\s+no)\s+(a\s+|na\s+|no\s+|o\s+)?\s*(web|internet|google|online|site)|"
+    r"(pesquise|busque|procure)\s+(na\s+internet|no\s+google|online)"
+    r")\b",
+    re.IGNORECASE,
+)
+
 # Preferências de família por intenção (bônus leve de afinidade; o perfil do
 # modelo faz o trabalho pesado). Substrings casadas contra id/nome em minúsculas.
 INTENT_FAMILY_MAPPING: Dict[IntentKey, List[str]] = {
@@ -550,8 +562,9 @@ def classify_intent(
             complexity_score=cscore,
         )
 
-    # Pesquisa Web & Fatos em Tempo Real (Auto-Trigger Factual)
+    # Pesquisa Web, Fatos em Tempo Real e Consultas Comerciais/Locais (Auto-Trigger R3)
     web_factual_match = _RE_WEB_FACTUAL.search(prompt_str)
+    web_contact_match = _RE_WEB_COMMERCIAL_CONTACT.search(prompt_str)
     heuristic_ok = False
     h_score = 0.0
     try:
@@ -560,14 +573,18 @@ def classify_intent(
     except Exception:
         pass
 
-    if web_factual_match or (heuristic_ok and h_score >= 0.55):
-        sig = f"web_factual:{web_factual_match.group(0)}" if web_factual_match else f"web_heuristic:{h_score}"
+    if web_factual_match or web_contact_match or (heuristic_ok and h_score >= 0.40):
+        sig = (
+            f"web_contact:{web_contact_match.group(0)}"
+            if web_contact_match
+            else (f"web_factual:{web_factual_match.group(0)}" if web_factual_match else f"web_heuristic:{h_score}")
+        )
         signals.append(sig)
         complexity = ComplexityTier.HEAVY if cscore >= 0.6 else ComplexityTier.MEDIUM
         return _done(
             intent=IntentKey.WEB_RESEARCH,
             complexity=complexity,
-            confidence=0.94 if web_factual_match else 0.88,
+            confidence=0.96 if (web_factual_match or web_contact_match) else 0.88,
             reason_label_pt="Pesquisa Web & Fatos em Tempo Real",
             suggested_family="gemini-2.5-flash",
             recommended_temperature=0.4,
