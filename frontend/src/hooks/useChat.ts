@@ -28,6 +28,10 @@ function buildWsUrl(token: string | null | undefined): string {
 
 export function useChat() {
   const wsRef = useRef<WebSocket | null>(null)
+  // Flag de turno ativo (controla se o socket aceita frames do assistente).
+  // Permanece true durante todo o turno. Só vai para false no fim (stream_end),
+  // em erro fatal (error), fechamento do socket (onclose) ou cancelamento do usuário (stopStream).
+  // NUNCA zerar ao receber tokens parciais ou etapas, pois causaria o descarte do restante do stream.
   const isGeneratingRef = useRef(false)
   const watchdogTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -210,8 +214,7 @@ export function useChat() {
           break
         case 'token':
           resetWatchdog()
-          if (isGeneratingRef.current) {
-            isGeneratingRef.current = false
+          if (s.isGenerating) {
             s.setIsGenerating(false)
           }
           s.appendToken(msg.content)
@@ -288,8 +291,7 @@ export function useChat() {
           break
         }
         case 'search_start':
-          if (isGeneratingRef.current) {
-            isGeneratingRef.current = false
+          if (s.isGenerating) {
             s.setIsGenerating(false)
           }
           s.startProcessStep({
@@ -301,8 +303,7 @@ export function useChat() {
           })
           break
         case 'process_step_start':
-          if (isGeneratingRef.current) {
-            isGeneratingRef.current = false
+          if (s.isGenerating) {
             s.setIsGenerating(false)
           }
           s.startProcessStep({
@@ -405,8 +406,9 @@ export function useChat() {
                   s.hideToast()
                   // Re-envia a última mensagem via WebSocket
                   if (wsRef.current?.readyState === WebSocket.OPEN) {
-                    const { isGenerating } = useStore.getState()
+                    isGeneratingRef.current = true
                     useStore.getState().setIsGenerating(true)
+                    resetWatchdog()
                     wsRef.current.send(JSON.stringify({
                       conversation_id: s.lastUserMessage!.conversationId,
                       message: s.lastUserMessage!.text,
@@ -595,6 +597,7 @@ export function useChat() {
       // Nenhum texto gerado ainda — cancela os estados de ocupado e reseta passos
       useStore.setState({
         isStreaming: false,
+        isGenerating: false,
         streamingContent: '',
         fusionActive: false,
         processSteps: [],
