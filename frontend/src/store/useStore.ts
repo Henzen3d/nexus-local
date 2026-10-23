@@ -269,6 +269,7 @@ interface AppState {
   favoriteConversation: (id: string) => Promise<void>
   loadAllArtifacts: (search?: string) => Promise<void>
   appendToken: (token: string) => void
+  clearStreamDraft: () => void
   beginProcess: (thinkingTitle?: string) => void
   startProcessStep: (step: ProcessStep) => void
   updateProcessStep: (id: string, update: Partial<Pick<ProcessStep, 'detail' | 'subSteps' | 'status'>>) => void
@@ -1326,6 +1327,10 @@ export const useStore = create<AppState>((set, get) => ({
 
   appendToken: (token: string) => {
     set((s) => ({ streamingContent: s.streamingContent + token }))
+  },
+
+  clearStreamDraft: () => {
+    set({ streamingContent: '', streamingUiBlocks: null })
   },
 
   beginProcess: (thinkingTitle = 'Thinking') => {

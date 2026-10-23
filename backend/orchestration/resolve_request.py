@@ -64,6 +64,13 @@ async def send_and_persist_error(
     current_model_id: str | None = None,
     current_provider_id: str | None = None,
 ):
+    # Fix failover: limpa qualquer rascunho de stream residual no frontend antes
+    # de entregar o erro, evitando texto parcial "travado" na bolha.
+    try:
+        await ws.send_json({"type": "stream_clear"})
+    except Exception:
+        pass
+
     summary = build_cascade_error_summary(cascade_history, main_msg)
     try:
         await ws.send_json({
@@ -211,6 +218,7 @@ async def stream_from_llm(
     attempted_model_ids: set[str] = set()
     stream_started = False
     next_failover_reason = "rate_limit"
+    tokens_flushed_to_client = False
 
     total_budget = await get_failover_total_budget(db)
     turn_start_time = time.monotonic()
@@ -236,6 +244,14 @@ async def stream_from_llm(
 
         attempt += 1
         full_response = ""
+        if tokens_flushed_to_client:
+            # Fix failover: se o modelo anterior já emitiu tokens ao cliente e falhou,
+            # limpa o rascunho do frontend para o próximo modelo não misturar respostas.
+            try:
+                await ws.send_json({"type": "stream_clear"})
+            except Exception:
+                pass
+            tokens_flushed_to_client = False
 
         try:
             resolved = await resolve_model_with_failover(
@@ -481,12 +497,13 @@ async def stream_from_llm(
             last_flush = time.perf_counter()
 
             async def flush_tokens():
-                nonlocal token_buffer, last_flush
+                nonlocal token_buffer, last_flush, tokens_flushed_to_client
                 if token_buffer:
                     batch_text = "".join(token_buffer)
                     await ws.send_json({"type": "token", "content": batch_text})
                     token_buffer.clear()
                     last_flush = time.perf_counter()
+                    tokens_flushed_to_client = True
 
             def commit_if_needed(force: bool = False):
                 nonlocal is_committed, precommit_buffer, precommit_chars, token_buffer, candidate_response
@@ -818,6 +835,7 @@ async def stream_from_llm(
                         token_str = str(token)
                         full_response += token_str
                         await ws.send_json({"type": "token", "content": token_str})
+                        tokens_flushed_to_client = True
 
                     await mark_model_success(current_model_id, db)
                     await record_request(current_model_id, db)

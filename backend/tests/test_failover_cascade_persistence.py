@@ -74,9 +74,11 @@ async def test_send_and_persist_error(tmp_path):
         "prov-b",
     )
 
-    # 1. Checa envio WebSocket
-    assert len(sent_ws) == 1
-    msg = sent_ws[0]
+    # 1. Checa envio WebSocket: primeiro stream_clear (limpa rascunho residual),
+    # depois o frame de erro.
+    assert len(sent_ws) == 2
+    assert sent_ws[0]["type"] == "stream_clear"
+    msg = sent_ws[1]
     assert msg["type"] == "error"
     assert msg["message"] == "Tempo limite de resposta esgotado."
     assert "402 Out of credits" in msg["details"]

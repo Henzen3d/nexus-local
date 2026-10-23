@@ -203,6 +203,11 @@ export function useChat() {
           s.beginProcess(i18n.t('chat.generatingResponse', { defaultValue: 'Gerando resposta…' }))
           s.setIsGenerating(false)
           break
+        case 'stream_clear':
+          // Failover mid-stream: o modelo anterior já emitiu tokens e falhou;
+          // limpa o rascunho para o próximo modelo não misturar respostas.
+          s.clearStreamDraft()
+          break
         case 'token':
           resetWatchdog()
           if (isGeneratingRef.current) {
