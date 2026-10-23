@@ -266,6 +266,7 @@ a { color: var(--primary); text-decoration: none; }
   height: 100vh;
   height: 100dvh;
   overflow: hidden;
+  background: var(--canvas);
   transition: grid-template-columns var(--motion-slow) var(--ease-out-quart);
 }
 .app-layout.sidebar-open.with-artifact-closed { grid-template-columns: var(--sidebar-w) 1fr 0px; }
@@ -7064,13 +7065,18 @@ html[data-theme="light"] .sidebar[data-open="false"] .new-chat-btn {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(0, 0, 0, 0.55);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 1200;
-  backdrop-filter: blur(3px);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
   animation: modalFadeIn 0.2s ease-out;
+}
+
+html[data-theme="light"] .settings-modal-overlay {
+  background: rgba(15, 23, 42, 0.25);
 }
 
 .settings-modal-container {

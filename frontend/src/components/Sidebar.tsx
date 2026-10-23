@@ -36,6 +36,7 @@ export function Sidebar() {
     sidebarOpen,
     setSidebarOpen,
     setView,
+    closeSettings,
     setConversationProjectId,
     setProjectName,
     showToast,
@@ -930,7 +931,7 @@ export function Sidebar() {
             aria-label={t('sidebar.settings')}
             onClick={() => {
               if (view === 'admin') {
-                setView('chat')
+                closeSettings()
               } else {
                 setView('admin')
                 if (window.innerWidth <= MOBILE_BREAKPOINT) setSidebarOpen(false)

@@ -220,6 +220,7 @@ interface AppState {
 
   // View
   view: 'chat' | 'admin' | 'conversations' | 'artifacts' | 'projects' | 'library' | 'proactive' | 'agents'
+  previousView: 'chat' | 'conversations' | 'artifacts' | 'projects' | 'library' | 'proactive' | 'agents'
   theme: 'light' | 'dark' | 'system'
   chatFont: 'sans' | 'serif' | 'mono'
   locale: string
@@ -290,6 +291,7 @@ interface AppState {
   selectProvider: (providerId: string) => void
   setSidebarOpen: (v: boolean) => void
   setView: (v: 'chat' | 'admin' | 'conversations' | 'artifacts' | 'projects' | 'library' | 'proactive' | 'agents') => void
+  closeSettings: () => void
   setConversationProjectTag: (id: string, projectTag: string | null) => Promise<void>
   /** Assign conversation to a first-class Project workspace (project_id FK) */
   setConversationProjectId: (id: string, projectId: string | null) => Promise<void>
@@ -595,6 +597,7 @@ export const useStore = create<AppState>((set, get) => ({
   reasoningEffortByModel: typeof window !== 'undefined' ? readReasoningEffortByModel() : {},
   reasoningEffortAuto: typeof window !== 'undefined' ? readReasoningEffortAuto() : 'medium',
   view: 'chat',
+  previousView: 'chat',
   theme: (typeof window !== 'undefined' ? localStorage.getItem('nexuslocal_theme') as 'light' | 'dark' | 'system' : null) || 'system',
   chatFont: (typeof window !== 'undefined' ? localStorage.getItem('nexuslocal_chat_font') as 'sans' | 'serif' | 'mono' : null) || 'sans',
   locale: typeof window !== 'undefined' ? detectInitialLocale() : 'en-US',
@@ -1618,7 +1621,18 @@ export const useStore = create<AppState>((set, get) => ({
     }
     set({ sidebarOpen: v })
   },
-  setView: (v: 'chat' | 'admin' | 'conversations' | 'artifacts' | 'projects' | 'library' | 'proactive' | 'agents') => set({ view: v }),
+  setView: (v: 'chat' | 'admin' | 'conversations' | 'artifacts' | 'projects' | 'library' | 'proactive' | 'agents') => {
+    const current = get().view
+    if (current !== 'admin' && v === 'admin') {
+      set({ previousView: current, view: v })
+    } else {
+      set({ view: v })
+    }
+  },
+  closeSettings: () => {
+    const prev = get().previousView || 'chat'
+    set({ view: prev })
+  },
   setLibraryFilter: (filter) => {
     set({ libraryFilter: filter })
     get().loadLibrary(filter, get().librarySearch)

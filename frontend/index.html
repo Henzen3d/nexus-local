@@ -17,8 +17,30 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <script>
+      (function() {
+        try {
+          var saved = localStorage.getItem('nexuslocal_theme');
+          var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+          var theme = (saved === 'light' || saved === 'dark') ? saved : (prefersDark ? 'dark' : 'light');
+          document.documentElement.setAttribute('data-theme', theme);
+          var meta = document.querySelector('meta[name="theme-color"]');
+          if (meta) meta.setAttribute('content', theme === 'light' ? '#ffffff' : '#1f1f1e');
+        } catch (e) {}
+      })();
+    </script>
+    <style>
+      html[data-theme="light"], html[data-theme="light"] body {
+        background-color: #ffffff;
+        color: #1f1f1f;
+      }
+      html[data-theme="dark"], html[data-theme="dark"] body {
+        background-color: #141413;
+        color: #f5f5f5;
+      }
+    </style>
   </head>
-  <body style="background-color: #141413;">
+  <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

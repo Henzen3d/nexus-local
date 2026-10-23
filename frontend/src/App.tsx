@@ -125,6 +125,7 @@ function useEdgeSwipeOpenSidebar() {
 }
 
 export default function App() {
+  const previousView = useStore((s) => s.previousView || 'chat')
   const isMobile = useIsMobile()
   const sidebarOpen = useStore((s) => s.sidebarOpen)
   const setSidebarOpen = useStore((s) => s.setSidebarOpen)
@@ -194,6 +195,10 @@ export default function App() {
         resolvedTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
       }
       root.setAttribute('data-theme', resolvedTheme)
+      const meta = document.querySelector('meta[name="theme-color"]')
+      if (meta) {
+        meta.setAttribute('content', resolvedTheme === 'light' ? '#ffffff' : '#1f1f1e')
+      }
     }
 
     applyTheme()
@@ -224,6 +229,8 @@ export default function App() {
     hasArtifact && artifactPanelOpen ? 'with-artifact-open' : 'with-artifact-closed'
   ].join(' ')
 
+  const activeMainView = (view === 'admin' && !isMobile) ? previousView : view
+
   return (
     <ChatProvider>
       <OfflineBanner />
@@ -235,11 +242,11 @@ export default function App() {
       />
       <div className={layoutClass}>
         <Sidebar />
-        {(view === 'chat' || (view === 'agents' && isMobile)) && <ChatWindow />}
-        {view === 'conversations' && <ConversationsPanel />}
-        {view === 'artifacts' && <ArtifactsPanel />}
-        {view === 'projects' && <ProjectsPanel />}
-        {view === 'library' && <LibraryPanel />}
+        {(activeMainView === 'chat' || (activeMainView === 'agents' && isMobile)) && <ChatWindow />}
+        {activeMainView === 'conversations' && <ConversationsPanel />}
+        {activeMainView === 'artifacts' && <ArtifactsPanel />}
+        {activeMainView === 'projects' && <ProjectsPanel />}
+        {activeMainView === 'library' && <LibraryPanel />}
         {hasArtifact && <ArtifactPanel />}
       </div>
       {view === 'admin' && (

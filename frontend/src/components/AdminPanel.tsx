@@ -50,7 +50,7 @@ export function AdminPanel() {
 function AdminPanelMobile() {
   const { t, i18n } = useTranslation()
   const {
-    setView, loadModels, user, theme, setTheme, chatFont, setChatFont,
+    closeSettings, setView, loadModels, user, theme, setTheme, chatFont, setChatFont,
     hapticFeedback, setHapticFeedback, displayName, fullName, occupation,
     customInstructions, setProfile, logout, locale, setLocale,
     uiLevel, setUiLevel, selectModel,
@@ -284,7 +284,7 @@ function AdminPanelMobile() {
         }
         setScreenStack(e.state.screenStack)
       } else {
-        setView('chat')
+        closeSettings()
       }
     }
 
@@ -373,7 +373,7 @@ function AdminPanelMobile() {
       {currentScreen === 'list' && (
         <div className="settings-mobile-container-view">
           <header className="settings-mobile-header">
-            <button className="settings-mobile-header-btn" onClick={() => setView('chat')} title={t("settings.closeSettings")} aria-label={t("settings.closeModal")}>
+            <button className="settings-mobile-header-btn" onClick={() => closeSettings()} title={t("settings.closeSettings")} aria-label={t("settings.closeModal")}>
               <ChevronLeft size={20} />
             </button>
             <span className="settings-mobile-header-title">{t("settings.title")}</span>
@@ -1731,7 +1731,7 @@ function AdminPanelMobile() {
 
 function AdminPanelDesktop() {
   const { t, i18n } = useTranslation()
-  const { setView, loadModels, user, theme, setTheme, chatFont, setChatFont, modelSortMode, setModelSortMode, displayName, fullName, occupation, customInstructions, setProfile, locale, setLocale } = useStore()
+  const { closeSettings, setView, loadModels, user, theme, setTheme, chatFont, setChatFont, modelSortMode, setModelSortMode, displayName, fullName, occupation, customInstructions, setProfile, locale, setLocale } = useStore()
   const handleLocaleChange = (code: string) => {
     setLocale(code)
     i18n.changeLanguage(code)
@@ -1753,6 +1753,16 @@ function AdminPanelDesktop() {
   const [userError, setUserError] = useState('')
   const [sidebarSearch, setSidebarSearch] = useState('')
   const [shareKeysEnabled, setShareKeysEnabled] = useState(false)
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !editingModelId) {
+        closeSettings()
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [closeSettings, editingModelId])
   // F5.2.5 — badge de alarme no menu "Assistente proativo" (admin): failed/total > 50 % em 24 h
   const [proactiveAlert, setProactiveAlert] = useState(false)
 
@@ -2296,7 +2306,7 @@ function AdminPanelDesktop() {
   )
 
   return (
-    <div className="settings-modal-overlay" onClick={() => setView('chat')}>
+    <div className="settings-modal-overlay" onClick={() => closeSettings()}>
       <div className="settings-modal-container" onClick={(e) => e.stopPropagation()}>
         
         <aside className="settings-sidebar">
@@ -2335,7 +2345,7 @@ function AdminPanelDesktop() {
         </aside>
 
         <main className="settings-content-pane">
-          <button className="settings-close-btn" onClick={() => setView('chat')} title={t("common.close")}>
+          <button className="settings-close-btn" onClick={() => closeSettings()} title={t("common.close")}>
             <X size={18} />
           </button>
 
