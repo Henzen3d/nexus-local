@@ -681,18 +681,36 @@ class GeminiProvider(BaseProvider):
                         json=payload
                     ) as response:
                         if response.status_code == 200:
+                            in_thinking = False
                             async for line in response.aiter_lines():
                                 if not line.startswith("data: "):
                                     continue
                                 data = line[6:]
                                 try:
                                     chunk = json.loads(data)
-                                    part = chunk["candidates"][0]["content"]["parts"][0]
-                                    text = part.get("text")
-                                    if text is not None and text != "":
-                                        yield str(text)
+                                    parts = chunk.get("candidates", [{}])[0].get("content", {}).get("parts", [])
+                                    chunk_to_yield = ""
+                                    for part in parts:
+                                        is_thought = bool(part.get("thought"))
+                                        part_text = part.get("text")
+                                        if not part_text:
+                                            continue
+                                        if is_thought:
+                                            if not in_thinking:
+                                                chunk_to_yield += "<think>"
+                                                in_thinking = True
+                                            chunk_to_yield += part_text
+                                        else:
+                                            if in_thinking:
+                                                chunk_to_yield += "</think>"
+                                                in_thinking = False
+                                            chunk_to_yield += part_text
+                                    if chunk_to_yield:
+                                        yield chunk_to_yield
                                 except Exception:
                                     continue
+                            if in_thinking:
+                                yield "</think>"
                             return  # Stream finished successfully!
                         else:
                             if response.status_code == 429:

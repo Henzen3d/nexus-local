@@ -30,12 +30,64 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_MAX_FAILOVER_ATTEMPTS = 4
+_MAX_FAILOVER_ATTEMPTS = int(os.getenv("FAILOVER_MAX_ATTEMPTS", "7"))
 DEFAULT_FAILOVER_TOTAL_BUDGET_SECONDS = 45.0
 DEFAULT_STREAM_TTFT_TIMEOUT_SECONDS = 25.0
 MIN_RETRY_BUDGET_SECONDS = 3.0
 DEFAULT_MIN_COMMIT_CHARS = int(os.getenv("FAILOVER_MIN_COMMIT_CHARS", "24"))
 DEFAULT_MAX_PRECOMMIT_HOLD_MS = float(os.getenv("FAILOVER_MAX_PRECOMMIT_HOLD_MS", "450.0"))
+
+
+def build_cascade_error_summary(cascade_history: list[dict], main_msg: str) -> str:
+    if not cascade_history:
+        return main_msg
+    if len(cascade_history) == 1:
+        entry = cascade_history[0]
+        return f"{main_msg}\n\n• {entry.get('model_id', 'Modelo')} ({entry.get('provider_id', '')}): {entry.get('detail', 'Falha na resposta')}"
+
+    lines = [f"{main_msg}\n\nSequência de tentativas no failover ({len(cascade_history)} modelos):"]
+    for i, entry in enumerate(cascade_history, 1):
+        m_id = entry.get("model_id", "Desconhecido")
+        p_id = entry.get("provider_id", "")
+        detail = entry.get("detail", "Sem detalhes")
+        prov_str = f" via {p_id}" if p_id else ""
+        lines.append(f"{i}. {m_id}{prov_str}: {detail}")
+    return "\n".join(lines)
+
+
+async def send_and_persist_error(
+    ws: "WebSocket",
+    db,
+    conversation_id: str,
+    main_msg: str,
+    cascade_history: list[dict],
+    current_model_id: str | None = None,
+    current_provider_id: str | None = None,
+):
+    summary = build_cascade_error_summary(cascade_history, main_msg)
+    try:
+        await ws.send_json({
+            "type": "error",
+            "message": main_msg,
+            "details": summary,
+            "cascade": cascade_history,
+        })
+    except Exception:
+        pass
+
+    if db and conversation_id:
+        try:
+            from backend.orchestration.persist_turn import save_assistant_message
+            await save_assistant_message(
+                db,
+                conversation_id=conversation_id,
+                full_response=summary,
+                model_id=current_model_id or "",
+                provider_id=current_provider_id or "",
+                kind="error",
+            )
+        except Exception as save_err:
+            logger.debug("Falha ao persistir mensagem de erro do assistente: %s", save_err)
 
 
 class StreamLlmResult(tuple):
@@ -162,6 +214,7 @@ async def stream_from_llm(
 
     total_budget = await get_failover_total_budget(db)
     turn_start_time = time.monotonic()
+    cascade_history: list[dict] = []
 
     while attempt < _MAX_FAILOVER_ATTEMPTS and not success:
         now = time.monotonic()
@@ -172,10 +225,13 @@ async def stream_from_llm(
                 "Orçamento total de failover esgotado (%.1fs decorridos de %.1fs) após %d tentativas.",
                 elapsed, total_budget, attempt
             )
-            await ws.send_json({
-                "type": "error",
-                "message": "Tempo limite de resposta esgotado após tentativas de failover.",
-            })
+            await send_and_persist_error(
+                ws, db, conversation_id,
+                "Tempo limite de resposta esgotado após tentativas de failover.",
+                cascade_history,
+                original_model_id,
+                "",
+            )
             return None
 
         attempt += 1
@@ -191,7 +247,14 @@ async def stream_from_llm(
                 user_id=user_id,
             )
         except NoAvailableModelError as e:
-            await ws.send_json({"type": "error", "message": str(e)})
+            err_msg = str(e)
+            await send_and_persist_error(
+                ws, db, conversation_id,
+                err_msg,
+                cascade_history,
+                original_model_id,
+                "",
+            )
             return None
 
         if resolved.was_failover:
@@ -224,17 +287,50 @@ async def stream_from_llm(
         current_model_id = resolved.model_id
         current_provider_id = resolved.provider_id
 
+        if attempt > 1:
+            try:
+                prev_info = cascade_history[-1] if cascade_history else None
+                detail = (
+                    f"Tentativa anterior falhou ({prev_info['detail']}). "
+                    f"Alternando para {resolved.display_name} ({current_provider_id})."
+                    if prev_info
+                    else f"Alternando para {resolved.display_name} ({current_provider_id})."
+                )
+                await ws.send_json({
+                    "type": "process_step_start",
+                    "id": f"failover-{attempt}",
+                    "step_type": "tool",
+                    "title": f"Failover ({attempt}/{_MAX_FAILOVER_ATTEMPTS}): {resolved.display_name}",
+                    "detail": detail,
+                    "status": "running",
+                })
+            except Exception:
+                pass
+
         try:
             provider = await get_provider(current_provider_id, db, user_id=user_id)
             model_name = await get_model_name(current_model_id, db)
         except ValueError as e:
+            err_msg = str(e)
             logger.warning(
                 "Falha ao carregar provedor '%s' para modelo '%s': %s. Acionando failover...",
-                current_provider_id, current_model_id, e
+                current_provider_id, current_model_id, err_msg
             )
+            cascade_history.append({
+                "attempt": attempt,
+                "model_id": current_model_id,
+                "provider_id": current_provider_id,
+                "detail": f"Falha de configuração do provedor: {err_msg}",
+            })
             attempted_model_ids.add(current_model_id)
             if attempt >= _MAX_FAILOVER_ATTEMPTS:
-                await ws.send_json({"type": "error", "message": str(e)})
+                await send_and_persist_error(
+                    ws, db, conversation_id,
+                    err_msg,
+                    cascade_history,
+                    current_model_id,
+                    current_provider_id,
+                )
                 return None
             continue
 
@@ -320,19 +416,40 @@ async def stream_from_llm(
                     current_provider_id,
                     current_model_id,
                 )
+                cascade_history.append({
+                    "attempt": attempt,
+                    "model_id": current_model_id,
+                    "provider_id": current_provider_id,
+                    "detail": "Limite preventivo de RPM (Token Bucket) atingido.",
+                })
+                if attempt > 1:
+                    try:
+                        await ws.send_json({
+                            "type": "process_step_end",
+                            "id": f"failover-{attempt}",
+                            "status": "failed",
+                        })
+                    except Exception:
+                        pass
                 attempted_model_ids.add(current_model_id)
                 elapsed_after = time.monotonic() - turn_start_time
                 if (total_budget - elapsed_after) < MIN_RETRY_BUDGET_SECONDS:
-                    await ws.send_json({
-                        "type": "error",
-                        "message": "Tempo limite de resposta esgotado após tentativas de failover.",
-                    })
+                    await send_and_persist_error(
+                        ws, db, conversation_id,
+                        "Tempo limite de resposta esgotado após tentativas de failover.",
+                        cascade_history,
+                        current_model_id,
+                        current_provider_id,
+                    )
                     return None
                 if attempt >= _MAX_FAILOVER_ATTEMPTS:
-                    await ws.send_json({
-                        "type": "error",
-                        "message": "Todos os provedores elegíveis atingiram o limite temporário de requisições por minuto (RPM). Aguarde alguns instantes.",
-                    })
+                    await send_and_persist_error(
+                        ws, db, conversation_id,
+                        "Todos os provedores elegíveis atingiram o limite temporário de requisições por minuto (RPM). Aguarde alguns instantes.",
+                        cascade_history,
+                        current_model_id,
+                        current_provider_id,
+                    )
                     return None
                 continue
 
@@ -343,13 +460,17 @@ async def stream_from_llm(
                     "Orçamento total de failover esgotado (%.1fs decorridos de %.1fs) antes do início do stream.",
                     elapsed_now, total_budget
                 )
-                await ws.send_json({
-                    "type": "error",
-                    "message": "Tempo limite de resposta esgotado após tentativas de failover.",
-                })
+                await send_and_persist_error(
+                    ws, db, conversation_id,
+                    "Tempo limite de resposta esgotado após tentativas de failover.",
+                    cascade_history,
+                    current_model_id,
+                    current_provider_id,
+                )
                 return None
 
-            stream_ttft_timeout = max(0.5, min(DEFAULT_STREAM_TTFT_TIMEOUT_SECONDS, remaining_budget))
+            max_ttft = DEFAULT_STREAM_TTFT_TIMEOUT_SECONDS if attempt == 1 else min(15.0, max(5.0, remaining_budget * 0.5))
+            stream_ttft_timeout = max(0.5, min(max_ttft, remaining_budget))
             stream_start_time = time.perf_counter()
             first_token_received = False
             is_committed = False
@@ -409,6 +530,21 @@ async def stream_from_llm(
                         )
                         from backend.ranking.health_registry import health_registry
                         health_registry.record_failure(current_model_id, current_provider_id, "TIMEOUT", stage="pre_stream")
+                        cascade_history.append({
+                            "attempt": attempt,
+                            "model_id": current_model_id,
+                            "provider_id": current_provider_id,
+                            "detail": f"Tempo limite de resposta excedido ({int(stream_ttft_timeout)}s)",
+                        })
+                        if attempt > 1:
+                            try:
+                                await ws.send_json({
+                                    "type": "process_step_end",
+                                    "id": f"failover-{attempt}",
+                                    "status": "failed",
+                                })
+                            except Exception:
+                                pass
                         attempted_model_ids.add(current_model_id)
                         elapsed_after = time.monotonic() - turn_start_time
                         if (total_budget - elapsed_after) < MIN_RETRY_BUDGET_SECONDS or attempt >= _MAX_FAILOVER_ATTEMPTS:
@@ -417,10 +553,13 @@ async def stream_from_llm(
                                 if (total_budget - elapsed_after) < MIN_RETRY_BUDGET_SECONDS
                                 else f"Tempo limite de resposta excedido ({int(stream_ttft_timeout)}s) no modelo '{current_model_id}'."
                             )
-                            await ws.send_json({
-                                "type": "error",
-                                "message": msg,
-                            })
+                            await send_and_persist_error(
+                                ws, db, conversation_id,
+                                msg,
+                                cascade_history,
+                                current_model_id,
+                                current_provider_id,
+                            )
                             return None
                         continue
 
@@ -488,6 +627,21 @@ async def stream_from_llm(
                     db,
                     retry_after=600,
                 )
+                cascade_history.append({
+                    "attempt": attempt,
+                    "model_id": current_model_id,
+                    "provider_id": current_provider_id,
+                    "detail": "Modelo finalizou sem gerar nenhum token de resposta.",
+                })
+                if attempt > 1:
+                    try:
+                        await ws.send_json({
+                            "type": "process_step_end",
+                            "id": f"failover-{attempt}",
+                            "status": "failed",
+                        })
+                    except Exception:
+                        pass
                 attempted_model_ids.add(current_model_id)
                 next_failover_reason = "silent_failure"
                 elapsed_after = time.monotonic() - turn_start_time
@@ -497,10 +651,13 @@ async def stream_from_llm(
                         if (total_budget - elapsed_after) < MIN_RETRY_BUDGET_SECONDS
                         else f"O modelo '{current_model_id}' não retornou nenhuma resposta após o failover."
                     )
-                    await ws.send_json({
-                        "type": "error",
-                        "message": msg,
-                    })
+                    await send_and_persist_error(
+                        ws, db, conversation_id,
+                        msg,
+                        cascade_history,
+                        current_model_id,
+                        current_provider_id,
+                    )
                     return None
                 continue
 
@@ -512,6 +669,15 @@ async def stream_from_llm(
             await mark_model_success(current_model_id, db)
             await record_request(current_model_id, db)
             success = True
+            if attempt > 1:
+                try:
+                    await ws.send_json({
+                        "type": "process_step_end",
+                        "id": f"failover-{attempt}",
+                        "status": "completed",
+                    })
+                except Exception:
+                    pass
 
             was_auto = 1 if auto_route_decision else 0
             if resolved.was_failover or was_auto:
@@ -565,6 +731,21 @@ async def stream_from_llm(
             next_failover_reason = getattr(e, "failover_reason", None) or "rate_limit"
             from backend.ranking.token_bucket import token_bucket_manager
             await token_bucket_manager.on_rate_limit(current_provider_id)
+            cascade_history.append({
+                "attempt": attempt,
+                "model_id": current_model_id,
+                "provider_id": current_provider_id,
+                "detail": f"Rate limit / cota esgotada: {str(e)}",
+            })
+            if attempt > 1:
+                try:
+                    await ws.send_json({
+                        "type": "process_step_end",
+                        "id": f"failover-{attempt}",
+                        "status": "failed",
+                    })
+                except Exception:
+                    pass
             attempted_model_ids.add(current_model_id)
             await mark_model_exhausted(current_model_id, db, e.retry_after, str(e))
             elapsed_after = time.monotonic() - turn_start_time
@@ -574,10 +755,13 @@ async def stream_from_llm(
                     if (total_budget - elapsed_after) < MIN_RETRY_BUDGET_SECONDS
                     else "Limite de tentativas de failover excedido. O modelo está esgotado."
                 )
-                await ws.send_json({
-                    "type": "error",
-                    "message": msg,
-                })
+                await send_and_persist_error(
+                    ws, db, conversation_id,
+                    msg,
+                    cascade_history,
+                    current_model_id,
+                    current_provider_id,
+                )
                 return None
             continue
         except Exception as e:
@@ -674,6 +858,21 @@ async def stream_from_llm(
                     "Cota/limite de uso esgotado no modelo '%s' (provedor '%s'): %s. Aplicando backoff longo de quota (mínimo 1h) e acionando failover...",
                     current_model_id, current_provider_id, error_msg,
                 )
+                cascade_history.append({
+                    "attempt": attempt,
+                    "model_id": current_model_id,
+                    "provider_id": current_provider_id,
+                    "detail": f"Cota/crédito esgotado: {error_msg}",
+                })
+                if attempt > 1:
+                    try:
+                        await ws.send_json({
+                            "type": "process_step_end",
+                            "id": f"failover-{attempt}",
+                            "status": "failed",
+                        })
+                    except Exception:
+                        pass
                 from backend.ranking.token_bucket import token_bucket_manager
                 await token_bucket_manager.on_rate_limit(current_provider_id)
                 await mark_model_exhausted(current_model_id, db, retry_after=3600, error_msg=error_msg)
@@ -681,28 +880,53 @@ async def stream_from_llm(
                 next_failover_reason = "rate_limit"
                 elapsed_after = time.monotonic() - turn_start_time
                 if (total_budget - elapsed_after) < MIN_RETRY_BUDGET_SECONDS:
-                    await ws.send_json({
-                        "type": "error",
-                        "message": "Tempo limite de resposta esgotado após tentativas de failover.",
-                    })
+                    await send_and_persist_error(
+                        ws, db, conversation_id,
+                        "Tempo limite de resposta esgotado após tentativas de failover.",
+                        cascade_history,
+                        current_model_id,
+                        current_provider_id,
+                    )
                     return None
                 if not first_token_received and attempt < _MAX_FAILOVER_ATTEMPTS:
                     continue
-                await ws.send_json({
-                    "type": "error",
-                    "message": f"Limite de cota de uso atingido para o modelo '{current_model_id}'. Tente novamente mais tarde.",
-                })
+                await send_and_persist_error(
+                    ws, db, conversation_id,
+                    f"Limite de cota de uso atingido para o modelo '{current_model_id}'. Tente novamente mais tarde.",
+                    cascade_history,
+                    current_model_id,
+                    current_provider_id,
+                )
                 return None
 
             from backend.database import check_and_deactivate_model
             await check_and_deactivate_model(current_model_id, error_msg, db)
 
+            cascade_history.append({
+                "attempt": attempt,
+                "model_id": current_model_id,
+                "provider_id": current_provider_id,
+                "detail": f"Erro do provedor: {error_msg}",
+            })
+            if attempt > 1:
+                try:
+                    await ws.send_json({
+                        "type": "process_step_end",
+                        "id": f"failover-{attempt}",
+                        "status": "failed",
+                    })
+                except Exception:
+                    pass
+
             elapsed_after = time.monotonic() - turn_start_time
             if (total_budget - elapsed_after) < MIN_RETRY_BUDGET_SECONDS:
-                await ws.send_json({
-                    "type": "error",
-                    "message": "Tempo limite de resposta esgotado após tentativas de failover.",
-                })
+                await send_and_persist_error(
+                    ws, db, conversation_id,
+                    "Tempo limite de resposta esgotado após tentativas de failover.",
+                    cascade_history,
+                    current_model_id,
+                    current_provider_id,
+                )
                 return None
 
             if not is_committed and attempt < _MAX_FAILOVER_ATTEMPTS:
@@ -713,10 +937,13 @@ async def stream_from_llm(
                 attempted_model_ids.add(current_model_id)
                 continue
 
-            await ws.send_json({
-                "type": "error",
-                "message": f"Erro ao chamar modelo: {error_msg}",
-            })
+            await send_and_persist_error(
+                ws, db, conversation_id,
+                f"Erro ao chamar modelo: {error_msg}",
+                cascade_history,
+                current_model_id,
+                current_provider_id,
+            )
             return None
 
     if not success or not full_response.strip():
@@ -724,10 +951,13 @@ async def stream_from_llm(
             "stream_from_llm encerrou sem sucesso após %s tentativas para conversa '%s'.",
             attempt, conversation_id,
         )
-        await ws.send_json({
-            "type": "error",
-            "message": "Não foi possível obter resposta de nenhum dos modelos disponíveis. Tente novamente mais tarde.",
-        })
+        await send_and_persist_error(
+            ws, db, conversation_id,
+            "Não foi possível obter resposta de nenhum dos modelos disponíveis. Tente novamente mais tarde.",
+            cascade_history,
+            current_model_id if 'current_model_id' in locals() else None,
+            current_provider_id if 'current_provider_id' in locals() else None,
+        )
         return None
 
     failover_meta = {

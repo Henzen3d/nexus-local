@@ -50,10 +50,19 @@ export function ExecutionSequence({ steps, isWorking, startedAt, durationMs, thi
     : t('chat.processDone', { time: totalTime })
 
   const iconFor = (type: ProcessStep['type']) => {
-    if (type === 'think') return <Brain size={14} aria-hidden="true" />
+    if (type === 'think') return thinkingContent ? <Brain size={14} aria-hidden="true" /> : <LoaderCircle className="execution-sequence-step-spinner" size={14} aria-hidden="true" />
     if (type === 'search') return <Search size={14} aria-hidden="true" />
     if (type === 'navigate') return <Globe2 size={14} aria-hidden="true" />
     return <Wrench size={14} aria-hidden="true" />
+  }
+
+  const getStepTitle = (step: ProcessStep) => {
+    if (step.type === 'think') {
+      return thinkingContent
+        ? t('chat.processThinking', { defaultValue: 'Raciocinando' })
+        : (step.title || t('chat.generatingResponse', { defaultValue: 'Gerando resposta…' }))
+    }
+    return step.title
   }
 
   return (
@@ -83,7 +92,7 @@ export function ExecutionSequence({ steps, isWorking, startedAt, durationMs, thi
                       : <Check size={13} aria-hidden="true" />}
               </span>
               <div className="execution-sequence-step-copy">
-                <div className="execution-sequence-step-title">{step.title}</div>
+                <div className="execution-sequence-step-title">{getStepTitle(step)}</div>
                 {step.detail && (
                   <div className="execution-sequence-step-detail">
                     {step.type === 'navigate' && /^https?:\/\//i.test(step.detail)

@@ -200,7 +200,7 @@ export function useChat() {
           break
         case 'stream_start':
           resetWatchdog()
-          s.beginProcess(i18n.t('chat.processThinking'))
+          s.beginProcess(i18n.t('chat.generatingResponse', { defaultValue: 'Gerando resposta…' }))
           s.setIsGenerating(false)
           break
         case 'token':
@@ -422,7 +422,8 @@ export function useChat() {
             'error',
             retryAction ? { action: retryAction, durationMs: 15000 } : undefined
           )
-          s.addErrorMessage(msg.message)
+          const errorDetail = (msg as any).details || msg.message
+          s.addErrorMessage(errorDetail)
           break
       }
     }

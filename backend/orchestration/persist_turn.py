@@ -125,13 +125,14 @@ async def save_assistant_message(
     provider_id: str,
     relay_used: int = 0,
     relay_model_id: str | None = None,
+    kind: str = "normal",
 ) -> str:
     """Persiste a mensagem do assistente e atualiza ``updated_at`` da conversa."""
     assistant_msg_id = str(uuid.uuid4())
     await db.execute(
-        """INSERT INTO messages (id, conversation_id, role, content, model_id, provider, relay_used, relay_model)
-           VALUES (?, ?, 'assistant', ?, ?, ?, ?, ?)""",
-        (assistant_msg_id, conversation_id, full_response, model_id, provider_id, relay_used, relay_model_id),
+        """INSERT INTO messages (id, conversation_id, role, content, model_id, provider, relay_used, relay_model, kind)
+           VALUES (?, ?, 'assistant', ?, ?, ?, ?, ?, ?)""",
+        (assistant_msg_id, conversation_id, full_response, model_id, provider_id, relay_used, relay_model_id, kind),
     )
     await db.execute(
         "UPDATE conversations SET updated_at = datetime('now'), model_id = ?, provider_id = ? WHERE id = ?",

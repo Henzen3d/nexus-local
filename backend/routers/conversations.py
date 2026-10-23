@@ -212,9 +212,11 @@ async def get_conversation(conversation_id: str, current_user: dict = Depends(ge
         built = []
         pending_search = None
         for m in messages:
+            msg_kind = (m[14] if len(m) > 14 else None) or "normal"
+            msg_role = "error" if msg_kind == "error" else m[1]
             item = {
                 "id": m[0],
-                "role": m[1],
+                "role": msg_role,
                 "content": m[2],
                 "model_id": m[3],
                 "created_at": m[4],
@@ -232,7 +234,7 @@ async def get_conversation(conversation_id: str, current_user: dict = Depends(ge
                 "web_search_query": m[11] if len(m) > 11 else None,
                 "web_search_sources": _loads(m[12]) if len(m) > 12 else None,
                 "process_steps": _loads(m[13]) if len(m) > 13 else None,
-                "kind": (m[14] if len(m) > 14 else None) or "normal",
+                "kind": msg_kind,
                 "proactive_insight_id": m[15] if len(m) > 15 else None,
             }
             if item["kind"] == "proactive":
