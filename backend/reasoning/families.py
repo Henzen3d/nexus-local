@@ -54,9 +54,14 @@ def resolve_family(provider_id: str | None, model_name: str | None) -> ControlSp
     pid = (provider_id or "").strip().lower()
     name = model_name.strip().lower()
 
-    # 1. DeepSeek R1 / reasoner sem dial (pensa sempre)
-    # Fonte: DeepSeek API Docs (https://api-docs.deepseek.com) — R1 não aceita reasoning_effort dial.
-    if "deepseek-r1" in name or "deepseek-reasoner" in name or name.endswith("/deepseek-r1"):
+    # 1. DeepSeek R1 / Hunyuan 4 / QwQ (modelos de raciocínio profundo sem dial — sempre ativos)
+    # Fonte: DeepSeek API Docs, OrcaRouter, vLLM — operam com cadeia de pensamento contínua por padrão.
+    if (
+        "deepseek-r1" in name
+        or "deepseek-reasoner" in name
+        or name.endswith("/deepseek-r1")
+        or any(k in name for k in ("hy4", "hunyuan", "qwq"))
+    ):
         return ControlSpec(control=ReasoningControl.ALWAYS_ON.value, levels=[], default=None)
 
     # 2. Gemini thinking models nativos

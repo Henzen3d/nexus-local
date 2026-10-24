@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
-import { PanelLeftOpen, Code2, BookOpen, Pencil, Lightbulb, X, ChevronRight, MoreVertical, Folder, Cpu, LoaderCircle } from 'lucide-react'
+import { PanelLeftOpen, Code2, BookOpen, Pencil, Lightbulb, X, ChevronRight, ChevronDown, MoreVertical, Folder, Cpu, LoaderCircle } from 'lucide-react'
 import { BuyCoffeeIcon } from './BuyCoffeeIcon'
 import { useTranslation } from 'react-i18next'
 import { useStore } from '../store/useStore'
@@ -441,6 +441,30 @@ export function ChatWindow() {
     }
   }, [messages, isStreaming])
 
+  const [showScrollBottom, setShowScrollBottom] = useState(false)
+
+  const handleScroll = useCallback(() => {
+    const container = messagesAreaRef.current
+    if (!container) return
+    const threshold = 180
+    const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < threshold
+    setShowScrollBottom(!isNearBottom)
+  }, [])
+
+  const scrollToBottom = useCallback(() => {
+    const container = messagesAreaRef.current
+    if (!container) return
+    if (bottomSentinelRef.current?.scrollIntoView) {
+      bottomSentinelRef.current.scrollIntoView({
+        behavior: 'smooth',
+        block: 'end',
+      })
+    } else {
+      container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' })
+    }
+    setShowScrollBottom(false)
+  }, [])
+
   useEffect(() => {
     if (!isGenerating) return
     const container = messagesAreaRef.current
@@ -681,7 +705,7 @@ export function ChatWindow() {
         )}
       </div>
 
-      <div className="messages-area" ref={messagesAreaRef}>
+      <div className="messages-area" ref={messagesAreaRef} onScroll={handleScroll}>
         {!isEmpty && (
           <>
             {messages.map((m) => {
@@ -720,6 +744,18 @@ export function ChatWindow() {
         )}
         <div ref={bottomSentinelRef} style={{ height: 0, flexShrink: 0 }} aria-hidden="true" />
       </div>
+
+      {!isEmpty && showScrollBottom && (
+        <button
+          type="button"
+          className="scroll-to-bottom-btn custom-tooltip-trigger"
+          onClick={scrollToBottom}
+          aria-label={t('chat.scrollToBottom', { defaultValue: 'Ir para o final' })}
+          data-tooltip={t('chat.scrollToBottom', { defaultValue: 'Ir para o final' })}
+        >
+          <ChevronDown size={18} />
+        </button>
+      )}
 
       <MessageInput onSend={sendMessage} onStop={stopStream} isEmpty={isEmpty} />
 

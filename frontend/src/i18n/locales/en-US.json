@@ -218,6 +218,7 @@
     "effortDroppedProvider": "Provider rejected reasoning parameter; retrying without it.",
     "failover": "Failover",
     "failoverNotice": "Failover: {{model}} ({{reason}}). Switching to {{fallback}}...",
+    "scrollToBottom": "Scroll to bottom",
     "failoverTooltip": "Served via fallback model (failover)",
     "failoverTooltipDetailed": "Active failover: requested {{requested}}, served by {{served}}",
     "failoverReason": {
@@ -619,6 +620,28 @@
     "sensitivityMed": "Medium (Threshold: 0.40)",
     "sensitivityLow": "Low (Threshold: 0.60)",
     "searchFormatPlaceholder": "Resultados de busca para \"{query}\":\\n\\n{results}\\n\\n---..."
+  },
+  "artifacts": {
+    "preview": "Preview",
+    "code": "Code",
+    "prevVersion": "Previous version",
+    "nextVersion": "Next version",
+    "runningCode": "Running...",
+    "runCode": "Run code (Piston)",
+    "copyContent": "Copy content",
+    "downloadFile": "Download file",
+    "openNewTab": "Open in new tab",
+    "expandFullscreen": "Expand to full screen",
+    "exitFullscreen": "Exit full screen",
+    "closePanel": "Close panel",
+    "renderingDiagram": "Rendering diagram via Kroki...",
+    "diagramError": "Failed to render diagram",
+    "execSuccess": "Success",
+    "execFailed": "Error",
+    "noOutput": "(No output generated)",
+    "waitingResponse": "Waiting...",
+    "editPlaceholder": "Describe what you want to change...",
+    "applyEdit": "Apply"
   },
   "fusion": {
     "waiting": "Waiting",

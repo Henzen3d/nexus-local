@@ -396,6 +396,7 @@ export function useChat() {
           isGeneratingRef.current = false
           useStore.getState().setIsGenerating(false)
           console.error('[WS error]', msg.message)
+          s.clearStreamDraft()
           s.setStreaming(false)
           s.setFusionActive(false)
           // Toast com ação de retry

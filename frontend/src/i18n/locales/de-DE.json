@@ -67,8 +67,12 @@
     "tooManyAttempts": "Zu viele Anmeldeversuche. Warten Sie einige Minuten und versuchen Sie es erneut."
   },
   "chat": {
+    "effortDroppedFailover": "Das Ausweichmodell unterstützt keine Aufwandssteuerung; Antwort im Standardmodus generiert.",
+    "effortDroppedUnsupported": "Das ausgewählte Modell unterstützt keine Denkaufwandssteuerung.",
+    "effortDroppedProvider": "Der Anbieter hat den Aufwandsparameter abgelehnt; erneuter Versuch ohne diesen.",
     "failover": "Failover",
     "failoverNotice": "Failover: {{model}} ({{reason}}). Wechsel zu {{fallback}}...",
+    "scrollToBottom": "Nach unten scrollen",
     "failoverTooltip": "Über Fallback-Modell bereitgestellt (Failover)",
     "failoverTooltipDetailed": "Aktives Failover: angefordert {{requested}}, bedient von {{served}}",
     "failoverReason": {
@@ -745,6 +749,28 @@
     "sceneCorrectionPrompt": "Korrigieren Sie die Szene \"{{title}}\": fehlgeschlagen mit: {{message}}. Behalten Sie denselben sandbox kind scene Block bei.",
     "sceneWebGlLost": "Der 3D-Grafikkontext ist verloren gegangen.",
     "sceneReadoutTitle": "Szenenwerte"
+  },
+  "artifacts": {
+    "preview": "Vorschau",
+    "code": "Code",
+    "prevVersion": "Vorherige Version",
+    "nextVersion": "Nächste Version",
+    "runningCode": "Wird ausgeführt...",
+    "runCode": "Code ausführen (Piston)",
+    "copyContent": "Inhalt kopieren",
+    "downloadFile": "Datei herunterladen",
+    "openNewTab": "In neuem Tab öffnen",
+    "expandFullscreen": "Vollbild",
+    "exitFullscreen": "Vollbild beenden",
+    "closePanel": "Bereich schließen",
+    "renderingDiagram": "Diagramm wird über Kroki gerendert...",
+    "diagramError": "Diagramm-Rendering fehlgeschlagen",
+    "execSuccess": "Erfolg",
+    "execFailed": "Fehler",
+    "noOutput": "(Keine Ausgabe erzeugt)",
+    "waitingResponse": "Warten...",
+    "editPlaceholder": "Beschreiben Sie die gewünschten Änderungen...",
+    "applyEdit": "Anwenden"
   },
   "memory": {
     "useMemoryGlobal": "Gedächtnis in Gesprächen (Standard: an)",

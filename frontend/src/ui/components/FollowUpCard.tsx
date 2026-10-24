@@ -21,13 +21,15 @@ export function FollowUpCard({ block, streaming }: Props) {
   const { t } = useTranslation()
   const { sendMessage } = useChatContext()
   const isStreaming = useStore((s) => s.isStreaming)
-  const isDisabled = isStreaming || Boolean(streaming)
   const [chosen, setChosen] = useState<string | null>(null)
+  const [pendingText, setPendingText] = useState<string | null>(null)
+  const isDisabled = isStreaming || Boolean(streaming) || Boolean(pendingText)
 
   const handleClick = (text: string) => {
     if (isDisabled) return
-    sendMessage(text)
+    setPendingText(text)
     setChosen(text)
+    sendMessage(text)
   }
 
   return (

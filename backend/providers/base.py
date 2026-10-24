@@ -6,6 +6,7 @@ import httpx
 import hashlib
 import time
 import json
+import re
 
 from backend.logging_config import get_logger
 

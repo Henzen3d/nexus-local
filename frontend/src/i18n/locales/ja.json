@@ -67,8 +67,12 @@
     "tooManyAttempts": "ログイン試行回数が多すぎます。数分待ってからもう一度お試しください。"
   },
   "chat": {
+    "effortDroppedFailover": "フォールバックモデルは推論深度制御をサポートしていません。標準設定で生成されました。",
+    "effortDroppedUnsupported": "選択されたモデルは推論深度制御をサポートしていません。",
+    "effortDroppedProvider": "プロバイダーが推論パラメータを拒否しました。パラメータなしで再試行します。",
     "failover": "Failover",
     "failoverNotice": "フェイルオーバー: {{model}} ({{reason}})。{{fallback}} に切り替えています...",
+    "scrollToBottom": "一番下へスクロール",
     "failoverTooltip": "フォールバックモデル経由で提供中 (フェイルオーバー)",
     "failoverTooltipDetailed": "アクティブなフェイルオーバー: 要求 {{requested}}、対応 {{served}}",
     "failoverReason": {
@@ -745,6 +749,28 @@
     "sceneCorrectionPrompt": "シーン「{{title}}」を修正してください: エラー「{{message}}」。同じsandbox kind sceneブロックを維持してください。",
     "sceneWebGlLost": "3Dグラフィックコンテキストが失われました。",
     "sceneReadoutTitle": "シーンの値"
+  },
+  "artifacts": {
+    "preview": "プレビュー",
+    "code": "コード",
+    "prevVersion": "前のバージョン",
+    "nextVersion": "次のバージョン",
+    "runningCode": "実行中...",
+    "runCode": "コードを実行 (Piston)",
+    "copyContent": "内容をコピー",
+    "downloadFile": "ファイルをダウンロード",
+    "openNewTab": "新しいタブで開く",
+    "expandFullscreen": "全画面表示",
+    "exitFullscreen": "全画面表示を終了",
+    "closePanel": "パネルを閉じる",
+    "renderingDiagram": "Krokiで図をレンダリング中...",
+    "diagramError": "図のレンダリングに失敗しました",
+    "execSuccess": "成功",
+    "execFailed": "エラー",
+    "noOutput": "(出力がありません)",
+    "waitingResponse": "待機中...",
+    "editPlaceholder": "変更内容を入力してください...",
+    "applyEdit": "適用"
   },
   "memory": {
     "useMemoryGlobal": "会話のメモリ（デフォルト: オン）",

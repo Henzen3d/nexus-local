@@ -218,6 +218,7 @@
     "effortDroppedProvider": "O provedor rejeitou o parâmetro de esforço; retentando sem ele.",
     "failover": "Failover",
     "failoverNotice": "Failover: {{model}} ({{reason}}). Alternando para {{fallback}}...",
+    "scrollToBottom": "Ir para o final",
     "failoverTooltip": "Atendido via modelo reserva (failover)",
     "failoverTooltipDetailed": "Failover ativo: solicitado {{requested}}, atendido por {{served}}",
     "failoverReason": {
@@ -619,6 +620,28 @@
     "sensitivityMed": "Média (Threshold: 0.40)",
     "sensitivityLow": "Baixa (Threshold: 0.60)",
     "searchFormatPlaceholder": "Resultados de busca para \"{query}\":\\n\\n{results}\\n\\n---..."
+  },
+  "artifacts": {
+    "preview": "Prévia",
+    "code": "Código",
+    "prevVersion": "Versão anterior",
+    "nextVersion": "Próxima versão",
+    "runningCode": "Executando...",
+    "runCode": "Executar código (Piston)",
+    "copyContent": "Copiar conteúdo",
+    "downloadFile": "Baixar arquivo",
+    "openNewTab": "Abrir em nova aba",
+    "expandFullscreen": "Expandir em tela cheia",
+    "exitFullscreen": "Sair da tela cheia",
+    "closePanel": "Fechar painel",
+    "renderingDiagram": "Renderizando diagrama via Kroki...",
+    "diagramError": "Falha ao renderizar diagrama",
+    "execSuccess": "Sucesso",
+    "execFailed": "Erro",
+    "noOutput": "(Sem saída gerada)",
+    "waitingResponse": "Aguardando...",
+    "editPlaceholder": "Descreva o que deseja alterar...",
+    "applyEdit": "Aplicar"
   },
   "fusion": {
     "waiting": "Aguardando",

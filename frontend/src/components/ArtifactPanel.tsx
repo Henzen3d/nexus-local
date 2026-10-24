@@ -4,7 +4,8 @@ import { useStore } from '../store/useStore'
 import {
   Copy, Check, Download, ExternalLink, X, FileCode, FileText, Image, Globe,
   ChevronLeft, ChevronRight, Pencil, Send, Atom, Play, Square, Eye, Code2,
-  Terminal, Loader2, RefreshCw, AlertCircle, CheckCircle2, Network, BarChart2
+  Terminal, Loader2, RefreshCw, AlertCircle, CheckCircle2, Network, BarChart2,
+  Maximize2, Minimize2
 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -255,8 +256,46 @@ export function ArtifactPanel() {
   const { activeArtifact, artifactHistory, setArtifactPanelOpen, navigateVersion, isStreaming } = useStore()
   const { sendMessage } = useChatContext()
   const [copied, setCopied] = useState(false)
+  const [isFullscreen, setIsFullscreen] = useState(false)
+  const lastFocusedElementRef = useRef<HTMLElement | null>(null)
   const [editPrompt, setEditPrompt] = useState('')
   const editInputRef = useRef<HTMLTextAreaElement>(null)
+
+  // Guarda o elemento ativo antes da abertura para restaurar o foco ao fechar
+  useEffect(() => {
+    if (activeArtifact) {
+      lastFocusedElementRef.current = document.activeElement as HTMLElement | null
+    }
+  }, [Boolean(activeArtifact)])
+
+  const handleClose = useCallback(() => {
+    setIsFullscreen(false)
+    setArtifactPanelOpen(false)
+    if (lastFocusedElementRef.current && typeof lastFocusedElementRef.current.focus === 'function') {
+      try {
+        lastFocusedElementRef.current.focus()
+      } catch {
+        // Ignora caso o elemento não exista mais no DOM
+      }
+    }
+  }, [setArtifactPanelOpen])
+
+  // Escuta tecla Escape: se estiver em tela cheia sai dela; se não, fecha o painel
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (isFullscreen) {
+          e.preventDefault()
+          setIsFullscreen(false)
+        } else {
+          e.preventDefault()
+          handleClose()
+        }
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [isFullscreen, handleClose])
 
   // Modo de visualização de arquivo (prévia ou código)
   const [viewMode, setViewMode] = useState<'preview' | 'code'>('preview')
@@ -616,7 +655,7 @@ export function ArtifactPanel() {
   if (!activeArtifact) return null
 
   return (
-    <div className="artifact-panel">
+    <div className={`artifact-panel ${isFullscreen ? 'artifact-panel--fullscreen' : ''}`}>
       {/* Toolbar */}
       <div className="artifact-toolbar">
         <div className="artifact-info">
@@ -718,16 +757,27 @@ export function ArtifactPanel() {
             className="artifact-action-btn custom-tooltip-trigger" 
             onClick={handleOpenNewTab} 
             data-tooltip={t('artifacts.openNewTab', 'Abrir em nova aba')}
+            aria-label={t('artifacts.openNewTab', 'Abrir em nova aba')}
           >
             <ExternalLink size={14} />
+          </button>
+
+          <button 
+            className="artifact-action-btn custom-tooltip-trigger" 
+            onClick={() => setIsFullscreen((prev) => !prev)} 
+            data-tooltip={isFullscreen ? t('artifacts.exitFullscreen', 'Sair da tela cheia') : t('artifacts.expandFullscreen', 'Tela cheia')}
+            aria-label={isFullscreen ? t('artifacts.exitFullscreen', 'Sair da tela cheia') : t('artifacts.expandFullscreen', 'Tela cheia')}
+          >
+            {isFullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
           </button>
 
           <div className="artifact-toolbar-divider" />
           
           <button 
             className="artifact-action-btn close-btn custom-tooltip-trigger" 
-            onClick={() => setArtifactPanelOpen(false)} 
+            onClick={handleClose} 
             data-tooltip={t('artifacts.closePanel', 'Fechar painel')}
+            aria-label={t('artifacts.closePanel', 'Fechar painel')}
           >
             <X size={14} />
           </button>

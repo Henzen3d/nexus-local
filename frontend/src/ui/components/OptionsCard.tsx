@@ -37,10 +37,10 @@ export function OptionsCard({ block, streaming }: Props) {
         if (msg.includes('{other}')) {
           msg = msg.replace('{other}', '')
         }
-        sendMessage(msg)
+        setSubmitted(true)
         setSelectedValues([value])
         setSubmittedChoiceText(choiceText)
-        setSubmitted(true)
+        sendMessage(msg)
         return
       }
 
@@ -70,15 +70,15 @@ export function OptionsCard({ block, streaming }: Props) {
 
     if (selectedLabels.length === 0) return
 
+    setSubmitted(true)
     const choiceText = selectedLabels.join(', ')
     let msg = action.template.replace('{choice}', choiceText)
     if (msg.includes('{other}')) {
       msg = msg.replace('{other}', otherText.trim())
     }
 
-    sendMessage(msg)
     setSubmittedChoiceText(choiceText)
-    setSubmitted(true)
+    sendMessage(msg)
   }
 
   const subtitle = isMultiple

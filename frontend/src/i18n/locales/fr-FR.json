@@ -67,8 +67,12 @@
     "tooManyAttempts": "Trop de tentatives de connexion. Patientez quelques minutes puis réessayez."
   },
   "chat": {
+    "effortDroppedFailover": "Le modèle de secours ne prend pas en charge le contrôle d'effort ; réponse générée par défaut.",
+    "effortDroppedUnsupported": "Le modèle sélectionné ne prend pas en charge le contrôle de l'effort de raisonnement.",
+    "effortDroppedProvider": "Le fournisseur a rejeté le paramètre d'effort ; nouvelle tentative sans ce paramètre.",
     "failover": "Failover",
     "failoverNotice": "Failover: {{model}} ({{reason}}). Basculement vers {{fallback}}...",
+    "scrollToBottom": "Aller en bas",
     "failoverTooltip": "Servi via modèle de secours (failover)",
     "failoverTooltipDetailed": "Failover actif: demandé {{requested}}, servi par {{served}}",
     "failoverReason": {
@@ -745,6 +749,28 @@
     "sceneCorrectionPrompt": "Corrigez la scène \"{{title}}\" : échec avec : {{message}}. Conservez le même bloc sandbox kind scene.",
     "sceneWebGlLost": "Le contexte graphique 3D a été perdu.",
     "sceneReadoutTitle": "Valeurs de la scène"
+  },
+  "artifacts": {
+    "preview": "Aperçu",
+    "code": "Code",
+    "prevVersion": "Version précédente",
+    "nextVersion": "Version suivante",
+    "runningCode": "Exécution en cours...",
+    "runCode": "Exécuter le code (Piston)",
+    "copyContent": "Copier le contenu",
+    "downloadFile": "Télécharger le fichier",
+    "openNewTab": "Ouvrir dans un nouvel onglet",
+    "expandFullscreen": "Plein écran",
+    "exitFullscreen": "Quitter le plein écran",
+    "closePanel": "Fermer le panneau",
+    "renderingDiagram": "Rendu du diagramme via Kroki...",
+    "diagramError": "Échec du rendu du diagramme",
+    "execSuccess": "Succès",
+    "execFailed": "Erreur",
+    "noOutput": "(Aucune sortie générée)",
+    "waitingResponse": "En attente...",
+    "editPlaceholder": "Décrivez ce que vous souhaitez modifier...",
+    "applyEdit": "Appliquer"
   },
   "memory": {
     "useMemoryGlobal": "Mémoire dans les conversations (par défaut : activée)",

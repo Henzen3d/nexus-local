@@ -67,8 +67,12 @@
     "tooManyAttempts": "Demasiados intentos de inicio de sesión. Espera unos minutos e inténtalo de nuevo."
   },
   "chat": {
+    "effortDroppedFailover": "El modelo de respaldo no admite control de esfuerzo; respuesta generada por defecto.",
+    "effortDroppedUnsupported": "El modelo seleccionado no admite control de esfuerzo de razonamiento.",
+    "effortDroppedProvider": "El proveedor rechazó el parámetro de esfuerzo; reintentando sin él.",
     "failover": "Failover",
     "failoverNotice": "Failover: {{model}} ({{reason}}). Cambiando a {{fallback}}...",
+    "scrollToBottom": "Ir al final",
     "failoverTooltip": "Atendido vía modelo de reserva (failover)",
     "failoverTooltipDetailed": "Failover activo: solicitado {{requested}}, atendido por {{served}}",
     "failoverReason": {
@@ -745,6 +749,28 @@
     "sceneCorrectionPrompt": "Corrige la escena \"{{title}}\": falló con: {{message}}. Mantén el mismo bloque sandbox kind scene.",
     "sceneWebGlLost": "Se perdió el contexto gráfico 3D.",
     "sceneReadoutTitle": "Valores de la escena"
+  },
+  "artifacts": {
+    "preview": "Vista previa",
+    "code": "Código",
+    "prevVersion": "Versión anterior",
+    "nextVersion": "Versión siguiente",
+    "runningCode": "Ejecutando...",
+    "runCode": "Ejecutar código (Piston)",
+    "copyContent": "Copiar contenido",
+    "downloadFile": "Descargar archivo",
+    "openNewTab": "Abrir en nueva pestaña",
+    "expandFullscreen": "Expandir a pantalla completa",
+    "exitFullscreen": "Salir de pantalla completa",
+    "closePanel": "Cerrar panel",
+    "renderingDiagram": "Renderizando diagrama mediante Kroki...",
+    "diagramError": "Error al renderizar el diagrama",
+    "execSuccess": "Éxito",
+    "execFailed": "Error",
+    "noOutput": "(Sin salida generada)",
+    "waitingResponse": "Esperando...",
+    "editPlaceholder": "Describe lo que deseas modificar...",
+    "applyEdit": "Aplicar"
   },
   "memory": {
     "useMemoryGlobal": "Memoria en las conversaciones (predeterminado: activada)",

@@ -67,8 +67,12 @@
     "tooManyAttempts": "로그인 시도가 너무 많습니다. 몇 분 후에 다시 시도하세요."
   },
   "chat": {
+    "effortDroppedFailover": "대체 모델이 사고 노력 조절을 지원하지 않아 기본 설정으로 생성되었습니다.",
+    "effortDroppedUnsupported": "선택한 모델은 사고 노력 조절을 지원하지 않습니다.",
+    "effortDroppedProvider": "제공업체에서 노력 매개변수를 거부하여 매개변수 없이 재시도합니다.",
     "failover": "Failover",
     "failoverNotice": "장애 조치(Failover): {{model}} ({{reason}}). {{fallback}}(으)로 전환 중...",
+    "scrollToBottom": "맨 아래로 이동",
     "failoverTooltip": "대체 모델을 통해 제공됨 (Failover)",
     "failoverTooltipDetailed": "활성 장애 조치: 요청 {{requested}}, 제공 {{served}}",
     "failoverReason": {
@@ -745,6 +749,28 @@
     "sceneCorrectionPrompt": "\"{{title}}\" 장면을 수정해 주세요: 실패 이유: {{message}}. 동일한 sandbox kind scene 블록을 유지해 주세요.",
     "sceneWebGlLost": "3D 그래픽 컨텍스트가 손실되었습니다.",
     "sceneReadoutTitle": "장면 값"
+  },
+  "artifacts": {
+    "preview": "미리보기",
+    "code": "코드",
+    "prevVersion": "이전 버전",
+    "nextVersion": "다음 버전",
+    "runningCode": "실행 중...",
+    "runCode": "코드 실행 (Piston)",
+    "copyContent": "내용 복사",
+    "downloadFile": "파일 다운로드",
+    "openNewTab": "새 탭에서 열기",
+    "expandFullscreen": "전체 화면으로 확장",
+    "exitFullscreen": "전체 화면 종료",
+    "closePanel": "패널 닫기",
+    "renderingDiagram": "Kroki로 다이어그램 렌더링 중...",
+    "diagramError": "다이어그램 렌더링 실패",
+    "execSuccess": "성공",
+    "execFailed": "오류",
+    "noOutput": "(출력 없음)",
+    "waitingResponse": "대기 중...",
+    "editPlaceholder": "변경할 내용을 입력하세요...",
+    "applyEdit": "적용"
   },
   "memory": {
     "useMemoryGlobal": "대화 메모리 (기본: 켜짐)",
