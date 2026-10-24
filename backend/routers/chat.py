@@ -568,7 +568,7 @@ async def _run_turn(
         await ws.send_json({
             "type": "process_step_start",
             "id": triage_step_id,
-            "step_type": "think",
+            "step_type": "tool",
             "title": intent_routing.mode_status_pt,
             "detail": triage_detail,
         })
@@ -1189,7 +1189,7 @@ async def _resolve_web_search(
         if not any(step.get("id") == triage_id for step in process_steps):
             process_steps.insert(0, {
                 "id": triage_id,
-                "type": "think",
+                "type": "tool",
                 "title": intent_routing.mode_status_pt,
                 "detail": ", ".join(intent_routing.strict_constraints) if intent_routing.strict_constraints else None,
                 "status": "completed",

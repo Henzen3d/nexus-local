@@ -37,7 +37,11 @@ export function ExecutionSequence({ steps, isWorking, startedAt, durationMs, thi
 
   const visibleSteps = steps.filter((step) => {
     if (isWorking) return true
-    if (step.type === 'think' && !thinkingContent) return false
+    // Oculta apenas o placeholder genérico inicial 'thinking' quando não houve raciocínio real
+    if (step.id === 'thinking' && !thinkingContent) return false
+    // Passos de triagem e failover devem sempre permanecer visíveis após a conclusão
+    if (step.id.startsWith('triage-') || step.id.startsWith('failover-')) return true
+    if (step.type === 'think' && !thinkingContent && !step.title) return false
     return true
   })
 
@@ -63,6 +67,15 @@ export function ExecutionSequence({ steps, isWorking, startedAt, durationMs, thi
   }
 
   const getStepTitle = (step: ProcessStep) => {
+    // 1. Passos com título customizado (triagem "⚡ Modo...", failover "Failover...", etc.) nunca são sobrescritos
+    if (step.id.startsWith('triage-') || step.id.startsWith('failover-')) {
+      return step.title
+    }
+    // 2. Se o passo tem título e não é o placeholder 'thinking', respeite o título
+    if (step.title && step.id !== 'thinking') {
+      return step.title
+    }
+    // 3. Passo de raciocínio
     if (step.type === 'think') {
       return thinkingContent
         ? t('chat.processThinking', { defaultValue: 'Raciocinando' })
@@ -70,6 +83,12 @@ export function ExecutionSequence({ steps, isWorking, startedAt, durationMs, thi
     }
     return step.title
   }
+
+  // Identifica o passo único designado para exibir o raciocínio (<think>).
+  // Garante que o texto de raciocínio seja renderizado no MÁXIMO UMA VEZ em toda a timeline.
+  const designatedThinkingStepId = visibleSteps.find(
+    (s) => s.id === 'thinking' || (s.type === 'think' && !s.id.startsWith('triage-') && !s.id.startsWith('failover-'))
+  )?.id
 
   return (
     <section className={`execution-sequence${isWorking ? ' is-working' : ''}`} aria-label={t('chat.processLabel')}>
@@ -93,9 +112,11 @@ export function ExecutionSequence({ steps, isWorking, startedAt, durationMs, thi
                   ? <LoaderCircle className="execution-sequence-step-spinner" size={14} aria-label={t('chat.processRunning')} />
                   : step.status === 'failed'
                     ? <CircleAlert size={14} aria-label={t('chat.processFailed')} />
-                    : step.type === 'think'
-                      ? iconFor(step.type)
-                      : <Check size={13} aria-hidden="true" />}
+                    : step.id.startsWith('triage-')
+                      ? <Check size={13} aria-hidden="true" />
+                      : step.type === 'think'
+                        ? iconFor(step.type)
+                        : <Check size={13} aria-hidden="true" />}
               </span>
               <div className="execution-sequence-step-copy">
                 <div className="execution-sequence-step-title">{getStepTitle(step)}</div>
@@ -111,17 +132,17 @@ export function ExecutionSequence({ steps, isWorking, startedAt, durationMs, thi
                     {step.subSteps.map((subStep, index) => <li key={`${step.id}-${index}`}>{subStep}</li>)}
                   </ul>
                 )}
-                {step.type === 'think' && thinkingContent && (
+                {thinkingContent && step.id === designatedThinkingStepId && (
                   <div className="execution-sequence-reasoning">{thinkingContent}</div>
                 )}
               </div>
             </div>
           ))}
-          {thinkingContent && !visibleSteps.some((step) => step.type === 'think') && (
+          {thinkingContent && !designatedThinkingStepId && (
             <div className="execution-sequence-step is-completed">
               <span className="execution-sequence-step-icon">{iconFor('think')}</span>
               <div className="execution-sequence-step-copy">
-                <div className="execution-sequence-step-title">{t('chat.processThinking')}</div>
+                <div className="execution-sequence-step-title">{t('chat.processThinking', { defaultValue: 'Raciocinando' })}</div>
                 <div className="execution-sequence-reasoning">{thinkingContent}</div>
               </div>
             </div>

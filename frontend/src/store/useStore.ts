@@ -1402,9 +1402,20 @@ export const useStore = create<AppState>((set, get) => ({
     const activeModel = models.find((m) => m.id === resolvedModelId)
     const clientSteps = processSteps
     const clientHasSearch = clientSteps.some((step) => step.type === 'search' || step.type === 'navigate')
-    const baseSteps = clientHasSearch || !serverSteps?.length
-      ? clientSteps
+    const rawSteps = clientHasSearch || !serverSteps?.length
+      ? (serverSteps?.length ? [...serverSteps, ...clientSteps] : clientSteps)
       : [...serverSteps, ...clientSteps.filter((step) => step.type === 'think')]
+
+    // Deduplica os passos pelo id de forma estrita para evitar duplicações na UI
+    const seenStepIds = new Set<string>()
+    const baseSteps: ProcessStep[] = []
+    for (const step of rawSteps) {
+      if (!seenStepIds.has(step.id)) {
+        seenStepIds.add(step.id)
+        baseSteps.push(step)
+      }
+    }
+
     const completedSteps = baseSteps.map((step) => ({
       ...step,
       status: step.status === 'failed' ? 'failed' as const : 'completed' as const,
