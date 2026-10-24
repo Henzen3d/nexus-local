@@ -1511,7 +1511,11 @@ def build_memory_block(
             "REGRAS: (1) Identidade = só o titular da conta. "
             "(2) Família = outras pessoas; NUNCA diga que a idade/escola de um filho é do usuário. "
             "(3) Se perguntarem a idade do usuário e só houver idade de familiar, diga que não sabe "
-            "a idade do usuário (ou peça confirmação), sem inventar.\n"
+            "a idade do usuário (ou peça confirmação), sem inventar. "
+            "(4) NÃO-INVASÃO EM FATOS: Preferências, opiniões políticas, filosóficas ou ideológicas do usuário "
+            "servem APENAS para contextualizar quando o usuário solicitar expressamente análises de tom, conselhos "
+            "ou visões opinativas. NUNCA injete posicionamentos ideológicos, críticas estatais ou sermões em perguntas "
+            "factuais, noticiosas, de dados públicos ou técnicas. Fatos devem ser respondidos com neutralidade estrita.\n"
             + "\n".join(lines)
             + "\n"
         )

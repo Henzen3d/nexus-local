@@ -43,11 +43,17 @@ export function ExecutionSequence({ steps, isWorking, startedAt, durationMs, thi
 
   if (!visibleSteps.length && !thinkingContent) return null
 
-  const totalTime = formatDuration(durationMs ?? elapsedMs)
+  const totalTime = durationMs && durationMs > 0
+    ? formatDuration(durationMs)
+    : (isWorking ? formatDuration(elapsedMs) : null)
   const hasResearch = visibleSteps.some((step) => step.type === 'search' || step.type === 'navigate')
-  const summary = hasResearch
-    ? t('chat.processDoneResearch', { time: totalTime })
-    : t('chat.processDone', { time: totalTime })
+  const summary = totalTime
+    ? (hasResearch
+        ? t('chat.processDoneResearch', { time: totalTime })
+        : t('chat.processDone', { time: totalTime }))
+    : (hasResearch
+        ? t('chat.researchComplete')
+        : t('chat.processComplete'))
 
   const iconFor = (type: ProcessStep['type']) => {
     if (type === 'think') return thinkingContent ? <Brain size={14} aria-hidden="true" /> : <LoaderCircle className="execution-sequence-step-spinner" size={14} aria-hidden="true" />

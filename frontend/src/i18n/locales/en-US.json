@@ -138,6 +138,8 @@
     "processWorking": "⚡ Working for {{time}}",
     "processDone": "Worked for {{time}}",
     "processDoneResearch": "Thought and searched for {{time}}",
+    "processComplete": "Process completed",
+    "researchComplete": "Research and reasoning completed",
     "processRunning": "In progress",
     "processFailed": "Failed",
     "processFusion": {

@@ -862,7 +862,8 @@ async def _run_turn(
     await save_web_search_metadata(
         db, user_msg_id, web_search_used, web_search_query, web_search_sources
     )
-    await save_process_steps(db, assistant_msg_id, process_steps)
+    calculated_duration_ms = round((time.perf_counter() - process_started_at) * 1000)
+    await save_process_steps(db, assistant_msg_id, process_steps, duration_ms=calculated_duration_ms)
 
     # ── Detect + save artifacts ─────────────────────────────────────
     artifacts_list = await detect_and_save_artifacts(
@@ -893,7 +894,7 @@ async def _run_turn(
         "web_search_query": web_search_query,
         "web_search_sources": web_search_sources,
         "process_steps": process_steps,
-        "process_duration_ms": round((time.perf_counter() - process_started_at) * 1000),
+        "process_duration_ms": calculated_duration_ms,
         "source_count": len(web_search_sources),
         "phase_latencies": dict(req_ctx.phase_latencies),
     }

@@ -182,18 +182,32 @@ async def save_web_search_metadata(
     await db.commit()
 
 
-async def save_process_steps(db, message_id: str, steps: list[dict] | None) -> None:
-    """Grava a árvore de pesquisa/ações na mensagem do assistente."""
-    if not steps:
+async def save_process_steps(
+    db, message_id: str, steps: list[dict] | None, duration_ms: int | None = None
+) -> None:
+    """Grava a árvore de pesquisa/ações e o tempo de execução na mensagem do assistente."""
+    if not steps and duration_ms is None:
         return
     try:
-        await db.execute(
-            "UPDATE messages SET process_steps = ? WHERE id = ?",
-            (json.dumps(steps), message_id),
-        )
+        steps_json = json.dumps(steps) if steps else None
+        if steps_json is not None and duration_ms is not None:
+            await db.execute(
+                "UPDATE messages SET process_steps = ?, process_duration_ms = ? WHERE id = ?",
+                (steps_json, duration_ms, message_id),
+            )
+        elif steps_json is not None:
+            await db.execute(
+                "UPDATE messages SET process_steps = ? WHERE id = ?",
+                (steps_json, message_id),
+            )
+        elif duration_ms is not None:
+            await db.execute(
+                "UPDATE messages SET process_duration_ms = ? WHERE id = ?",
+                (duration_ms, message_id),
+            )
         await db.commit()
     except Exception as e:
-        logger.error("Erro ao salvar process_steps:", exc_info=e)
+        logger.error("Erro ao salvar process_steps / duration_ms:", exc_info=e)
 
 
 async def detect_and_save_artifacts(

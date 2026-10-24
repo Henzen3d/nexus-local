@@ -1,3 +1,4 @@
+import React from 'react'
 import type { Components } from 'react-markdown'
 import { CodeBlock } from './CodeBlock'
 import { isIntelligentUiEnabled } from '../ui/hooks/useIntelligentUi'
@@ -5,7 +6,7 @@ import { isIntelligentUiEnabled } from '../ui/hooks/useIntelligentUi'
 /**
  * Componentes react-markdown compartilhados.
  * Blocos fenced (```lang) → CodeBlock (balão com header + copiar).
- * Código inline → .inline-code.
+ * Código inline → .inline-code ou .markdown-badge-chip para tags [Item].
  *
  * Importante: não testar firstChild.type === 'code' no pre —
  * em react-markdown v9 o type é a função customizada, não a string 'code'.
@@ -32,11 +33,47 @@ export const markdownComponents: Components = {
       return <CodeBlock language={className}>{raw}</CodeBlock>
     }
 
+    // Padrão visual ChatGPT: Badges/chips como `[92 °C]` ou `[Opção 1]`
+    const isBadge =
+      typeof raw === 'string' &&
+      raw.startsWith('[') &&
+      raw.endsWith(']') &&
+      raw.length >= 3 &&
+      raw.length <= 40 &&
+      !raw.includes('\n')
+
+    if (isBadge) {
+      return (
+        <span className="markdown-badge-chip">
+          {raw.slice(1, -1)}
+        </span>
+      )
+    }
+
     return (
       <code className="inline-code" {...props}>
         {children}
       </code>
     )
+  },
+  li({ children, ...props }) {
+    if (React.Children.count(children) > 0) {
+      const childArray = React.Children.toArray(children)
+      const first = childArray[0]
+      if (typeof first === 'string') {
+        const match = first.match(/^\[([^\]\n]{2,40})\]\s*(.*)$/s)
+        if (match && !/^\s*x?\s*$/i.test(match[1])) {
+          return (
+            <li {...props}>
+              <span className="markdown-badge-chip">{match[1]}</span>
+              {match[2]}
+              {childArray.slice(1)}
+            </li>
+          )
+        }
+      }
+    }
+    return <li {...props}>{children}</li>
   },
   table({ children, ...props }) {
     return (

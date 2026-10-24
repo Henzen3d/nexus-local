@@ -232,13 +232,13 @@ def plan_search_queries(user_message: str, history: list[dict] | None = None) ->
         else:
             queries.append(f"site:{main_domain}")
 
-    # 2. Identificação global de marcas, entidades e cidades no próprio prompt
+    # 2. Identificação de entidades comerciais específicas mencionadas explicitamente
     brand_parts = []
     if "fix serviços" in msg_lower or "fix servicos" in msg_lower:
-        brand_parts.append('"fix serviços"')
-    elif re.search(r"\bfix\b", msg_lower):
-        brand_parts.append('"fix"')
-    if "blumenau" in msg_lower:
+        brand_parts.append('"Fix Serviços"')
+        if "blumenau" in msg_lower:
+            brand_parts.append("Blumenau")
+    elif "blumenau" in msg_lower and any(w in msg_lower for w in ["empresa", "loja", "contratar", "atendimento"]):
         brand_parts.append("Blumenau")
 
     if brand_parts:
@@ -301,22 +301,6 @@ def plan_search_queries(user_message: str, history: list[dict] | None = None) ->
         # Foco em mediador / apresentador / transmissão / regras
         if any(w in msg_lower for w in ["hoster", "host", "intermediando", "mediador", "apresentador", "horário", "horario", "transmissão", "regras"]):
             queries.append(f"debate {broadcaster} {date_str} mediador apresentador horario transmissao".strip())
-
-    # 4. Sub-query para tendências / postagens de blog (somente quando expressamente solicitado)
-    if any(w in msg_lower for w in ["tendência", "tendencias", "postagens similares"]):
-        niche_terms = []
-        if any(w in msg_lower for w in ["eletricista", "eletrica", "elétrica"]):
-            niche_terms.append("eletricista")
-        if any(w in msg_lower for w in ["encanador", "hidraulica", "hidráulica"]):
-            niche_terms.append("encanador")
-        if any(w in msg_lower for w in ["manutenção", "manutencao", "serviços residenciais", "reparos"]):
-            niche_terms.append('"serviços residenciais"')
-        if any(w in msg_lower for w in ["marido de aluguel"]):
-            niche_terms.append('"marido de aluguel"')
-
-        if niche_terms:
-            niche_str = " OR ".join(niche_terms)
-            queries.append(f'tendências conteúdo blog ({niche_str}) 2026')
 
     # 5. Query limpa do texto geral do usuário com normalização de data
     cleaned = clean_query_text(user_message)

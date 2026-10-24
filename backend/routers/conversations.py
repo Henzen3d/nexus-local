@@ -94,7 +94,7 @@ async def get_conversation(conversation_id: str, current_user: dict = Depends(ge
         async with db.execute(
             """SELECT m.id, m.role, m.content, m.model_id, m.created_at, mod.display_name, p.name, m.provider, m.relay_used, m.relay_model,
                       m.web_search_used, m.web_search_query, m.web_search_sources, m.process_steps,
-                      COALESCE(m.kind, 'normal'), m.proactive_insight_id, m.fusion_metadata
+                      COALESCE(m.kind, 'normal'), m.proactive_insight_id, m.fusion_metadata, m.process_duration_ms
                FROM messages m
                LEFT JOIN models mod ON m.model_id = mod.id
                LEFT JOIN providers p ON mod.provider_id = p.id
@@ -234,6 +234,7 @@ async def get_conversation(conversation_id: str, current_user: dict = Depends(ge
                 "web_search_query": m[11] if len(m) > 11 else None,
                 "web_search_sources": _loads(m[12]) if len(m) > 12 else None,
                 "process_steps": _loads(m[13]) if len(m) > 13 else None,
+                "process_duration_ms": m[17] if len(m) > 17 else None,
                 "kind": msg_kind,
                 "proactive_insight_id": m[15] if len(m) > 15 else None,
             }
