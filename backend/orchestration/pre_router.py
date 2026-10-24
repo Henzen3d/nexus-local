@@ -160,13 +160,14 @@ def format_triage_mode_status(routing: IntentRouting) -> str:
     elif routing.intent_tier == "specific_lookup":
         if routing.needs_web_search and routing.search_queries:
             q = routing.search_queries[0]
-            if len(q) > 42:
-                q = q[:39] + "…"
-            return f"⚡ Modo Direto • Web: {q}"
+            if len(q) > 36:
+                q = q[:33] + "…"
+            return f'⚡ Modo Direto • Consultando web: "{q}"'
         return "⚡ Modo Direto (Síntese Rápida)"
     else:  # deep_technical
-        effort_label = "Raciocínio Alto" if routing.reasoning_effort == "high" else "Análise Técnica"
-        return f"🧠 Modo Engenharia Profunda • {effort_label}"
+        if routing.reasoning_effort == "high":
+            return "🧠 Modo Técnico Profundo • Raciocínio Alto ativado…"
+        return "🧠 Modo Técnico Profundo • Análise de Engenharia"
 
 
 # ── Classificador Heurístico (Fallback / < 1ms) ──────────────────────────────
@@ -371,21 +372,21 @@ def build_modular_system_prompt_addition(routing: IntentRouting) -> str:
         blocks.append(
             "[MODO CONVERSA CASUAL / TRIVIAL]\n"
             "- Responda em no máximo 1 a 2 frases diretas, naturais e sem rodeios.\n"
-            "- Não adicione explicações extras, listas ou introduções formais."
+            "- Não adicione explicações extras, listas ou introduções."
         )
     elif routing.intent_tier == "specific_lookup":
         blocks.append(
-            "[MODO RESPOSTA RÁPIDA & EMBASAMENTO]\n"
-            "- Entregue a resposta exata, o fato ou o comando já na primeira frase em **negrito** (sem saudações longas).\n"
-            "- Logo abaixo, adicione de 2 a 4 bullet points curtos com o embasamento essencial ou contexto das fontes.\n"
-            "- Evite parágrafos prolixos. Pare imediatamente após responder o solicitado."
+            "[MODO RESPOSTA RÁPIDA: primeira frase em negrito + 2-4 bullets]\n"
+            "- Entregue a resposta exata, o fato ou o comando já na primeira frase em **negrito**.\n"
+            "- Logo abaixo, adicione apenas 2 a 4 bullet points curtos com o embasamento essencial ou contexto das fontes.\n"
+            "- Pare imediatamente após responder o solicitado."
         )
     elif routing.intent_tier == "deep_technical":
         blocks.append(
-            "[MODO ENGENHARIA PROFUNDA & RIGOR TÉCNICO]\n"
-            "- Inicie com um veredito técnico direto ou visão arquitetural na primeira linha.\n"
+            "[MODO ENGENHARIA PROFUNDA: veredito na 1ª linha + solução completa com casos de borda]\n"
+            "- Inicie com um veredito técnico direto na primeira linha.\n"
             "- Em seguida, desenvolva a solução completa, cobrindo casos de borda, código pronto para produção, boas práticas e tabelas comparativas quando útil.\n"
-            "- Priorize precisão técnica absoluta e profundidade resolutiva."
+            "- Priorize precisão técnica absoluta."
         )
 
     if routing.strict_constraints:

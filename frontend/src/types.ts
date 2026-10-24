@@ -707,6 +707,8 @@ export interface AutoRouteDecisionInfo {
   reasoning_effort?: string | null
   model_tags?: string[]
   alternatives?: AutoRouteAlternative[]
+  intent_tier?: 'trivial' | 'specific_lookup' | 'deep_technical'
+  strict_constraints?: string[]
 }
 
 export interface AutoRouterPreviewCandidate {
@@ -1011,6 +1013,17 @@ export type WSMessage =
   | { type: 'process_step_update'; id: string; detail?: string; sub_steps?: string[] }
   | { type: 'process_step_end'; id: string; status: 'completed' | 'failed'; sub_steps?: string[] }
   | ({ type: 'auto_route_decision' } & AutoRouteDecisionInfo)
+  | {
+      type: 'triage_decision'
+      intent_tier: 'trivial' | 'specific_lookup' | 'deep_technical'
+      reasoning_effort: 'low' | 'medium' | 'high'
+      needs_web_search: boolean
+      search_queries?: string[]
+      strict_constraints?: string[]
+      mode_status_pt: string
+      triage_source?: string
+      latency_ms?: number
+    }
   | { type: 'image_pending'; conversation_id: string; message_id: string; task_id: string; prompt: string }
   | { type: 'image_ready'; conversation_id: string; message_id: string; task_id: string; attachment: Attachment }
   | { type: 'image_failed'; conversation_id: string; message_id: string; task_id: string; error: string }

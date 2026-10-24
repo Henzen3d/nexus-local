@@ -52,7 +52,7 @@ def test_heuristic_triage_deep_technical():
         res = classify_heuristic_triage(prompt)
         assert res.intent_tier == "deep_technical", f"Falhou para: {prompt}"
         assert res.reasoning_effort in ("medium", "high")
-        assert "Engenharia Profunda" in res.mode_status_pt
+        assert ("Técnico Profundo" in res.mode_status_pt or "Engenharia Profunda" in res.mode_status_pt)
 
 
 def test_extract_heuristic_strict_constraints():
@@ -83,7 +83,7 @@ def test_build_modular_system_prompt_addition():
     # 2. Tier specific_lookup
     routing_lookup = IntentRouting(intent_tier="specific_lookup")
     addition_lookup = build_modular_system_prompt_addition(routing_lookup)
-    assert "[MODO RESPOSTA RÁPIDA & EMBASAMENTO]" in addition_lookup
+    assert "[MODO RESPOSTA RÁPIDA" in addition_lookup
 
     # 3. Tier deep_technical
     routing_tech = IntentRouting(
@@ -91,7 +91,7 @@ def test_build_modular_system_prompt_addition():
         strict_constraints=["Sem bibliotecas externas", "Apenas código"],
     )
     addition_tech = build_modular_system_prompt_addition(routing_tech)
-    assert "[MODO ENGENHARIA PROFUNDA & RIGOR TÉCNICO]" in addition_tech
+    assert "[MODO ENGENHARIA PROFUNDA" in addition_tech
     assert "[RESTRIÇÕES OBRIGATÓRIAS DESTA RESPOSTA]:" in addition_tech
     assert "- Sem bibliotecas externas" in addition_tech
     assert "- Apenas código" in addition_tech

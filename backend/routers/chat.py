@@ -450,7 +450,22 @@ async def _run_turn(
     )
     req_ctx.record_phase("pre_router_triage", t_triage_start)
 
-    # ── Auto-Router Inteligente (Smart Intent Router) ────────────────
+    # Emite evento estruturado triage_decision (aditivo) para o frontend imediatamente
+    if intent_routing:
+        await ws.send_json({
+            "type": "triage_decision",
+            "intent_tier": intent_routing.intent_tier,
+            "reasoning_effort": intent_routing.reasoning_effort,
+            "needs_web_search": intent_routing.needs_web_search,
+            "search_queries": intent_routing.search_queries,
+            "strict_constraints": intent_routing.strict_constraints,
+            "mode_status_pt": intent_routing.mode_status_pt,
+            "triage_source": intent_routing.triage_source,
+            "latency_ms": intent_routing.latency_ms,
+        })
+
+    # Classificação síncrona instantânea de intenção para Auto-Router (< 1ms)
+    intent_res = None
     if is_auto:
         from backend.ranking.smart_router import (
             classify_intent, select_best_model, is_trivial_greeting, decision_to_dict,
@@ -485,6 +500,22 @@ async def _run_turn(
             history=raw_history,
             previous_intent=prev_intent,
         )
+
+    # ── Dispara Busca Web em Paralelo (asyncio.create_task) ─────────────
+    # Executa a busca web e raspagem em segundo plano concorrentemente com
+    # a seleção de modelo, gravação no banco, carga de anexos e preparação do contexto.
+    turn_ref = {"conversation_id": conversation_id, "user_msg_id": None}
+    web_search_task = asyncio.create_task(
+        _resolve_web_search(
+            ws, db, req, user_message, None, user_id, conversation_id,
+            intent_res=intent_res,
+            history=raw_history[-4:] if raw_history else [],
+            intent_routing=intent_routing,
+            turn_ref=turn_ref,
+        )
+    )
+
+    if is_auto:
         policy = await get_router_policy(db)
         # Nível de esforço configurado para o modo Auto na UI (padrão 'medium'):
         # calibrado dinamicamente pelo Pré-Router se não fixado pelo usuário.
@@ -517,6 +548,7 @@ async def _run_turn(
         db, conversation_id, user_id, user_message,
         model_id, provider_id, request_project_id,
     )
+    turn_ref["conversation_id"] = conversation_id
     if created_payload:
         created_payload["conversation_id"] = conversation_id
         await ws.send_json(created_payload)
@@ -527,6 +559,7 @@ async def _run_turn(
     user_msg_id = await save_user_message(
         db, conversation_id, user_message, model_id, provider_id
     )
+    turn_ref["user_msg_id"] = user_msg_id
 
     # Emite indicador visual dinâmico do modo de triagem no ExecutionSequence
     if intent_routing and intent_routing.mode_status_pt:
@@ -582,33 +615,26 @@ async def _run_turn(
             attachment_ids, conversation_id, user_msg_id, db, user_id=user_id
         )
 
-    # ── Web Search ──────────────────────────────────────────────────
-    recent_history = []
-    if conversation_id:
-        try:
-            async with db.execute(
-                """SELECT role, content FROM messages
-                   WHERE conversation_id = ? AND id != ?
-                   ORDER BY created_at DESC, rowid DESC LIMIT 4""",
-                (conversation_id, user_msg_id),
-            ) as cur:
-                rows = await cur.fetchall()
-                recent_history = [{"role": r[0], "content": r[1]} for r in reversed(rows)]
-        except Exception:
-            recent_history = []
-
-    web_search_used, web_search_query, web_search_sources, search_results, search_config, process_steps = (
-        await _resolve_web_search(
-            ws, db, req, user_message, user_msg_id, user_id, conversation_id,
-            intent_res=intent_res if is_auto else None,
-            history=recent_history,
-            intent_routing=intent_routing,
-        )
-    )
-
-    # ── Load history with attachments ───────────────────────────────
     attachments_by_msg, extracted_text_by_id = await load_attachments(db, conversation_id)
     model_supports_vision = await check_model_vision_support(db, model_id)
+
+    # ── Aguarda Busca Web Paralela Concluir ──────────────────────────
+    t_web_wait = time.perf_counter()
+    try:
+        web_search_used, web_search_query, web_search_sources, search_results, search_config, process_steps = (
+            await asyncio.wait_for(web_search_task, timeout=12.0)
+        )
+    except asyncio.TimeoutError:
+        logger.warning(f"[chat] Timeout de 12s na busca web paralela para mensagem: {user_message[:60]}")
+        web_search_used, web_search_query, web_search_sources, search_results, search_config, process_steps = (
+            False, "", [], [], None, []
+        )
+    except Exception as e_web:
+        logger.error(f"[chat] Falha na busca web paralela: {e_web}", exc_info=e_web)
+        web_search_used, web_search_query, web_search_sources, search_results, search_config, process_steps = (
+            False, "", [], [], None, []
+        )
+    req_ctx.record_phase("web_search_wait", t_web_wait)
 
     history, relay_used, relay_model_id = await load_history(
         db, conversation_id, user_msg_id, attachments_by_msg,
@@ -1018,6 +1044,7 @@ async def _resolve_web_search(
     intent_res: Any | None = None,
     history: list[dict] | None = None,
     intent_routing: Any | None = None,
+    turn_ref: dict | None = None,
 ) -> tuple[bool, str, list, list, dict | None, list]:
     """Resolve e executa web search se aplicável.
 
@@ -1130,6 +1157,8 @@ async def _resolve_web_search(
                 if search_config:
                     search_config["scraped_pages"] = scraped_pages
 
+                actual_conv_id = (turn_ref.get("conversation_id") if turn_ref else None) or conversation_id
+                actual_msg_id = (turn_ref.get("user_msg_id") if turn_ref else None) or user_msg_id
                 log_id = str(uuid.uuid4())
                 await db.execute(
                     """INSERT INTO web_search_log
@@ -1137,7 +1166,7 @@ async def _resolve_web_search(
                         trigger_type, results_count, user_id)
                        VALUES (?, ?, ?, ?, ?, ?, ?)""",
                     (
-                        log_id, conversation_id, user_msg_id,
+                        log_id, actual_conv_id, actual_msg_id,
                         primary_query, trigger_type,
                         len(web_search_sources), user_id,
                     ),
@@ -1154,8 +1183,9 @@ async def _resolve_web_search(
             scraped_pages = []
 
     # Prepend o passo de triagem na sequência para persistência consistente no histórico
+    actual_msg_id = (turn_ref.get("user_msg_id") if turn_ref else None) or user_msg_id
     if intent_routing and getattr(intent_routing, "mode_status_pt", None):
-        triage_id = f"triage-{user_msg_id}"
+        triage_id = f"triage-{actual_msg_id or '0'}"
         if not any(step.get("id") == triage_id for step in process_steps):
             process_steps.insert(0, {
                 "id": triage_id,

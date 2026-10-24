@@ -257,6 +257,9 @@ export function useChat() {
         case 'ui_progress':
           s.handleUiProgress(msg.block)
           break
+        case 'triage_decision':
+          // Decisão de triagem rápida do Pré-Router (< 200ms)
+          break
         case 'auto_route_decision':
           s.setAutoRouteDecision(msg)
           break
