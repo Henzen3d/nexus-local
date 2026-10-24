@@ -436,7 +436,7 @@ export function PlusActionMenu({
         aria-label={t('chat.plusMenu', { defaultValue: 'Ações e ferramentas' })}
         data-tooltip={t('chat.plusMenu', { defaultValue: 'Ações e ferramentas' })}
       >
-        <Plus size={18} strokeWidth={2.2} />
+        <Plus size={16} strokeWidth={2.2} />
       </button>
 
       {open && (isMobile ? renderMobileMenu() : renderDesktopMenu())}

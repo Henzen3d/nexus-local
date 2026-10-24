@@ -2681,12 +2681,12 @@ html[data-theme="dark"] .tok-tag { color: #fdba74; }
 
 .input-card {
   background: var(--surface-card);
-  /* Único grande arredondamento do app — prompt principal */
-  border-radius: var(--radius-prompt);
+  /* Arredondamento refinado do composer — Claude benchmark */
+  border-radius: var(--radius-prompt, 18px);
   box-shadow: var(--shadow-soft);
   border: 1px solid var(--input-border, var(--hairline));
   transition: box-shadow var(--transition-base), border-color var(--transition-base);
-  padding: 6px;
+  padding: 8px 10px 8px 10px;
 }
 /* Sem anel de seleção coral no foco — dark e light */
 .input-card:focus-within {
@@ -2715,8 +2715,8 @@ html[data-theme="light"] .input-card:focus-within {
    Fase 2: Modo Compacto de Linha Única (~44px repouso)
    ════════════════════════════════════════════════════════════ */
 .input-card.compact-mode {
-  padding: 5px 8px;
-  border-radius: var(--radius-prompt, 20px);
+  padding: 6px 10px;
+  border-radius: var(--radius-prompt, 18px);
   background: var(--surface-card);
   border: 1px solid var(--input-border, var(--hairline));
   box-shadow: var(--shadow-soft);
@@ -2729,9 +2729,9 @@ html[data-theme="dark"] .input-card.compact-mode {
   box-shadow: none;
 }
 
-.input-card.compact-mode .input-attachments-preview {
-  margin: -5px -8px 6px -8px;
-  border-radius: var(--radius-prompt, 20px) var(--radius-prompt, 20px) 0 0;
+.input-card .input-attachments-preview {
+  margin: -8px -10px 6px -10px;
+  border-radius: var(--radius-prompt, 18px) var(--radius-prompt, 18px) 0 0;
   padding: 6px 10px;
 }
 
@@ -2739,7 +2739,7 @@ html[data-theme="dark"] .input-card.compact-mode {
 .composer-single-line-row {
   display: flex;
   align-items: center;
-  min-height: 32px;
+  min-height: 28px;
   gap: 6px;
   width: 100%;
 }
@@ -2750,7 +2750,7 @@ html[data-theme="dark"] .input-card.compact-mode {
   gap: 2px;
   flex-shrink: 0;
   align-self: flex-end;
-  margin-bottom: 2px;
+  margin-bottom: 0;
 }
 
 .composer-single-line-row .composer-actions-right {
@@ -2759,7 +2759,7 @@ html[data-theme="dark"] .input-card.compact-mode {
   gap: 4px;
   flex-shrink: 0;
   align-self: flex-end;
-  margin-bottom: 2px;
+  margin-bottom: 0;
 }
 
 /* Textarea Inline Compacto */
@@ -2768,12 +2768,12 @@ html[data-theme="dark"] .input-card.compact-mode {
   min-width: 0;
   min-height: 24px;
   max-height: 200px;
-  padding: 4px 6px;
+  padding: 3px 6px;
   border: none;
   outline: none;
   background: transparent;
   font-size: 15px;
-  line-height: 22px;
+  line-height: 1.45;
   font-family: var(--font-body);
   color: var(--ink);
   resize: none;
@@ -2786,28 +2786,34 @@ html[data-theme="dark"] .input-card.compact-mode {
   scrollbar-width: thin;
 }
 
-/* Modo Amplo / Empty State (Acolhimento ~110px) */
+/* Modo Amplo / Empty State (Compacto e Harmonioso — Claude benchmark) */
 .composer-multiline-container {
   display: flex;
   flex-direction: column;
   width: 100%;
+  gap: 6px;
 }
 
 .composer-multiline-container .composer-textarea {
   width: 100%;
-  padding: 12px 16px 8px;
+  padding: 2px 4px 2px 4px;
   resize: none;
   border: none;
   outline: none;
   background: transparent;
-  font-size: 16px;
+  font-size: 15px;
   font-family: var(--font-body);
   color: var(--ink);
-  line-height: 1.6;
-  min-height: 32px;
+  line-height: 1.45;
+  min-height: 24px;
   max-height: 200px;
   box-sizing: border-box;
   overflow-y: hidden;
+}
+
+.composer-multiline-container .composer-textarea::placeholder {
+  color: var(--muted);
+  opacity: 0.85;
 }
 
 .composer-multiline-container .composer-textarea.is-multiline {
@@ -2820,17 +2826,18 @@ html[data-theme="dark"] .input-card.compact-mode {
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  padding: 2px 8px 8px;
+  padding: 0;
   box-sizing: border-box;
   min-width: 0;
-  gap: 8px;
+  gap: 6px;
   flex-wrap: nowrap;
+  min-height: 28px;
 }
 
 .composer-multiline-toolbar .composer-actions-left {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 4px;
   flex-shrink: 0;
 }
 
@@ -2847,6 +2854,70 @@ html[data-theme="dark"] .input-card.compact-mode {
 .composer-multiline-toolbar .composer-actions-right .model-selector {
   min-width: 0;
   max-width: 220px;
+}
+
+/* Controles compactos no toolbar do composer */
+.composer-multiline-toolbar .composer-plus-btn {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  min-height: 28px;
+}
+
+.composer-multiline-toolbar .model-trigger {
+  height: 28px;
+  padding: 0 8px;
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: 6px;
+  gap: 4px;
+  color: var(--muted);
+  background: transparent;
+}
+
+.composer-multiline-toolbar .model-trigger:hover:not(:disabled) {
+  color: var(--ink);
+  background: var(--surface-cream-strong);
+}
+
+html[data-theme="dark"] .composer-multiline-toolbar .model-trigger:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.composer-multiline-toolbar .simple-mode-trigger {
+  height: 28px;
+  padding: 0 8px;
+  font-size: 13px;
+  border-radius: 6px;
+  gap: 4px;
+  color: var(--muted);
+  background: transparent;
+}
+
+.composer-multiline-toolbar .simple-mode-trigger:hover:not(:disabled),
+.composer-multiline-toolbar .simple-mode-trigger.open {
+  color: var(--ink);
+  background: var(--surface-cream-strong);
+}
+
+html[data-theme="dark"] .composer-multiline-toolbar .simple-mode-trigger:hover:not(:disabled),
+html[data-theme="dark"] .composer-multiline-toolbar .simple-mode-trigger.open {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.composer-multiline-toolbar .btn-send-enter {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  min-height: 28px;
+  border-radius: 6px;
+  font-size: 15px;
+}
+
+.composer-multiline-toolbar .action-transition-slot {
+  display: flex;
+  align-items: center;
+  gap: 3px;
 }
 
 @media (max-width: 480px) {
@@ -4256,12 +4327,12 @@ html[data-theme="dark"] .model-trigger.compact:hover:not(:disabled) {
   }
 }
 
-/* Touch targets ≥ 44px (mobile / ações críticas) — composer desktop é mais compacto */
-.touch-target {
-  min-width: 44px !important;
-  min-height: 44px !important;
-}
+/* Touch targets ≥ 44px em mobile / ações críticas — composer desktop é compacto */
 @media (max-width: 768px) {
+  .touch-target {
+    min-width: 44px !important;
+    min-height: 44px !important;
+  }
   /* Thumbs-first: alvos de toque ≥ 44px no composer e chrome */
   .send-btn-target {
     min-width: 44px !important;

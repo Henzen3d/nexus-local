@@ -1,10 +1,10 @@
 /* Raios de borda (radius) — v-beta-4: menos “bolha”, mais moderno
- * Prompt do chat mantém --radius-prompt (24px).
+ * Prompt do chat usa --radius-prompt (18px — Claude benchmark).
  * Demais superfícies usam raios menores (6–12px).
  */
 :root {
   --radius-sidebar: 10px;
   --radius-card: 10px;
-  --radius-prompt: 24px; /* exclusivo do composer / input principal */
+  --radius-prompt: 18px; /* exclusivo do composer / input principal */
   --radius-button: 8px;
 }
