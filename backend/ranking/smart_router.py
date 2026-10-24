@@ -107,6 +107,8 @@ class AutoRouteDecision:
     reasoning_effort: Optional[str] = None       # None = não enviar dial (modelo sem controle)
     model_tags: List[str] = field(default_factory=list)
     alternatives: List[Dict[str, Any]] = field(default_factory=list)
+    intent_tier: Optional[str] = None
+    strict_constraints: List[str] = field(default_factory=list)
 
 
 # ── Expressões Regulares Pré-Compiladas (< 0.2ms) ───────────────────────────
@@ -1305,4 +1307,6 @@ def decision_to_dict(decision: AutoRouteDecision) -> Dict[str, Any]:
         "reasoning_effort": decision.reasoning_effort,
         "model_tags": decision.model_tags,
         "alternatives": decision.alternatives,
+        "intent_tier": decision.intent_tier,
+        "strict_constraints": decision.strict_constraints,
     }

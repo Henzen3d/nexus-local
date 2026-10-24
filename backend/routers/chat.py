@@ -421,6 +421,35 @@ async def _run_turn(
                 else:
                     image_job_created = True
 
+    # ── Histórico recente compartilhado ─────────────────────────────
+    raw_history = []
+    if conversation_id:
+        try:
+            async with db.execute(
+                "SELECT role, content FROM messages WHERE conversation_id = ? ORDER BY created_at ASC",
+                (conversation_id,)
+            ) as cur:
+                raw_history = [{"role": r[0], "content": r[1]} for r in await cur.fetchall()]
+        except Exception:
+            raw_history = []
+
+    # ── Pré-Router & Triage Agent (Arquitetura de Triagem em Dois Estágios) ───
+    from backend.orchestration.pre_router import (
+        run_pre_router_triage,
+        build_modular_system_prompt_addition,
+        format_triage_mode_status,
+    )
+    t_triage_start = time.perf_counter()
+    intent_routing = await run_pre_router_triage(
+        db,
+        user_message,
+        user_id=user_id,
+        history=raw_history,
+        fallback_provider_id=provider_id,
+        fallback_model_id=model_id,
+    )
+    req_ctx.record_phase("pre_router_triage", t_triage_start)
+
     # ── Auto-Router Inteligente (Smart Intent Router) ────────────────
     if is_auto:
         from backend.ranking.smart_router import (
@@ -430,7 +459,6 @@ async def _run_turn(
 
         prev_model_id = None
         prev_intent = None
-        raw_history = []
         is_greeting = not attachment_ids and not req.get("web_search", False) and is_trivial_greeting(user_message)
 
         if conversation_id and not is_greeting:
@@ -448,11 +476,6 @@ async def _run_turn(
                 row = await cur.fetchone()
                 if row and row[0]:
                     prev_intent = row[0]
-            async with db.execute(
-                "SELECT role, content FROM messages WHERE conversation_id = ? ORDER BY created_at ASC",
-                (conversation_id,)
-            ) as cur:
-                raw_history = [{"role": r[0], "content": r[1]} for r in await cur.fetchall()]
 
         t_intent_start = time.perf_counter()
         intent_res = classify_intent(
@@ -464,8 +487,14 @@ async def _run_turn(
         )
         policy = await get_router_policy(db)
         # Nível de esforço configurado para o modo Auto na UI (padrão 'medium'):
-        # vira a base do esforço adaptativo (LIGHT → low, HEAVY → high).
+        # calibrado dinamicamente pelo Pré-Router se não fixado pelo usuário.
         _auto_effort_raw = req.get("reasoning_effort")
+        if not _auto_effort_raw and intent_routing:
+            if intent_routing.intent_tier == "trivial":
+                _auto_effort_raw = "low"
+            elif intent_routing.intent_tier == "deep_technical":
+                _auto_effort_raw = "high"
+
         auto_route_decision = await select_best_model(
             intent_res, policy, db,
             previous_model_id=prev_model_id,
@@ -474,6 +503,10 @@ async def _run_turn(
         req_ctx.record_phase("intent_classification", t_intent_start)
         model_id = auto_route_decision.chosen_model_id
         provider_id = auto_route_decision.provider_id
+
+        # Anexa metadados da triagem para telemetria e transparência
+        auto_route_decision.intent_tier = intent_routing.intent_tier
+        auto_route_decision.strict_constraints = intent_routing.strict_constraints
 
         # Emite evento auto_route_decision com transparência antes dos primeiros tokens
         await ws.send_json({"type": "auto_route_decision", **decision_to_dict(auto_route_decision)})
@@ -494,6 +527,23 @@ async def _run_turn(
     user_msg_id = await save_user_message(
         db, conversation_id, user_message, model_id, provider_id
     )
+
+    # Emite indicador visual dinâmico do modo de triagem no ExecutionSequence
+    if intent_routing and intent_routing.mode_status_pt:
+        triage_step_id = f"triage-{user_msg_id}"
+        triage_detail = ", ".join(intent_routing.strict_constraints) if intent_routing.strict_constraints else None
+        await ws.send_json({
+            "type": "process_step_start",
+            "id": triage_step_id,
+            "step_type": "think",
+            "title": intent_routing.mode_status_pt,
+            "detail": triage_detail,
+        })
+        await ws.send_json({
+            "type": "process_step_end",
+            "id": triage_step_id,
+            "status": "completed",
+        })
 
     # ── Job de imagem em paralelo para pedido misto ─────────────────
     if image_job_created and img_prompt:
@@ -552,6 +602,7 @@ async def _run_turn(
             ws, db, req, user_message, user_msg_id, user_id, conversation_id,
             intent_res=intent_res if is_auto else None,
             history=recent_history,
+            intent_routing=intent_routing,
         )
     )
 
@@ -619,6 +670,13 @@ async def _run_turn(
             "3. NÃO use formatação pesada (sem tabelas, sem listas com marcadores, sem blocos de código extensos e sem emojis repetitivos).\n"
             "4. Vá direto ao ponto central para permitir que a conversa continue dinâmica e sem pausas longas."
         )
+
+    # ── Modulação Dinâmica de System Prompt (Pré-Router Triage) ─────
+    if intent_routing:
+        from backend.orchestration.pre_router import build_modular_system_prompt_addition
+        modular_addition = build_modular_system_prompt_addition(intent_routing)
+        if modular_addition:
+            system_instruction += modular_addition
 
     # ── Ferramentas & APIs Gratuitas (Free APIs & Intent Detection) ──
     try:
@@ -959,6 +1017,7 @@ async def _resolve_web_search(
     ws, db, req, user_message, user_msg_id, user_id, conversation_id,
     intent_res: Any | None = None,
     history: list[dict] | None = None,
+    intent_routing: Any | None = None,
 ) -> tuple[bool, str, list, list, dict | None, list]:
     """Resolve e executa web search se aplicável.
 
@@ -979,22 +1038,29 @@ async def _resolve_web_search(
 
     if search_config and search_config["enabled"]:
         intent_val = getattr(getattr(intent_res, "intent", None), "value", None) or str(getattr(intent_res, "intent", ""))
+        is_trivial = bool(intent_routing and getattr(intent_routing, "intent_tier", None) == "trivial")
+
         if web_search_requested:
             should_do_search = True
             trigger_type = "manual"
-        elif intent_val == "web_research":
-            should_do_search = True
-            trigger_type = "auto_router"
-        elif search_config["heuristic_enabled"]:
-            should, _score = should_search(
-                user_message, search_config["heuristic_sensitivity"]
-            )
-            if should:
+        elif not is_trivial:
+            if intent_routing and getattr(intent_routing, "needs_web_search", False):
                 should_do_search = True
-                trigger_type = "heuristic"
+                trigger_type = "pre_router_triage"
+            elif intent_val == "web_research":
+                should_do_search = True
+                trigger_type = "auto_router"
+            elif search_config["heuristic_enabled"]:
+                should, _score = should_search(
+                    user_message, search_config["heuristic_sensitivity"]
+                )
+                if should:
+                    should_do_search = True
+                    trigger_type = "heuristic"
 
     if should_do_search:
-        web_search_query = user_message
+        pre_queries = getattr(intent_routing, "search_queries", None) if intent_routing else None
+        web_search_query = pre_queries[0] if pre_queries and len(pre_queries) > 0 else user_message
         await ws.send_json({"type": "search_start", "query": web_search_query})
 
         async def send_ws_event(evt: dict):
@@ -1021,7 +1087,10 @@ async def _resolve_web_search(
 
         try:
             agent_result = await execute_agentic_search(
-                user_message, db, search_config, on_event=send_ws_event, history=history
+                user_message, db, search_config,
+                on_event=send_ws_event,
+                history=history,
+                pre_planned_queries=pre_queries,
             )
             search_results = agent_result.get("search_results", [])
             scraped_pages = agent_result.get("scraped_pages", [])
@@ -1083,5 +1152,17 @@ async def _resolve_web_search(
             )
             search_results = []
             scraped_pages = []
+
+    # Prepend o passo de triagem na sequência para persistência consistente no histórico
+    if intent_routing and getattr(intent_routing, "mode_status_pt", None):
+        triage_id = f"triage-{user_msg_id}"
+        if not any(step.get("id") == triage_id for step in process_steps):
+            process_steps.insert(0, {
+                "id": triage_id,
+                "type": "think",
+                "title": intent_routing.mode_status_pt,
+                "detail": ", ".join(intent_routing.strict_constraints) if intent_routing.strict_constraints else None,
+                "status": "completed",
+            })
 
     return web_search_used, web_search_query, web_search_sources, search_results, search_config, process_steps

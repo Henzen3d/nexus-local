@@ -131,15 +131,19 @@ async def execute_agentic_search(
     search_config: dict,
     on_event: Callable[[dict], Awaitable[None]] | None = None,
     history: list[dict] | None = None,
+    pre_planned_queries: list[str] | None = None,
 ) -> dict:
     """
     Executa busca agêntica multi-passo:
-    1. Query Planner: decompõe em sub-consultas especializadas com histórico.
+    1. Query Planner: decompõe em sub-consultas especializadas com histórico ou usa queries pré-planejadas.
     2. Multi-Search: executa cada busca e emite eventos em tempo real.
     3. Deep Reader: faz scraping e extração de artigos/datas reais nos sites-alvo.
     """
-    # 1. Planejamento de consultas com resolução de contexto conversacional (R2)
-    planned_queries = plan_search_queries(user_message, history=history)
+    # 1. Planejamento de consultas (usa queries do Pré-Router se disponíveis)
+    if pre_planned_queries and len(pre_planned_queries) > 0:
+        planned_queries = [q.strip() for q in pre_planned_queries if q and q.strip()]
+    else:
+        planned_queries = plan_search_queries(user_message, history=history)
     logger.info(f"[agentic_search] Consultas planejadas ({len(planned_queries)}): {planned_queries}")
 
     all_results: list[dict] = []
