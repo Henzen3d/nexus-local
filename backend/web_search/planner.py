@@ -58,7 +58,38 @@ FILLER_WORDS = [
     r"\bo que foi\b",
     r"\búltimas notícias sobre\b",
     r"\bnotícias sobre\b",
+    r"\bquem\s+est[aá]\s+participando(?:\s+do|\s+da|\s+de|\s+dos|\s+das)?\b",
+    r"\bquem\s+s[aã]o\s+os\s+participantes(?:\s+do|\s+da|\s+de|\s+dos|\s+das)?\b",
+    r"\bquem\s+[eé]\s+o\s+(?:hoster|host|intermediador|apresentador|mediador)(?:\s+que\s+est[aá]\s+(?:intermediando|apresentando|mediando))?\b",
+    r"\bque\s+est[aá]\s+(?:intermediando|apresentando|mediando)\b",
+    r"\bhoje\s+dia\b",
+    r"\be\s+quem\s+[eé]\b",
 ]
+
+MONTHS_MAP = {
+    "1": "janeiro", "01": "janeiro",
+    "2": "fevereiro", "02": "fevereiro",
+    "3": "março", "03": "março",
+    "4": "abril", "04": "abril",
+    "5": "maio", "05": "maio",
+    "6": "junho", "06": "junho",
+    "7": "julho", "07": "julho",
+    "8": "agosto", "08": "agosto",
+    "9": "setembro", "09": "setembro",
+    "10": "outubro",
+    "11": "novembro",
+    "12": "dezembro",
+}
+
+
+def normalize_date_in_query(text: str) -> str:
+    """Normaliza datas DD/MM/YYYY para 'DD mês YYYY' para melhor assertividade em buscadores."""
+    def repl(m):
+        d, mon, y = m.group(1), m.group(2), m.group(3)
+        mon_name = MONTHS_MAP.get(mon, mon)
+        return f"{d} {mon_name} {y}"
+    return re.sub(r"\b(\d{1,2})/(\d{1,2})/(\d{4})\b", repl, text)
+
 
 DOMAIN_REGEX = re.compile(
     r"(?:https?://)?(?:www\.)?([a-zA-Z0-9-]+\.[a-zA-Z]{2,}(?:\.[a-zA-Z]{2,})?)(?:/[^\s,]*)?",
@@ -218,8 +249,61 @@ def plan_search_queries(user_message: str, history: list[dict] | None = None) ->
             if any(w in msg_lower for w in ["empresa", "negócio", "loja", "serviço", "serviços"]):
                 queries.append(f"{' '.join(brand_parts)} empresa")
 
-    # 3. Sub-query para tendências / temas secundários (ex: "tendências de postagens similares")
-    if any(w in msg_lower for w in ["tendência", "tendencias", "similar", "similares", "próximos meses", "2026", "2025"]):
+    # 3. Tratamento especializado para debates, sabatinas e eventos eleitorais/noticiosos
+    is_debate_or_political = any(
+        w in msg_lower for w in ["debate", "sabatina", "eleição", "eleições", "presidencial", "segundo turno", "2º turno", "1º turno"]
+    )
+    if is_debate_or_political:
+        broadcaster = ""
+        if "globo" in msg_lower or "tv globo" in msg_lower:
+            broadcaster = "Globo"
+        elif "band" in msg_lower:
+            broadcaster = "Band"
+        elif "sbt" in msg_lower:
+            broadcaster = "SBT"
+        elif "record" in msg_lower:
+            broadcaster = "Record"
+        elif "cnn" in msg_lower:
+            broadcaster = "CNN"
+
+        # Extração e normalização de data
+        date_match = re.search(r"\b(\d{1,2})/(\d{1,2})/(\d{4})\b", user_message)
+        date_str = ""
+        if date_match:
+            d, m, y = date_match.group(1), date_match.group(2), date_match.group(3)
+            mon_name = MONTHS_MAP.get(m, m)
+            date_str = f"{d} {mon_name} {y}"
+        else:
+            date_text_match = re.search(r"\b(\d{1,2}\s+de\s+[a-zçA-ZÇ]+\s+de\s+\d{4})\b", user_message)
+            if date_text_match:
+                date_str = date_text_match.group(1)
+            elif "2026" in msg_lower:
+                date_str = "2026"
+
+        core_parts = []
+        if "debate" in msg_lower:
+            core_parts.append("debate")
+        if "presidencial" in msg_lower or "presidente" in msg_lower:
+            core_parts.append("presidencial")
+        if broadcaster:
+            core_parts.append(broadcaster)
+        if date_str:
+            core_parts.append(date_str)
+
+        base_event_q = " ".join(core_parts) if core_parts else f"debate {broadcaster} {date_str}".strip()
+        if base_event_q:
+            queries.insert(0, base_event_q)
+
+        # Foco em participantes / candidatos
+        if any(w in msg_lower for w in ["participando", "participante", "participantes", "candidatos", "quem vai", "disputam"]):
+            queries.append(f"{base_event_q} participantes candidatos segundo turno".strip())
+
+        # Foco em mediador / apresentador / transmissão / regras
+        if any(w in msg_lower for w in ["hoster", "host", "intermediando", "mediador", "apresentador", "horário", "horario", "transmissão", "regras"]):
+            queries.append(f"debate {broadcaster} {date_str} mediador apresentador horario transmissao".strip())
+
+    # 4. Sub-query para tendências / postagens de blog (somente quando expressamente solicitado)
+    if any(w in msg_lower for w in ["tendência", "tendencias", "postagens similares"]):
         niche_terms = []
         if any(w in msg_lower for w in ["eletricista", "eletrica", "elétrica"]):
             niche_terms.append("eletricista")
@@ -230,11 +314,14 @@ def plan_search_queries(user_message: str, history: list[dict] | None = None) ->
         if any(w in msg_lower for w in ["marido de aluguel"]):
             niche_terms.append('"marido de aluguel"')
 
-        niche_str = " OR ".join(niche_terms) if niche_terms else "serviços residenciais manutenção"
-        queries.append(f'tendências conteúdo blog ({niche_str}) 2026')
+        if niche_terms:
+            niche_str = " OR ".join(niche_terms)
+            queries.append(f'tendências conteúdo blog ({niche_str}) 2026')
 
-    # 4. Query limpa do texto geral do usuário
+    # 5. Query limpa do texto geral do usuário com normalização de data
     cleaned = clean_query_text(user_message)
+    cleaned = normalize_date_in_query(cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
     if cleaned and cleaned not in queries:
         queries.append(cleaned[:120])
 

@@ -2598,6 +2598,45 @@ html[data-theme="dark"] .tok-tag { color: #fdba74; }
   display: block;
 }
 
+/* Card de Imagem Markdown (Padrão Editorial ChatGPT) */
+.markdown-image-card {
+  display: inline-flex;
+  flex-direction: column;
+  max-width: 220px;
+  margin: 8px 12px 10px 0;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  border: 1px solid var(--hairline);
+  background: var(--surface-soft);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  vertical-align: top;
+  transition: transform var(--motion-fast) var(--ease-standard), box-shadow var(--motion-fast) var(--ease-standard);
+}
+
+.markdown-image-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.1);
+}
+
+.markdown-image-card img.markdown-image {
+  width: 100%;
+  height: 140px;
+  object-fit: cover;
+  margin: 0;
+  border-radius: 0;
+  display: block;
+}
+
+.markdown-image-caption {
+  font-size: 11.5px;
+  color: var(--muted);
+  padding: 5px 8px;
+  text-align: center;
+  line-height: 1.3;
+  border-top: 1px solid var(--hairline);
+  background: var(--surface);
+}
+
 /* Horizontal rule */
 .assistant-response hr {
   border: none;

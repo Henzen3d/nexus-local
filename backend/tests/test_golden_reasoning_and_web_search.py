@@ -136,3 +136,39 @@ def test_thinking_tag_unclosed_safeguard():
     assert "</think>" in truncated_response
     # O bloco agora é válido para parsers
     assert truncated_response.endswith("</think>\n\n")
+
+
+def test_debate_query_planning_and_relevance():
+    """Valida planejamento e relevância para perguntas de debates presidenciais."""
+    user_prompt = "quem está participando do debate presidencial na globo hoje dia 23/10/2026? e quem é o hoster que está intermediando o debate?"
+    queries = plan_search_queries(user_prompt)
+
+    # 1. Queries focadas e limpas
+    assert len(queries) >= 2
+    combined_q = " ".join(queries).lower()
+    assert "debate" in combined_q
+    assert "globo" in combined_q
+    assert "23 outubro 2026" in combined_q or "2026" in combined_q
+
+    # 2. Nenhuma contaminação residencial ou predial
+    assert "serviços residenciais" not in combined_q
+    assert "manutenção" not in combined_q
+
+    # 3. Relevância: notícia do Terra/Globo/UOL deve ter pontuação alta (>30)
+    legit_news = {
+        "title": "Globo realiza debate presidencial entre Lula e Flávio Bolsonaro",
+        "snippet": "Encontro nesta sexta-feira (23/10/2026) terá mediação de César Tralli nos Estúdios Globo.",
+        "url": "https://www.terra.com.br/noticias/eleicoes/debate-globo-segundo-turno-2026",
+    }
+    score_news = score_search_result(user_prompt, legit_news)
+    assert score_news > 30.0
+
+    # 4. Blog predial ou de condomínio deve receber score 0.0
+    condo_blog = {
+        "title": "Tendências de manutenção predial em 2026",
+        "snippet": "Confira inovações tecnológicas para condomínios e manutenção residencial em 2026.",
+        "url": "https://tecniko.app/blog/tendencias-de-manutencao-predial-2026",
+    }
+    score_condo = score_search_result(user_prompt, condo_blog)
+    assert score_condo == 0.0
+

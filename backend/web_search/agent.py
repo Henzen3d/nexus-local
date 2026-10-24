@@ -52,7 +52,7 @@ def score_search_result(
     if target_domain and target_domain in url:
         score += 50.0
 
-    # 3. Identifica entidades de destaque no prompt corrente OU no histórico (R4)
+    # 3. Identifica entidades de destaque no prompt corrente OU no histórico (se anafórico)
     specific_entities = []
     msg_lower = user_message.lower()
     if "fix serviços" in msg_lower or "fix servicos" in msg_lower:
@@ -62,8 +62,15 @@ def score_search_result(
     if "blumenau" in msg_lower:
         specific_entities.append("blumenau")
 
-    # Injeta entidades resolvidas do histórico se houver
-    if history:
+    from backend.web_search.planner import ANAPHORIC_PRONOUNS_REGEX
+    has_anaphora = bool(ANAPHORIC_PRONOUNS_REGEX.search(user_message))
+    has_missing_entity = (
+        any(w in msg_lower for w in ["telefone", "whatsapp", "contato", "endereço", "endereco", "site oficial", "horário", "horario"])
+        and not any(w in msg_lower for w in ["globo", "debate", "google", "empresa", "loja"])
+    )
+
+    # Injeta entidades resolvidas do histórico SOMENTE se o prompt for anafórico ou dependente de contexto
+    if (has_anaphora or has_missing_entity) and history:
         for ent in extract_context_entities(history):
             e_lower = ent.lower()
             if "fix" in e_lower and "fix" not in specific_entities:
@@ -81,6 +88,26 @@ def score_search_result(
         if not has_entity_match:
             return 0.0
         score += 25.0
+
+    # Bônus para veículos de imprensa e portais de jornalismo para perguntas noticiosas / políticas
+    NEWS_DOMAINS = {
+        "globo.com", "g1.globo.com", "oglobo.globo.com", "uol.com.br", "noticias.uol.com.br",
+        "folha.uol.com.br", "estadao.com.br", "cnnbrasil.com.br", "terra.com.br",
+        "metropoles.com", "poder360.com.br", "infomoney.com.br", "cartacapital.com.br",
+        "bbc.com", "reuters.com", "agenciabrasil.ebc.com.br", "tse.jus.br", "diariolocal.com.br"
+    }
+    is_news_or_politics = any(
+        w in msg_lower for w in ["debate", "eleição", "eleições", "presidente", "presidencial", "política", "politica", "notícia", "noticia", "jornal"]
+    )
+    if is_news_or_politics:
+        if any(nd in url for nd in NEWS_DOMAINS):
+            score += 35.0
+        # Penaliza e descarta blogs de nicho residencial/predial irrelevantes para política/eleições
+        UNRELATED_TOPIC_DOMAINS = {
+            "tecniko.app", "cantinhofamiliar.com.br", "porter.com.br", "seicondf.org.br"
+        }
+        if any(bd in url for bd in UNRELATED_TOPIC_DOMAINS):
+            return 0.0
 
     # 4. Extrai termos de conteúdo do prompt do usuário
     msg_words = re.findall(r"\b[a-zA-ZÀ-ÿ0-9_-]{3,}\b", msg_lower)

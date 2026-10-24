@@ -47,4 +47,41 @@ export const markdownComponents: Components = {
       </div>
     )
   },
+  img({ src, alt, ...props }) {
+    if (!src) return null
+    return (
+      <span className="markdown-image-card">
+        <img
+          src={src}
+          alt={alt || ''}
+          loading="lazy"
+          className="markdown-image"
+          {...props}
+          onError={(e) => {
+            const target = e.currentTarget
+            const parent = target.parentElement
+            if (parent && parent.classList.contains('markdown-image-card')) {
+              parent.style.display = 'none'
+            } else {
+              target.style.display = 'none'
+            }
+          }}
+        />
+        {alt && <span className="markdown-image-caption">{alt}</span>}
+      </span>
+    )
+  },
+  a({ href, children, ...props }) {
+    return (
+      <a
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="markdown-link"
+        {...props}
+      >
+        {children}
+      </a>
+    )
+  },
 }
