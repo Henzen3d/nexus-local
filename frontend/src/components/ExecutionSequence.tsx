@@ -1,5 +1,17 @@
 import { useEffect, useState } from 'react'
-import { Brain, Check, ChevronRight, CircleAlert, Globe2, LoaderCircle, Search, Wrench } from 'lucide-react'
+import {
+  Brain,
+  Check,
+  ChevronRight,
+  CircleAlert,
+  ExternalLink,
+  Globe2,
+  LoaderCircle,
+  RefreshCw,
+  Search,
+  Wrench,
+  Zap,
+} from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { ProcessStep } from '../types'
 
@@ -18,10 +30,73 @@ function formatDuration(ms: number): string {
   return minutes > 0 ? `${minutes}m ${remainder}s` : `${seconds}s`
 }
 
+function extractDomain(url: string): string {
+  try {
+    const parsed = new URL(url)
+    return parsed.hostname.replace(/^www\./i, '')
+  } catch {
+    const clean = url.replace(/^https?:\/\//i, '').replace(/^www\./i, '').split('/')[0]
+    return clean || url
+  }
+}
+
+type StepKind = 'triage' | 'search' | 'navigate' | 'think' | 'failover' | 'tool'
+
+function getStepKind(step: ProcessStep): StepKind {
+  if (step.id.startsWith('triage-')) return 'triage'
+  if (step.id.startsWith('failover-')) return 'failover'
+  if (step.type === 'search') return 'search'
+  if (step.type === 'navigate') return 'navigate'
+  if (step.type === 'think') return 'think'
+  return 'tool'
+}
+
+function getNavigateInfo(step: ProcessStep) {
+  const rawUrl = (step.detail && /^https?:\/\//i.test(step.detail))
+    ? step.detail
+    : (step.title && /^https?:\/\//i.test(step.title.replace(/^Lendo conteúdo de\s*/i, ''))
+        ? step.title.replace(/^Lendo conteúdo de\s*/i, '')
+        : '')
+  const domain = rawUrl ? extractDomain(rawUrl) : ''
+
+  let displayTitle = step.title || ''
+  if (/^Lendo conteúdo de\s*https?:\/\//i.test(displayTitle) || displayTitle === rawUrl) {
+    try {
+      const parsed = new URL(rawUrl)
+      const pathPart = decodeURIComponent(parsed.pathname).replace(/^\/|\/$/g, '')
+      displayTitle = pathPart ? `${domain}/${pathPart}` : domain
+    } catch {
+      displayTitle = domain || rawUrl
+    }
+  }
+
+  return { title: displayTitle, domain, url: rawUrl }
+}
+
+function getSearchInfo(step: ProcessStep, fallbackAction: string) {
+  let query = (step.detail || '').trim()
+  let action = step.title || fallbackAction
+
+  const match = action.match(/^Pesquisado(?:\s+na\s+web)?\s+por:\s*(.+)$/i)
+  if (match) {
+    if (!query) query = match[1].trim()
+    action = 'Pesquisado na web'
+  } else if (/^Pesquisando(?:\s+na\s+web)?/i.test(action)) {
+    action = fallbackAction
+  }
+
+  return { action, query }
+}
+
+function formatTriageTitle(title: string): string {
+  return title.replace(/^[⚡\s]+/, '').trim()
+}
+
 export function ExecutionSequence({ steps, isWorking, startedAt, durationMs, thinkingContent }: Props) {
   const { t } = useTranslation()
   const [isOpen, setIsOpen] = useState(isWorking)
-  const [elapsedMs, setElapsedMs] = useState(() => startedAt ? Date.now() - startedAt : 0)
+  const [isReasoningOpen, setIsReasoningOpen] = useState(() => Boolean(isWorking && thinkingContent))
+  const [elapsedMs, setElapsedMs] = useState(() => (startedAt ? Date.now() - startedAt : 0))
 
   useEffect(() => {
     if (!isWorking) {
@@ -29,6 +104,7 @@ export function ExecutionSequence({ steps, isWorking, startedAt, durationMs, thi
       return
     }
     setIsOpen(true)
+    setIsReasoningOpen(true)
     const update = () => setElapsedMs(startedAt ? Date.now() - startedAt : 0)
     update()
     const timer = window.setInterval(update, 1000)
@@ -59,36 +135,66 @@ export function ExecutionSequence({ steps, isWorking, startedAt, durationMs, thi
         ? t('chat.researchComplete')
         : t('chat.processComplete'))
 
-  const iconFor = (type: ProcessStep['type']) => {
-    if (type === 'think') return thinkingContent ? <Brain size={14} aria-hidden="true" /> : <LoaderCircle className="execution-sequence-step-spinner" size={14} aria-hidden="true" />
-    if (type === 'search') return <Search size={14} aria-hidden="true" />
-    if (type === 'navigate') return <Globe2 size={14} aria-hidden="true" />
-    return <Wrench size={14} aria-hidden="true" />
-  }
-
-  const getStepTitle = (step: ProcessStep) => {
-    // 1. Passos com título customizado (triagem "⚡ Modo...", failover "Failover...", etc.) nunca são sobrescritos
-    if (step.id.startsWith('triage-') || step.id.startsWith('failover-')) {
-      return step.title
-    }
-    // 2. Se o passo tem título e não é o placeholder 'thinking', respeite o título
-    if (step.title && step.id !== 'thinking') {
-      return step.title
-    }
-    // 3. Passo de raciocínio
-    if (step.type === 'think') {
-      return thinkingContent
-        ? t('chat.processThinking', { defaultValue: 'Raciocinando' })
-        : (step.title || t('chat.generatingResponse', { defaultValue: 'Gerando resposta…' }))
-    }
-    return step.title
-  }
-
   // Identifica o passo único designado para exibir o raciocínio (<think>).
-  // Garante que o texto de raciocínio seja renderizado no MÁXIMO UMA VEZ em toda a timeline.
   const designatedThinkingStepId = visibleSteps.find(
     (s) => s.id === 'thinking' || (s.type === 'think' && !s.id.startsWith('triage-') && !s.id.startsWith('failover-'))
   )?.id
+
+  const renderStepBadge = (kind: StepKind, status: ProcessStep['status']) => {
+    if (status === 'running') {
+      return (
+        <span className="execution-step-badge is-running" aria-label={t('chat.processRunning')}>
+          <LoaderCircle size={13} className="execution-sequence-step-spinner" />
+        </span>
+      )
+    }
+    if (status === 'failed') {
+      return (
+        <span className="execution-step-badge is-failed" aria-label={t('chat.processFailed')}>
+          <CircleAlert size={13} />
+        </span>
+      )
+    }
+    switch (kind) {
+      case 'triage':
+        return (
+          <span className="execution-step-badge is-triage" aria-label="Modo">
+            <Zap size={13} />
+          </span>
+        )
+      case 'search':
+        return (
+          <span className="execution-step-badge is-search" aria-label={t('chat.processSearching')}>
+            <Search size={13} />
+          </span>
+        )
+      case 'navigate':
+        return (
+          <span className="execution-step-badge is-navigate" aria-label={t('chat.processReading', { defaultValue: 'Navegação' })}>
+            <Globe2 size={13} />
+          </span>
+        )
+      case 'think':
+        return (
+          <span className="execution-step-badge is-think" aria-label={t('chat.processThinking', { defaultValue: 'Raciocínio' })}>
+            <Brain size={13} />
+          </span>
+        )
+      case 'failover':
+        return (
+          <span className="execution-step-badge is-failover" aria-label="Failover">
+            <RefreshCw size={13} />
+          </span>
+        )
+      case 'tool':
+      default:
+        return (
+          <span className="execution-step-badge is-tool" aria-label="Ferramenta">
+            <Wrench size={13} />
+          </span>
+        )
+    }
+  }
 
   return (
     <section className={`execution-sequence${isWorking ? ' is-working' : ''}`} aria-label={t('chat.processLabel')}>
@@ -98,55 +204,186 @@ export function ExecutionSequence({ steps, isWorking, startedAt, durationMs, thi
         onClick={() => setIsOpen((open) => !open)}
         aria-expanded={isOpen}
       >
-        {isWorking ? <LoaderCircle className="execution-sequence-live-icon" size={14} aria-hidden="true" /> : <span className="execution-sequence-summary-icon" aria-hidden="true">⚡</span>}
+        {isWorking ? (
+          <LoaderCircle className="execution-sequence-live-icon" size={13} aria-hidden="true" />
+        ) : (
+          <Zap className="execution-sequence-summary-icon" size={13} aria-hidden="true" />
+        )}
         <span>{isWorking ? t('chat.processWorking', { time: formatDuration(elapsedMs) }) : summary}</span>
-        <ChevronRight className={`execution-sequence-chevron${isOpen ? ' is-open' : ''}`} size={14} aria-hidden="true" />
+        <ChevronRight className={`execution-sequence-chevron${isOpen ? ' is-open' : ''}`} size={13} aria-hidden="true" />
       </button>
 
       <div className={`execution-sequence-content${isOpen ? ' is-open' : ''}`}>
-        <div className="execution-sequence-tree">
-          {visibleSteps.map((step) => (
-            <div className={`execution-sequence-step is-${step.status}`} key={step.id}>
-              <span className="execution-sequence-step-icon">
-                {step.status === 'running'
-                  ? <LoaderCircle className="execution-sequence-step-spinner" size={14} aria-label={t('chat.processRunning')} />
-                  : step.status === 'failed'
-                    ? <CircleAlert size={14} aria-label={t('chat.processFailed')} />
-                    : step.id.startsWith('triage-')
-                      ? <Check size={13} aria-hidden="true" />
-                      : step.type === 'think'
-                        ? iconFor(step.type)
-                        : <Check size={13} aria-hidden="true" />}
-              </span>
-              <div className="execution-sequence-step-copy">
-                <div className="execution-sequence-step-title">{getStepTitle(step)}</div>
-                {step.detail && (
-                  <div className="execution-sequence-step-detail">
-                    {step.type === 'navigate' && /^https?:\/\//i.test(step.detail)
-                      ? <a href={step.detail} target="_blank" rel="noopener noreferrer">{step.detail}</a>
-                      : step.detail}
+        <div className="execution-sequence-card">
+          <div className="execution-sequence-tree">
+            {visibleSteps.map((step, idx) => {
+              const kind = getStepKind(step)
+              const isDesignatedThinking = Boolean(thinkingContent && step.id === designatedThinkingStepId)
+
+              return (
+                <div
+                  className={`execution-step-row is-${kind} is-${step.status}`}
+                  key={step.id || `step-${idx}`}
+                >
+                  {renderStepBadge(kind, step.status)}
+
+                  <div className="execution-step-body">
+                    {kind === 'navigate' ? (
+                      (() => {
+                        const nav = getNavigateInfo(step)
+                        const content = (
+                          <>
+                            <span className="execution-source-title" title={nav.title || nav.url}>
+                              {nav.title || nav.domain || nav.url}
+                            </span>
+                            {nav.domain && (
+                              <span className="execution-source-badge">
+                                <span>{nav.domain}</span>
+                                <ExternalLink size={10} aria-hidden="true" />
+                              </span>
+                            )}
+                          </>
+                        )
+                        return nav.url ? (
+                          <a
+                            href={nav.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="execution-source-link"
+                            title={nav.url}
+                          >
+                            {content}
+                          </a>
+                        ) : (
+                          <div className="execution-step-main">{content}</div>
+                        )
+                      })()
+                    ) : kind === 'search' ? (
+                      (() => {
+                        const search = getSearchInfo(step, t('chat.processSearching'))
+                        return (
+                          <div className="execution-step-main">
+                            <div className="execution-step-text">
+                              <span className="execution-step-label">{search.action}</span>
+                              {search.query && (
+                                <>
+                                  {': '}
+                                  <span className="execution-step-query">"{search.query}"</span>
+                                </>
+                              )}
+                            </div>
+                            {step.status === 'completed' && (
+                              <Check size={12} className="execution-step-check" aria-hidden="true" />
+                            )}
+                          </div>
+                        )
+                      })()
+                    ) : kind === 'triage' ? (
+                      <div className="execution-step-main">
+                        <span className="execution-step-text execution-step-query">
+                          {formatTriageTitle(step.title)}
+                        </span>
+                        {step.status === 'completed' && (
+                          <Check size={12} className="execution-step-check" aria-hidden="true" />
+                        )}
+                      </div>
+                    ) : kind === 'think' ? (
+                      <div className="execution-step-think-block">
+                        <div className="execution-step-main">
+                          <span className="execution-step-text font-medium">
+                            {step.status === 'completed'
+                              ? t('chat.reasoningDone', { defaultValue: 'Raciocínio concluído' })
+                              : (step.title || t('chat.processThinking', { defaultValue: 'Raciocinando…' }))}
+                          </span>
+                          {isDesignatedThinking && (
+                            <button
+                              type="button"
+                              className="execution-reasoning-toggle-btn"
+                              onClick={() => setIsReasoningOpen((prev) => !prev)}
+                              aria-expanded={isReasoningOpen}
+                            >
+                              <span>
+                                {isReasoningOpen ? t('chat.collapseThinking') : t('chat.expandThinking')}
+                              </span>
+                              {thinkingContent && (
+                                <span className="execution-reasoning-count">
+                                  {thinkingContent.length > 1000
+                                    ? `${(thinkingContent.length / 1000).toFixed(1)}k chars`
+                                    : `${thinkingContent.length} chars`}
+                                </span>
+                              )}
+                              <ChevronRight
+                                size={12}
+                                className={`execution-chevron-mini${isReasoningOpen ? ' is-open' : ''}`}
+                                aria-hidden="true"
+                              />
+                            </button>
+                          )}
+                        </div>
+                        {isDesignatedThinking && isReasoningOpen && (
+                          <div className="execution-sequence-reasoning">{thinkingContent}</div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="execution-step-main">
+                        <div className="execution-step-text">{step.title}</div>
+                        {step.detail && <div className="execution-step-detail">{step.detail}</div>}
+                        {step.status === 'completed' && (
+                          <Check size={12} className="execution-step-check" aria-hidden="true" />
+                        )}
+                      </div>
+                    )}
+
+                    {step.subSteps && step.subSteps.length > 0 && (
+                      <ul className="execution-sequence-substeps">
+                        {step.subSteps.map((sub, sIdx) => (
+                          <li key={`${step.id}-${sIdx}`}>{sub}</li>
+                        ))}
+                      </ul>
+                    )}
                   </div>
-                )}
-                {step.subSteps && step.subSteps.length > 0 && (
-                  <ul className="execution-sequence-substeps">
-                    {step.subSteps.map((subStep, index) => <li key={`${step.id}-${index}`}>{subStep}</li>)}
-                  </ul>
-                )}
-                {thinkingContent && step.id === designatedThinkingStepId && (
-                  <div className="execution-sequence-reasoning">{thinkingContent}</div>
-                )}
+                </div>
+              )
+            })}
+
+            {thinkingContent && !designatedThinkingStepId && (
+              <div className="execution-step-row is-think is-completed">
+                {renderStepBadge('think', 'completed')}
+                <div className="execution-step-body">
+                  <div className="execution-step-think-block">
+                    <div className="execution-step-main">
+                      <span className="execution-step-text font-medium">
+                        {t('chat.reasoningDone', { defaultValue: 'Raciocínio concluído' })}
+                      </span>
+                      <button
+                        type="button"
+                        className="execution-reasoning-toggle-btn"
+                        onClick={() => setIsReasoningOpen((prev) => !prev)}
+                        aria-expanded={isReasoningOpen}
+                      >
+                        <span>
+                          {isReasoningOpen ? t('chat.collapseThinking') : t('chat.expandThinking')}
+                        </span>
+                        <span className="execution-reasoning-count">
+                          {thinkingContent.length > 1000
+                            ? `${(thinkingContent.length / 1000).toFixed(1)}k chars`
+                            : `${thinkingContent.length} chars`}
+                        </span>
+                        <ChevronRight
+                          size={12}
+                          className={`execution-chevron-mini${isReasoningOpen ? ' is-open' : ''}`}
+                          aria-hidden="true"
+                        />
+                      </button>
+                    </div>
+                    {isReasoningOpen && (
+                      <div className="execution-sequence-reasoning">{thinkingContent}</div>
+                    )}
+                  </div>
+                </div>
               </div>
-            </div>
-          ))}
-          {thinkingContent && !designatedThinkingStepId && (
-            <div className="execution-sequence-step is-completed">
-              <span className="execution-sequence-step-icon">{iconFor('think')}</span>
-              <div className="execution-sequence-step-copy">
-                <div className="execution-sequence-step-title">{t('chat.processThinking', { defaultValue: 'Raciocinando' })}</div>
-                <div className="execution-sequence-reasoning">{thinkingContent}</div>
-              </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
     </section>
