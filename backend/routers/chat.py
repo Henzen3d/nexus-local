@@ -646,11 +646,14 @@ async def _run_turn(
 
     # ── Build context (memory + project RAG) ────────────────────────
     t_rag_start = time.perf_counter()
+    t_memory_start = time.perf_counter()
     user_mem_text, context_fingerprint = await build_memory_context(
         user, conversation_id, user_message, use_memory, provider_id, model_id,
         request_context=req_ctx,
     )
+    req_ctx.record_phase("memory_context", t_memory_start)
 
+    t_project_start = time.perf_counter()
     active_project_id, system_instruction = await resolve_project_context(
         db, ws, conversation_id, request_project_id, user, model_id,
         provider_id, user_message, history, project_context_debug,
@@ -658,6 +661,7 @@ async def _run_turn(
         request_context=req_ctx,
         now=turn_now,
     )
+    req_ctx.record_phase("project_context", t_project_start)
     req_ctx.record_phase("rag_memory", t_rag_start)
 
     # B03/Q4: Namespace semantic cache by project, attachments, and web search context

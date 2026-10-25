@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import os
 import re
+import asyncio
 from dataclasses import dataclass, field
 from typing import Optional, Any
 
@@ -363,15 +364,68 @@ async def assemble_project_context(
     if not ready_files:
         mode = "full"
 
-    # 4. Montagem das seções
-    # Manifesto compacto de arquivos sempre presente
-    manifest_md = build_file_manifest(project_files)
-
-    file_hits: list[dict] = []
-    chat_hits: list[dict] = []
     file_content_block = ""
     trimmed: list[str] = []
     budget_notes: list[str] = []
+
+    async def retrieve_file_context() -> list[dict]:
+        if mode != "rag" or not ready_files:
+            return []
+
+        top_k = project.get("retrieval_top_k") or DEFAULT_TOP_K
+        threshold = project.get("retrieval_threshold") or DEFAULT_RETRIEVAL_THRESHOLD
+        p_name = project.get("name") or ""
+        p_desc = project.get("description") or ""
+        enriched_query = query or ""
+        if p_name or p_desc:
+            enriched_query = f"{p_name}: {p_desc} — {query}".strip()
+
+        try:
+            hits = await search_file_chunks(
+                project_id,
+                enriched_query,
+                top_k=top_k,
+                threshold=threshold,
+                request_context=request_context,
+            )
+            if not hits and threshold > 0.28:
+                hits = await search_file_chunks(
+                    project_id,
+                    enriched_query,
+                    top_k=top_k,
+                    threshold=max(0.28, threshold * 0.55),
+                    request_context=request_context,
+                )
+            return hits
+        except Exception as e:
+            logger.error("[context_assembler] RAG file retrieval error:", exc_info=e)
+            return []
+
+    async def retrieve_chat_context() -> list[dict]:
+        if not query or not query.strip():
+            return []
+        try:
+            return await retrieve_related_chats(
+                query,
+                project_id,
+                exclude_conversation_id=exclude_conversation_id,
+                top_k=3,
+                threshold=0.38,
+                request_context=request_context,
+            )
+        except Exception as e:
+            logger.warning("[context_assembler] Related chats retrieval warning: %s", e)
+            return []
+
+    # RAG de arquivos e conversas irmãs não dependem um do outro.
+    file_hits, chat_hits = await asyncio.gather(
+        retrieve_file_context(),
+        retrieve_chat_context(),
+    )
+
+    # 4. Montagem das seções
+    # Manifesto compacto de arquivos sempre presente
+    manifest_md = build_file_manifest(project_files)
 
     if mode == "full" and ready_files:
         # MODO INTEGRAL: Injeta todo o conteúdo extraído de cada arquivo pronto
@@ -388,35 +442,6 @@ async def assemble_project_context(
         )
     elif mode == "rag" and ready_files:
         # MODO RECUPERAÇÃO (RAG): Busca vetorial híbrida enriquecida
-        top_k = project.get("retrieval_top_k") or DEFAULT_TOP_K
-        threshold = project.get("retrieval_threshold") or DEFAULT_RETRIEVAL_THRESHOLD
-
-        # Enriquece a query com título e descrição do projeto para maior precisão
-        p_name = project.get("name") or ""
-        p_desc = project.get("description") or ""
-        enriched_query = query or ""
-        if p_name or p_desc:
-            enriched_query = f"{p_name}: {p_desc} — {query}".strip()
-
-        try:
-            file_hits = await search_file_chunks(
-                project_id,
-                enriched_query,
-                top_k=top_k,
-                threshold=threshold,
-                request_context=request_context,
-            )
-            if not file_hits and threshold > 0.28:
-                file_hits = await search_file_chunks(
-                    project_id,
-                    enriched_query,
-                    top_k=top_k,
-                    threshold=max(0.28, threshold * 0.55),
-                    request_context=request_context,
-                )
-        except Exception as e:
-            logger.error("[context_assembler] RAG file retrieval error:", exc_info=e)
-
         # Sub-orçamento para chunks RAG
         rag_tokens_budget = min(files_budget, DEFAULT_MAX_FILE_RAG_TOKENS)
         file_hits, f_trunc = fit_chunks_to_token_budget(file_hits, rag_tokens_budget)
@@ -443,22 +468,9 @@ async def assemble_project_context(
                 "mas o acervo completo está listado no Índice acima."
             )
 
-    # Busca de conversas irmãs (se houver query)
-    if query and query.strip():
-        try:
-            chat_hits = await retrieve_related_chats(
-                query,
-                project_id,
-                exclude_conversation_id=exclude_conversation_id,
-                top_k=3,
-                threshold=0.38,
-                request_context=request_context,
-            )
-            chat_hits, c_trunc = fit_chunks_to_token_budget(chat_hits, DEFAULT_MAX_CHAT_RAG_TOKENS)
-            if c_trunc:
-                trimmed.append("chats:fitted")
-        except Exception as e:
-            logger.warning("[context_assembler] Related chats retrieval warning: %s", e)
+    chat_hits, c_trunc = fit_chunks_to_token_budget(chat_hits, DEFAULT_MAX_CHAT_RAG_TOKENS)
+    if c_trunc:
+        trimmed.append("chats:fitted")
 
     chat_content_block = ""
     if chat_hits:

@@ -270,6 +270,7 @@ interface AppState {
   favoriteConversation: (id: string) => Promise<void>
   loadAllArtifacts: (search?: string) => Promise<void>
   appendToken: (token: string) => void
+  flushStreamDraft: () => void
   clearStreamDraft: () => void
   beginProcess: (thinkingTitle?: string) => void
   startProcessStep: (step: ProcessStep) => void
@@ -468,7 +469,50 @@ function upsertUiBlock(env: UiEnvelope | null, block: ProgressBlock): UiEnvelope
 }
 
 
-export const useStore = create<AppState>((set, get) => ({
+export const useStore = create<AppState>((set, get) => {
+  let pendingStreamTokens: string[] = []
+  let cancelScheduledStreamFlush: (() => void) | null = null
+
+  const commitPendingStreamTokens = () => {
+    cancelScheduledStreamFlush = null
+    if (!pendingStreamTokens.length) return
+
+    const content = pendingStreamTokens.join('')
+    pendingStreamTokens = []
+    set((s) => ({ streamingContent: s.streamingContent + content }))
+  }
+
+  const flushPendingStreamTokens = () => {
+    cancelScheduledStreamFlush?.()
+    commitPendingStreamTokens()
+  }
+
+  const discardPendingStreamTokens = () => {
+    cancelScheduledStreamFlush?.()
+    cancelScheduledStreamFlush = null
+    pendingStreamTokens = []
+  }
+
+  const scheduleStreamFlush = () => {
+    if (cancelScheduledStreamFlush) return
+
+    if (typeof requestAnimationFrame === 'function') {
+      const frameId = requestAnimationFrame(() => {
+        cancelScheduledStreamFlush = null
+        commitPendingStreamTokens()
+      })
+      cancelScheduledStreamFlush = () => cancelAnimationFrame(frameId)
+      return
+    }
+
+    const timeoutId = setTimeout(() => {
+      cancelScheduledStreamFlush = null
+      commitPendingStreamTokens()
+    }, 16)
+    cancelScheduledStreamFlush = () => clearTimeout(timeoutId)
+  }
+
+  return ({
   token: typeof window !== 'undefined' ? localStorage.getItem('nexuslocal_token') : null,
   user: typeof window !== 'undefined' ? (() => {
     try {
@@ -541,6 +585,7 @@ export const useStore = create<AppState>((set, get) => ({
       .catch((err) => console.warn('[profile] hydrate failed', err))
   },
   logout: () => {
+    discardPendingStreamTokens()
     localStorage.removeItem('nexuslocal_token')
     localStorage.removeItem('nexuslocal_user')
     // Legacy global keys (must not survive for the next account)
@@ -674,6 +719,7 @@ export const useStore = create<AppState>((set, get) => ({
 
   loadConversation: async (id: string) => {
     const conv = await api.getConversation(id)
+    discardPendingStreamTokens()
     set((s) => {
       // Abrir a conversa limpa o badge ✦ de insight não visto
       const { [id]: _seen, ...restBadges } = s.conversationsWithInsight
@@ -704,6 +750,7 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   startNewConversation: () => {
+    discardPendingStreamTokens()
     set({
       activeConversationId: null,
       activeConversation: null,
@@ -1329,10 +1376,17 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   appendToken: (token: string) => {
-    set((s) => ({ streamingContent: s.streamingContent + token }))
+    if (!token) return
+    pendingStreamTokens.push(token)
+    scheduleStreamFlush()
+  },
+
+  flushStreamDraft: () => {
+    flushPendingStreamTokens()
   },
 
   clearStreamDraft: () => {
+    discardPendingStreamTokens()
     set({ streamingContent: '', streamingUiBlocks: null })
   },
 
@@ -1397,6 +1451,7 @@ export const useStore = create<AppState>((set, get) => ({
     outcome?: string,
     attemptCount?: number
   ) => {
+    flushPendingStreamTokens()
     const { streamingContent, selectedModelId, models, lastAutoRouteDecision, processSteps, processStartedAt, streamingUiBlocks } = get()
     const resolvedModelId = lastAutoRouteDecision?.chosen_model_id || selectedModelId
     const activeModel = models.find((m) => m.id === resolvedModelId)
@@ -1831,6 +1886,7 @@ export const useStore = create<AppState>((set, get) => ({
 
   deleteConversation: async (id: string) => {
     await api.deleteConversation(id)
+    if (get().activeConversationId === id) discardPendingStreamTokens()
     set((s) => ({
       conversations: s.conversations.filter((c) => c.id !== id),
       ...(s.activeConversationId === id
@@ -2073,4 +2129,5 @@ export const useStore = create<AppState>((set, get) => ({
       console.error('[artifacts] falha ao carregar galeria de artefatos:', e)
     }
   },
-}))
+  })
+})

@@ -572,6 +572,11 @@ export function useChat() {
     const s = useStore.getState()
     if (!s.isStreaming && !s.fusionActive) return
 
+    // Inclui tokens ainda agrupados no próximo frame antes de decidir se há
+    // uma resposta parcial para preservar.
+    s.flushStreamDraft()
+    const current = useStore.getState()
+
     // Interrompe imediatamente a geração no backend fechando o socket ativo;
     // o handler de onclose reconecta automaticamente com estado limpo.
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
@@ -582,9 +587,9 @@ export function useChat() {
       }
     }
 
-    if (s.streamingContent.trim()) {
+    if (current.streamingContent.trim()) {
       // Preserva a resposta parcial gerada até o momento da parada
-      s.finalizeStream(
+      current.finalizeStream(
         `msg-stop-${Date.now()}`,
         undefined,
         undefined,
@@ -595,7 +600,7 @@ export function useChat() {
         undefined,
         undefined,
         undefined,
-        s.processStartedAt ? Date.now() - s.processStartedAt : undefined
+        current.processStartedAt ? Date.now() - current.processStartedAt : undefined
       )
     } else {
       // Nenhum texto gerado ainda — cancela os estados de ocupado e reseta passos

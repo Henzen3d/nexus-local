@@ -9,6 +9,7 @@ Responsabilidades extraídas de chat.py (itens 9-10 da Fase 5 do AUDIT-REPORT):
 from __future__ import annotations
 
 import logging
+import asyncio
 from typing import Any, List
 
 from backend.logging_config import get_logger
@@ -255,11 +256,13 @@ async def build_memory_context(
                     extra={"conversation_id": conversation_id, "user_id": user_id},
                 )
 
-            mem_rows = await get_relevant_memory(
-                user_id, user_message or "", limit=30, request_context=request_context
+            mem_rows, global_sum, project_tag = await asyncio.gather(
+                get_relevant_memory(
+                    user_id, user_message or "", limit=30, request_context=request_context
+                ),
+                get_memory_summary(user_id, "global", ""),
+                get_conversation_project_tag(conversation_id),
             )
-            global_sum = await get_memory_summary(user_id, "global", "")
-            project_tag = await get_conversation_project_tag(conversation_id)
             if project_tag:
                 project_sum = await get_memory_summary(
                     user_id, "project", project_tag.lower()
