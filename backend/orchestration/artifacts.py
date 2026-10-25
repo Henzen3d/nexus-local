@@ -204,7 +204,7 @@ def detect_artifacts(content: str, user_message: str = "") -> list[dict]:
                     "content": body,
                 })
         elif lang not in _EXCLUDED_LANGS_FROM_CODE:
-            if line_count >= 15:
+            if line_count >= 8:
                 fallback_title = f"{lang.upper() if lang else 'CODE'} Code"
                 artifacts.append({
                     "type": "code",

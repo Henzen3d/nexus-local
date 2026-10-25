@@ -38,21 +38,42 @@ DEFAULT_MIN_COMMIT_CHARS = int(os.getenv("FAILOVER_MIN_COMMIT_CHARS", "24"))
 DEFAULT_MAX_PRECOMMIT_HOLD_MS = float(os.getenv("FAILOVER_MAX_PRECOMMIT_HOLD_MS", "450.0"))
 
 
-def build_cascade_error_summary(cascade_history: list[dict], main_msg: str) -> str:
+def _build_cascade_debug_log(cascade_history: list[dict], main_msg: str) -> str:
+    """Log técnico completo do failover cascade — usado APENAS para logger do backend."""
     if not cascade_history:
         return main_msg
-    if len(cascade_history) == 1:
-        entry = cascade_history[0]
-        return f"{main_msg}\n\n• {entry.get('model_id', 'Modelo')} ({entry.get('provider_id', '')}): {entry.get('detail', 'Falha na resposta')}"
-
-    lines = [f"{main_msg}\n\nSequência de tentativas no failover ({len(cascade_history)} modelos):"]
+    lines = [f"{main_msg} | Cascade ({len(cascade_history)} tentativas):"]
     for i, entry in enumerate(cascade_history, 1):
-        m_id = entry.get("model_id", "Desconhecido")
+        m_id = entry.get("model_id", "?")
         p_id = entry.get("provider_id", "")
         detail = entry.get("detail", "Sem detalhes")
         prov_str = f" via {p_id}" if p_id else ""
-        lines.append(f"{i}. {m_id}{prov_str}: {detail}")
+        lines.append(f"  {i}. {m_id}{prov_str}: {detail}")
     return "\n".join(lines)
+
+
+def build_cascade_error_summary(cascade_history: list[dict], main_msg: str) -> str:
+    """Mensagem humanizada para o USUÁRIO — nunca expõe model IDs, provider IDs ou erros técnicos."""
+    if not cascade_history:
+        return main_msg
+    n = len(cascade_history)
+    if n == 1:
+        return (
+            f"{main_msg}\n\n"
+            "Tentei um modelo alternativo, mas ele estava temporariamente indisponível. "
+            "Tente novamente em alguns instantes."
+        )
+    if n <= 3:
+        return (
+            f"{main_msg}\n\n"
+            f"Tentei {n} modelos alternativos, mas todos estavam temporariamente indisponíveis. "
+            "Tente novamente em alguns instantes."
+        )
+    return (
+        f"{main_msg}\n\n"
+        f"Tentei {n} modelos alternativos sem sucesso. Os servidores podem estar "
+        "sobrecarregados — tente novamente em alguns minutos."
+    )
 
 
 async def send_and_persist_error(
@@ -64,6 +85,13 @@ async def send_and_persist_error(
     current_model_id: str | None = None,
     current_provider_id: str | None = None,
 ):
+    # Log técnico completo para diagnóstico do backend (nunca enviado ao frontend)
+    if cascade_history:
+        logger.warning(
+            _build_cascade_debug_log(cascade_history, main_msg),
+            extra={"conversation_id": conversation_id},
+        )
+
     # Fix failover: limpa qualquer rascunho de stream residual no frontend antes
     # de entregar o erro, evitando texto parcial "travado" na bolha.
     try:
@@ -75,9 +103,9 @@ async def send_and_persist_error(
     try:
         await ws.send_json({
             "type": "error",
-            "message": main_msg,
-            "details": summary,
-            "cascade": cascade_history,
+            "message": summary,
+            "retry_suggested": True,
+            "attempts": len(cascade_history),
         })
     except Exception:
         pass
@@ -543,11 +571,38 @@ async def stream_from_llm(
                     stream_iter = provider.stream_chat(model=model_name, messages=history, **stream_kwargs).__aiter__()
 
                     # Aguarda o primeiro token com prazo limite de TTFT (clamped ao restante do orçamento de tempo)
+                    # Heartbeat visual a cada 3s para manter o frontend vivo durante esperas longas
                     try:
-                        first_token = await asyncio.wait_for(
-                            stream_iter.__anext__(),
-                            timeout=stream_ttft_timeout,
-                        )
+                        _heartbeat_task = None
+                        async def _ttft_heartbeat():
+                            """Envia pulsos visuais ao frontend durante espera do TTFT."""
+                            await asyncio.sleep(3.0)
+                            while True:
+                                try:
+                                    await ws.send_json({
+                                        "type": "process_step_update",
+                                        "id": f"model-connect-{attempt}",
+                                        "title": "Conectando ao modelo...",
+                                        "status": "working",
+                                    })
+                                except Exception:
+                                    break
+                                await asyncio.sleep(3.0)
+
+                        _heartbeat_task = asyncio.create_task(_ttft_heartbeat())
+                        try:
+                            first_token = await asyncio.wait_for(
+                                stream_iter.__anext__(),
+                                timeout=stream_ttft_timeout,
+                            )
+                        finally:
+                            if _heartbeat_task:
+                                _heartbeat_task.cancel()
+                                try:
+                                    await _heartbeat_task
+                                except (asyncio.CancelledError, Exception):
+                                    pass
+
                         first_token_received = True
                         if request_context and hasattr(request_context, "record_phase"):
                             request_context.record_phase("llm_ttfb", stream_start_time)

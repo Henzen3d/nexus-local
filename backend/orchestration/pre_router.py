@@ -371,8 +371,9 @@ def build_modular_system_prompt_addition(routing: IntentRouting) -> str:
     if routing.intent_tier == "trivial":
         blocks.append(
             "[MODO CONVERSA CASUAL / TRIVIAL]\n"
-            "- Responda em no máximo 1 a 2 frases diretas, naturais e sem rodeios.\n"
-            "- Não adicione explicações extras, listas ou introduções."
+            "- Responda em 1 a 3 frases com tom humano e leve — como responderia um amigo num chat.\n"
+            "- Pode usar humor sutil ou empatia quando natural. Sem listas, sem headers, sem formatação.\n"
+            "- Se o usuário só cumprimentou, responda o cumprimento e pergunte brevemente como pode ajudar."
         )
     elif routing.intent_tier == "specific_lookup":
         blocks.append(

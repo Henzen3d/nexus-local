@@ -123,6 +123,7 @@
     "generating": "Generando...",
     "generatingResponse": "Generando respuesta...",
     "processLabel": "Pasos de la respuesta",
+    "processPreparing": "Preparando respuesta...",
     "processThinking": "Razonando",
     "processSearching": "Buscando en la web",
     "processReading": "Leyendo página",

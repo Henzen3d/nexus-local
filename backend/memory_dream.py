@@ -365,7 +365,8 @@ async def analyze_facts(
 _THINK_BLOCK = re.compile(r"<think>(.*?)</think>", re.DOTALL)
 
 
-def _slice_json_object(text: str) -> str:
+def _slice_first_valid_json(text: str) -> str:
+    """Extrai o primeiro objeto ou array JSON válido, mesmo que haja texto extra ou cercas."""
     text = (text or "").strip()
     if text.startswith("```"):
         lines = text.splitlines()
@@ -374,6 +375,16 @@ def _slice_json_object(text: str) -> str:
         else:
             text = re.sub(r"^```(?:json)?\s*", "", text)
             text = re.sub(r"\s*```$", "", text).strip()
+
+    decoder = json.JSONDecoder()
+    for i, ch in enumerate(text):
+        if ch in ("{", "["):
+            try:
+                _, end_idx = decoder.raw_decode(text[i:])
+                return text[i:i + end_idx]
+            except json.JSONDecodeError:
+                continue
+
     start = text.find("{")
     end = text.rfind("}")
     if start != -1 and end > start:
@@ -382,17 +393,25 @@ def _slice_json_object(text: str) -> str:
 
 
 def extract_json_payload(raw: str) -> str:
-    """Tira <think> e cerca markdown. Agnes 2.5 manda o JSON depois do raciocínio."""
+    """Tira <think> e cerca markdown. Suporta modelos que incluem texto extra ou pensamentos."""
     text = raw or ""
     insides = _THINK_BLOCK.findall(text)
     outside = _THINK_BLOCK.sub("", text)
     outside = re.sub(r"</?think>", "", outside)
-    outside_json = _slice_json_object(outside)
+    outside_json = _slice_first_valid_json(outside)
     if outside_json.startswith("{") or outside_json.startswith("["):
-        return outside_json
-    inside_json = _slice_json_object("\n".join(insides))
+        try:
+            json.loads(outside_json)
+            return outside_json
+        except json.JSONDecodeError:
+            pass
+    inside_json = _slice_first_valid_json("\n".join(insides))
     if inside_json.startswith("{") or inside_json.startswith("["):
-        return inside_json
+        try:
+            json.loads(inside_json)
+            return inside_json
+        except json.JSONDecodeError:
+            pass
     return outside_json
 
 

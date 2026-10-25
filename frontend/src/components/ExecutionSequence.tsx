@@ -121,7 +121,20 @@ export function ExecutionSequence({ steps, isWorking, startedAt, durationMs, thi
     return true
   })
 
-  if (!visibleSteps.length && !thinkingContent) return null
+  // Indicador pulsante quando isWorking mas nenhum step visível ainda
+  if (!visibleSteps.length && !thinkingContent) {
+    if (isWorking) {
+      return (
+        <section className="execution-sequence is-working" aria-label={t('chat.processLabel')}>
+          <div className="execution-sequence-preparing">
+            <LoaderCircle size={13} className="execution-sequence-step-spinner" aria-hidden="true" />
+            <span>{t('chat.processPreparing', { defaultValue: 'Preparando resposta...' })}</span>
+          </div>
+        </section>
+      )
+    }
+    return null
+  }
 
   const totalTime = durationMs && durationMs > 0
     ? formatDuration(durationMs)

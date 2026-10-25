@@ -116,6 +116,13 @@ def test_json_only_inside_think_is_extracted():
     assert parsed["summary_of_changes"] == "dentro"
 
 
+def test_json_with_trailing_extra_data_is_extracted():
+    raw = '```json\n{"summary_of_changes":"sucesso","operations":[{"action":"keep","fact_id":"f1"}]}\n```\nExtra data: commentary after json'
+    parsed = json.loads(extract_json_payload(raw))
+    assert parsed["summary_of_changes"] == "sucesso"
+    assert parsed["operations"][0]["fact_id"] == "f1"
+
+
 @pytest.mark.asyncio
 async def test_sse_keepalive_while_model_is_silent():
     queue: asyncio.Queue = asyncio.Queue()

@@ -18,9 +18,7 @@ def test_build_cascade_error_summary():
     ]
     summary = build_cascade_error_summary(cascade_history, "Tempo limite de resposta esgotado após tentativas de failover.")
     assert "Tempo limite de resposta esgotado após tentativas de failover." in summary
-    assert "Sequência de tentativas no failover (4 modelos):" in summary
-    assert "1. orcarouter/deepseek/deepseek-v4.1-flash-1017 via orcarouter: Cota/crédito esgotado (402)" in summary
-    assert "4. gemini/gemini-3.8-flash via gemini: Tempo limite de resposta excedido (15s)" in summary
+    assert "Tentei 4 modelos alternativos sem sucesso" in summary
 
 
 @pytest.mark.asyncio
@@ -80,9 +78,10 @@ async def test_send_and_persist_error(tmp_path):
     assert sent_ws[0]["type"] == "stream_clear"
     msg = sent_ws[1]
     assert msg["type"] == "error"
-    assert msg["message"] == "Tempo limite de resposta esgotado."
-    assert "402 Out of credits" in msg["details"]
-    assert len(msg["cascade"]) == 2
+    assert "Tempo limite de resposta esgotado." in msg["message"]
+    assert "Tentei 2 modelos alternativos" in msg["message"]
+    assert msg.get("retry_suggested") is True
+    assert msg.get("attempts") == 2
 
     # 2. Checa persistência no SQLite com kind='error'
     async with db.execute("SELECT role, content, kind, model_id FROM messages WHERE conversation_id = 'conv-123'") as cur:
@@ -91,7 +90,8 @@ async def test_send_and_persist_error(tmp_path):
         role, content, kind, model_id = row
         assert role == "assistant"
         assert kind == "error"
-        assert "402 Out of credits" in content
+        assert "Tempo limite de resposta esgotado." in content
+        assert "Tentei 2 modelos alternativos" in content
         assert model_id == "model-b"
 
     await db.close()

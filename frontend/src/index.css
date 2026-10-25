@@ -2334,6 +2334,24 @@ html[data-chat-font="mono"] {
   overflow-wrap: anywhere;
 }
 
+/* Indicador pulsante de "Preparando resposta..." (Rodada 3) */
+.execution-sequence-preparing {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  font-size: 0.82rem;
+  color: var(--ink-muted, #888);
+  animation: execution-sequence-enter 180ms ease-out both;
+}
+.execution-sequence-preparing span {
+  animation: exec-pulse 1.8s ease-in-out infinite;
+}
+@keyframes exec-pulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+
 @keyframes execution-sequence-spin {
   to { transform: rotate(360deg); }
 }
