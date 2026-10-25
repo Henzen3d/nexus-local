@@ -327,6 +327,7 @@ CREATE TABLE IF NOT EXISTS model_usage_log (
 );
 CREATE INDEX IF NOT EXISTS idx_usage_model ON model_usage_log(model_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_usage_user  ON model_usage_log(user_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_usage_conv  ON model_usage_log(conversation_id, was_auto_routed, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS free_model_registry (
     id              TEXT PRIMARY KEY,
@@ -861,11 +862,13 @@ async def claim_global_provider_keys(db) -> None:
 
 
 async def get_db():
-    db = await aiosqlite.connect(DB_PATH)
+    # Configure the busy wait in sqlite3.connect itself; this avoids a separate
+    # PRAGMA round-trip on every request/socket connection.
+    db = await aiosqlite.connect(DB_PATH, timeout=10.0)
     await db.execute("PRAGMA foreign_keys = ON")
-    await db.execute("PRAGMA busy_timeout = 10000")
     await db.execute("PRAGMA synchronous = NORMAL")
-    await db.commit()
+    await db.execute("PRAGMA cache_size = -64000")
+    await db.execute("PRAGMA temp_store = MEMORY")
     return db
 
 
@@ -1378,6 +1381,7 @@ async def init_db():
 
         try:
             await db.execute("CREATE INDEX IF NOT EXISTS idx_usage_auto ON model_usage_log(was_auto_routed, route_intent)")
+            await db.execute("CREATE INDEX IF NOT EXISTS idx_usage_conv ON model_usage_log(conversation_id, was_auto_routed, created_at DESC)")
             await db.commit()
         except Exception:
             pass
@@ -3577,6 +3581,50 @@ async def get_memory_summary(user_id: str, scope: str = "global", scope_ref: str
         ) as cur:
             row = await cur.fetchone()
         return dict(row) if row else None
+
+
+async def get_memory_context_metadata(
+    user_id: str,
+    conversation_id: str,
+) -> tuple[dict | None, str | None, dict | None]:
+    """Load global/project summaries and the conversation project tag together.
+
+    These reads are all needed to compose one memory prompt. Sharing one short-
+    lived connection avoids opening a separate SQLite connection per lookup.
+    """
+    async with aiosqlite.connect(DB_PATH, timeout=10.0) as db:
+        db.row_factory = aiosqlite.Row
+
+        async with db.execute(
+            """SELECT id, user_id, scope, scope_ref, summary_md, updated_at
+               FROM user_memory_summaries
+               WHERE user_id = ? AND scope = 'global' AND scope_ref = ''""",
+            (user_id,),
+        ) as cur:
+            row = await cur.fetchone()
+        global_summary = dict(row) if row else None
+
+        async with db.execute(
+            "SELECT project_tag FROM conversations WHERE id = ?",
+            (conversation_id,),
+        ) as cur:
+            tag_row = await cur.fetchone()
+        project_tag = None
+        if tag_row and tag_row[0] and str(tag_row[0]).strip():
+            project_tag = str(tag_row[0]).strip()
+
+        project_summary = None
+        if project_tag:
+            async with db.execute(
+                """SELECT id, user_id, scope, scope_ref, summary_md, updated_at
+                   FROM user_memory_summaries
+                   WHERE user_id = ? AND scope = 'project' AND scope_ref = ?""",
+                (user_id, project_tag.lower()),
+            ) as cur:
+                row = await cur.fetchone()
+            project_summary = dict(row) if row else None
+
+    return global_summary, project_tag, project_summary
 
 
 async def list_memory_summaries(user_id: str, scope: str | None = None) -> list[dict]:

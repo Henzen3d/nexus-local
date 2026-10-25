@@ -8,8 +8,9 @@ Responsabilidades extraídas de chat.py (itens 9-10 da Fase 5 do AUDIT-REPORT):
 
 from __future__ import annotations
 
-import logging
 import asyncio
+import logging
+import time
 from typing import Any, List
 
 from backend.logging_config import get_logger
@@ -17,8 +18,7 @@ from backend.memory import build_memory_block, build_memory_fingerprint
 from backend.database import (
     get_user_profile,
     get_relevant_memory,
-    get_memory_summary,
-    get_conversation_project_tag,
+    get_memory_context_metadata,
 )
 
 import re
@@ -256,17 +256,16 @@ async def build_memory_context(
                     extra={"conversation_id": conversation_id, "user_id": user_id},
                 )
 
-            mem_rows, global_sum, project_tag = await asyncio.gather(
+            t_mem_gather = time.perf_counter()
+            mem_rows, memory_metadata = await asyncio.gather(
                 get_relevant_memory(
                     user_id, user_message or "", limit=30, request_context=request_context
                 ),
-                get_memory_summary(user_id, "global", ""),
-                get_conversation_project_tag(conversation_id),
+                get_memory_context_metadata(user_id, conversation_id),
             )
-            if project_tag:
-                project_sum = await get_memory_summary(
-                    user_id, "project", project_tag.lower()
-                )
+            if request_context and hasattr(request_context, "record_phase"):
+                request_context.record_phase("db_memory_metadata", t_mem_gather)
+            global_sum, _project_tag, project_sum = memory_metadata
 
         # Sanitização de privacidade para provedores externos (Princípio de Minimização de Dados)
         is_local = (provider_id or "").lower() in ("ollama", "lmstudio", "local")

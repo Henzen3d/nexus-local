@@ -32,7 +32,9 @@ logger = get_logger(__name__)
 
 _MAX_FAILOVER_ATTEMPTS = int(os.getenv("FAILOVER_MAX_ATTEMPTS", "7"))
 DEFAULT_FAILOVER_TOTAL_BUDGET_SECONDS = 45.0
-DEFAULT_STREAM_TTFT_TIMEOUT_SECONDS = 25.0
+DEFAULT_STREAM_TTFT_TIMEOUT_SECONDS = float(
+    os.getenv("FAILOVER_STREAM_TTFT_TIMEOUT_SECONDS") or "25.0"
+)
 MIN_RETRY_BUDGET_SECONDS = 3.0
 DEFAULT_MIN_COMMIT_CHARS = int(os.getenv("FAILOVER_MIN_COMMIT_CHARS", "24"))
 DEFAULT_MAX_PRECOMMIT_HOLD_MS = float(os.getenv("FAILOVER_MAX_PRECOMMIT_HOLD_MS", "450.0"))
@@ -164,6 +166,26 @@ async def get_failover_total_budget(db) -> float:
     return DEFAULT_FAILOVER_TOTAL_BUDGET_SECONDS
 
 
+async def get_failover_stream_ttft_timeout(db) -> float:
+    """Carrega o tempo limite de TTFT para o stream inicial da tabela meta ou env."""
+    import os
+    env_ttft = os.getenv("FAILOVER_STREAM_TTFT_TIMEOUT_SECONDS")
+    if env_ttft:
+        try:
+            return float(env_ttft)
+        except ValueError:
+            pass
+    if db:
+        try:
+            async with db.execute("SELECT value FROM meta WHERE key = 'stream_ttft_timeout_sec'") as cur:
+                row = await cur.fetchone()
+            if row and row[0]:
+                return float(row[0])
+        except Exception:
+            pass
+    return DEFAULT_STREAM_TTFT_TIMEOUT_SECONDS
+
+
 async def check_cache(
     model_id: str,
     history: list[dict],
@@ -247,8 +269,10 @@ async def stream_from_llm(
     stream_started = False
     next_failover_reason = "rate_limit"
     tokens_flushed_to_client = False
+    client_ttft_recorded = False
 
     total_budget = await get_failover_total_budget(db)
+    base_stream_ttft_timeout = await get_failover_stream_ttft_timeout(db)
     turn_start_time = time.monotonic()
     cascade_history: list[dict] = []
 
@@ -530,10 +554,11 @@ async def stream_from_llm(
                 )
                 return None
 
-            max_ttft = DEFAULT_STREAM_TTFT_TIMEOUT_SECONDS if attempt == 1 else min(15.0, max(5.0, remaining_budget * 0.5))
+            max_ttft = base_stream_ttft_timeout if attempt == 1 else min(15.0, max(5.0, remaining_budget * 0.5))
             stream_ttft_timeout = max(0.5, min(max_ttft, remaining_budget))
             stream_start_time = time.perf_counter()
             first_token_received = False
+            first_token_elapsed_ms: float | None = None
             is_committed = False
             precommit_buffer: list[str] = []
             precommit_chars = 0
@@ -542,13 +567,19 @@ async def stream_from_llm(
             last_flush = time.perf_counter()
 
             async def flush_tokens():
-                nonlocal token_buffer, last_flush, tokens_flushed_to_client
+                nonlocal token_buffer, last_flush, tokens_flushed_to_client, client_ttft_recorded
                 if token_buffer:
                     batch_text = "".join(token_buffer)
                     await ws.send_json({"type": "token", "content": batch_text})
                     token_buffer.clear()
                     last_flush = time.perf_counter()
                     tokens_flushed_to_client = True
+                    if not client_ttft_recorded:
+                        if request_context and hasattr(request_context, "record_phase"):
+                            turn_started_at = getattr(request_context, "started_at", None)
+                            if turn_started_at is not None:
+                                request_context.record_phase("client_ttft", turn_started_at)
+                        client_ttft_recorded = True
 
             def commit_if_needed(force: bool = False):
                 nonlocal is_committed, precommit_buffer, precommit_chars, token_buffer, candidate_response
@@ -566,6 +597,7 @@ async def stream_from_llm(
             from backend.ranking.admission import admission_controller
             admission_acquired = admission_controller.acquire(current_model_id, current_provider_id)
             stream_iter = None
+            pending_next_token: asyncio.Task | None = None
             try:
                 try:
                     stream_iter = provider.stream_chat(model=model_name, messages=history, **stream_kwargs).__aiter__()
@@ -604,8 +636,12 @@ async def stream_from_llm(
                                     pass
 
                         first_token_received = True
+                        first_token_elapsed_ms = (time.perf_counter() - stream_start_time) * 1000.0
                         if request_context and hasattr(request_context, "record_phase"):
                             request_context.record_phase("llm_ttfb", stream_start_time)
+                            request_context.record_phase(
+                                f"llm_ttft_attempt_{attempt}", stream_start_time
+                            )
                         token_str = str(first_token)
                         precommit_buffer.append(token_str)
                         precommit_chars += len(token_str)
@@ -613,17 +649,24 @@ async def stream_from_llm(
                         if is_committed:
                             await flush_tokens()
                     except (asyncio.TimeoutError, TimeoutError):
+                        if request_context and hasattr(request_context, "record_phase"):
+                            request_context.record_phase(
+                                f"llm_ttft_attempt_{attempt}", stream_start_time
+                            )
                         logger.warning(
                             "TTFT Timeout (%.1fs excedido) no provedor '%s' (modelo '%s'). Acionando failover cascade precoce.",
                             stream_ttft_timeout, current_provider_id, current_model_id,
                         )
                         from backend.ranking.health_registry import health_registry
                         health_registry.record_failure(current_model_id, current_provider_id, "TIMEOUT", stage="pre_stream")
+                        ttft_fail_ms = (time.perf_counter() - stream_start_time) * 1000.0
                         cascade_history.append({
                             "attempt": attempt,
                             "model_id": current_model_id,
                             "provider_id": current_provider_id,
                             "detail": f"Tempo limite de resposta excedido ({int(stream_ttft_timeout)}s)",
+                            "latency_ms": round(ttft_fail_ms, 2),
+                            "reason": "ttft_timeout",
                         })
                         if attempt > 1:
                             try:
@@ -655,16 +698,48 @@ async def stream_from_llm(
                     # Consome o restante do stream com micro-lotes de coalescência (~35ms ou 8 tokens)
                     # e guarda timeout entre tokens para não travar conexões abandonadas
                     while True:
-                        try:
-                            token = await asyncio.wait_for(stream_iter.__anext__(), timeout=35.0)
-                        except StopAsyncIteration:
-                            break
-                        except (asyncio.TimeoutError, TimeoutError):
+                        wait_timeout = 35.0
+                        precommit_deadline_wait = False
+                        if not is_committed and precommit_buffer:
+                            elapsed_ms = (time.perf_counter() - stream_start_time) * 1000.0
+                            hold_remaining = max(
+                                0.0,
+                                (DEFAULT_MAX_PRECOMMIT_HOLD_MS - elapsed_ms) / 1000.0,
+                            )
+                            if hold_remaining <= 0.0:
+                                commit_if_needed(force=True)
+                                await flush_tokens()
+                                continue
+                            wait_timeout = min(wait_timeout, hold_remaining)
+                            precommit_deadline_wait = wait_timeout < 35.0
+                        if pending_next_token is None:
+                            pending_next_token = asyncio.create_task(stream_iter.__anext__())
+                        done, _ = await asyncio.wait(
+                            {pending_next_token}, timeout=wait_timeout
+                        )
+                        if not done:
+                            if precommit_deadline_wait and not is_committed:
+                                commit_if_needed(force=True)
+                                await flush_tokens()
+                                continue
                             logger.warning(
                                 "Timeout entre tokens (35s) no provedor '%s' (modelo '%s'). Finalizando stream.",
                                 current_provider_id, current_model_id,
                             )
                             break
+                        try:
+                            token = pending_next_token.result()
+                        except StopAsyncIteration:
+                            pending_next_token = None
+                            break
+                        except (asyncio.TimeoutError, TimeoutError):
+                            pending_next_token = None
+                            logger.warning(
+                                "Timeout entre tokens (35s) no provedor '%s' (modelo '%s'). Finalizando stream.",
+                                current_provider_id, current_model_id,
+                            )
+                            break
+                        pending_next_token = None
 
                         token_str = str(token)
                         if not is_committed:
@@ -688,6 +763,12 @@ async def stream_from_llm(
                         commit_if_needed(force=True)
                     await flush_tokens()
             finally:
+                if pending_next_token is not None and not pending_next_token.done():
+                    pending_next_token.cancel()
+                    try:
+                        await pending_next_token
+                    except (asyncio.CancelledError, Exception):
+                        pass
                 if not is_committed:
                     # UX C2: buffer do candidato descartado integralmente se falhou antes do commit
                     precommit_buffer.clear()
@@ -795,13 +876,15 @@ async def stream_from_llm(
 
             full_response = candidate_response
             from backend.ranking.health_registry import health_registry
-            ttft_measured_ms = (time.perf_counter() - stream_start_time) * 1000.0 if first_token_received else None
+            ttft_measured_ms = first_token_elapsed_ms if first_token_received else None
             health_registry.record_success(current_model_id, current_provider_id, ttft_ms=ttft_measured_ms)
 
             await mark_model_success(current_model_id, db)
             await record_request(current_model_id, db)
             success = True
             if attempt > 1:
+                if request_context and hasattr(request_context, "record_phase"):
+                    request_context.record_phase("failover_cascade", turn_start_time)
                 try:
                     await ws.send_json({
                         "type": "process_step_end",
@@ -1100,6 +1183,8 @@ async def stream_from_llm(
         "spliced": False,
         "outcome": "success",
         "attempt_count": attempt,
+        "ttft_ms": round(first_token_elapsed_ms, 2) if first_token_elapsed_ms else None,
+        "cascade_history": cascade_history,
     }
     return StreamLlmResult(full_response, model_id, provider_id, failover_meta=failover_meta)
 

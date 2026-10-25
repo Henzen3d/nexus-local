@@ -556,9 +556,11 @@ async def _run_turn(
         turn.start(conversation_id)
 
     # ── Save user message ───────────────────────────────────────────
+    t_save_user = time.perf_counter()
     user_msg_id = await save_user_message(
         db, conversation_id, user_message, model_id, provider_id
     )
+    req_ctx.record_phase("db_save_user_msg", t_save_user)
     turn_ref["user_msg_id"] = user_msg_id
 
     # Emite indicador visual dinâmico do modo de triagem no ExecutionSequence
@@ -636,6 +638,7 @@ async def _run_turn(
         )
     req_ctx.record_phase("web_search_wait", t_web_wait)
 
+    t_load_hist = time.perf_counter()
     history, relay_used, relay_model_id = await load_history(
         db, conversation_id, user_msg_id, attachments_by_msg,
         extracted_text_by_id, model_supports_vision,
@@ -643,6 +646,7 @@ async def _run_turn(
         search_config, format_search_results, user_id,
         user_query=user_message, model_id=model_id, provider_id=provider_id,
     )
+    req_ctx.record_phase("db_load_history", t_load_hist)
 
     # ── Build context (memory + project RAG) ────────────────────────
     t_rag_start = time.perf_counter()
@@ -926,10 +930,12 @@ async def _run_turn(
         })
         return
 
+    t_save_asst = time.perf_counter()
     assistant_msg_id = await save_assistant_message(
         db, conversation_id, full_response, model_id, provider_id,
         relay_used, relay_model_id,
     )
+    req_ctx.record_phase("db_save_assistant_msg", t_save_asst)
 
     if ui_envelope:
         await save_ui_blocks(db, assistant_msg_id, ui_envelope, source="model")

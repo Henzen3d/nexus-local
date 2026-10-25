@@ -210,7 +210,7 @@ async def test_controlled_clock_stops_four_slow_candidates_at_budget(setup_a3_db
 
         # Deve haver exatamente UM erro terminal
         assert len(error_messages) == 1, f"Deveria haver exatamente 1 erro terminal, mas houve: {error_messages}"
-        assert error_messages[0]["message"] == "Tempo limite de resposta esgotado após tentativas de failover."
+        assert "Tempo limite de resposta esgotado após tentativas de failover." in error_messages[0]["message"]
 
         # O tempo virtual decorrido total deve ter sido respeitado
         total_elapsed = current_virtual_time - 100.0
@@ -272,4 +272,4 @@ async def test_ttft_timeout_stops_early_when_budget_depleted(setup_a3_db):
         error_messages = [m for m in sent_messages if m.get("type") == "error"]
 
         assert len(error_messages) == 1
-        assert error_messages[0]["message"] == "Tempo limite de resposta esgotado após tentativas de failover."
+        assert "Tempo limite de resposta esgotado após tentativas de failover." in error_messages[0]["message"]
