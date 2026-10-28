@@ -12,6 +12,15 @@ class OwnProviderKey(BaseModel):
     account_id: str | None = None
 
 
+@router.get("")
+async def get_my_account(current_user: dict = Depends(get_current_user)):
+    return {
+        "id": current_user["id"],
+        "username": current_user["username"],
+        "role": current_user.get("role", "user"),
+    }
+
+
 @router.put("/providers/{provider_id}/key")
 async def set_own_provider_key(
     provider_id: str,

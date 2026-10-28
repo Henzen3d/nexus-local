@@ -1830,6 +1830,22 @@ export const useStore = create<AppState>((set, get) => {
     const { token, user } = get()
     if (!token || !user?.id) return
     const userId = user.id
+
+    // Sincroniza role atualizado do servidor (ex: promoção a admin)
+    try {
+      const me = await api.getMyAccount()
+      if (me && me.role) {
+        const currentUser = get().user
+        if (currentUser && currentUser.role !== me.role) {
+          const updatedUser = { ...currentUser, role: me.role }
+          localStorage.setItem('nexuslocal_user', JSON.stringify(updatedUser))
+          set({ user: updatedUser })
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+
     // F4.3.3 — preferências do assistente proativo vêm do servidor (fonte da verdade,
     // vale em qualquer dispositivo); o useProactive só limpa no logout.
     void get().loadProactiveSettings()

@@ -56,7 +56,7 @@ def main():
         role = "admin"
     else:
         user_id, role = row
-        # Atualizar senha
+        # Atualizar senha mantendo o role existente
         cursor.execute(
             "UPDATE users SET password_hash = ? WHERE id = ?",
             (hashed, user_id)

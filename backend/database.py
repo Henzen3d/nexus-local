@@ -59,6 +59,20 @@ CREATE TABLE IF NOT EXISTS user_api_keys (
     PRIMARY KEY (user_id, provider_id)
 );
 
+CREATE TABLE IF NOT EXISTS user_provider_settings (
+    user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    provider_id TEXT NOT NULL REFERENCES providers(id) ON DELETE CASCADE,
+    enabled     INTEGER NOT NULL DEFAULT 1,
+    PRIMARY KEY (user_id, provider_id)
+);
+
+CREATE TABLE IF NOT EXISTS user_model_settings (
+    user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    model_id    TEXT NOT NULL REFERENCES models(id) ON DELETE CASCADE,
+    enabled     INTEGER NOT NULL DEFAULT 1,
+    PRIMARY KEY (user_id, model_id)
+);
+
 CREATE TABLE IF NOT EXISTS conversations (
     id          TEXT PRIMARY KEY,
     user_id     TEXT REFERENCES users(id) ON DELETE CASCADE,
@@ -968,17 +982,44 @@ async def init_db():
             """)
             await db.commit()
 
-        # Garante que pelo menos um admin exista se houver usuários cadastrados
+        # Garante que o usuário 'osmar' seja administrador e 'admin' seja usuário comum conforme solicitado
+        await db.execute("UPDATE users SET role = 'admin' WHERE LOWER(username) = 'osmar'")
+        await db.execute("UPDATE users SET role = 'user' WHERE LOWER(username) = 'admin'")
+        await db.commit()
+
+        # Garante que pelo menos um admin exista se houver usuários cadastrados (e osmar não estiver cadastrado)
         async with db.execute("SELECT COUNT(id) FROM users WHERE role = 'admin'") as cur:
             row = await cur.fetchone()
             admin_count = row[0] if row else 0
 
         if admin_count == 0:
-            async with db.execute("SELECT id FROM users ORDER BY created_at ASC LIMIT 1") as cur:
+            async with db.execute("SELECT id FROM users WHERE LOWER(username) != 'admin' ORDER BY created_at ASC LIMIT 1") as cur:
                 user_row = await cur.fetchone()
             if user_row:
                 await db.execute("UPDATE users SET role = 'admin' WHERE id = ?", (user_row[0],))
                 await db.commit()
+
+        # Tabelas de preferências de provedores e modelos por usuário
+        try:
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS user_provider_settings (
+                    user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    provider_id TEXT NOT NULL REFERENCES providers(id) ON DELETE CASCADE,
+                    enabled     INTEGER NOT NULL DEFAULT 1,
+                    PRIMARY KEY (user_id, provider_id)
+                )
+            """)
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS user_model_settings (
+                    user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    model_id    TEXT NOT NULL REFERENCES models(id) ON DELETE CASCADE,
+                    enabled     INTEGER NOT NULL DEFAULT 1,
+                    PRIMARY KEY (user_id, model_id)
+                )
+            """)
+            await db.commit()
+        except Exception as e:
+            logger.warning(f"user provider/model settings migration warning: {e}")
 
         # Incremental migration check for artifact_group_id
         try:

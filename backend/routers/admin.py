@@ -278,15 +278,16 @@ async def list_providers(current_user: dict = Depends(get_current_user)):
         async with db.execute(
             """SELECT p.id, p.name, p.base_url,
                       CASE WHEN k.api_key IS NOT NULL AND TRIM(k.api_key) != '' THEN 1 ELSE 0 END as has_personal_key,
-                      p.enabled, p.is_free,
+                      COALESCE(ups.enabled, p.enabled) as enabled, p.is_free,
                       NULLIF(TRIM(k.api_key), '') as active_key,
                       0 as share_admin_key,
                       k.account_id
                FROM providers p
                LEFT JOIN user_api_keys k ON k.provider_id = p.id AND k.user_id = ?
+               LEFT JOIN user_provider_settings ups ON ups.provider_id = p.id AND ups.user_id = ?
                WHERE p.id != 'free_registry'
                ORDER BY p.name""",
-            (current_user["id"],),
+            (current_user["id"], current_user["id"]),
         ) as cur:
             providers = await cur.fetchall()
 
@@ -319,8 +320,14 @@ async def list_providers(current_user: dict = Depends(get_current_user)):
                     masked_key = f"{active_key[:6]}...{active_key[-4:]}"
 
             async with db.execute(
-                "SELECT id, display_name, enabled, context_length, context_source, confirmed_free, supports_vision, reasoning_control, reasoning_levels, reasoning_default, reasoning_control_source FROM models WHERE provider_id = ? ORDER BY display_name",
-                (pid,),
+                """SELECT m.id, m.display_name, COALESCE(ums.enabled, m.enabled) as enabled,
+                          m.context_length, m.context_source, m.confirmed_free, m.supports_vision,
+                          m.reasoning_control, m.reasoning_levels, m.reasoning_default, m.reasoning_control_source
+                   FROM models m
+                   LEFT JOIN user_model_settings ums ON ums.model_id = m.id AND ums.user_id = ?
+                   WHERE m.provider_id = ?
+                   ORDER BY m.display_name""",
+                (current_user["id"], pid),
             ) as cur:
                 models = await cur.fetchall()
             result.append({
@@ -390,12 +397,14 @@ async def list_all_models(current_user: dict = Depends(get_current_user)):
                FROM models m
                JOIN providers p ON p.id = m.provider_id
                LEFT JOIN user_api_keys k ON k.provider_id = p.id AND k.user_id = ?
+               LEFT JOIN user_provider_settings ups ON ups.provider_id = p.id AND ups.user_id = ?
+               LEFT JOIN user_model_settings ums ON ums.model_id = m.id AND ums.user_id = ?
                LEFT JOIN model_rankings r ON r.model_id = m.id
                LEFT JOIN model_quota_status q ON q.model_id = m.id
-               WHERE m.enabled = 1 AND p.enabled = 1 AND {key_condition}
+               WHERE COALESCE(ums.enabled, m.enabled) = 1 AND COALESCE(ups.enabled, p.enabled) = 1 AND {key_condition}
                ORDER BY COALESCE(r.nexuslocal_score, -1) DESC, p.name, m.display_name"""
 
-        async with db.execute(query, (current_user["id"],)) as cur:
+        async with db.execute(query, (current_user["id"], current_user["id"], current_user["id"])) as cur:
             rows = await cur.fetchall()
             
         result = []
@@ -434,11 +443,13 @@ async def list_all_models(current_user: dict = Depends(get_current_user)):
 
 
 @router.patch("/providers/{provider_id}")
-async def update_provider(provider_id: str, body: ProviderUpdate, current_user: dict = Depends(require_admin)):
+async def update_provider(provider_id: str, body: ProviderUpdate, current_user: dict = Depends(get_current_user)):
     db = await get_db()
     try:
         should_sync = False
         if body.base_url is not None:
+            if current_user.get("role") != "admin":
+                raise HTTPException(status_code=403, detail="Apenas administradores podem alterar a URL base do provedor.")
             await db.execute(
                 "UPDATE providers SET base_url = ? WHERE id = ?",
                 (body.base_url, provider_id),
@@ -462,10 +473,18 @@ async def update_provider(provider_id: str, body: ProviderUpdate, current_user: 
             )
             should_sync = True
         if body.enabled is not None:
+            enabled_val = 1 if body.enabled else 0
             await db.execute(
-                "UPDATE providers SET enabled = ? WHERE id = ?",
-                (1 if body.enabled else 0, provider_id),
+                """INSERT INTO user_provider_settings (user_id, provider_id, enabled)
+                   VALUES (?, ?, ?)
+                   ON CONFLICT(user_id, provider_id) DO UPDATE SET enabled = excluded.enabled""",
+                (current_user["id"], provider_id, enabled_val),
             )
+            if current_user.get("role") == "admin":
+                await db.execute(
+                    "UPDATE providers SET enabled = ? WHERE id = ?",
+                    (enabled_val, provider_id),
+                )
             try:
                 from backend.ranking.smart_router import invalidate_model_cache
                 invalidate_model_cache()
@@ -481,14 +500,31 @@ async def update_provider(provider_id: str, body: ProviderUpdate, current_user: 
 
 
 @router.patch("/models/{model_id:path}")
-async def toggle_model(model_id: str, body: ModelUpdate, current_user: dict = Depends(require_admin)):
+async def toggle_model(model_id: str, body: ModelUpdate, current_user: dict = Depends(get_current_user)):
     db = await get_db()
     try:
+        if (
+            body.context_length is not None
+            or body.reasoning_control is not None
+            or body.reasoning_levels is not None
+            or body.reasoning_default is not None
+            or body.reasoning_control_source is not None
+        ) and current_user.get("role") != "admin":
+            raise HTTPException(status_code=403, detail="Apenas administradores podem alterar configurações avançadas de modelo.")
+
         if body.enabled is not None:
+            enabled_val = 1 if body.enabled else 0
             await db.execute(
-                "UPDATE models SET enabled = ? WHERE id = ?",
-                (1 if body.enabled else 0, model_id),
+                """INSERT INTO user_model_settings (user_id, model_id, enabled)
+                   VALUES (?, ?, ?)
+                   ON CONFLICT(user_id, model_id) DO UPDATE SET enabled = excluded.enabled""",
+                (current_user["id"], model_id, enabled_val),
             )
+            if current_user.get("role") == "admin":
+                await db.execute(
+                    "UPDATE models SET enabled = ? WHERE id = ?",
+                    (enabled_val, model_id),
+                )
         if body.context_length is not None:
             await db.execute(
                 """INSERT INTO model_overrides (model_id, context_length)
@@ -555,13 +591,21 @@ async def confirm_model_free(model_id: str, current_user: dict = Depends(require
 
 
 @router.post("/providers/{provider_id}/models/toggle")
-async def toggle_all_provider_models(provider_id: str, body: ModelToggle, current_user: dict = Depends(require_admin)):
+async def toggle_all_provider_models(provider_id: str, body: ModelToggle, current_user: dict = Depends(get_current_user)):
     db = await get_db()
     try:
+        enabled_val = 1 if body.enabled else 0
         await db.execute(
-            "UPDATE models SET enabled = ? WHERE provider_id = ?",
-            (1 if body.enabled else 0, provider_id),
+            """INSERT INTO user_model_settings (user_id, model_id, enabled)
+               SELECT ?, id, ? FROM models WHERE provider_id = ?
+               ON CONFLICT(user_id, model_id) DO UPDATE SET enabled = excluded.enabled""",
+            (current_user["id"], enabled_val, provider_id),
         )
+        if current_user.get("role") == "admin":
+            await db.execute(
+                "UPDATE models SET enabled = ? WHERE provider_id = ?",
+                (enabled_val, provider_id),
+            )
         await db.commit()
         try:
             from backend.ranking.smart_router import invalidate_model_cache
@@ -576,7 +620,7 @@ async def toggle_all_provider_models(provider_id: str, body: ModelToggle, curren
 
 
 @router.post("/providers/sync")
-async def sync_all_providers(current_user: dict = Depends(require_admin)):
+async def sync_all_providers(current_user: dict = Depends(get_current_user)):
     db = await get_db()
     try:
         # Pega todos os providers ativos
@@ -605,7 +649,7 @@ async def sync_all_providers(current_user: dict = Depends(require_admin)):
 
 
 @router.post("/providers/{provider_id}/sync")
-async def sync_provider(provider_id: str, current_user: dict = Depends(require_admin)):
+async def sync_provider(provider_id: str, current_user: dict = Depends(get_current_user)):
     db = await get_db()
     try:
         async with db.execute(
@@ -624,7 +668,7 @@ async def sync_provider(provider_id: str, current_user: dict = Depends(require_a
 
 
 @router.post("/providers/{provider_id}/sync-models")
-async def sync_models_endpoint(provider_id: str, current_user: dict = Depends(require_admin)):
+async def sync_models_endpoint(provider_id: str, current_user: dict = Depends(get_current_user)):
     db = await get_db()
     try:
         async with db.execute(

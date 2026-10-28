@@ -42,6 +42,7 @@ async def check_candidate_eligibility(
     provider_id: str,
     db: aiosqlite.Connection,
     *,
+    user_id: Optional[str] = None,
     excluded_model_ids: Optional[Set[str]] = None,
     excluded_canonicals: Optional[Set[str]] = None,
     is_canary_probe: bool = False,
@@ -76,30 +77,47 @@ async def check_candidate_eligibility(
     import sqlite3
     try:
         async with db.execute("""
-            SELECT m.enabled, p.enabled,
+            SELECT COALESCE(ums.enabled, m.enabled), COALESCE(ups.enabled, p.enabled),
                    COALESCE(q.status, 'available'),
                    q.estimated_reset_at,
                    q.known_rpm, q.known_rpd,
                    q.current_minute_count, q.current_day_count
             FROM models m
             JOIN providers p ON p.id = m.provider_id
+            LEFT JOIN user_provider_settings ups ON ups.provider_id = p.id AND ups.user_id = ?
+            LEFT JOIN user_model_settings ums ON ums.model_id = m.id AND ums.user_id = ?
             LEFT JOIN model_quota_status q ON q.model_id = m.id
             WHERE m.id = ? AND p.id = ?
-        """, (model_id, provider_id)) as cur:
+        """, (user_id, user_id, model_id, provider_id)) as cur:
             row = await cur.fetchone()
     except sqlite3.OperationalError:
-        # Fallback retrocompatível para schemas onde known_rpm/rpd ainda não foram migrados
-        async with db.execute("""
-            SELECT m.enabled, p.enabled,
-                   COALESCE(q.status, 'available'),
-                   q.estimated_reset_at,
-                   NULL, NULL, NULL, NULL
-            FROM models m
-            JOIN providers p ON p.id = m.provider_id
-            LEFT JOIN model_quota_status q ON q.model_id = m.id
-            WHERE m.id = ? AND p.id = ?
-        """, (model_id, provider_id)) as cur:
-            row = await cur.fetchone()
+        # Se falhou, tenta sem user_provider_settings mas com known_rpm (ex: testes em memória com schema mínimo)
+        try:
+            async with db.execute("""
+                SELECT m.enabled, p.enabled,
+                       COALESCE(q.status, 'available'),
+                       q.estimated_reset_at,
+                       q.known_rpm, q.known_rpd,
+                       q.current_minute_count, q.current_day_count
+                FROM models m
+                JOIN providers p ON p.id = m.provider_id
+                LEFT JOIN model_quota_status q ON q.model_id = m.id
+                WHERE m.id = ? AND p.id = ?
+            """, (model_id, provider_id)) as cur:
+                row = await cur.fetchone()
+        except sqlite3.OperationalError:
+            # Fallback para schemas antigos onde known_rpm/rpd ainda não existiam
+            async with db.execute("""
+                SELECT m.enabled, p.enabled,
+                       COALESCE(q.status, 'available'),
+                       q.estimated_reset_at,
+                       NULL, NULL, NULL, NULL
+                FROM models m
+                JOIN providers p ON p.id = m.provider_id
+                LEFT JOIN model_quota_status q ON q.model_id = m.id
+                WHERE m.id = ? AND p.id = ?
+            """, (model_id, provider_id)) as cur:
+                row = await cur.fetchone()
 
     if not row:
         return EligibilityResult(False, "candidate_not_found")

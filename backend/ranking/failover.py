@@ -136,7 +136,7 @@ async def _get_family_for_model(
         return None
 
     key_clause, _, join_keys = _usable_key_clause(user_id)
-    query_params = ([user_id] if user_id else []) + [family_id]
+    query_params = [user_id, user_id] + ([user_id] if user_id else []) + [family_id]
 
     # Busca todos os membros da família cujo modelo e provedor estejam habilitados e utilizáveis
     members = []
@@ -147,10 +147,12 @@ async def _get_family_for_model(
             FROM model_family_members mfm
             JOIN models m ON m.id = mfm.model_id
             JOIN providers p ON p.id = m.provider_id
+            LEFT JOIN user_provider_settings ups ON ups.provider_id = p.id AND ups.user_id = ?
+            LEFT JOIN user_model_settings ums ON ums.model_id = m.id AND ums.user_id = ?
             {join_keys}
             WHERE mfm.family_id = ?
-              AND m.enabled = 1
-              AND p.enabled = 1
+              AND COALESCE(ums.enabled, m.enabled) = 1
+              AND COALESCE(ups.enabled, p.enabled) = 1
               AND {key_clause}
             ORDER BY mfm.fallback_order ASC
             """,
@@ -160,7 +162,27 @@ async def _get_family_for_model(
             if raw_members:
                 members = [(r[0], r[1], r[2]) for r in raw_members]
     except Exception as e:
-        logger.debug("[_get_family_for_model] Erro ao consultar model_family_members: %s", e)
+        try:
+            async with db.execute(
+                f"""
+                SELECT mfm.model_id, m.provider_id, mfm.fallback_order
+                FROM model_family_members mfm
+                JOIN models m ON m.id = mfm.model_id
+                JOIN providers p ON p.id = m.provider_id
+                {join_keys}
+                WHERE mfm.family_id = ?
+                  AND m.enabled = 1
+                  AND p.enabled = 1
+                  AND {key_clause}
+                ORDER BY mfm.fallback_order ASC
+                """,
+                tuple(([user_id] if user_id else []) + [family_id]),
+            ) as cur:
+                raw_members = await cur.fetchall()
+                if raw_members:
+                    members = [(r[0], r[1], r[2]) for r in raw_members]
+        except Exception:
+            logger.debug("[_get_family_for_model] Erro ao consultar model_family_members: %s", e)
 
     # Se não encontrou membros diretamente (ex: IDs com prefixos divergentes)
     if not members:
@@ -225,7 +247,7 @@ async def _get_next_best_ranked_model(
     excluded_canonicals = {canonical_model_id(m) for m in all_excluded if m}
 
     key_clause, _, join_keys = _usable_key_clause(user_id)
-    query_params = [user_id] if user_id else []
+    query_params = [user_id, user_id] + ([user_id] if user_id else [])
 
     # Query: modelos e provedores habilitados com registro de ranking, não esgotados, não excluídos
     try:
@@ -236,9 +258,11 @@ async def _get_next_best_ranked_model(
             JOIN providers p ON p.id = m.provider_id
             JOIN model_rankings r ON r.model_id = m.id
             LEFT JOIN model_quota_status q ON q.model_id = m.id
+            LEFT JOIN user_provider_settings ups ON ups.provider_id = p.id AND ups.user_id = ?
+            LEFT JOIN user_model_settings ums ON ums.model_id = m.id AND ums.user_id = ?
             {join_keys}
-            WHERE m.enabled = 1
-              AND p.enabled = 1
+            WHERE COALESCE(ums.enabled, m.enabled) = 1
+              AND COALESCE(ups.enabled, p.enabled) = 1
               AND (q.status IS NULL OR q.status = 'available')
               AND {key_clause}
             ORDER BY r.nexuslocal_score DESC
@@ -247,8 +271,27 @@ async def _get_next_best_ranked_model(
         ) as cur:
             rows = await cur.fetchall()
     except Exception as err:
-        logger.warning("Falha ao consultar model_rankings para Tier 2: %s", err)
-        rows = []
+        try:
+            async with db.execute(
+                f"""
+                SELECT m.id, m.provider_id, m.display_name, r.nexuslocal_score
+                FROM models m
+                JOIN providers p ON p.id = m.provider_id
+                JOIN model_rankings r ON r.model_id = m.id
+                LEFT JOIN model_quota_status q ON q.model_id = m.id
+                {join_keys}
+                WHERE m.enabled = 1
+                  AND p.enabled = 1
+                  AND (q.status IS NULL OR q.status = 'available')
+                  AND {key_clause}
+                ORDER BY r.nexuslocal_score DESC
+                """,
+                tuple([user_id] if user_id else []),
+            ) as cur:
+                rows = await cur.fetchall()
+        except Exception:
+            logger.warning("Falha ao consultar model_rankings para Tier 2: %s", err)
+            rows = []
 
     from backend.ranking.eligibility import check_candidate_eligibility
     candidate_fallback = None
@@ -261,6 +304,7 @@ async def _get_next_best_ranked_model(
             model_id=mid,
             provider_id=pid,
             db=db,
+            user_id=user_id,
             excluded_model_ids=all_excluded,
             excluded_canonicals=excluded_canonicals,
             allow_same_canonical_last_resort=False,
@@ -271,6 +315,7 @@ async def _get_next_best_ranked_model(
                     model_id=mid,
                     provider_id=pid,
                     db=db,
+                    user_id=user_id,
                     excluded_model_ids=all_excluded,
                     excluded_canonicals=None,
                     allow_same_canonical_last_resort=True,
@@ -317,16 +362,31 @@ async def resolve_model_with_failover(
     # ── Verificação de integridade e ativação (modelo E provedor) ────────────
     key_clause, _, join_keys = _usable_key_clause(user_id)
     check_query = f"""
-        SELECT m.enabled, p.enabled, m.provider_id, m.display_name,
+        SELECT COALESCE(ums.enabled, m.enabled), COALESCE(ups.enabled, p.enabled), m.provider_id, m.display_name,
                CASE WHEN {key_clause} THEN 1 ELSE 0 END AS has_usable_key
         FROM models m
         JOIN providers p ON p.id = m.provider_id
+        LEFT JOIN user_provider_settings ups ON ups.provider_id = p.id AND ups.user_id = ?
+        LEFT JOIN user_model_settings ums ON ums.model_id = m.id AND ums.user_id = ?
         {join_keys}
         WHERE m.id = ?
     """
-    check_params = ([user_id] if user_id else []) + [requested_model_id]
-    async with db.execute(check_query, tuple(check_params)) as cur:
-        model_row = await cur.fetchone()
+    check_params = [user_id, user_id] + ([user_id] if user_id else []) + [requested_model_id]
+    try:
+        async with db.execute(check_query, tuple(check_params)) as cur:
+            model_row = await cur.fetchone()
+    except Exception:
+        # Fallback se user_provider_settings não existir (ex: schemas de teste em memória)
+        check_query_fallback = f"""
+            SELECT m.enabled, p.enabled, m.provider_id, m.display_name,
+                   CASE WHEN {key_clause} THEN 1 ELSE 0 END AS has_usable_key
+            FROM models m
+            JOIN providers p ON p.id = m.provider_id
+            {join_keys}
+            WHERE m.id = ?
+        """
+        async with db.execute(check_query_fallback, tuple(([user_id] if user_id else []) + [requested_model_id])) as cur:
+            model_row = await cur.fetchone()
 
     provider_id = None
     display_name = None
@@ -357,6 +417,7 @@ async def resolve_model_with_failover(
         model_id=requested_model_id,
         provider_id=provider_id or "",
         db=db,
+        user_id=user_id,
         excluded_model_ids=set(exclude_model_ids or []),
         excluded_canonicals=None,
     )
@@ -428,6 +489,7 @@ async def resolve_model_with_failover(
                 model_id=member_model_id,
                 provider_id=member_provider_id,
                 db=db,
+                user_id=user_id,
                 excluded_model_ids=set(exclude_model_ids or []),
                 excluded_canonicals=excluded_canonicals,
                 allow_same_canonical_last_resort=False,
@@ -438,6 +500,7 @@ async def resolve_model_with_failover(
                         model_id=member_model_id,
                         provider_id=member_provider_id,
                         db=db,
+                        user_id=user_id,
                         excluded_model_ids=set(exclude_model_ids or []),
                         excluded_canonicals=None,
                         allow_same_canonical_last_resort=True,

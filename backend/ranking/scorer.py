@@ -308,7 +308,7 @@ async def build_ranking_overview(
 
     query = f"""
         SELECT m.id, m.name, m.display_name, m.provider_id, p.name AS provider_name,
-               COALESCE(m.enabled, 0), COALESCE(p.enabled, 0),
+               COALESCE(ums.enabled, m.enabled, 0), COALESCE(ups.enabled, p.enabled, 0),
                COALESCE(p.is_free, 0), COALESCE(p.is_local, 0), COALESCE(m.confirmed_free, 0),
                COALESCE(m.supports_vision, 0), m.reasoning_control,
                r.quality_score, r.popularity_rank, r.source,
@@ -317,9 +317,11 @@ async def build_ranking_overview(
         JOIN providers p ON p.id = m.provider_id
         LEFT JOIN model_rankings r ON r.model_id = m.id
         LEFT JOIN user_api_keys k ON k.provider_id = p.id AND k.user_id = ?
+        LEFT JOIN user_provider_settings ups ON ups.provider_id = p.id AND ups.user_id = ?
+        LEFT JOIN user_model_settings ums ON ums.model_id = m.id AND ums.user_id = ?
     """
     try:
-        async with db.execute(query, (user_id or "",)) as cursor:
+        async with db.execute(query, (user_id or "", user_id or "", user_id or "")) as cursor:
             rows = await cursor.fetchall()
     except Exception as e:
         logger.error(f"Erro ao montar visão do ranking: {e}")

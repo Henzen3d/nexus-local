@@ -71,6 +71,7 @@ async function fetchJSON<T>(url: string, opts?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  getMyAccount: () => fetchJSON<{ id: string; username: string; role: string }>('/me'),
   offerUiCorrection: (messageId: string) => fetchJSON<{ ok: boolean }>('/intelligent-ui/correction-offered', {
     method: 'POST', body: JSON.stringify({ message_id: messageId }),
   }),

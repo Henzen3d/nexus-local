@@ -53,7 +53,7 @@ function AdminPanelMobile() {
     closeSettings, setView, loadModels, user, theme, setTheme, chatFont, setChatFont,
     hapticFeedback, setHapticFeedback, displayName, fullName, occupation,
     customInstructions, setProfile, logout, locale, setLocale,
-    uiLevel, setUiLevel, selectModel,
+    uiLevel, setUiLevel, selectModel, showToast,
   } = useStore()
   const tts = useTtsPrefs()
 
@@ -185,15 +185,43 @@ function AdminPanelMobile() {
   }
 
   const toggleProvider = async (id: string, enabled: boolean) => {
-    await api.updateProvider(id, { enabled })
-    await load()
-    await loadModels()
+    try {
+      await api.updateProvider(id, { enabled })
+      await load()
+      await loadModels()
+      showToast(
+        enabled
+          ? t('settings.providerActivated', { defaultValue: 'Provedor ativado com sucesso' })
+          : t('settings.providerDeactivated', { defaultValue: 'Provedor desativado com sucesso' }),
+        'success'
+      )
+    } catch (err: any) {
+      console.error(err)
+      showToast(
+        err?.detail || t('settings.updateProviderError', { defaultValue: 'Erro ao alterar provedor' }),
+        'error'
+      )
+    }
   }
 
   const toggleModel = async (modelId: string, enabled: boolean) => {
-    await api.toggleModel(modelId, enabled)
-    await load()
-    await loadModels()
+    try {
+      await api.toggleModel(modelId, enabled)
+      await load()
+      await loadModels()
+      showToast(
+        enabled
+          ? t('settings.modelActivated', { defaultValue: 'Modelo ativado com sucesso' })
+          : t('settings.modelDeactivated', { defaultValue: 'Modelo desativado com sucesso' }),
+        'success'
+      )
+    } catch (err: any) {
+      console.error(err)
+      showToast(
+        err?.detail || t('settings.updateModelError', { defaultValue: 'Erro ao alterar modelo' }),
+        'error'
+      )
+    }
   }
 
   const handleConfirmFree = async (modelId: string) => {
@@ -233,9 +261,23 @@ function AdminPanelMobile() {
   }
 
   const handleToggleAll = async (providerId: string, enabled: boolean) => {
-    await api.toggleAllModels(providerId, enabled)
-    await load()
-    await loadModels()
+    try {
+      await api.toggleAllModels(providerId, enabled)
+      await load()
+      await loadModels()
+      showToast(
+        enabled
+          ? t('settings.allModelsActivated', { defaultValue: 'Todos os modelos foram ativados' })
+          : t('settings.allModelsDeactivated', { defaultValue: 'Todos os modelos foram desativados' }),
+        'success'
+      )
+    } catch (err: any) {
+      console.error(err)
+      showToast(
+        err?.detail || t('settings.updateModelError', { defaultValue: 'Erro ao alterar modelos' }),
+        'error'
+      )
+    }
   }
 
   const handleDeleteUser = async (id: string, username: string) => {
@@ -815,6 +857,7 @@ function AdminPanelMobile() {
                     <button 
                       className={`toggle-btn ${prov.enabled ? 'on' : 'off'}`}
                       onClick={() => toggleProvider(prov.id, !prov.enabled)}
+                      title={prov.enabled ? t('common.active') : t('common.inactive')}
                     >
                       {prov.enabled ? <ToggleRight size={24} /> : <ToggleLeft size={24} />}
                     </button>
@@ -902,7 +945,12 @@ function AdminPanelMobile() {
                               </span>
                               <button 
                                 onClick={() => toggleModel(model.id, !model.enabled)} 
-                                style={{ display: 'flex', alignItems: 'center', color: model.enabled ? 'var(--primary)' : 'var(--muted)' }}
+                                title={model.enabled ? 'Desativar' : 'Ativar'}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  color: model.enabled ? 'var(--primary)' : 'var(--muted)'
+                                }}
                               >
                                 {model.enabled ? <ToggleRight size={18} /> : <ToggleLeft size={18} />}
                               </button>
@@ -1731,7 +1779,7 @@ function AdminPanelMobile() {
 
 function AdminPanelDesktop() {
   const { t, i18n } = useTranslation()
-  const { closeSettings, setView, loadModels, user, theme, setTheme, chatFont, setChatFont, modelSortMode, setModelSortMode, displayName, fullName, occupation, customInstructions, setProfile, locale, setLocale } = useStore()
+  const { closeSettings, setView, loadModels, user, theme, setTheme, chatFont, setChatFont, modelSortMode, setModelSortMode, displayName, fullName, occupation, customInstructions, setProfile, locale, setLocale, showToast } = useStore()
   const handleLocaleChange = (code: string) => {
     setLocale(code)
     i18n.changeLanguage(code)
@@ -1886,17 +1934,45 @@ function AdminPanelDesktop() {
   }
 
   const toggleProvider = async (id: string, enabled: boolean) => {
-    await api.updateProvider(id, { enabled })
-    await load()
-    await loadModels()
+    try {
+      await api.updateProvider(id, { enabled })
+      await load()
+      await loadModels()
+      showToast(
+        enabled
+          ? t('settings.providerActivated', { defaultValue: 'Provedor ativado com sucesso' })
+          : t('settings.providerDeactivated', { defaultValue: 'Provedor desativado com sucesso' }),
+        'success'
+      )
+    } catch (err: any) {
+      console.error(err)
+      showToast(
+        err?.detail || t('settings.updateProviderError', { defaultValue: 'Erro ao alterar provedor' }),
+        'error'
+      )
+    }
   }
 
   const [syncing, setSyncing] = useState<Record<string, boolean>>({})
 
   const toggleModel = async (modelId: string, enabled: boolean) => {
-    await api.toggleModel(modelId, enabled)
-    await load()
-    await loadModels()
+    try {
+      await api.toggleModel(modelId, enabled)
+      await load()
+      await loadModels()
+      showToast(
+        enabled
+          ? t('settings.modelActivated', { defaultValue: 'Modelo ativado com sucesso' })
+          : t('settings.modelDeactivated', { defaultValue: 'Modelo desativado com sucesso' }),
+        'success'
+      )
+    } catch (err: any) {
+      console.error(err)
+      showToast(
+        err?.detail || t('settings.updateModelError', { defaultValue: 'Erro ao alterar modelo' }),
+        'error'
+      )
+    }
   }
 
   const handleConfirmFree = async (modelId: string) => {
@@ -1936,9 +2012,23 @@ function AdminPanelDesktop() {
   }
 
   const handleToggleAll = async (providerId: string, enabled: boolean) => {
-    await api.toggleAllModels(providerId, enabled)
-    await load()
-    await loadModels()
+    try {
+      await api.toggleAllModels(providerId, enabled)
+      await load()
+      await loadModels()
+      showToast(
+        enabled
+          ? t('settings.allModelsActivated', { defaultValue: 'Todos os modelos foram ativados' })
+          : t('settings.allModelsDeactivated', { defaultValue: 'Todos os modelos foram desativados' }),
+        'success'
+      )
+    } catch (err: any) {
+      console.error(err)
+      showToast(
+        err?.detail || t('settings.updateModelError', { defaultValue: 'Erro ao alterar modelos' }),
+        'error'
+      )
+    }
   }
 
   const freeProviders = providers.filter((p) => p.is_free)
@@ -2023,6 +2113,7 @@ function AdminPanelDesktop() {
                 e.stopPropagation()
                 toggleProvider(prov.id, !prov.enabled)
               }}
+              title={prov.enabled ? t('common.active') : t('common.inactive')}
             >
               {prov.enabled ? <ToggleRight size={24} /> : <ToggleLeft size={24} />}
               {prov.enabled ? t('common.active') : t('common.inactive')}
