@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import {
   Brain,
   Check,
@@ -209,13 +209,18 @@ export function ExecutionSequence({ steps, isWorking, startedAt, durationMs, thi
     }
   }
 
+  const regionId = useId()
+  const toggleButtonRef = useRef<HTMLButtonElement | null>(null)
+
   return (
     <section className={`execution-sequence${isWorking ? ' is-working' : ''}`} aria-label={t('chat.processLabel')}>
       <button
+        ref={toggleButtonRef}
         type="button"
         className="execution-sequence-toggle"
         onClick={() => setIsOpen((open) => !open)}
         aria-expanded={isOpen}
+        aria-controls={regionId}
       >
         {isWorking ? (
           <LoaderCircle className="execution-sequence-live-icon" size={13} aria-hidden="true" />
@@ -226,8 +231,15 @@ export function ExecutionSequence({ steps, isWorking, startedAt, durationMs, thi
         <ChevronRight className={`execution-sequence-chevron${isOpen ? ' is-open' : ''}`} size={13} aria-hidden="true" />
       </button>
 
-      <div className={`execution-sequence-content${isOpen ? ' is-open' : ''}`}>
-        <div className="execution-sequence-card">
+      <div
+        id={regionId}
+        role="region"
+        aria-label={t('chat.processLabel')}
+        className={`execution-sequence-content${isOpen ? ' is-open' : ''}`}
+        {...(!isOpen ? { inert: '' } : {})}
+      >
+        <div className="execution-sequence-wrapper">
+          <div className="execution-sequence-card">
           <div className="execution-sequence-tree">
             {visibleSteps.map((step, idx) => {
               const kind = getStepKind(step)
@@ -399,6 +411,7 @@ export function ExecutionSequence({ steps, isWorking, startedAt, durationMs, thi
           </div>
         </div>
       </div>
-    </section>
-  )
+    </div>
+  </section>
+)
 }

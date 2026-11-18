@@ -2034,10 +2034,14 @@ html[data-chat-font="mono"] {
   grid-template-rows: 1fr;
 }
 
-/* Card fechado estilo Claude */
-.execution-sequence-card {
+/* Wrapper sem decoração como filho direto da grade (T4.1) */
+.execution-sequence-wrapper {
   min-height: 0;
   overflow: hidden;
+}
+
+/* Card estilo Claude com toda a decoração contida internamente (T4.1) */
+.execution-sequence-card {
   margin-top: 8px;
   padding: 8px 12px;
   background: var(--surface-card);
