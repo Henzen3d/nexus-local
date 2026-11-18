@@ -22,10 +22,12 @@ from typing import Optional
 
 _LOGGER_NAME = "nexuslocal"
 _CONFIGURED = False
+_DEFAULT_FMT = "%(asctime)s [%(levelname)s] %(name)s [%(filename)s:%(lineno)d]: %(message)s"
+_DEFAULT_DATEFMT = "%Y-%m-%d %H:%M:%S"
 
 
 class _ContextDefaults(logging.Filter):
-    """O formatter sempre pede user_id e conversation_id. Sem default o log some."""
+    """Garante defaults de user_id e conversation_id para formatos customizados."""
 
     def filter(self, record: logging.LogRecord) -> bool:
         if not hasattr(record, "user_id"):
@@ -33,6 +35,40 @@ class _ContextDefaults(logging.Filter):
         if not hasattr(record, "conversation_id"):
             record.conversation_id = "-"
         return True
+
+
+class _ContextualFormatter(logging.Formatter):
+    """Formatter padrão que compõe sufixos user/conv na linha principal só quando presentes."""
+
+    @staticmethod
+    def _normalize_context_value(value: object) -> Optional[str]:
+        if value is None:
+            return None
+        text = str(value).strip()
+        if not text or text == "-":
+            return None
+        return text
+
+    def formatMessage(self, record: logging.LogRecord) -> str:
+        base = super().formatMessage(record)
+        parts: list[str] = []
+        user_id = self._normalize_context_value(getattr(record, "user_id", None))
+        if user_id is not None:
+            parts.append(f"user={user_id}")
+        conversation_id = self._normalize_context_value(
+            getattr(record, "conversation_id", None)
+        )
+        if conversation_id is not None:
+            parts.append(f"conv={conversation_id}")
+        if not parts:
+            return base
+        return f"{base} | {' | '.join(parts)}"
+
+
+def _build_formatter(fmt: Optional[str]) -> logging.Formatter:
+    if fmt is None:
+        return _ContextualFormatter(_DEFAULT_FMT, datefmt=_DEFAULT_DATEFMT)
+    return logging.Formatter(fmt, datefmt=_DEFAULT_DATEFMT)
 
 
 def configure_logging(
@@ -61,17 +97,12 @@ def configure_logging(
     if stream is None:
         stream = sys.stderr
 
-    if fmt is None:
-        fmt = "%(asctime)s [%(levelname)s] %(name)s [%(filename)s:%(lineno)d]: %(message)s"
-        # Inclui user_id e conversation_id nos logs quando disponíveis
-        extra_fmt = " | user=%(user_id)s | conv=%(conversation_id)s"
-    else:
-        extra_fmt = ""
+    formatter = _build_formatter(fmt)
 
     # Handler para stdout/stderr (docker logs)
     stream_handler = logging.StreamHandler(stream)
     stream_handler.addFilter(_ContextDefaults())
-    stream_handler.setFormatter(logging.Formatter(fmt + extra_fmt, datefmt="%Y-%m-%d %H:%M:%S"))
+    stream_handler.setFormatter(formatter)
     root_logger.addHandler(stream_handler)
 
     # Handler para arquivo persistente (logs em disco)
@@ -81,10 +112,7 @@ def configure_logging(
             log_path.parent.mkdir(parents=True, exist_ok=True)
             file_handler = logging.FileHandler(log_path, encoding='utf-8')
             file_handler.addFilter(_ContextDefaults())
-            file_handler.setFormatter(logging.Formatter(
-                fmt + extra_fmt,
-                datefmt="%Y-%m-%d %H:%M:%S"
-            ))
+            file_handler.setFormatter(formatter)
             root_logger.addHandler(file_handler)
         except Exception as e:
             print(f"[LOG] Falha ao configurar arquivo de log: {e}", file=sys.stderr)
