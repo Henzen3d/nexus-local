@@ -624,15 +624,27 @@ async def _run_turn(
     t_web_wait = time.perf_counter()
     try:
         web_search_used, web_search_query, web_search_sources, search_results, search_config, process_steps = (
-            await asyncio.wait_for(web_search_task, timeout=12.0)
+            await asyncio.wait_for(web_search_task, timeout=14.0)
         )
     except asyncio.TimeoutError:
-        logger.warning(f"[chat] Timeout de 12s na busca web paralela para mensagem: {user_message[:60]}")
+        web_search_task.cancel()
+        try:
+            await web_search_task
+        except BaseException:
+            pass
+        logger.warning(
+            "[chat] Timeout na busca web paralela (timeout_s=14.0)",
+            extra={"user_id": user_id, "conversation_id": conversation_id},
+        )
         web_search_used, web_search_query, web_search_sources, search_results, search_config, process_steps = (
             False, "", [], [], None, []
         )
     except Exception as e_web:
-        logger.error(f"[chat] Falha na busca web paralela: {e_web}", exc_info=e_web)
+        logger.error(
+            "[chat] Falha na busca web paralela (%s)",
+            type(e_web).__name__,
+            extra={"user_id": user_id, "conversation_id": conversation_id},
+        )
         web_search_used, web_search_query, web_search_sources, search_results, search_config, process_steps = (
             False, "", [], [], None, []
         )
@@ -1123,16 +1135,28 @@ async def _resolve_web_search(
         scraped_pages = []
 
         try:
+            from backend.web_search.agent import select_search_budget
+
+            search_budget = select_search_budget(
+                user_message,
+                intent_routing=intent_routing,
+                web_search_requested=bool(web_search_requested),
+            )
             agent_result = await execute_agentic_search(
                 user_message, db, search_config,
                 on_event=send_ws_event,
                 history=history,
                 pre_planned_queries=pre_queries,
+                budget=search_budget,
             )
             search_results = agent_result.get("search_results", [])
             scraped_pages = agent_result.get("scraped_pages", [])
             executed_queries = agent_result.get("executed_queries", [user_message])
+            search_metrics = agent_result.get("metrics") or {}
             primary_query = executed_queries[0] if executed_queries else user_message
+
+            if search_config is not None:
+                search_config["_metrics"] = search_metrics
 
             if search_results or scraped_pages:
                 web_search_used = True
@@ -1147,6 +1171,7 @@ async def _resolve_web_search(
                             "title": page.get("title") or p_url,
                             "url": p_url,
                             "snippet": sample[:280],
+                            "was_read": True,
                         }
                 for r in search_results:
                     r_url = r.get("url")
@@ -1158,6 +1183,7 @@ async def _resolve_web_search(
                             "title": r.get("title") or r_url,
                             "url": r_url,
                             "snippet": snippet,
+                            "was_read": False,
                         }
                     elif snippet and not sources_map[r_url].get("snippet"):
                         sources_map[r_url]["snippet"] = snippet
@@ -1187,7 +1213,7 @@ async def _resolve_web_search(
             logger.error(
                 "agentic web search failed",
                 exc_info=True,
-                extra={"query": web_search_query, "user_id": user_id},
+                extra={"user_id": user_id, "conversation_id": conversation_id},
             )
             search_results = []
             scraped_pages = []

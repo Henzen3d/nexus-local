@@ -219,13 +219,36 @@ def classify_heuristic_triage(
     # 3. Dúvida Pontual / Busca Factual / Lookup estilo Google
     is_temporal = bool(_RE_TEMPORAL.search(text))
     is_factual = bool(_RE_WEB_FACTUAL.search(text) or "?" in text or is_temporal)
+    is_weather = bool(
+        re.search(
+            r"\b(clima|tempo|temperatura|previs[ãa]o|weather|forecast|pron[óo]stico)\b",
+            text,
+            re.IGNORECASE,
+        )
+    )
 
-    cleaned_q = clean_query_text(text)
+    if is_weather:
+        # Para clima, preserva localidade, data e unidade sem inferir cidade ausente
+        cleaned_q = re.sub(r"^\s*(?:qual\s+(?:é|e)\s+o\s+|como\s+est[áa]\s+o\s+|what(?:'s|\s+is)\s+the\s+|cu[áa]l\s+es\s+el\s+)", "", text, flags=re.IGNORECASE).strip(" ?.!").strip()
+        if not cleaned_q:
+            cleaned_q = clean_query_text(text)
+    else:
+        cleaned_q = clean_query_text(text)
+
+    needs_web = is_temporal or is_weather or bool(
+        re.search(
+            r"\b(quem|quando|onde|quanto|pre[çc]o|cota[çc][ãa]o|debate|not[íi]cias|hoje|202[4-9]|"
+            r"price|exchange\s+rate|weather|forecast|latest\s+version|current\s+time|"
+            r"precio|pron[óo]stico|noticias|hoy|cotizaci[óo]n)\b",
+            text,
+            re.IGNORECASE,
+        )
+    )
     routing = IntentRouting(
         intent_tier="specific_lookup",
         reasoning_effort="low" if is_factual else "medium",
-        needs_web_search=is_temporal or bool(re.search(r"\b(quem|quando|onde|quanto|preço|cotação|debate|notícias|hoje|202[4-9])\b", text, re.I)),
-        search_queries=[cleaned_q] if (is_temporal or is_factual) and len(cleaned_q) > 4 else [],
+        needs_web_search=needs_web,
+        search_queries=[cleaned_q] if (is_temporal or is_factual or is_weather) and len(cleaned_q) > 4 else [],
         strict_constraints=constraints,
         triage_source="heuristic_rules",
         latency_ms=round((time.perf_counter() - t0) * 1000, 2),

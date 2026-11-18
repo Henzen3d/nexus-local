@@ -153,3 +153,198 @@ async def test_resolve_web_search_auto_router_trigger():
         ws_mock.send_json.assert_any_call({"type": "search_start", "query": query})
     finally:
         chat_module.resolve_and_execute_search = orig_resolve_and_execute
+
+
+# ── T2.1: Fast factual budget, deadline sharing, read timeout reuse, reader index fix ──
+
+def test_select_search_budget_pt_en_es_and_exclusions():
+    from backend.orchestration.pre_router import classify_heuristic_triage
+    from backend.web_search.agent import select_search_budget
+
+    # Fast factual eligible in PT, EN, ES
+    fast_cases = [
+        "Qual o clima em Curitiba amanhã em °C?",
+        "What is the weather in Tokyo today in Fahrenheit?",
+        "¿Cuál es el pronóstico del clima en Madrid hoy?",
+        "Cotação do dólar hoje",
+        "Current USD to EUR exchange rate",
+        "Precio del bitcoin hoy",
+    ]
+    for q in fast_cases:
+        routing = classify_heuristic_triage(q)
+        b = select_search_budget(q, intent_routing=routing)
+        assert b.mode == "fast_factual", f"Esperado fast_factual para: {q}"
+        assert b.max_queries == 1
+        assert b.max_results == 3
+        assert b.max_main_reads == 1
+        assert b.max_sub_articles == 0
+        assert b.deadline_s == 4.0
+
+    # Weather preserves locality, date, and unit without fabricating missing city
+    r_weather = classify_heuristic_triage("Qual o clima em Curitiba amanhã em °C?")
+    assert r_weather.search_queries
+    assert "curitiba" in r_weather.search_queries[0].lower()
+    assert "amanhã" in r_weather.search_queries[0].lower()
+    assert "°c" in r_weather.search_queries[0].lower()
+
+    # Ambiguous weather (no locality) -> does NOT infer a city & keeps standard budget
+    r_ambig = classify_heuristic_triage("Como está o clima hoje?")
+    assert select_search_budget("Como está o clima hoje?", intent_routing=r_ambig).mode == "standard"
+    if r_ambig.search_queries:
+        assert "são paulo" not in r_ambig.search_queries[0].lower()
+        assert "curitiba" not in r_ambig.search_queries[0].lower()
+
+    # Broad research, comparison, or target URL -> standard budget preserved
+    standard_cases = [
+        "Compare Python vs Rust para servidores web de alta concorrência",
+        "Faça uma pesquisa completa sobre baterias de estado sólido",
+        "Veja as novidades no site example.com/blog sobre lançamentos",
+        "Deep research on quantum error correction methods",
+    ]
+    for q in standard_cases:
+        routing = classify_heuristic_triage(q)
+        b = select_search_budget(q, intent_routing=routing)
+        assert b.mode == "standard", f"Esperado standard para: {q}"
+        assert b.max_main_reads == 2
+        assert b.max_sub_articles == 3
+
+
+@pytest.mark.asyncio
+async def test_execute_agentic_search_fast_budget_and_read_timeout_reuses_snippets(monkeypatch):
+    import asyncio
+    from backend.web_search import agent as agent_mod
+    from backend.web_search.agent import SearchBudget, execute_agentic_search
+
+    search_calls = []
+    read_calls = []
+    events = []
+
+    async def fake_search(query, db, cfg, *, max_results_override=None, timeout=None):
+        search_calls.append((query, max_results_override, timeout))
+        return [
+            {"title": "Clima Curitiba", "url": "https://clima.example.com/curitiba", "snippet": "22°C nublado em Curitiba"},
+            {"title": "Previsao Curitiba", "url": "https://tempo.example.com/curitiba", "snippet": "Chuva leve à tarde"},
+            {"title": "Local privado", "url": "http://127.0.0.1/secret", "snippet": "nao deve entrar"},
+            {"title": "Quarto resultado", "url": "https://extra.example.com/curitiba", "snippet": "extra"},
+            {"title": "Quinto resultado", "url": "https://quinto.example.com/curitiba", "snippet": "quinto"},
+        ]
+
+    read_cancelled = False
+
+    async def slow_read(url, max_sub_articles=3, timeout=6.0):
+        nonlocal read_cancelled
+        read_calls.append((url, max_sub_articles, timeout))
+        try:
+            await asyncio.sleep(5.0)
+            return {"url": url, "title": "Late", "text_sample": "late"}
+        except asyncio.CancelledError:
+            read_cancelled = True
+            raise
+
+    monkeypatch.setattr(agent_mod, "resolve_and_execute_search", fake_search)
+    monkeypatch.setattr(agent_mod, "deep_read_target", slow_read)
+
+    fast_short = SearchBudget(
+        mode="fast_factual",
+        max_queries=1,
+        max_results=3,
+        max_main_reads=1,
+        max_sub_articles=0,
+        deadline_s=0.25,
+    )
+
+    async def on_evt(evt):
+        events.append(evt)
+
+    res = await execute_agentic_search(
+        "Qual o clima em Curitiba amanhã?",
+        db=None,
+        search_config={"enabled": True, "max_results": 5},
+        on_event=on_evt,
+        pre_planned_queries=["clima curitiba amanhã", "segunda query ignorada"],
+        budget=fast_short,
+    )
+
+    # Only 1 query, max 3 public results, private URL filtered, at most 1 main read with 0 sub-articles
+    assert len(search_calls) == 1
+    assert search_calls[0][1] == 3
+    assert len(res["search_results"]) == 3
+    assert all("127.0.0.1" not in r["url"] for r in res["search_results"])
+    assert len(read_calls) == 1
+    assert read_calls[0][1] == 0
+    # Slow read was cancelled cleanly, snippets preserved, and every step closed!
+    assert read_cancelled is True
+    assert res["scraped_pages"] == []
+    assert res["metrics"]["mode"] == "fast_factual"
+    assert res["metrics"]["queries_executed"] == 1
+    assert res["metrics"]["results_returned"] == 3
+    assert res["metrics"]["reads_started"] == 1
+    assert res["metrics"]["reads_completed"] == 0
+    assert res["metrics"]["read_timed_out"] is True
+    assert res["metrics"]["timed_out"] is True
+
+    started_ids = {e["id"] for e in events if e["type"] == "process_step_start"}
+    ended_ids = {e["id"] for e in events if e["type"] == "process_step_end"}
+    assert started_ids == ended_ids
+
+
+@pytest.mark.asyncio
+async def test_execute_agentic_search_no_useful_evidence(monkeypatch):
+    from backend.web_search import agent as agent_mod
+    from backend.web_search.agent import SearchBudget, execute_agentic_search
+
+    async def empty_search(query, db, cfg, *, max_results_override=None, timeout=None):
+        return []
+
+    monkeypatch.setattr(agent_mod, "resolve_and_execute_search", empty_search)
+    res = await execute_agentic_search(
+        "Cotação do dólar hoje",
+        db=None,
+        search_config={"enabled": True, "max_results": 5},
+        budget=SearchBudget.fast_factual(),
+    )
+    assert res["search_results"] == []
+    assert res["scraped_pages"] == []
+    assert res["metrics"]["results_returned"] == 0
+    assert res["metrics"]["reads_started"] == 0
+    assert res["metrics"]["reads_completed"] == 0
+
+
+@pytest.mark.asyncio
+async def test_deep_read_target_preserves_original_article_index_and_respects_zero_sub(monkeypatch):
+    from backend.web_search import reader as reader_mod
+
+    fetched_urls = []
+
+    async def fake_fetch(url, timeout=6.0):
+        fetched_urls.append(url)
+        if url == "https://news.example.com/":
+            return {
+                "url": url,
+                "title": "News",
+                "text_sample": "Headlines",
+                "articles": [
+                    {"title": "Art 0", "url": "https://news.example.com/0", "date": "2026-10-01"},
+                    {"title": "Art 1", "url": "https://news.example.com/1", "date": None},
+                    {"title": "Art 2", "url": "https://news.example.com/2", "date": None},
+                ],
+            }
+        if url.endswith("/1"):
+            return {"url": url, "published_date": "2026-10-02", "text_sample": ""}
+        if url.endswith("/2"):
+            return {"url": url, "published_date": "2026-10-03", "text_sample": ""}
+        return None
+
+    monkeypatch.setattr(reader_mod, "fetch_page_content", fake_fetch)
+
+    # max_sub_articles=0 -> only main page fetched
+    page0 = await reader_mod.deep_read_target("https://news.example.com/", max_sub_articles=0, timeout=3.0)
+    assert fetched_urls == ["https://news.example.com/"]
+    assert page0["articles"][1]["date"] is None
+
+    # max_sub_articles=3 -> dates assigned to exact original indices 1 and 2, NOT shifted to 0!
+    fetched_urls.clear()
+    page = await reader_mod.deep_read_target("https://news.example.com/", max_sub_articles=3, timeout=3.0)
+    assert page["articles"][0]["date"] == "2026-10-01"
+    assert page["articles"][1]["date"] == "2026-10-02"
+    assert page["articles"][2]["date"] == "2026-10-03"

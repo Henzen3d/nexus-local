@@ -143,6 +143,24 @@ def _is_private_ip(ip_str: str) -> bool:
     )
 
 
+def is_public_url_candidate(url: str) -> bool:
+    """Validação síncrona rápida de URL pública (sem DNS): bloqueia esquemas não-HTTP, localhost e IPs privados."""
+    try:
+        parsed = urlparse(url)
+    except Exception:
+        return False
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        return False
+    host = parsed.hostname.strip("[]").lower()
+    if host in ("localhost",) or host.endswith((".local", ".internal", ".localhost")):
+        return False
+    try:
+        ipaddress.ip_address(host)
+    except ValueError:
+        return True
+    return not _is_private_ip(host)
+
+
 async def is_safe_public_url(url: str) -> bool:
     """Bloqueia SSRF: só http(s) e só hosts que resolvem para IPs públicos.
 
@@ -231,31 +249,51 @@ async def fetch_page_content(url: str, timeout: float = 6.0) -> dict | None:
 
 async def deep_read_target(url: str, max_sub_articles: int = 3, timeout: float = 6.0) -> dict | None:
     """
-    Lê a página principal e, se encontrar artigos sem data definida,
-    faz um fetch rápido nos 2-3 primeiros links para capturar as datas e títulos exatos.
-    Idêntico ao comportamento do Grok ao inspecionar artigos específicos.
+    Lê a página principal e, se ``max_sub_articles > 0`` e encontrar artigos sem data definida,
+    faz um fetch rápido nos primeiros links para capturar as datas preservando o índice original.
     """
-    main_page = await fetch_page_content(url, timeout=timeout)
+    import time
+
+    t_deadline = time.monotonic() + max(0.2, float(timeout))
+    main_page = await fetch_page_content(url, timeout=max(0.2, float(timeout)))
     if not main_page:
         return None
 
+    if max_sub_articles <= 0:
+        return main_page
+
     articles = main_page.get("articles", [])
     if articles:
-        tasks = []
-        for a in articles[:max_sub_articles]:
-            if not a.get("date") and a.get("url"):
-                tasks.append(fetch_page_content(a["url"], timeout=4.0))
+        remaining = t_deadline - time.monotonic()
+        if remaining <= 0.2:
+            return main_page
+        sub_timeout = min(4.0, remaining)
+        indexed_tasks: list[tuple[int, asyncio.Task]] = []
+        for orig_idx, art in enumerate(articles[:max_sub_articles]):
+            if not art.get("date") and art.get("url"):
+                indexed_tasks.append((orig_idx, asyncio.create_task(fetch_page_content(art["url"], timeout=sub_timeout))))
 
-        if tasks:
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-            for i, r in enumerate(results):
+        if indexed_tasks:
+            raw_tasks = [t for _, t in indexed_tasks]
+            try:
+                results = await asyncio.wait_for(
+                    asyncio.gather(*raw_tasks, return_exceptions=True),
+                    timeout=max(0.1, t_deadline - time.monotonic()),
+                )
+            except asyncio.TimeoutError:
+                for t in raw_tasks:
+                    if not t.done():
+                        t.cancel()
+                results = await asyncio.gather(*raw_tasks, return_exceptions=True)
+
+            for (orig_idx, _), r in zip(indexed_tasks, results):
                 if isinstance(r, dict):
                     date_val = r.get("published_date")
                     if not date_val and r.get("text_sample"):
                         date_match = DATE_REGEX.search(r["text_sample"])
                         if date_match:
                             date_val = date_match.group(1)
-                    if date_val and i < len(articles):
-                        articles[i]["date"] = date_val
+                    if date_val and orig_idx < len(articles):
+                        articles[orig_idx]["date"] = date_val
 
     return main_page
