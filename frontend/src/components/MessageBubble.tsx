@@ -1,10 +1,10 @@
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { User, Bot, Copy, Check, Zap, Sparkles, FileText, Globe, Image, FileCode, Download, Atom, ChevronRight, Brain, AlertCircle, RefreshCw, Volume2, Square, Loader2, Play } from 'lucide-react'
-import React, { useState, useRef, useEffect, useDeferredValue } from 'react'
+import React, { useState, useRef, useEffect, useDeferredValue, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import i18n from '../i18n'
-import type { Message } from '../types'
+import type { Message, UiEnvelope } from '../types'
 import { useStore } from '../store/useStore'
 import { api } from '../api/client'
 import { UserAvatar, AssistantAvatar, ErrorAvatar } from './Avatars'
@@ -25,7 +25,59 @@ import { mergeProcessTree } from '../lib/processTree'
 import { SourceShelf } from './SourceShelf'
 import { GeneratedImage } from './ImageLightbox'
 
-// ─── ThinkingBlock — componente independente de modelo ─────────────────────────
+const REMARK_PLUGINS = [remarkGfm]
+const STALE_STREAM_STYLE: React.CSSProperties = { opacity: 0.92 }
+const NEXUS_FENCE_OPEN_RE = /^[ \t]{0,3}```(?:nexus-ui(?:\/1)?|nexus)[^\n]*\n/
+const NEXUS_FENCE_CLOSE_RE = /\n[ \t]{0,3}```[ \t]*(?:\n|$)/
+
+const MemoizedAssistantAvatar = React.memo(AssistantAvatar)
+const MemoizedExecutionSequence = React.memo(ExecutionSequence)
+const MemoizedDynamicRenderer = React.memo(DynamicRenderer)
+
+const MemoizedMarkdownBody = React.memo(function MemoizedMarkdownBody({
+  content,
+}: {
+  content: string
+}) {
+  if ((globalThis as { __NEXUS_RENDER_PROBE__?: boolean }).__NEXUS_RENDER_PROBE__ === true) {
+    const probe = globalThis as { __NEXUS_MARKDOWN_RENDERS__?: number }
+    probe.__NEXUS_MARKDOWN_RENDERS__ = (probe.__NEXUS_MARKDOWN_RENDERS__ ?? 0) + 1
+  }
+  return (
+    <ReactMarkdown
+      remarkPlugins={REMARK_PLUGINS}
+      components={markdownComponents}
+    >
+      {content}
+    </ReactMarkdown>
+  )
+})
+
+function stripUiFencesFast(text: string): string {
+  if (!text) return ''
+  if (!text.includes('```nexus') && !text.includes('```chart') && !text.includes('```ui')) {
+    return text.trim()
+  }
+  return stripUiFences(text)
+}
+
+function extractLastNexusFenceInput(text: string): string {
+  const idx = text.lastIndexOf('```nexus')
+  if (idx < 0) return ''
+  const lineStart = text.lastIndexOf('\n', idx)
+  const fromLine = lineStart >= 0 ? text.slice(lineStart + 1) : text
+  if (!NEXUS_FENCE_OPEN_RE.test(fromLine)) {
+    return text
+  }
+  const newlineAfterOpen = fromLine.indexOf('\n')
+  if (newlineAfterOpen < 0) return ''
+  const body = fromLine.slice(newlineAfterOpen + 1)
+  const closeMatch = NEXUS_FENCE_CLOSE_RE.exec('\n' + body)
+  if (!closeMatch) return fromLine
+  const endOffset = newlineAfterOpen + 1 + closeMatch.index + closeMatch[0].length - 1
+  return fromLine.slice(0, endOffset)
+}
+
 // ─── ThinkingBlock — componente independente de modelo ─────────────────────────
 interface ThinkingBlockProps {
   content: string
@@ -409,19 +461,26 @@ export const MessageBubble = React.memo(function MessageBubble({ message }: Prop
   }
 
   // Mapeamento de múltiplos artefatos (com suporte a retrocompatibilidade)
-  const artifacts = message.artifacts && message.artifacts.length > 0
-    ? message.artifacts
-    : message.artifact_id
-      ? [{ id: message.artifact_id, type: message.artifact_type || 'code', title: message.artifact_title || t('chat.viewArtifact') }]
-      : []
+  const artifacts = useMemo(
+    () =>
+      message.artifacts && message.artifacts.length > 0
+        ? message.artifacts
+        : message.artifact_id
+          ? [{ id: message.artifact_id, type: message.artifact_type || 'code', title: message.artifact_title || t('chat.viewArtifact') }]
+          : [],
+    [message.artifacts, message.artifact_id, message.artifact_type, message.artifact_title, t],
+  )
 
   // Parser universal de reasoning usando o adaptador correspondente (Fase 7.4)
-  const adapter = AdapterRegistry.getAdapter(message.model_id || null, message.provider || null)
-  const parsedResponse = adapter.parse(message.content)
+  const adapter = useMemo(
+    () => AdapterRegistry.getAdapter(message.model_id || null, message.provider || null),
+    [message.model_id, message.provider],
+  )
+  const parsedResponse = useMemo(
+    () => adapter.parse(message.content),
+    [adapter, message.content],
+  )
   const { reasoning, answer, metadata } = parsedResponse
-  
-  // A flag de thinking agora é fornecida diretamente pelo adapter
-  const isThinking = message.role === 'assistant' && (parsedResponse.isThinking ?? false)
 
   const [runtimeUiError, setRuntimeUiError] = useState<{ title: string; message: string } | null>(null)
   const handleRuntimeUiError = React.useCallback((title: string, error: string) => {
@@ -433,17 +492,35 @@ export const MessageBubble = React.memo(function MessageBubble({ message }: Prop
   // Com a flag desligada o texto fica intacto: um fence eventual aparece como
   // bloco de código, exatamente como antes do recurso existir.
   const intelligentUiEnabled = useIntelligentUiEnabled()
-  const { effectiveUiEnvelope, textWithoutUi } = React.useMemo(() => {
+  const { effectiveUiEnvelope, textWithoutUi } = useMemo(() => {
     if (!intelligentUiEnabled) {
       return { effectiveUiEnvelope: null, textWithoutUi: answer }
     }
     return {
       effectiveUiEnvelope: message.ui_blocks ?? null,
-      textWithoutUi: stripUiFences(answer),
+      textWithoutUi: stripUiFencesFast(answer),
     }
   }, [intelligentUiEnabled, message.ui_blocks, answer])
 
-  const cleanedContent = cleanContentForArtifacts(textWithoutUi, artifacts)
+  const cleanedContent = useMemo(
+    () => cleanContentForArtifacts(textWithoutUi, artifacts),
+    [textWithoutUi, artifacts],
+  )
+
+  const hasExecutionSequence =
+    message.role === 'assistant' && Boolean(reasoning || message.process_steps?.length || message.web_search_used)
+  const mergedProcessSteps = useMemo(() => {
+    if (!hasExecutionSequence) return null
+    return mergeProcessTree(
+      message.process_steps,
+      {
+        used: message.web_search_used,
+        query: message.web_search_query,
+        sources: message.web_search_sources,
+      },
+      { searching: t('chat.processSearching'), reading: t('chat.processReading', { defaultValue: 'Lendo página' }) },
+    )
+  }, [hasExecutionSequence, message.process_steps, message.web_search_used, message.web_search_query, message.web_search_sources, t])
 
   return (
     <div className={`message ${message.role}`}>
@@ -486,17 +563,9 @@ export const MessageBubble = React.memo(function MessageBubble({ message }: Prop
                 </div>
               )}
 
-              {message.role === 'assistant' && (reasoning || message.process_steps?.length || message.web_search_used) ? (
-                <ExecutionSequence
-                  steps={mergeProcessTree(
-                    message.process_steps,
-                    {
-                      used: message.web_search_used,
-                      query: message.web_search_query,
-                      sources: message.web_search_sources,
-                    },
-                    { searching: t('chat.processSearching'), reading: t('chat.processReading', { defaultValue: 'Lendo página' }) },
-                  )}
+              {mergedProcessSteps ? (
+                <MemoizedExecutionSequence
+                  steps={mergedProcessSteps}
                   isWorking={false}
                   durationMs={message.process_duration_ms}
                   thinkingContent={reasoning || undefined}
@@ -505,12 +574,7 @@ export const MessageBubble = React.memo(function MessageBubble({ message }: Prop
 
               {cleanedContent ? (
                 <div className="assistant-response">
-                  <ReactMarkdown
-                    remarkPlugins={[remarkGfm]}
-                    components={markdownComponents}
-                  >
-                    {cleanedContent}
-                  </ReactMarkdown>
+                  <MemoizedMarkdownBody content={cleanedContent} />
                 </div>
               ) : reasoning ? (
                 <div className="reasoning-exhausted-card">
@@ -556,7 +620,7 @@ export const MessageBubble = React.memo(function MessageBubble({ message }: Prop
               )}
 
               {/* Intelligent UI: renderizador de blocos visuais e micro-ferramentas */}
-              {effectiveUiEnvelope && <DynamicRenderer envelope={effectiveUiEnvelope} messageId={message.id} onRuntimeError={handleRuntimeUiError} />}
+              {effectiveUiEnvelope && <MemoizedDynamicRenderer envelope={effectiveUiEnvelope} messageId={message.id} onRuntimeError={handleRuntimeUiError} />}
               <CorrectionNotice messageId={message.id} errors={message.ui_errors} dropped={message.ui_dropped} runtime={runtimeUiError} />
 
               {artifacts.length > 0 && (
@@ -795,7 +859,11 @@ export const MessageBubble = React.memo(function MessageBubble({ message }: Prop
 
 // ─── StreamingBubble ───────────────────────────────────────────────────────────
 
-export function StreamingBubble({ content }: { content: string }) {
+export const StreamingBubble = React.memo(function StreamingBubble({ content }: { content: string }) {
+  if ((globalThis as { __NEXUS_RENDER_PROBE__?: boolean }).__NEXUS_RENDER_PROBE__ === true) {
+    const probe = globalThis as { __NEXUS_STREAMING_BUBBLE_RENDERS__?: number }
+    probe.__NEXUS_STREAMING_BUBBLE_RENDERS__ = (probe.__NEXUS_STREAMING_BUBBLE_RENDERS__ ?? 0) + 1
+  }
   const { t } = useTranslation()
   const lastCacheHit = useStore((s) => s.lastCacheHit)
   const selectedModelId = useStore((s) => s.selectedModelId)
@@ -806,10 +874,16 @@ export function StreamingBubble({ content }: { content: string }) {
   const streamingUiBlocks = useStore((s) => s.streamingUiBlocks)
 
   // Obtém o adaptador e normaliza a resposta de stream em tempo real (Fase 7.4)
-  const adapter = AdapterRegistry.getAdapter(selectedModelId, selectedProviderId)
-  const parsedStream = adapter.parse(content)
+  const adapter = useMemo(
+    () => AdapterRegistry.getAdapter(selectedModelId, selectedProviderId),
+    [selectedModelId, selectedProviderId],
+  )
+  const parsedStream = useMemo(
+    () => adapter.parse(content),
+    [adapter, content],
+  )
   const { reasoning, answer } = parsedStream
-  
+
   // A flag de thinking agora é fornecida diretamente pelo adapter
   const isThinking = parsedStream.isThinking ?? false
 
@@ -825,22 +899,46 @@ export function StreamingBubble({ content }: { content: string }) {
 
   // Durante o stream, esconde o fence parcial só com a flag ligada (ver MessageBubble acima)
   const streamUiEnabled = useIntelligentUiEnabled()
-  const streamText = streamUiEnabled ? stripUiFences(deferredResponse) : deferredResponse
+  const streamText = useMemo(
+    () => (streamUiEnabled ? stripUiFencesFast(deferredResponse) : deferredResponse),
+    [streamUiEnabled, deferredResponse],
+  )
 
-  // Extrai blocos fechados e bloco pendente do fence em streaming
-  const { streamEnvelope, pendingBlockType } = React.useMemo(() => {
-    if (!streamUiEnabled) {
-      return { streamEnvelope: streamingUiBlocks || null, pendingBlockType: null }
+  const nexusFenceInput = useMemo(
+    () => (streamUiEnabled ? extractLastNexusFenceInput(deferredResponse) : ''),
+    [streamUiEnabled, deferredResponse],
+  )
+
+  const modelEnvelopeCacheRef = useRef<{ key: string; envelope: UiEnvelope | null }>({
+    key: '',
+    envelope: null,
+  })
+
+  // Extrai blocos fechados e bloco pendente do fence em streaming sem depender de streamingUiBlocks
+  const { modelEnvelope, pendingBlockType } = useMemo(() => {
+    if (!streamUiEnabled || !nexusFenceInput) {
+      return { modelEnvelope: null as UiEnvelope | null, pendingBlockType: null as string | null }
     }
-    const scanned = scanPartialEnvelope(deferredResponse)
-    const modelEnvelope =
-      scanned.blocks.length > 0 ? parseUiEnvelope({ v: 1, blocks: scanned.blocks }) : null
-    const merged = mergeUiEnvelopes(streamingUiBlocks, modelEnvelope)
+    const scanned = scanPartialEnvelope(nexusFenceInput)
+    if (scanned.blocks.length === 0) {
+      return { modelEnvelope: null as UiEnvelope | null, pendingBlockType: scanned.pendingType }
+    }
+    const blocksKey = JSON.stringify(scanned.blocks)
+    let parsed = modelEnvelopeCacheRef.current.envelope
+    if (modelEnvelopeCacheRef.current.key !== blocksKey) {
+      parsed = parseUiEnvelope({ v: 1, blocks: scanned.blocks })
+      modelEnvelopeCacheRef.current = { key: blocksKey, envelope: parsed }
+    }
     return {
-      streamEnvelope: merged,
+      modelEnvelope: parsed,
       pendingBlockType: scanned.pendingType,
     }
-  }, [streamUiEnabled, deferredResponse, streamingUiBlocks])
+  }, [streamUiEnabled, nexusFenceInput])
+
+  const streamEnvelope = useMemo(() => {
+    if (!streamUiEnabled) return streamingUiBlocks || null
+    return mergeUiEnvelopes(streamingUiBlocks, modelEnvelope)
+  }, [streamUiEnabled, streamingUiBlocks, modelEnvelope])
 
   // A fase de preparação ativa (busca web / thinking) termina assim que os primeiros tokens
   // da resposta final começam a ser gerados.
@@ -852,7 +950,7 @@ export function StreamingBubble({ content }: { content: string }) {
 
   return (
     <div className="message assistant streaming">
-      <AssistantAvatar />
+      <MemoizedAssistantAvatar />
       <div className="message-body">
         {lastCacheHit && (
           <div className={`cache-badge cache-badge--${lastCacheHit.type}`}>
@@ -863,7 +961,7 @@ export function StreamingBubble({ content }: { content: string }) {
           </div>
         )}
 
-        <ExecutionSequence
+        <MemoizedExecutionSequence
           steps={processSteps}
           isWorking={isStillWorking}
           startedAt={processStartedAt}
@@ -875,14 +973,9 @@ export function StreamingBubble({ content }: { content: string }) {
         {streamText && (
           <div
             className="assistant-response streaming-content"
-            style={isStale ? { opacity: 0.92 } : undefined}
+            style={isStale ? STALE_STREAM_STYLE : undefined}
           >
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              components={markdownComponents}
-            >
-              {streamText}
-            </ReactMarkdown>
+            <MemoizedMarkdownBody content={streamText} />
           </div>
         )}
 
@@ -893,7 +986,7 @@ export function StreamingBubble({ content }: { content: string }) {
 
         {/* Componentes UI do host ou modelo durante o stream */}
         {(streamEnvelope || pendingBlockType) && (
-          <DynamicRenderer
+          <MemoizedDynamicRenderer
             envelope={streamEnvelope}
             streaming={true}
             pendingType={pendingBlockType}
@@ -903,4 +996,4 @@ export function StreamingBubble({ content }: { content: string }) {
       </div>
     </div>
   )
-}
+})

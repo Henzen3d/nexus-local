@@ -92,7 +92,7 @@ function walkTs(dir: string): string[] {
   return out
 }
 
-test("20 tokens não aumentam commits do ChatWindow nem renders das bolhas antigas", () => {
+test("20 tokens e amostras multi-frame não aumentam commits do ChatWindow, renders das bolhas antigas nem re-renders de Markdown por status", () => {
   const frontend = dirname(fileURLToPath(new URL("../", import.meta.url)))
   const result = spawnSync(process.execPath, ["scripts/run-streaming-paint-probe.mjs"], {
     cwd: frontend,
@@ -103,18 +103,91 @@ test("20 tokens não aumentam commits do ChatWindow nem renders das bolhas antig
   const line = result.stdout.trim().split("\n").find((row) => row.startsWith("{"))
   assert.ok(line, result.stdout)
   const data = JSON.parse(line!) as {
+    env: string
     commitsDuringTokens: number
     chatWindowCommitsDuringTokens: number
     chatWindowRendersDuringTokens: number
     chatWindowCommitsAfterMount: number
     bubblesAfterMount: number
     bubblesDuringTokens: number
+    scenarios: Array<{
+      name: string
+      frames: number
+      statusUpdates: number
+      chatWindowCommits: number
+      chatWindowRenders: number
+      olderBubbleRenders: number
+      markdownRendersTotal: number
+      markdownRendersOnContent: number
+      markdownRendersOnStatus: number
+      adapterGetCalls: number
+      adapterParseCallsTotal: number
+      adapterParseCallsOnStatus: number
+      finalVerified: boolean
+    }>
+    scrollPreservation: {
+      autoFollowCallsNearBottom: number
+      autoFollowAllAuto: boolean
+      distanceAfterNearBottom: number
+      scrollTopPreservedWhileUp: boolean
+      scrollCallsWhileUp: number
+      olderBubblesDuringScrollUp: number
+      markdownRendersOnScrollUpEvent: number
+      autoFollowResumedCalls: number
+      distanceAfterResume: number
+    }
+    totals: {
+      chatWindowCommits: number
+      chatWindowRenders: number
+      olderBubbleRenders: number
+      markdownRendersOnStatus: number
+      adapterGetCalls: number
+      adapterParseCallsOnStatus: number
+      allFinalVerified: boolean
+    }
   }
+  assert.equal(data.env, "development")
   assert.equal(data.bubblesAfterMount, 50)
   assert.equal(data.bubblesDuringTokens, 0)
   assert.equal(data.chatWindowRendersDuringTokens, 0)
   assert.ok(data.chatWindowCommitsAfterMount >= 1)
   assert.equal(data.chatWindowCommitsDuringTokens, 0)
+
+  // Cenários multi-frame determinísticos (texto longo, código, think, nexus-ui)
+  assert.deepEqual(
+    data.scenarios.map((s) => s.name),
+    ["long_text", "fenced_code", "reasoning_think", "nexus_ui"],
+  )
+  assert.equal(data.totals.chatWindowCommits, 0)
+  assert.equal(data.totals.chatWindowRenders, 0)
+  assert.equal(data.totals.olderBubbleRenders, 0)
+  assert.equal(data.totals.markdownRendersOnStatus, 0)
+  assert.equal(data.totals.adapterGetCalls, 0)
+  assert.equal(data.totals.adapterParseCallsOnStatus, 0)
+  assert.equal(data.totals.allFinalVerified, true)
+
+  for (const scenario of data.scenarios) {
+    assert.equal(scenario.olderBubbleRenders, 0, `${scenario.name} não deve re-renderizar bolhas antigas`)
+    assert.equal(scenario.chatWindowCommits, 0, `${scenario.name} não deve commitar ChatWindow`)
+    assert.equal(scenario.markdownRendersOnStatus, 0, `${scenario.name} não deve re-renderizar Markdown em updates de status`)
+    assert.equal(scenario.adapterParseCallsOnStatus, 0, `${scenario.name} não deve re-parsear adapter em updates de status`)
+    assert.ok(
+      scenario.markdownRendersOnContent <= scenario.frames,
+      `${scenario.name}: Markdown renderizou mais vezes (${scenario.markdownRendersOnContent}) que os frames de conteúdo (${scenario.frames})`,
+    )
+    assert.equal(scenario.finalVerified, true, `${scenario.name} deve preservar conteúdo final`)
+  }
+
+  // Preservação do scroll manual ao subir e retomada de auto-follow ao voltar ao fundo
+  assert.equal(data.scrollPreservation.autoFollowCallsNearBottom, 5)
+  assert.equal(data.scrollPreservation.autoFollowAllAuto, true)
+  assert.equal(data.scrollPreservation.distanceAfterNearBottom, 0)
+  assert.equal(data.scrollPreservation.scrollTopPreservedWhileUp, true)
+  assert.equal(data.scrollPreservation.scrollCallsWhileUp, 0)
+  assert.equal(data.scrollPreservation.olderBubblesDuringScrollUp, 0)
+  assert.equal(data.scrollPreservation.markdownRendersOnScrollUpEvent, 0)
+  assert.equal(data.scrollPreservation.autoFollowResumedCalls, 3)
+  assert.equal(data.scrollPreservation.distanceAfterResume, 0)
 })
 
 test("depois do stream, copiar e substituir ou remover mensagem antiga usam o estado atual", () => {

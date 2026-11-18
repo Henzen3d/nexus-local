@@ -3,6 +3,14 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
+const args = new Set(process.argv.slice(2))
+const probeEnv =
+  args.has('--prod') || process.env.PROBE_ENV === 'production'
+    ? 'production'
+    : 'development'
+
+globalThis.__NEXUS_PROBE_ENV__ = probeEnv
+
 const dir = await mkdtemp(resolve('node_modules/.streaming-paint-probe-'))
 try {
   const outfile = resolve(dir, 'probe.mjs')
@@ -13,10 +21,14 @@ try {
     platform: 'node',
     format: 'esm',
     jsx: 'automatic',
+    logOverride: {
+      'duplicate-object-key': 'silent',
+    },
     define: {
       'import.meta.env.VITE_API_URL': 'undefined',
       'import.meta.env.VITE_WS_URL': 'undefined',
-      'import.meta.env.DEV': 'false',
+      'import.meta.env.DEV': probeEnv === 'development' ? 'true' : 'false',
+      'process.env.NODE_ENV': JSON.stringify(probeEnv),
     },
     plugins: [{
       name: 'ignore-css',

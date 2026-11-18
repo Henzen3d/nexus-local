@@ -1,11 +1,11 @@
-import { useEffect, type RefObject } from 'react'
+import React, { useEffect, type RefObject } from 'react'
 import { useStore } from '../store/useStore'
 import { StreamingBubble } from './MessageBubble'
 import { streamScrollBehavior } from '../lib/scrollPolicy'
 
 const scrollBehavior = streamScrollBehavior(true)
 
-export function StreamingTail({
+export const StreamingTail = React.memo(function StreamingTail({
   sentinelRef,
   messagesAreaRef,
 }: {
@@ -32,4 +32,4 @@ export function StreamingTail({
 
   if (!isStreaming) return null
   return <StreamingBubble content={streamingContent} />
-}
+})
