@@ -107,7 +107,7 @@ export function AutoRouterSettings() {
       desc: t('autoRouter.policyEconomicalDesc', {
         defaultValue: 'Prioridade absoluta para modelos 100% gratuitos (Groq, Cerebras, Cloudflare). Modelos com custo só são acionados se não houver alternativa gratuita ativa.',
       }),
-      tag: 'Economia Máxima',
+      tag: t('autoRouter.policyEconomicalTag', { defaultValue: 'Economia Máxima' }),
     },
     {
       id: 'balanced_smart',
@@ -117,7 +117,7 @@ export function AutoRouterSettings() {
       desc: t('autoRouter.policyBalancedDesc', {
         defaultValue: 'O melhor dos dois mundos: velocidade extrema em saudações e resumos (Groq 8B/Cerebras), profundidade e precisão em código e raciocínio (70B ou DeepSeek-R1).',
       }),
-      tag: 'PADRÃO RECOMENDADO',
+      tag: t('autoRouter.policyBalancedTag', { defaultValue: 'PADRÃO RECOMENDADO' }),
       isDefault: true,
     },
     {
@@ -128,7 +128,7 @@ export function AutoRouterSettings() {
       desc: t('autoRouter.policyPerformanceDesc', {
         defaultValue: 'Busca sempre o maior score de qualidade do ranking para a tarefa detectada (ex: Claude 3.5 Sonnet, DeepSeek-R1, Qwen 2.5 Coder 32B), independente de custo.',
       }),
-      tag: 'Qualidade Extrema',
+      tag: t('autoRouter.policyPerformanceTag', { defaultValue: 'Qualidade Extrema' }),
     },
   ]
 
@@ -280,8 +280,8 @@ export function AutoRouterSettings() {
           }}
         />
 
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: 'var(--muted)', cursor: 'pointer' }}>
+        <div className="auto-router-preview-actions">
+          <label className="auto-router-preview-checkbox">
             <input
               type="checkbox"
               checked={previewContinue}
@@ -297,22 +297,9 @@ export function AutoRouterSettings() {
 
           <button
             type="button"
+            className="auto-router-preview-btn"
             onClick={() => void runPreview()}
             disabled={previewLoading || !previewPrompt.trim()}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '8px 14px',
-              borderRadius: '8px',
-              border: 'none',
-              background: 'var(--accent, #6366f1)',
-              color: '#fff',
-              fontSize: '13px',
-              fontWeight: 600,
-              cursor: previewLoading || !previewPrompt.trim() ? 'not-allowed' : 'pointer',
-              opacity: previewLoading || !previewPrompt.trim() ? 0.6 : 1,
-            }}
           >
             {previewLoading ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
             {previewLoading
@@ -372,7 +359,7 @@ export function AutoRouterSettings() {
               </span>
             </div>
 
-            <div style={{ overflowX: 'auto' }}>
+            <div className="auto-router-table-container">
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
                 <thead>
                   <tr style={{ color: 'var(--muted)', textAlign: 'left' }}>

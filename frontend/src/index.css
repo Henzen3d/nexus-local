@@ -7728,6 +7728,8 @@ html[data-theme="light"] .settings-modal-overlay {
   flex-direction: column;
   position: relative;
   overflow: hidden;
+  min-height: 0;
+  min-width: 0;
 }
 
 .settings-close-btn {
@@ -7754,6 +7756,8 @@ html[data-theme="light"] .settings-modal-overlay {
 .settings-content-scroll {
   flex: 1;
   overflow-y: auto;
+  min-height: 0;
+  min-width: 0;
   padding: 32px;
   scrollbar-width: thin;
   scrollbar-color: var(--surface-card) transparent;
@@ -17728,5 +17732,151 @@ html[data-theme="light"] .model-option-provider-tag {
   background: var(--primary, #cc785c);
   color: #ffffff;
   border-color: var(--primary, #cc785c);
+}
+
+/* Auto-Router Settings & Simulation Actions (T4.4) */
+.auto-router-settings {
+  min-height: 0;
+  min-width: 0;
+  padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+}
+
+.auto-router-preview-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.auto-router-preview-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted);
+  cursor: pointer;
+  flex: 1 1 220px;
+  min-width: 0;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.auto-router-preview-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: none;
+  background: var(--accent, #6366f1);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+  min-height: 36px;
+  white-space: nowrap;
+  transition: opacity 0.15s ease, transform 0.1s ease;
+}
+
+.auto-router-preview-btn:hover:not(:disabled) {
+  opacity: 0.92;
+}
+
+.auto-router-preview-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.auto-router-table-container {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  width: 100%;
+  min-width: 0;
+  scrollbar-width: thin;
+}
+
+/* Logs Monitoring Panel (T4.6) */
+.logs-monitoring-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+}
+
+.logs-monitoring-panel .logs-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.logs-monitoring-panel .logs-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.logs-monitoring-panel .logs-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+
+.logs-monitoring-panel .logs-controls select {
+  background: var(--surface-cream-strong);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  font-size: 12.5px;
+  color: var(--ink);
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.logs-monitoring-panel .logs-controls button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--hairline);
+  background: var(--surface-soft);
+  color: var(--ink);
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.logs-monitoring-panel .logs-controls button:hover:not(:disabled) {
+  background: var(--surface-cream-strong);
+  border-color: var(--hairline-strong, var(--hairline));
+}
+
+.logs-monitoring-panel .logs-controls button:focus-visible,
+.logs-monitoring-panel .logs-controls select:focus-visible,
+.logs-monitoring-panel .logs-controls .auto-refresh-label input:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.logs-monitoring-panel .logs-controls .auto-refresh-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
 }
 
