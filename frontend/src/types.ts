@@ -987,17 +987,65 @@ export interface WebSearchLog {
   created_at: string
 }
 
+export interface StreamEndSuccessMessage {
+  type: 'stream_end'
+  outcome: 'success'
+  message_id: string
+  conversation_id: string
+  turn_id?: string | null
+  finish_reason?: string
+  from_cache?: boolean
+  cache_type?: string | null
+  cache_similarity?: number | null
+  artifact_id?: string | null
+  artifact_type?: string | null
+  artifact_title?: string | null
+  artifacts?: { id: string; type: string; title: string }[]
+  relay_used?: boolean
+  relay_model?: string | null
+  web_search_used?: boolean
+  web_search_query?: string
+  web_search_sources?: WebSearchSource[]
+  process_steps?: ProcessStep[]
+  was_fallback?: boolean
+  final_model_id?: string | null
+  final_model_name?: string | null
+  final_provider_id?: string | null
+  requested_model?: string | null
+  served_by?: string | null
+  failover_tier?: string | null
+  spliced?: boolean
+  attempt_count?: number
+  ui_errors?: UiError[]
+  ui_dropped?: number
+  ui_blocks?: UiEnvelope | null
+  process_duration_ms?: number
+  source_count?: number
+  phase_latencies?: Record<string, number>
+}
+
+export interface StreamEndFailureMessage {
+  type: 'stream_end'
+  outcome: 'error' | 'empty' | 'timeout' | 'cancelled'
+  reason?: string
+  finish_reason?: string
+  conversation_id?: string | null
+  turn_id?: string | null
+  message?: string
+}
+
 export type WSMessage =
   | { type: 'ready' }
   | { type: 'ping' }
   | { type: 'pong' }
-  | { type: 'conversation_created'; conversation_id: string; title: string; project_id?: string | null }
-  | { type: 'stream_start'; conversation_id: string; from_cache?: boolean; cache_type?: string | null; cache_similarity?: number | null }
-  | { type: 'stream_clear' }
-  | { type: 'token'; content: string }
-  | { type: 'stream_end'; message_id: string; conversation_id: string; artifact_id?: string | null; artifact_type?: string | null; artifact_title?: string | null; artifacts?: { id: string; type: string; title: string }[]; relay_used?: boolean; relay_model?: string | null; web_search_used?: boolean; web_search_query?: string; web_search_sources?: WebSearchSource[]; process_steps?: ProcessStep[]; was_fallback?: boolean; final_model_id?: string | null; final_model_name?: string | null; final_provider_id?: string | null; requested_model?: string | null; served_by?: string | null; failover_tier?: string | null; spliced?: boolean; outcome?: string; attempt_count?: number; ui_errors?: UiError[]; ui_dropped?: number; ui_blocks?: UiEnvelope | null; process_duration_ms?: number; source_count?: number }
+  | { type: 'conversation_created'; conversation_id: string; title: string; project_id?: string | null; turn_id?: string | null }
+  | { type: 'stream_start'; conversation_id: string; turn_id?: string | null; from_cache?: boolean; cache_type?: string | null; cache_similarity?: number | null }
+  | { type: 'stream_clear'; turn_id?: string | null; conversation_id?: string | null }
+  | { type: 'token'; content: string; turn_id?: string | null; conversation_id?: string | null }
+  | StreamEndSuccessMessage
+  | StreamEndFailureMessage
   | { type: 'ui_progress'; block: ProgressBlock }
-  | { type: 'error'; message: string }
+  | { type: 'error'; message: string; turn_id?: string | null; conversation_id?: string | null }
   | { type: 'failover_notice'; original_model: string; fallback_model: string; reason: string }
   | { type: 'project_context_notice'; message: string; tokens_est: number; safe_input_tokens: number }
   | { type: 'project_context_debug'; project_id: string; debug: unknown; file_chunks: ProjectContextFileChunk[]; chat_chunks: ProjectContextChatChunk[]; tokens_est: number; trimmed: unknown; safe_input_tokens: number; system_tokens_est: number }

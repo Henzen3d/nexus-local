@@ -24,6 +24,12 @@ from backend.ranking import (
     mark_model_success,
 )
 from backend.ranking.quota_tracker import record_request
+from backend.orchestration.ws_protocol import (
+    StreamClearEvent,
+    StreamStartEvent,
+    StreamTokenEvent,
+    dump_ws_event,
+)
 
 if TYPE_CHECKING:
     from fastapi import WebSocket
@@ -125,6 +131,7 @@ async def send_and_persist_error(
     cascade_history: list[dict],
     current_model_id: str | None = None,
     current_provider_id: str | None = None,
+    turn_id: str | None = None,
 ):
     # Log técnico completo para diagnóstico do backend (nunca enviado ao frontend)
     if cascade_history:
@@ -136,18 +143,25 @@ async def send_and_persist_error(
     # Fix failover: limpa qualquer rascunho de stream residual no frontend antes
     # de entregar o erro, evitando texto parcial "travado" na bolha.
     try:
-        await ws.send_json({"type": "stream_clear"})
+        await ws.send_json(
+            dump_ws_event(StreamClearEvent(turn_id=turn_id, conversation_id=conversation_id or None))
+        )
     except Exception:
         pass
 
     summary = build_cascade_error_summary(cascade_history, main_msg)
     try:
-        await ws.send_json({
+        err_payload: dict[str, Any] = {
             "type": "error",
             "message": summary,
             "retry_suggested": True,
             "attempts": len(cascade_history),
-        })
+        }
+        if turn_id:
+            err_payload["turn_id"] = turn_id
+        if conversation_id:
+            err_payload["conversation_id"] = conversation_id
+        await ws.send_json(err_payload)
     except Exception:
         pass
 
@@ -272,21 +286,28 @@ async def stream_from_cache(
     ws: "WebSocket",
     conversation_id: str,
     cache_hit: "CacheHit",
+    turn_id: str | None = None,
 ) -> str:
     """Serve uma resposta do cache com fake-streaming para UX consistente."""
-    await ws.send_json({
-        "type": "stream_start",
-        "conversation_id": conversation_id,
-        "from_cache": True,
-        "cache_type": cache_hit.cache_type,
-        "cache_similarity": round(cache_hit.similarity, 4),
-    })
+    await ws.send_json(
+        dump_ws_event(
+            StreamStartEvent(
+                conversation_id=conversation_id,
+                turn_id=turn_id,
+                from_cache=True,
+                cache_type=cache_hit.cache_type,
+                cache_similarity=round(cache_hit.similarity, 4),
+            )
+        )
+    )
 
     full_response = cache_hit.response
     chunk_size = 4
     for i in range(0, len(full_response), chunk_size):
         chunk = full_response[i:i + chunk_size]
-        await ws.send_json({"type": "token", "content": chunk})
+        await ws.send_json(
+            dump_ws_event(StreamTokenEvent(content=chunk, turn_id=turn_id, conversation_id=conversation_id))
+        )
         await asyncio.sleep(0.004)
 
     return full_response
@@ -305,6 +326,7 @@ async def stream_from_llm(
     auto_route_decision: Any | None = None,
     reasoning_effort: str | None = None,
     request_context: Any | None = None,
+    turn_id: str | None = None,
 ) -> tuple[str, str, str] | None:
     """Executa o streaming LLM com failover cascade.
 
@@ -357,7 +379,9 @@ async def stream_from_llm(
             # Fix failover: se o modelo anterior já emitiu tokens ao cliente e falhou,
             # limpa o rascunho do frontend para o próximo modelo não misturar respostas.
             try:
-                await ws.send_json({"type": "stream_clear"})
+                await ws.send_json(
+                    dump_ws_event(StreamClearEvent(turn_id=turn_id, conversation_id=conversation_id or None))
+                )
             except Exception:
                 pass
             tokens_flushed_to_client = False
@@ -460,11 +484,15 @@ async def stream_from_llm(
             continue
 
         if not stream_started:
-            await ws.send_json({
-                "type": "stream_start",
-                "conversation_id": conversation_id,
-                "from_cache": False,
-            })
+            await ws.send_json(
+                dump_ws_event(
+                    StreamStartEvent(
+                        conversation_id=conversation_id,
+                        turn_id=turn_id,
+                        from_cache=False,
+                    )
+                )
+            )
             stream_started = True
 
         # Consulta capacidades de reasoning do modelo selecionado/resolvido
@@ -646,7 +674,15 @@ async def stream_from_llm(
                     nonlocal turn_failover_recovery_ms
                     if token_buffer:
                         batch_text = "".join(token_buffer)
-                        await ws.send_json({"type": "token", "content": batch_text})
+                        await ws.send_json(
+                            dump_ws_event(
+                                StreamTokenEvent(
+                                    content=batch_text,
+                                    turn_id=turn_id,
+                                    conversation_id=conversation_id or None,
+                                )
+                            )
+                        )
                         now_mono = time.monotonic()
                         token_buffer.clear()
                         last_flush_mono = now_mono
@@ -1411,6 +1447,7 @@ async def resolve_and_stream(
     auto_route_decision: Any | None = None,
     reasoning_effort: str | None = None,
     request_context: Any | None = None,
+    turn_id: str | None = None,
 ) -> tuple[str, "CacheHit | None", str, str] | None:
     """Fluxo completo: tenta cache, depois LLM com failover.
 
@@ -1423,7 +1460,7 @@ async def resolve_and_stream(
     )
 
     if cache_hit:
-        full_response = await stream_from_cache(ws, conversation_id, cache_hit)
+        full_response = await stream_from_cache(ws, conversation_id, cache_hit, turn_id=turn_id)
         return full_response, cache_hit, model_id, provider_id
 
     result = await stream_from_llm(
@@ -1431,6 +1468,7 @@ async def resolve_and_stream(
         temperature=temperature, max_tokens=max_tokens, auto_route_decision=auto_route_decision,
         reasoning_effort=reasoning_effort,
         request_context=request_context,
+        turn_id=turn_id,
     )
     if result is None:
         return None

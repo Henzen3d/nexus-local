@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { readFileSync } from 'node:fs'
+import { decodeChatFrame, isStreamEndFailure, isStreamEndSuccess } from './chatProtocol.ts'
+import { StreamDraftBuffer } from './streamDraftBuffer.ts'
 
 test('useChat handlers intermediários nunca encerram o turno (isGeneratingRef permanece true)', () => {
   const source = readFileSync(
@@ -39,7 +41,7 @@ test('useChat handlers intermediários nunca encerram o turno (isGeneratingRef p
   }
 })
 
-test('Os 4 encerramentos permitidos finalizam o ciclo de vida do turno', () => {
+test('Os 4 encerramentos permitidos centralizam descarte do rascunho e finalizam o turno', () => {
   const source = readFileSync(
     new URL('../hooks/useChat.ts', import.meta.url),
     'utf8'
@@ -49,20 +51,22 @@ test('Os 4 encerramentos permitidos finalizam o ciclo de vida do turno', () => {
   const streamEndMatch = source.match(/case 'stream_end':[\s\S]*?break/)
   assert.ok(streamEndMatch)
   assert.ok(streamEndMatch[0].includes('isGeneratingRef.current = false'))
+  assert.ok(streamEndMatch[0].includes('isStreamEndSuccess(msg)'))
+  assert.ok(streamEndMatch[0].includes('s.discardStreamDraft()'))
 
   // 2. error
   const errorMatch = source.match(/case 'error':[\s\S]*?break/)
   assert.ok(errorMatch)
   assert.ok(errorMatch[0].includes('isGeneratingRef.current = false'))
-  assert.ok(errorMatch[0].includes('s.clearStreamDraft()'), 'error fatal deve limpar o rascunho de stream')
+  assert.ok(errorMatch[0].includes('s.discardStreamDraft()'), 'error fatal deve usar ação centralizada discardStreamDraft')
 
-  // 3. onclose
-  const oncloseMatch = source.match(/ws\.onclose = \([\s\S]*?clearHeartbeat\(\)[\s\S]*?isGeneratingRef\.current = false/)
-  assert.ok(oncloseMatch, 'onclose do WebSocket deve setar isGeneratingRef.current = false')
+  // 3. onclose (cobre queda antes ou depois de stream_start)
+  const oncloseMatch = source.match(/ws\.onclose = \([\s\S]*?clearHeartbeat\(\)[\s\S]*?isGeneratingRef\.current = false[\s\S]*?st\.discardStreamDraft\(\)/)
+  assert.ok(oncloseMatch, 'onclose do WebSocket deve descartar rascunho e destravar isGeneratingRef')
 
   // 4. stopStream
-  const stopStreamMatch = source.match(/const stopStream = useCallback\(\(\) => {[\s\S]*?isGeneratingRef\.current = false/)
-  assert.ok(stopStreamMatch, 'stopStream explícito deve setar isGeneratingRef.current = false')
+  const stopStreamMatch = source.match(/const stopStream = useCallback\(\(\) => {[\s\S]*?isGeneratingRef\.current = false[\s\S]*?flushStreamDraft\(\)/)
+  assert.ok(stopStreamMatch, 'stopStream explícito deve dar flush síncrono e encerrar isGeneratingRef')
 })
 
 test('clearStreamDraft zera streamingContent e streamingUiBlocks sem criar mensagem prematura', () => {
@@ -103,4 +107,100 @@ test('Smart Scroll Anchor e botão flutuante em ChatWindow', () => {
   assert.ok(chatSource.includes('ChevronDown'))
   assert.ok(chatSource.includes('handleScroll'))
   assert.ok(chatSource.includes('onScroll={handleScroll}'))
+})
+
+test('T2.4: decodeChatFrame valida todas as fixtures canônicas compartilhadas com Python', () => {
+  const fixtureRaw = readFileSync(
+    new URL('../../../backend/tests/fixtures/chat_ws_contract.json', import.meta.url),
+    'utf8'
+  )
+  const fixture = JSON.parse(fixtureRaw) as {
+    valid_frames: Array<{ name: string; payload: Record<string, unknown>; expect_kind: string }>
+    invalid_raw_frames: string[]
+    incomplete_success_frame: Record<string, unknown>
+  }
+
+  for (const entry of fixture.valid_frames) {
+    const decoded = decodeChatFrame(JSON.stringify(entry.payload))
+    assert.ok(decoded, `fixture válida deveria decodificar: ${entry.name}`)
+    if (entry.expect_kind === 'stream_end_success') {
+      assert.equal(isStreamEndSuccess(decoded), true, `esperado stream_end_success em ${entry.name}`)
+      assert.equal(isStreamEndFailure(decoded), false)
+    } else if (entry.expect_kind === 'stream_end_failure') {
+      assert.equal(isStreamEndFailure(decoded), true, `esperado stream_end_failure em ${entry.name}`)
+      assert.equal(isStreamEndSuccess(decoded), false)
+    } else if (entry.expect_kind === 'proactive') {
+      assert.ok(decoded.type.startsWith('proactive_'))
+    } else {
+      assert.equal(decoded.type, entry.expect_kind)
+    }
+  }
+
+  for (const badRaw of fixture.invalid_raw_frames) {
+    assert.equal(decodeChatFrame(badRaw), null, `frame inválido deveria retornar null: ${badRaw}`)
+  }
+
+  // Frame stream_end de sucesso SEM message_id nunca pode criar bolha de sucesso
+  const incompleteDecoded = decodeChatFrame(JSON.stringify(fixture.incomplete_success_frame))
+  assert.ok(incompleteDecoded)
+  assert.equal(isStreamEndSuccess(incompleteDecoded), false)
+  assert.equal(isStreamEndFailure(incompleteDecoded), true)
+})
+
+test('T2.3: StreamDraftBuffer isola turnos, impede commit de frame antigo após reset/clear e suporta aba oculta', () => {
+  const commits: Array<{ text: string; turnId: string | null }> = []
+  let nextFrameId = 1
+  const scheduledFrames = new Map<number, () => void>()
+  let hidden = false
+
+  const buf = new StreamDraftBuffer({
+    onCommit: (text, turnId) => commits.push({ text, turnId }),
+    flushThresholdChars: 20,
+    maxBufferChars: 40,
+    hiddenFlushMs: 10,
+    scheduler: {
+      requestFrame: (cb) => {
+        const id = nextFrameId++
+        scheduledFrames.set(id, cb)
+        return id
+      },
+      cancelFrame: (id) => {
+        scheduledFrames.delete(id)
+      },
+      isHidden: () => hidden,
+    },
+  })
+
+  // 1. Token antes do frame + flush síncrono no final/Parar não perde cauda
+  buf.bindTurn('turn-A')
+  buf.append('Olá ', 'turn-A')
+  buf.append('mundo', 'turn-A')
+  assert.equal(commits.length, 0)
+  buf.flushSync()
+  assert.deepEqual(commits, [{ text: 'Olá mundo', turnId: 'turn-A' }])
+
+  // 2. Token de turno antigo é ignorado quando turno novo já está ativo
+  commits.length = 0
+  buf.bindTurn('turn-B')
+  const acceptedStale = buf.append('token-velho', 'turn-A')
+  assert.equal(acceptedStale, false)
+  buf.append('token-novo', 'turn-B')
+  buf.flushSync()
+  assert.deepEqual(commits, [{ text: 'token-novo', turnId: 'turn-B' }])
+
+  // 3. Reset/clear/logout cancela frame pendente e impede commit mesmo se callback RAF disparar atrasado
+  commits.length = 0
+  buf.bindTurn('turn-C')
+  buf.append('parcial', 'turn-C')
+  const capturedCallbacks = [...scheduledFrames.values()]
+  buf.discard()
+  for (const cb of capturedCallbacks) cb()
+  assert.equal(commits.length, 0, 'callback de frame antigo nunca pode commitar após discard')
+
+  // 4. Aba oculta + limite de memória descarrega automaticamente sem perder dados
+  commits.length = 0
+  hidden = true
+  buf.bindTurn('turn-D')
+  buf.append('1234567890123456789012345', 'turn-D') // >= flushThresholdChars (20) -> flush imediato
+  assert.deepEqual(commits, [{ text: '1234567890123456789012345', turnId: 'turn-D' }])
 })

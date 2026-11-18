@@ -298,7 +298,14 @@ async def executar_fusion(
     web_search_query: str | None = None,
     web_search_sources: list[dict] | None = None,
     process_steps: list[dict] | None = None,
+    turn_id: str | None = None,
 ):
+    from backend.orchestration.ws_protocol import (
+        StreamTokenEvent,
+        build_stream_end_failure,
+        build_stream_end_success,
+        dump_ws_event,
+    )
     ws_lock = asyncio.Lock()
 
     async def safe_send_json(payload: dict) -> bool:
@@ -330,13 +337,31 @@ async def executar_fusion(
             await db.close()
 
         if not modelos_rows:
-            await safe_send_json({"type": "error", "message": "Nenhum modelo paralelo configurado para o Fusion."})
-            await safe_send_json({"type": "stream_end", "conversation_id": conversation_id, "finish_reason": "error"})
+            await safe_send_json({"type": "error", "message": "Nenhum modelo paralelo configurado para o Fusion.", **({"turn_id": turn_id} if turn_id else {})})
+            await safe_send_json(
+                build_stream_end_failure(
+                    reason="fusion_unconfigured",
+                    outcome="error",
+                    conversation_id=conversation_id,
+                    turn_id=turn_id,
+                    finish_reason="error",
+                    message="Nenhum modelo paralelo configurado para o Fusion.",
+                )
+            )
             return
 
         if not juiz_row:
-            await safe_send_json({"type": "error", "message": "Modelo Juiz não configurado."})
-            await safe_send_json({"type": "stream_end", "conversation_id": conversation_id, "finish_reason": "error"})
+            await safe_send_json({"type": "error", "message": "Modelo Juiz não configurado.", **({"turn_id": turn_id} if turn_id else {})})
+            await safe_send_json(
+                build_stream_end_failure(
+                    reason="fusion_unconfigured",
+                    outcome="error",
+                    conversation_id=conversation_id,
+                    turn_id=turn_id,
+                    finish_reason="error",
+                    message="Modelo Juiz não configurado.",
+                )
+            )
             return
 
         judge_provider_id, judge_model_id, judge_system_prompt, config_grounding = juiz_row
@@ -634,7 +659,11 @@ async def executar_fusion(
                 ):
                     token_str = str(token)
                     full_response += token_str
-                    await safe_send_json({"type": "token", "content": token_str})
+                    await safe_send_json(
+                        dump_ws_event(
+                            StreamTokenEvent(content=token_str, turn_id=turn_id, conversation_id=conversation_id)
+                        )
+                    )
 
             await asyncio.wait_for(_stream_juiz(), timeout=TIMEOUT_JUIZ)
 
@@ -644,11 +673,22 @@ async def executar_fusion(
                 TIMEOUT_JUIZ, conversation_id, judge_model_id,
             )
             if judge_timeout_action(full_response) == "error":
+                timeout_msg = f"O juiz do Fusion excedeu o tempo limite ({TIMEOUT_JUIZ}s). Tente novamente."
                 await safe_send_json({
                     "type": "error",
-                    "message": f"O juiz do Fusion excedeu o tempo limite ({TIMEOUT_JUIZ}s). Tente novamente.",
+                    "message": timeout_msg,
+                    **({"turn_id": turn_id} if turn_id else {}),
                 })
-                await safe_send_json({"type": "stream_end", "conversation_id": conversation_id, "finish_reason": "timeout"})
+                await safe_send_json(
+                    build_stream_end_failure(
+                        reason="judge_timeout",
+                        outcome="timeout",
+                        conversation_id=conversation_id,
+                        turn_id=turn_id,
+                        finish_reason="timeout",
+                        message=timeout_msg,
+                    )
+                )
                 return
             await safe_send_json({
                 "type": "fusion_status",
@@ -656,12 +696,23 @@ async def executar_fusion(
             })
         except Exception as e:
             error_msg = str(e)
+            logger.error("Fusion: erro no modelo Juiz (%s)", type(e).__name__, exc_info=True)
             try:
                 await check_and_deactivate_model(judge_model_id, error_msg)
             except Exception:
                 pass
-            await safe_send_json({"type": "error", "message": f"Erro no modelo Juiz: {error_msg}"})
-            await safe_send_json({"type": "stream_end", "conversation_id": conversation_id, "finish_reason": "error"})
+            safe_msg = "Erro ao sintetizar a resposta no modelo Juiz. Tente novamente."
+            await safe_send_json({"type": "error", "message": safe_msg, **({"turn_id": turn_id} if turn_id else {})})
+            await safe_send_json(
+                build_stream_end_failure(
+                    reason="judge_error",
+                    outcome="error",
+                    conversation_id=conversation_id,
+                    turn_id=turn_id,
+                    finish_reason="error",
+                    message=safe_msg,
+                )
+            )
             return
 
         # Guarda anti-vazamento: o Juiz é instruído a não citar [CONFIANCA: ...],
@@ -752,22 +803,36 @@ async def executar_fusion(
             except Exception:
                 logger.exception("fusion artifact detect/save failed")
 
-        await safe_send_json({
-            "type": "stream_end",
-            "message_id": assistant_msg_id,
-            "conversation_id": conversation_id,
-            "from_cache": False,
-            "web_search_used": web_search_used,
-            "web_search_query": web_search_query,
-            "web_search_sources": web_search_sources or [],
-            "process_steps": process_steps or [],
-            # Retrocompatibilidade
-            "artifact_id": artifacts_list[0]["id"] if artifacts_list else None,
-            "artifact_type": artifacts_list[0]["type"] if artifacts_list else None,
-            "artifact_title": artifacts_list[0]["title"] if artifacts_list else None,
-            "artifacts": artifacts_list
-        })
-    except Exception as err:
+        await safe_send_json(
+            build_stream_end_success(
+                message_id=assistant_msg_id,
+                conversation_id=conversation_id,
+                turn_id=turn_id,
+                from_cache=False,
+                web_search_used=bool(web_search_used),
+                web_search_query=web_search_query,
+                web_search_sources=web_search_sources or [],
+                source_count=len(web_search_sources or []),
+                process_steps=process_steps or [],
+                final_model_id=judge_model_id,
+                final_provider_id=judge_provider_id,
+                artifact_id=artifacts_list[0]["id"] if artifacts_list else None,
+                artifact_type=artifacts_list[0]["type"] if artifacts_list else None,
+                artifact_title=artifacts_list[0]["title"] if artifacts_list else None,
+                artifacts=artifacts_list,
+            )
+        )
+    except Exception:
         logger.exception("Erro crítico no fluxo do Fusion")
-        await safe_send_json({"type": "error", "message": f"Erro no modo Fusion: {err}"})
-        await safe_send_json({"type": "stream_end", "conversation_id": conversation_id, "finish_reason": "error"})
+        safe_msg = "Erro ao executar o modo Fusion. Tente novamente."
+        await safe_send_json({"type": "error", "message": safe_msg, **({"turn_id": turn_id} if turn_id else {})})
+        await safe_send_json(
+            build_stream_end_failure(
+                reason="fusion_error",
+                outcome="error",
+                conversation_id=conversation_id,
+                turn_id=turn_id,
+                finish_reason="error",
+                message=safe_msg,
+            )
+        )

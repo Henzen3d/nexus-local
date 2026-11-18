@@ -6,6 +6,7 @@ import i18n, { detectInitialLocale } from '../i18n'
 import { effectivePreferredModel } from '../lib/modelSelection'
 import { MAX_BLOCKS, mergeUiEnvelopes } from '../lib/nexusUi'
 import { bubbleContent, mergePending, newIds, pruneExpired, toastPreview } from '../lib/proactivePending'
+import { StreamDraftBuffer } from '../lib/streamDraftBuffer'
 
 // ── Persistência de provedor/modelo (por usuário quando possível) ───────────
 
@@ -193,6 +194,8 @@ interface AppState {
   streamingContent: string
   isStreaming: boolean
   isGenerating: boolean
+  activeStreamTurnId: string | null
+  activeStreamConversationId: string | null
   uiLevel: 'simple' | 'intermediate' | 'advanced'
   simpleSpeed: 'fast' | 'think'
   setSimpleSpeed: (speed: 'fast' | 'think') => void
@@ -269,9 +272,11 @@ interface AppState {
   loadActiveConversationArtifacts: () => Promise<void>
   favoriteConversation: (id: string) => Promise<void>
   loadAllArtifacts: (search?: string) => Promise<void>
-  appendToken: (token: string) => void
+  appendToken: (token: string, turnId?: string | null) => void
   flushStreamDraft: () => void
   clearStreamDraft: () => void
+  discardStreamDraft: () => void
+  beginStreamTurn: (turnId: string, conversationId: string | null) => void
   beginProcess: (thinkingTitle?: string) => void
   startProcessStep: (step: ProcessStep) => void
   updateProcessStep: (id: string, update: Partial<Pick<ProcessStep, 'detail' | 'subSteps' | 'status'>>) => void
@@ -470,46 +475,41 @@ function upsertUiBlock(env: UiEnvelope | null, block: ProgressBlock): UiEnvelope
 
 
 export const useStore = create<AppState>((set, get) => {
-  let pendingStreamTokens: string[] = []
-  let cancelScheduledStreamFlush: (() => void) | null = null
+  let loadConversationSeq = 0
 
-  const commitPendingStreamTokens = () => {
-    cancelScheduledStreamFlush = null
-    if (!pendingStreamTokens.length) return
-
-    const content = pendingStreamTokens.join('')
-    pendingStreamTokens = []
-    set((s) => ({ streamingContent: s.streamingContent + content }))
-  }
+  const streamBuffer = new StreamDraftBuffer({
+    onCommit: (content, turnId) => {
+      set((s) => {
+        if (turnId && s.activeStreamTurnId && s.activeStreamTurnId !== turnId) {
+          return {}
+        }
+        return { streamingContent: s.streamingContent + content }
+      })
+    },
+  })
 
   const flushPendingStreamTokens = () => {
-    cancelScheduledStreamFlush?.()
-    commitPendingStreamTokens()
+    streamBuffer.flushSync()
   }
 
   const discardPendingStreamTokens = () => {
-    cancelScheduledStreamFlush?.()
-    cancelScheduledStreamFlush = null
-    pendingStreamTokens = []
+    streamBuffer.discard()
   }
 
-  const scheduleStreamFlush = () => {
-    if (cancelScheduledStreamFlush) return
-
-    if (typeof requestAnimationFrame === 'function') {
-      const frameId = requestAnimationFrame(() => {
-        cancelScheduledStreamFlush = null
-        commitPendingStreamTokens()
-      })
-      cancelScheduledStreamFlush = () => cancelAnimationFrame(frameId)
-      return
+  const resetStreamDraftState = () => {
+    streamBuffer.resetTurn()
+    return {
+      streamingContent: '',
+      streamingUiBlocks: null,
+      isStreaming: false,
+      isGenerating: false,
+      fusionActive: false,
+      processSteps: [] as ProcessStep[],
+      processStartedAt: null as number | null,
+      lastAutoRouteDecision: null as AutoRouteDecisionInfo | null,
+      activeStreamTurnId: null as string | null,
+      activeStreamConversationId: null as string | null,
     }
-
-    const timeoutId = setTimeout(() => {
-      cancelScheduledStreamFlush = null
-      commitPendingStreamTokens()
-    }, 16)
-    cancelScheduledStreamFlush = () => clearTimeout(timeoutId)
   }
 
   return ({
@@ -585,7 +585,8 @@ export const useStore = create<AppState>((set, get) => {
       .catch((err) => console.warn('[profile] hydrate failed', err))
   },
   logout: () => {
-    discardPendingStreamTokens()
+    loadConversationSeq += 1
+    const cleanDraft = resetStreamDraftState()
     localStorage.removeItem('nexuslocal_token')
     localStorage.removeItem('nexuslocal_user')
     // Legacy global keys (must not survive for the next account)
@@ -594,6 +595,7 @@ export const useStore = create<AppState>((set, get) => {
     localStorage.removeItem('nexuslocal_occupation')
     localStorage.removeItem('nexuslocal_custom_instructions')
     set({
+      ...cleanDraft,
       token: null,
       user: null,
       conversations: [],
@@ -618,6 +620,8 @@ export const useStore = create<AppState>((set, get) => {
   sidebarOpen: typeof window !== 'undefined' ? window.innerWidth > 768 : true,
   messages: [],
   streamingContent: '',
+  activeStreamTurnId: null,
+  activeStreamConversationId: null,
   isStreaming: false,
   isGenerating: false,
   uiLevel: (typeof window !== 'undefined' ? (localStorage.getItem('nexuslocal_ui_level') as 'simple' | 'intermediate' | 'advanced') : null) || 'simple',
@@ -718,20 +722,20 @@ export const useStore = create<AppState>((set, get) => {
   },
 
   loadConversation: async (id: string) => {
+    const seq = ++loadConversationSeq
     const conv = await api.getConversation(id)
-    discardPendingStreamTokens()
+    // Ignora respostas fora de ordem se outra conversa foi solicitada depois
+    if (seq !== loadConversationSeq) return
+    const cleanDraft = resetStreamDraftState()
     set((s) => {
       // Abrir a conversa limpa o badge ✦ de insight não visto
       const { [id]: _seen, ...restBadges } = s.conversationsWithInsight
       void _seen
       return {
+        ...cleanDraft,
         activeConversationId: id,
         activeConversation: conv,
         messages: conv.messages,
-        streamingContent: '',
-        streamingUiBlocks: null,
-        processSteps: [],
-        processStartedAt: null,
         activeArtifact: null,
         artifactPanelOpen: false,
         artifactHistory: [],
@@ -750,16 +754,13 @@ export const useStore = create<AppState>((set, get) => {
   },
 
   startNewConversation: () => {
-    discardPendingStreamTokens()
+    loadConversationSeq += 1
+    const cleanDraft = resetStreamDraftState()
     set({
+      ...cleanDraft,
       activeConversationId: null,
       activeConversation: null,
       messages: [],
-      streamingContent: '',
-      streamingUiBlocks: null,
-      isStreaming: false,
-      processSteps: [],
-      processStartedAt: null,
       activeArtifact: null,
       artifactPanelOpen: false,
       artifactHistory: [],
@@ -1375,10 +1376,25 @@ export const useStore = create<AppState>((set, get) => {
     })
   },
 
-  appendToken: (token: string) => {
+  beginStreamTurn: (turnId: string, conversationId: string | null) => {
+    streamBuffer.bindTurn(turnId)
+    set({
+      streamingContent: '',
+      streamingUiBlocks: null,
+      isStreaming: false,
+      isGenerating: true,
+      fusionActive: false,
+      processSteps: [],
+      processStartedAt: null,
+      lastAutoRouteDecision: null,
+      activeStreamTurnId: turnId,
+      activeStreamConversationId: conversationId,
+    })
+  },
+
+  appendToken: (token: string, turnId?: string | null) => {
     if (!token) return
-    pendingStreamTokens.push(token)
-    scheduleStreamFlush()
+    streamBuffer.append(token, turnId)
   },
 
   flushStreamDraft: () => {
@@ -1388,6 +1404,10 @@ export const useStore = create<AppState>((set, get) => {
   clearStreamDraft: () => {
     discardPendingStreamTokens()
     set({ streamingContent: '', streamingUiBlocks: null })
+  },
+
+  discardStreamDraft: () => {
+    set(resetStreamDraftState())
   },
 
   beginProcess: (thinkingTitle = 'Thinking') => {
@@ -1534,14 +1554,19 @@ export const useStore = create<AppState>((set, get) => {
         : {}),
       artifacts: artifacts || (artifactMeta ? [artifactMeta] : []),
     }
+    streamBuffer.resetTurn()
     set((s) => ({
       messages: [...s.messages, msg],
       streamingContent: '',
       streamingUiBlocks: null,
       isStreaming: false,
+      isGenerating: false,
+      fusionActive: false,
       processSteps: [],
       processStartedAt: null,
       lastAutoRouteDecision: null,
+      activeStreamTurnId: null,
+      activeStreamConversationId: null,
     }))
   },
 
@@ -1902,11 +1927,12 @@ export const useStore = create<AppState>((set, get) => {
 
   deleteConversation: async (id: string) => {
     await api.deleteConversation(id)
-    if (get().activeConversationId === id) discardPendingStreamTokens()
+    const isDeletingActive = get().activeConversationId === id
+    const cleanDraft = isDeletingActive ? resetStreamDraftState() : null
     set((s) => ({
       conversations: s.conversations.filter((c) => c.id !== id),
-      ...(s.activeConversationId === id
-        ? { activeConversationId: null, messages: [], streamingContent: '', isStreaming: false }
+      ...(s.activeConversationId === id && cleanDraft
+        ? { ...cleanDraft, activeConversationId: null, activeConversation: null, messages: [] }
         : {}),
     }))
   },

@@ -1,0 +1,214 @@
+{
+  "valid_frames": [
+    {
+      "name": "conversation_created_with_turn",
+      "payload": {
+        "type": "conversation_created",
+        "conversation_id": "conv-100",
+        "title": "Nova conversa",
+        "project_id": null,
+        "turn_id": "turn-1"
+      },
+      "expect_kind": "conversation_created"
+    },
+    {
+      "name": "stream_start_normal",
+      "payload": {
+        "type": "stream_start",
+        "conversation_id": "conv-100",
+        "turn_id": "turn-1",
+        "from_cache": false
+      },
+      "expect_kind": "stream_start"
+    },
+    {
+      "name": "stream_start_cache",
+      "payload": {
+        "type": "stream_start",
+        "conversation_id": "conv-100",
+        "turn_id": "turn-1",
+        "from_cache": true,
+        "cache_type": "exact",
+        "cache_similarity": 1.0
+      },
+      "expect_kind": "stream_start"
+    },
+    {
+      "name": "token_with_correlation",
+      "payload": {
+        "type": "token",
+        "content": "Olá mundo",
+        "turn_id": "turn-1",
+        "conversation_id": "conv-100"
+      },
+      "expect_kind": "token"
+    },
+    {
+      "name": "stream_clear_with_correlation",
+      "payload": {
+        "type": "stream_clear",
+        "turn_id": "turn-1",
+        "conversation_id": "conv-100"
+      },
+      "expect_kind": "stream_clear"
+    },
+    {
+      "name": "stream_end_normal_success",
+      "payload": {
+        "type": "stream_end",
+        "outcome": "success",
+        "message_id": "msg-200",
+        "conversation_id": "conv-100",
+        "turn_id": "turn-1",
+        "from_cache": false,
+        "was_fallback": true,
+        "final_model_id": "prov_b/model-b",
+        "final_model_name": "Model B",
+        "final_provider_id": "prov_b",
+        "requested_model": "prov_a/model-a",
+        "served_by": "prov_b/model-b",
+        "attempt_count": 2,
+        "source_count": 1,
+        "phase_latencies": {
+          "llm_ttfb": 320.5,
+          "client_ttft": 410.2,
+          "precommit_hold_ms": 89.7
+        }
+      },
+      "expect_kind": "stream_end_success"
+    },
+    {
+      "name": "stream_end_cache_success",
+      "payload": {
+        "type": "stream_end",
+        "outcome": "success",
+        "message_id": "msg-201",
+        "conversation_id": "conv-100",
+        "turn_id": "turn-2",
+        "from_cache": true,
+        "cache_type": "semantic",
+        "cache_similarity": 0.96,
+        "phase_latencies": {
+          "fast_path": 14.2
+        }
+      },
+      "expect_kind": "stream_end_success"
+    },
+    {
+      "name": "stream_end_image_pending",
+      "payload": {
+        "type": "stream_end",
+        "outcome": "success",
+        "message_id": "msg-img-1",
+        "conversation_id": "conv-100",
+        "turn_id": "turn-3",
+        "finish_reason": "image_pending"
+      },
+      "expect_kind": "stream_end_success"
+    },
+    {
+      "name": "stream_end_fusion_success",
+      "payload": {
+        "type": "stream_end",
+        "outcome": "success",
+        "message_id": "msg-fus-1",
+        "conversation_id": "conv-100",
+        "turn_id": "turn-4",
+        "from_cache": false,
+        "final_model_id": "judge/model",
+        "final_provider_id": "judge"
+      },
+      "expect_kind": "stream_end_success"
+    },
+    {
+      "name": "stream_end_failure_error",
+      "payload": {
+        "type": "stream_end",
+        "outcome": "error",
+        "reason": "internal_error",
+        "finish_reason": "error",
+        "conversation_id": "conv-100",
+        "turn_id": "turn-5",
+        "message": "Falha ao processar a mensagem."
+      },
+      "expect_kind": "stream_end_failure"
+    },
+    {
+      "name": "stream_end_failure_empty",
+      "payload": {
+        "type": "stream_end",
+        "outcome": "empty",
+        "reason": "empty_response",
+        "finish_reason": "empty",
+        "conversation_id": "conv-100",
+        "turn_id": "turn-6",
+        "message": "A resposta do modelo foi vazia."
+      },
+      "expect_kind": "stream_end_failure"
+    },
+    {
+      "name": "stream_end_failure_timeout",
+      "payload": {
+        "type": "stream_end",
+        "outcome": "timeout",
+        "reason": "judge_timeout",
+        "finish_reason": "timeout",
+        "conversation_id": "conv-100",
+        "turn_id": "turn-7"
+      },
+      "expect_kind": "stream_end_failure"
+    },
+    {
+      "name": "stream_end_legacy_success_without_outcome",
+      "payload": {
+        "type": "stream_end",
+        "message_id": "msg-legacy-1",
+        "conversation_id": "conv-100",
+        "extra_future_field": "ignored_gracefully"
+      },
+      "expect_kind": "stream_end_success"
+    },
+    {
+      "name": "stream_end_legacy_error_without_message_id",
+      "payload": {
+        "type": "stream_end",
+        "finish_reason": "error"
+      },
+      "expect_kind": "stream_end_failure"
+    },
+    {
+      "name": "proactive_status_preserved",
+      "payload": {
+        "type": "proactive_status",
+        "conversation_id": "conv-100",
+        "stage": "researching"
+      },
+      "expect_kind": "proactive"
+    },
+    {
+      "name": "proactive_pending_preserved",
+      "payload": {
+        "type": "proactive_pending",
+        "insights": []
+      },
+      "expect_kind": "proactive"
+    }
+  ],
+  "invalid_raw_frames": [
+    "{not-json",
+    "[]",
+    "\"plain string\"",
+    "null",
+    "{}",
+    "{\"type\": 123}",
+    "{\"type\": \"token\", \"content\": 42}",
+    "{\"type\": \"conversation_created\", \"title\": \"sem id\"}",
+    "{\"type\": \"stream_start\", \"from_cache\": false}",
+    "{\"type\": \"unknown_future_event_xyz\", \"foo\": 1}"
+  ],
+  "incomplete_success_frame": {
+    "type": "stream_end",
+    "outcome": "success",
+    "conversation_id": "conv-100"
+  }
+}

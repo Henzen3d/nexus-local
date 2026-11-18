@@ -49,6 +49,12 @@ from backend.ui_blocks.telemetry import intelligent_ui_telemetry
 from backend.ui_blocks.extract import extract_ui
 from backend.ui_blocks.catalog import MODULE_NAMES, build_catalog, compose_catalog
 from backend.orchestration.resolve_request import resolve_and_stream, build_final_model_metadata
+from backend.orchestration.ws_protocol import (
+    ConversationCreatedEvent,
+    build_stream_end_failure,
+    build_stream_end_success,
+    dump_ws_event,
+)
 from backend.web_search import (
     execute_agentic_search,
     format_search_results,
@@ -239,19 +245,47 @@ async def websocket_chat(ws: WebSocket):
             except ConversationAccessError as access_err:
                 # Conversa de outro usuário / inexistente / ID malformado:
                 # responde sem vazar detalhes e sem derrubar o socket.
+                raw_turn_id = req.get("turn_id")
+                turn_id_val = raw_turn_id.strip() if isinstance(raw_turn_id, str) and raw_turn_id.strip() else None
                 try:
-                    await ws.send_json({"type": "error", "message": str(access_err)})
-                    await ws.send_json({"type": "stream_end", "finish_reason": "error"})
+                    err_evt = {"type": "error", "message": str(access_err)}
+                    if turn_id_val:
+                        err_evt["turn_id"] = turn_id_val
+                    await ws.send_json(err_evt)
+                    await ws.send_json(
+                        build_stream_end_failure(
+                            reason="access_denied",
+                            outcome="error",
+                            conversation_id=conversation_id if isinstance(conversation_id, str) else None,
+                            turn_id=turn_id_val,
+                            finish_reason="error",
+                            message=str(access_err),
+                        )
+                    )
                 except Exception:
                     break
             except Exception:
                 logger.exception("turno de chat falhou")
+                raw_turn_id = req.get("turn_id")
+                turn_id_val = raw_turn_id.strip() if isinstance(raw_turn_id, str) and raw_turn_id.strip() else None
                 try:
-                    await ws.send_json({
+                    err_evt = {
                         "type": "error",
                         "message": "Falha ao processar a mensagem.",
-                    })
-                    await ws.send_json({"type": "stream_end", "finish_reason": "error"})
+                    }
+                    if turn_id_val:
+                        err_evt["turn_id"] = turn_id_val
+                    await ws.send_json(err_evt)
+                    await ws.send_json(
+                        build_stream_end_failure(
+                            reason="internal_error",
+                            outcome="error",
+                            conversation_id=conversation_id if isinstance(conversation_id, str) else None,
+                            turn_id=turn_id_val,
+                            finish_reason="error",
+                            message="Falha ao processar a mensagem.",
+                        )
+                    )
                 except Exception:
                     break
 
@@ -297,6 +331,8 @@ async def _run_turn(
     *, turn: "proactive_service.TurnGuard | None" = None,
 ):
     user_id = user["id"]
+    raw_turn_id = req.get("turn_id")
+    turn_id = raw_turn_id.strip() if isinstance(raw_turn_id, str) and raw_turn_id.strip() else None
     process_started_at = time.perf_counter()
     is_auto = (model_id == "auto" or not model_id)
     auto_route_decision = None
@@ -347,9 +383,18 @@ async def _run_turn(
                 img_prompt = user_message.strip()
 
             if not img_prompt:
-                await ws.send_json({"type": "error", "message": "Prompt de imagem vazio."})
+                await ws.send_json({"type": "error", "message": "Prompt de imagem vazio.", **({"turn_id": turn_id} if turn_id else {})})
                 if is_pure_slash:
-                    await ws.send_json({"type": "stream_end"})
+                    await ws.send_json(
+                        build_stream_end_failure(
+                            reason="image_prompt_empty",
+                            outcome="error",
+                            conversation_id=conversation_id,
+                            turn_id=turn_id,
+                            finish_reason="error",
+                            message="Prompt de imagem vazio.",
+                        )
+                    )
                     return
             else:
                 from backend.image_gen.queue import count_daily_tasks, insert_image_task
@@ -357,12 +402,23 @@ async def _run_turn(
 
                 daily_count = await count_daily_tasks(db, user_id)
                 if daily_count >= img_config.daily_cap_per_user:
+                    limit_msg = f"Limite diário de imagens atingido ({img_config.daily_cap_per_user}/dia)."
                     await ws.send_json({
                         "type": "error",
-                        "message": f"Limite diário de imagens atingido ({img_config.daily_cap_per_user}/dia).",
+                        "message": limit_msg,
+                        **({"turn_id": turn_id} if turn_id else {}),
                     })
                     if is_pure_slash:
-                        await ws.send_json({"type": "stream_end"})
+                        await ws.send_json(
+                            build_stream_end_failure(
+                                reason="image_daily_limit",
+                                outcome="error",
+                                conversation_id=conversation_id,
+                                turn_id=turn_id,
+                                finish_reason="error",
+                                message=limit_msg,
+                            )
+                        )
                         return
                 elif is_pure_slash:
                     # Slash puro (/imagem ...): grava conversa, user message, placeholder e fecha o turno imediatamente
@@ -373,8 +429,16 @@ async def _run_turn(
                         request_project_id,
                     )
                     if created_payload:
-                        created_payload["conversation_id"] = conversation_id
-                        await ws.send_json(created_payload)
+                        await ws.send_json(
+                            dump_ws_event(
+                                ConversationCreatedEvent(
+                                    conversation_id=conversation_id,
+                                    title=created_payload.get("title", ""),
+                                    project_id=created_payload.get("project_id"),
+                                    turn_id=turn_id,
+                                )
+                            )
+                        )
 
                     await save_user_message(
                         db, conversation_id, user_message,
@@ -411,12 +475,14 @@ async def _run_turn(
                     })
 
                     # Despacha stream_end imediatamente para destravar o composer
-                    await ws.send_json({
-                        "type": "stream_end",
-                        "message_id": placeholder_msg_id,
-                        "conversation_id": conversation_id,
-                        "finish_reason": "image_pending",
-                    })
+                    await ws.send_json(
+                        build_stream_end_success(
+                            message_id=placeholder_msg_id,
+                            conversation_id=conversation_id,
+                            turn_id=turn_id,
+                            finish_reason="image_pending",
+                        )
+                    )
                     return
                 else:
                     image_job_created = True
@@ -550,8 +616,16 @@ async def _run_turn(
     )
     turn_ref["conversation_id"] = conversation_id
     if created_payload:
-        created_payload["conversation_id"] = conversation_id
-        await ws.send_json(created_payload)
+        await ws.send_json(
+            dump_ws_event(
+                ConversationCreatedEvent(
+                    conversation_id=conversation_id,
+                    title=created_payload.get("title", ""),
+                    project_id=created_payload.get("project_id"),
+                    turn_id=turn_id,
+                )
+            )
+        )
     if turn is not None:
         turn.start(conversation_id)
 
@@ -865,6 +939,7 @@ async def _run_turn(
             web_search_query=web_search_query,
             web_search_sources=web_search_sources,
             process_steps=process_steps,
+            turn_id=turn_id,
         )
         return
 
@@ -893,6 +968,7 @@ async def _run_turn(
         auto_route_decision=auto_route_decision,
         reasoning_effort=reasoning_effort,
         request_context=req_ctx,
+        turn_id=turn_id,
     )
     if result is None:
         return
@@ -939,7 +1015,18 @@ async def _run_turn(
         await ws.send_json({
             "type": "error",
             "message": "A resposta do modelo foi vazia.",
+            **({"turn_id": turn_id} if turn_id else {}),
         })
+        await ws.send_json(
+            build_stream_end_failure(
+                reason="empty_response",
+                outcome="empty",
+                conversation_id=conversation_id,
+                turn_id=turn_id,
+                finish_reason="empty",
+                message="A resposta do modelo foi vazia.",
+            )
+        )
         return
 
     t_save_asst = time.perf_counter()
@@ -982,11 +1069,21 @@ async def _run_turn(
         user_message=user_message,
     )
 
-    # ── Stream end ──────────────────────────────────────────────────
-    stream_end_payload = {
-        "type": "stream_end",
+    # ── Stream end (validado por StreamEndSuccess — T2.4) ───────────
+    final_meta = await build_final_model_metadata(
+        db,
+        requested_model_id,
+        model_id,
+        provider_id,
+        failover_tier=failover_meta.get("failover_tier"),
+        spliced=failover_meta.get("spliced", False),
+        outcome="success",
+        attempt_count=failover_meta.get("attempt_count", 1),
+    )
+    stream_end_kwargs = {
         "message_id": assistant_msg_id,
         "conversation_id": conversation_id,
+        "turn_id": turn_id,
         "from_cache": cache_hit is not None,
         "cache_type": cache_hit.cache_type if cache_hit else None,
         "cache_similarity": round(cache_hit.similarity, 4) if cache_hit else None,
@@ -1003,26 +1100,14 @@ async def _run_turn(
         "process_duration_ms": calculated_duration_ms,
         "source_count": len(web_search_sources),
         "phase_latencies": dict(req_ctx.phase_latencies),
+        **final_meta,
     }
-    # Qual modelo RESpondeu de fato (pós-failover) — o badge da resposta no
-    # frontend usa estes campos em vez do modelo solicitado.
-    stream_end_payload.update(await build_final_model_metadata(
-        db,
-        requested_model_id,
-        model_id,
-        provider_id,
-        failover_tier=failover_meta.get("failover_tier"),
-        spliced=failover_meta.get("spliced", False),
-        outcome=failover_meta.get("outcome", "success"),
-        attempt_count=failover_meta.get("attempt_count", 1),
-    ))
     if ui_envelope:
-        stream_end_payload["ui_blocks"] = ui_envelope
-
+        stream_end_kwargs["ui_blocks"] = ui_envelope
     if intelligent_ui_enabled:
-        stream_end_payload['ui_errors'] = ui_diagnostics['errors']
-        stream_end_payload['ui_dropped'] = ui_diagnostics['dropped']
-    await ws.send_json(stream_end_payload)
+        stream_end_kwargs["ui_errors"] = ui_diagnostics["errors"]
+        stream_end_kwargs["ui_dropped"] = ui_diagnostics["dropped"]
+    await ws.send_json(build_stream_end_success(**stream_end_kwargs))
 
     # ── Non-blocking Task Benchmark (Plano 09) ──────────────────────
     from backend.metrics import task_benchmark_manager

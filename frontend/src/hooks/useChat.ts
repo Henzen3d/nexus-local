@@ -4,6 +4,7 @@ import { useStore } from '../store/useStore'
 import { useShallow } from 'zustand/react/shallow'
 import { getTalk } from '../lib/talkLoop'
 import { usePresence } from './usePresence'
+import { decodeChatFrame, isStreamEndSuccess } from '../lib/chatProtocol'
 import type { WSMessage, Attachment } from '../types'
 
 const AUTH_CLOSE_CODE = 4001
@@ -11,6 +12,12 @@ const MAX_RETRY_MS = 30_000
 const BASE_RETRY_MS = 1_000
 /** Keepalive em ambos os sentidos — evita idle-timeout do Cloudflare Tunnel (~100s) */
 const HEARTBEAT_MS = 25_000
+
+let turnCounter = 0
+function nextTurnId(): string {
+  turnCounter += 1
+  return `turn-${Date.now()}-${turnCounter}`
+}
 
 function buildWsUrl(token: string | null | undefined): string {
   const tokenQuery = token ? `?token=${encodeURIComponent(token)}` : ''
@@ -33,6 +40,9 @@ export function useChat() {
   // em erro fatal (error), fechamento do socket (onclose) ou cancelamento do usuário (stopStream).
   // NUNCA zerar ao receber tokens parciais ou etapas, pois causaria o descarte do restante do stream.
   const isGeneratingRef = useRef(false)
+  const activeTurnIdRef = useRef<string | null>(null)
+  const activeTurnSocketRef = useRef<WebSocket | null>(null)
+  const activeTurnConvIdRef = useRef<string | null>(null)
   const watchdogTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const clearWatchdog = useCallback(() => {
@@ -42,17 +52,24 @@ export function useChat() {
     }
   }, [])
 
+  const clearTurnBinding = useCallback(() => {
+    activeTurnIdRef.current = null
+    activeTurnSocketRef.current = null
+    activeTurnConvIdRef.current = null
+  }, [])
+
   const resetWatchdog = useCallback(() => {
     clearWatchdog()
     if (!isGeneratingRef.current) return
+    const boundTurnId = activeTurnIdRef.current
     watchdogTimerRef.current = setTimeout(() => {
-      if (!isGeneratingRef.current) return
+      if (!isGeneratingRef.current || activeTurnIdRef.current !== boundTurnId) return
       isGeneratingRef.current = false
+      clearTurnBinding()
       const s = useStore.getState()
-      if (s.isStreaming || s.fusionActive) {
-        s.setStreaming(false)
-        s.setIsGenerating(false)
-        s.setFusionActive(false)
+      const hadActivity = s.isStreaming || s.isGenerating || s.fusionActive
+      s.discardStreamDraft()
+      if (hadActivity) {
         const timeoutMsg = i18n.t('chat.streamTimeout', {
           defaultValue: 'Tempo limite de resposta excedido. O modelo não respondeu.',
         })
@@ -60,7 +77,7 @@ export function useChat() {
         s.addErrorMessage(timeoutMsg)
       }
     }, 90000)
-  }, [clearWatchdog])
+  }, [clearWatchdog, clearTurnBinding])
 
   const {
     activeConversationId,
@@ -129,12 +146,12 @@ export function useChat() {
       }, HEARTBEAT_MS)
     }
 
-    const handleMessage = (e: MessageEvent) => {
-      let msg: WSMessage
-      try {
-        msg = JSON.parse(e.data)
-      } catch {
-        console.warn('[WS] invalid JSON frame')
+    const handleMessage = (ws: WebSocket, e: MessageEvent) => {
+      if (disposed || socket !== ws) return
+
+      const msg: WSMessage | null = decodeChatFrame(typeof e.data === 'string' ? e.data : '')
+      if (!msg) {
+        console.warn('[WS] ignored invalid or malformed frame')
         return
       }
 
@@ -173,10 +190,20 @@ export function useChat() {
         return
       }
 
+      // Isolamento por turno e socket: descarta frames de turnos/sockets antigos
+      const incomingTurnId = 'turn_id' in msg ? msg.turn_id : undefined
+      if (incomingTurnId && activeTurnIdRef.current && incomingTurnId !== activeTurnIdRef.current) {
+        return
+      }
+      if (activeTurnSocketRef.current && activeTurnSocketRef.current !== ws) {
+        return
+      }
+
       // Se a geração foi interrompida localmente pelo usuário, ignora frames parciais
       if (!isGeneratingRef.current && (
         msg.type === 'token' ||
         msg.type === 'stream_start' ||
+        msg.type === 'stream_clear' ||
         msg.type === 'ui_progress' ||
         msg.type === 'process_step_start' ||
         msg.type === 'process_step_update' ||
@@ -197,33 +224,65 @@ export function useChat() {
 
       // Lê actions frescas do store (evita recriar o socket a cada re-render).
       const s = useStore.getState()
+      const boundConvId = activeTurnConvIdRef.current
+      const isViewingTurnConversation =
+        boundConvId === null
+          ? s.activeConversationId === null || s.activeStreamTurnId === activeTurnIdRef.current
+          : s.activeConversationId === boundConvId
 
       switch (msg.type) {
         case 'conversation_created':
-          s.setConversationCreated(msg.conversation_id, msg.title)
+          if (activeTurnConvIdRef.current === null) {
+            activeTurnConvIdRef.current = msg.conversation_id
+          }
+          if (isViewingTurnConversation) {
+            s.setConversationCreated(msg.conversation_id, msg.title)
+          } else {
+            s.loadConversations()
+          }
           break
         case 'stream_start':
           resetWatchdog()
-          s.beginProcess(i18n.t('chat.generatingResponse', { defaultValue: 'Gerando resposta…' }))
-          s.setIsGenerating(false)
+          if (activeTurnConvIdRef.current === null) {
+            activeTurnConvIdRef.current = msg.conversation_id
+          }
+          if (isViewingTurnConversation) {
+            s.beginProcess(i18n.t('chat.generatingResponse', { defaultValue: 'Gerando resposta…' }))
+            s.setIsGenerating(false)
+          }
           break
         case 'stream_clear':
           // Failover mid-stream: o modelo anterior já emitiu tokens e falhou;
-          // limpa o rascunho para o próximo modelo não misturar respostas.
-          s.clearStreamDraft()
+          // limpa apenas o rascunho do candidato atual para o próximo modelo não misturar respostas.
+          if (isViewingTurnConversation) {
+            s.clearStreamDraft()
+          }
           break
         case 'token':
           resetWatchdog()
-          if (s.isGenerating) {
-            s.setIsGenerating(false)
+          if (isViewingTurnConversation) {
+            if (s.isGenerating) {
+              s.setIsGenerating(false)
+            }
+            s.appendToken(msg.content)
           }
-          s.appendToken(msg.content)
           break
         case 'stream_end':
           clearWatchdog()
           isGeneratingRef.current = false
+          clearTurnBinding()
+          if (!isStreamEndSuccess(msg)) {
+            // Terminal de falha/vazio/timeout: destrava compositor e descarta rascunho sem criar bolha sem ID
+            s.discardStreamDraft()
+            s.loadConversations()
+            break
+          }
+          if (!isViewingTurnConversation || (s.activeConversationId && msg.conversation_id !== s.activeConversationId)) {
+            // Usuário mudou de conversa durante o turno: não injeta a resposta na conversa aberta
+            s.loadConversations()
+            break
+          }
           useStore.getState().setIsGenerating(false)
-          isGeneratingRef.current = false
           s.setFusionActive(false)
           s.finalizeStream(
             msg.message_id,
@@ -397,24 +456,29 @@ export function useChat() {
           clearWatchdog()
           if (!isGeneratingRef.current) return
           isGeneratingRef.current = false
-          useStore.getState().setIsGenerating(false)
+          clearTurnBinding()
           console.error('[WS error]', msg.message)
-          s.clearStreamDraft()
-          s.setStreaming(false)
-          s.setFusionActive(false)
+          s.discardStreamDraft()
           // Toast com ação de retry
           const retryAction = s.lastUserMessage
             ? {
                 label: i18n.t('chat.retry', { defaultValue: 'Tentar novamente' }),
                 onClick: () => {
                   s.hideToast()
-                  // Re-envia a última mensagem via WebSocket
+                  // Re-envia a última mensagem via WebSocket com novo turn_id limpo
                   if (wsRef.current?.readyState === WebSocket.OPEN) {
+                    const retryTurnId = nextTurnId()
+                    const retryConvId = s.lastUserMessage!.conversationId
+                    useStore.getState().discardStreamDraft()
+                    useStore.getState().beginStreamTurn(retryTurnId, retryConvId)
+                    activeTurnIdRef.current = retryTurnId
+                    activeTurnSocketRef.current = wsRef.current
+                    activeTurnConvIdRef.current = retryConvId
                     isGeneratingRef.current = true
-                    useStore.getState().setIsGenerating(true)
                     resetWatchdog()
                     wsRef.current.send(JSON.stringify({
-                      conversation_id: s.lastUserMessage!.conversationId,
+                      turn_id: retryTurnId,
+                      conversation_id: retryConvId,
                       message: s.lastUserMessage!.text,
                       model_id: s.lastUserMessage!.modelId,
                       provider_id: s.lastUserMessage!.providerId,
@@ -474,14 +538,16 @@ export function useChat() {
       wsRef.current = ws
 
       ws.onopen = () => {
+        if (disposed || socket !== ws) return
         attempt = 0
         startHeartbeat(ws)
         // Presença é reenviada ao receber `ready` (socket registrado no backend)
       }
 
-      ws.onmessage = handleMessage
+      ws.onmessage = (ev) => handleMessage(ws, ev)
 
       ws.onerror = () => {
+        if (disposed || socket !== ws) return
         // onclose always follows; keep logging light to avoid console spam.
         if (attempt === 0) {
           console.warn('[WS] connection error')
@@ -489,18 +555,19 @@ export function useChat() {
       }
 
       ws.onclose = (ev) => {
+        if (socket !== ws) return
         clearWatchdog()
         clearHeartbeat()
         isGeneratingRef.current = false
+        clearTurnBinding()
         if (wsRef.current === ws) wsRef.current = null
         if (socket === ws) socket = null
 
-        // Nunca deixar a UI presa em "Fusion ativo" / streaming se o socket caiu
+        // Nunca deixar a UI presa em "Fusion ativo" / streaming / isGenerating (mesmo antes do stream_start)
         const st = useStore.getState()
-        if (st.fusionActive || st.isStreaming) {
-          st.setStreaming(false)
-          st.setIsGenerating(false)
-          st.setFusionActive(false)
+        const hadActiveTurn = st.fusionActive || st.isStreaming || st.isGenerating
+        st.discardStreamDraft()
+        if (hadActiveTurn) {
           st.showToast(
             i18n.t('chat.wsDroppedDuringStream', {
               defaultValue: 'Conexão interrompida durante a resposta. Tente novamente.',
@@ -547,6 +614,9 @@ export function useChat() {
       clearWatchdog()
       clearRetry()
       clearHeartbeat()
+      isGeneratingRef.current = false
+      clearTurnBinding()
+      useStore.getState().discardStreamDraft()
       window.removeEventListener('online', onOnline)
       document.removeEventListener('visibilitychange', onVisibility)
       // Fecha sem disparar reconnect (flag disposed).
@@ -564,13 +634,14 @@ export function useChat() {
       socket = null
       if (wsRef.current) wsRef.current = null
     }
-  }, [token, resendPresence])
+  }, [token, resendPresence, clearWatchdog, clearTurnBinding, resetWatchdog])
 
   const stopStream = useCallback(() => {
     clearWatchdog()
     isGeneratingRef.current = false
+    clearTurnBinding()
     const s = useStore.getState()
-    if (!s.isStreaming && !s.fusionActive) return
+    if (!s.isStreaming && !s.isGenerating && !s.fusionActive) return
 
     // Inclui tokens ainda agrupados no próximo frame antes de decidir se há
     // uma resposta parcial para preservar.
@@ -603,17 +674,10 @@ export function useChat() {
         current.processStartedAt ? Date.now() - current.processStartedAt : undefined
       )
     } else {
-      // Nenhum texto gerado ainda — cancela os estados de ocupado e reseta passos
-      useStore.setState({
-        isStreaming: false,
-        isGenerating: false,
-        streamingContent: '',
-        fusionActive: false,
-        processSteps: [],
-        processStartedAt: null,
-      })
+      // Nenhum texto não-vazio gerado ainda — descarta rascunho completo via ação única
+      current.discardStreamDraft()
     }
-  }, [])
+  }, [clearWatchdog, clearTurnBinding])
 
   const sendMessage = useCallback(
     (
@@ -639,8 +703,14 @@ export function useChat() {
         return false
       }
 
+      // Garante estado limpo antes de iniciar novo turno e amarra buffer ao turn_id e socket
+      const turnId = nextTurnId()
+      useStore.getState().discardStreamDraft()
+      useStore.getState().beginStreamTurn(turnId, activeConversationId)
+      activeTurnIdRef.current = turnId
+      activeTurnSocketRef.current = wsRef.current
+      activeTurnConvIdRef.current = activeConversationId
       isGeneratingRef.current = true
-      useStore.getState().setIsGenerating(true)
       resetWatchdog()
 
       // displayText: versão curta exibida no chat (ex: "✏️ Dashboard: adicionar dark mode")
@@ -667,6 +737,7 @@ export function useChat() {
 
       wsRef.current.send(
         JSON.stringify({
+          turn_id: turnId,
           conversation_id: activeConversationId,
           message: text,
           ui_correction_message_id: uiCorrectionMessageId,
