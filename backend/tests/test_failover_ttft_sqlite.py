@@ -87,12 +87,16 @@ async def test_get_memory_context_metadata(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_model_usage_log_conv_index():
-    async with aiosqlite.connect(":memory:") as db:
-        await db.executescript(SCHEMA)
-        await db.commit()
+async def test_model_usage_log_conv_index(tmp_path, monkeypatch):
+    import backend.database as db_mod
 
-        # Verifica que o índice idx_usage_conv existe
+    db_file = tmp_path / "idx_usage_conv_test.db"
+    monkeypatch.setattr(db_mod, "DB_PATH", db_file)
+    await db_mod.init_db()
+
+    db = await db_mod.get_db()
+    try:
+        # Verifica que o índice idx_usage_conv existe (criado após migração de was_auto_routed)
         async with db.execute(
             "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_usage_conv'"
         ) as cur:
@@ -108,6 +112,8 @@ async def test_model_usage_log_conv_index():
             plan = await cur.fetchall()
         plan_str = " ".join(str(step) for step in plan)
         assert "idx_usage_conv" in plan_str
+    finally:
+        await db.close()
 
 
 @pytest.mark.asyncio

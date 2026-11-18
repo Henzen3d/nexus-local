@@ -84,8 +84,6 @@ CREATE TABLE IF NOT EXISTS conversations (
     created_at  TEXT DEFAULT (datetime('now')),
     updated_at  TEXT DEFAULT (datetime('now'))
 );
-CREATE INDEX IF NOT EXISTS idx_conversations_user_updated ON conversations(user_id, updated_at DESC);
-CREATE INDEX IF NOT EXISTS idx_conversations_user_favorite ON conversations(user_id, is_favorite, favorited_at DESC) WHERE is_favorite = 1;
 
 CREATE TABLE IF NOT EXISTS messages (
     id              TEXT PRIMARY KEY,
@@ -341,7 +339,6 @@ CREATE TABLE IF NOT EXISTS model_usage_log (
 );
 CREATE INDEX IF NOT EXISTS idx_usage_model ON model_usage_log(model_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_usage_user  ON model_usage_log(user_id, created_at);
-CREATE INDEX IF NOT EXISTS idx_usage_conv  ON model_usage_log(conversation_id, was_auto_routed, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS free_model_registry (
     id              TEXT PRIMARY KEY,
@@ -888,11 +885,18 @@ async def get_db():
     # Configure the busy wait in sqlite3.connect itself; this avoids a separate
     # PRAGMA round-trip on every request/socket connection.
     db = await aiosqlite.connect(DB_PATH, timeout=10.0)
-    await db.execute("PRAGMA foreign_keys = ON")
-    await db.execute("PRAGMA synchronous = NORMAL")
-    await db.execute("PRAGMA cache_size = -64000")
-    await db.execute("PRAGMA temp_store = MEMORY")
-    return db
+    try:
+        await db.execute("PRAGMA foreign_keys = ON")
+        await db.execute("PRAGMA synchronous = NORMAL")
+        await db.execute("PRAGMA cache_size = -64000")
+        await db.execute("PRAGMA temp_store = MEMORY")
+        return db
+    except BaseException:
+        try:
+            await db.close()
+        except Exception:
+            pass
+        raise
 
 
 async def init_db():
@@ -952,6 +956,13 @@ async def init_db():
         except aiosqlite.OperationalError:
             await db.execute("ALTER TABLE conversations ADD COLUMN user_id TEXT REFERENCES users(id) ON DELETE CASCADE")
             await db.commit()
+        try:
+            await db.execute(
+                "CREATE INDEX IF NOT EXISTS idx_conversations_user_updated ON conversations(user_id, updated_at DESC)"
+            )
+            await db.commit()
+        except Exception:
+            pass
 
         # Incremental migration checks for users columns (email, phone, role)
         for col, col_type in [("email", "TEXT"), ("phone", "TEXT"), ("role", "TEXT DEFAULT 'user'")]:
@@ -1064,6 +1075,15 @@ async def init_db():
         except aiosqlite.OperationalError:
             await db.execute("ALTER TABLE conversations ADD COLUMN favorited_at TEXT DEFAULT NULL")
             await db.commit()
+
+        try:
+            await db.execute(
+                "CREATE INDEX IF NOT EXISTS idx_conversations_user_favorite "
+                "ON conversations(user_id, is_favorite, favorited_at DESC) WHERE is_favorite = 1"
+            )
+            await db.commit()
+        except Exception:
+            pass
 
         # Incremental migration checks for artifacts columns (visibility, view_count, thumbnail)
         for col, col_type in [("visibility", "TEXT DEFAULT 'Privado'"), ("view_count", "INTEGER DEFAULT 0"), ("thumbnail", "TEXT DEFAULT NULL")]:

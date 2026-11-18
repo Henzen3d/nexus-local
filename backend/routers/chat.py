@@ -142,23 +142,7 @@ async def websocket_chat(ws: WebSocket):
     user_id = user["id"]
     register_socket(user_id, ws)
 
-    try:
-        await ws.send_json({"type": "ready"})
-    except Exception:
-        pass
-
-    # F3.1.4: socket novo conta como "voltou". O cliente envia `presence` logo após o
-    # `ready` (e isso dispara o flush com o contexto certo); este é o caminho de
-    # segurança para clientes que não reportam presença (sem duplicar o evento).
-    try:
-        proactive_service.schedule_return_flush(
-            user_id, ws, None,
-            delay=proactive_service.CONNECT_FLUSH_DELAY_S, skip_if_reported=True,
-        )
-    except Exception:
-        logger.debug("[Proactive] não foi possível agendar flush na conexão", exc_info=True)
-
-    db = await get_db()
+    db = None
     keepalive_task: asyncio.Task | None = None
 
     async def _server_keepalive() -> None:
@@ -170,6 +154,23 @@ async def websocket_chat(ws: WebSocket):
             return
 
     try:
+        try:
+            await ws.send_json({"type": "ready"})
+        except Exception:
+            pass
+
+        # F3.1.4: socket novo conta como "voltou". O cliente envia `presence` logo após o
+        # `ready` (e isso dispara o flush com o contexto certo); este é o caminho de
+        # segurança para clientes que não reportam presença (sem duplicar o evento).
+        try:
+            proactive_service.schedule_return_flush(
+                user_id, ws, None,
+                delay=proactive_service.CONNECT_FLUSH_DELAY_S, skip_if_reported=True,
+            )
+        except Exception:
+            logger.debug("[Proactive] não foi possível agendar flush na conexão", exc_info=True)
+
+        db = await get_db()
         keepalive_task = asyncio.create_task(_server_keepalive())
 
         while True:
@@ -300,7 +301,8 @@ async def websocket_chat(ws: WebSocket):
                 await keepalive_task
             except (asyncio.CancelledError, Exception):
                 pass
-        await db.close()
+        if db is not None:
+            await db.close()
 
 
 async def _process_turn(

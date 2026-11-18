@@ -1,13 +1,16 @@
 import json
+import time
 from typing import Optional
 import aiosqlite
 from fastapi import APIRouter, HTTPException, Depends
 from backend.database import get_db
+from backend.logging_config import get_logger
 from backend.models import ConversationUpdate
 from backend.auth import get_current_user
 from backend.attachments.signing import attachment_url
 from backend.orchestration.build_context import clean_model_display_name
 
+logger = get_logger(__name__)
 router = APIRouter(prefix="/api/conversations", tags=["conversations"])
 
 
@@ -19,21 +22,22 @@ async def list_conversations(
     limit: int = 100,
     current_user: dict = Depends(get_current_user)
 ):
+    t0 = time.perf_counter()
     db = await get_db()
     try:
+        # Pagina primeiro sobre `conversations` (usando índices por user_id + updated_at/favorited_at)
+        # e só conta mensagens para as conversas retornadas na página (T3.1).
         query = """
             SELECT c.id, c.title, c.model_id, c.provider_id,
-                      c.created_at, c.updated_at,
-                      COUNT(m.id) as message_count,
-                      c.is_favorite, c.favorited_at,
-                      c.project_tag,
-                      c.project_id,
-                      c.origin_insight_id
-               FROM conversations c
-               LEFT JOIN messages m ON m.conversation_id = c.id
-               WHERE c.user_id = ?
+                   c.created_at, c.updated_at,
+                   c.is_favorite, c.favorited_at,
+                   c.project_tag,
+                   c.project_id,
+                   c.origin_insight_id
+            FROM conversations c
+            WHERE c.user_id = ?
         """
-        params = [current_user["id"]]
+        params: list = [current_user["id"]]
 
         if search:
             query += " AND c.title LIKE ?"
@@ -42,32 +46,56 @@ async def list_conversations(
         if filter == "favorites":
             query += " AND c.is_favorite = 1"
 
-        query += " GROUP BY c.id"
-
         if filter == "favorites":
-            query += " ORDER BY c.favorited_at DESC"
+            query += " ORDER BY c.favorited_at DESC, c.id ASC"
         else:
-            query += " ORDER BY c.updated_at DESC"
+            query += " ORDER BY c.updated_at DESC, c.id ASC"
 
         if limit > 0:
-            offset = (page - 1) * limit
+            safe_page = max(1, int(page))
+            offset = (safe_page - 1) * limit
             query += " LIMIT ? OFFSET ?"
             params.append(limit)
             params.append(offset)
 
         async with db.execute(query, params) as cur:
             rows = await cur.fetchall()
+
+        msg_counts: dict[str, int] = {}
+        if rows:
+            conv_ids = [r[0] for r in rows]
+            for start in range(0, len(conv_ids), 500):
+                chunk = conv_ids[start : start + 500]
+                placeholders = ",".join("?" for _ in chunk)
+                async with db.execute(
+                    f"SELECT conversation_id, COUNT(*) FROM messages WHERE conversation_id IN ({placeholders}) GROUP BY conversation_id",
+                    chunk,
+                ) as cnt_cur:
+                    for cid, cnt in await cnt_cur.fetchall():
+                        msg_counts[cid] = int(cnt or 0)
+
+        elapsed_ms = (time.perf_counter() - t0) * 1000.0
+        logger.debug(
+            "[conversations.list] filter=%s has_search=%s page=%d limit=%d returned=%d elapsed_ms=%.2f",
+            filter or "all",
+            bool(search),
+            page,
+            limit,
+            len(rows),
+            elapsed_ms,
+        )
+
         return [
             {
                 "id": r[0], "title": r[1], "model_id": r[2],
                 "provider_id": r[3], "created_at": r[4],
-                "updated_at": r[5], "message_count": r[6],
-                "is_favorite": bool(r[7]),
-                "favorited_at": r[8],
-                "project_tag": r[9] if len(r) > 9 else None,
-                "project_id": r[10] if len(r) > 10 else None,
+                "updated_at": r[5], "message_count": msg_counts.get(r[0], 0),
+                "is_favorite": bool(r[6]),
+                "favorited_at": r[7],
+                "project_tag": r[8] if len(r) > 8 else None,
+                "project_id": r[9] if len(r) > 9 else None,
                 # F3.3.4: conversa iniciada pelo assistente proativo ("Me conta aqui")
-                "origin_insight_id": r[11] if len(r) > 11 else None,
+                "origin_insight_id": r[10] if len(r) > 10 else None,
             }
             for r in rows
         ]
@@ -77,6 +105,7 @@ async def list_conversations(
 
 @router.get("/{conversation_id}")
 async def get_conversation(conversation_id: str, current_user: dict = Depends(get_current_user)):
+    t0 = time.perf_counter()
     db = await get_db()
     try:
         async with db.execute(
@@ -269,6 +298,12 @@ async def get_conversation(conversation_id: str, current_user: dict = Depends(ge
                     })
 
             built.append(item)
+
+        logger.debug(
+            "[conversations.get] message_count=%d elapsed_ms=%.2f",
+            len(built),
+            (time.perf_counter() - t0) * 1000.0,
+        )
 
         return {
             "id": conv[0], "title": conv[1], "model_id": conv[2],
