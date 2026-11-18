@@ -256,16 +256,52 @@ async def build_memory_context(
                     extra={"conversation_id": conversation_id, "user_id": user_id},
                 )
 
-            t_mem_gather = time.perf_counter()
-            mem_rows, memory_metadata = await asyncio.gather(
-                get_relevant_memory(
-                    user_id, user_message or "", limit=30, request_context=request_context
-                ),
-                get_memory_context_metadata(user_id, conversation_id),
+            async def _fetch_relevant_memory():
+                t0 = time.perf_counter()
+                try:
+                    return await get_relevant_memory(
+                        user_id, user_message or "", limit=30, request_context=request_context
+                    )
+                finally:
+                    if request_context and hasattr(request_context, "record_phase"):
+                        request_context.record_phase("memory_relevance", t0)
+
+            async def _fetch_memory_metadata():
+                t0 = time.perf_counter()
+                try:
+                    return await get_memory_context_metadata(user_id, conversation_id)
+                finally:
+                    if request_context and hasattr(request_context, "record_phase"):
+                        request_context.record_phase("db_memory_metadata", t0)
+
+            mem_res, meta_res = await asyncio.gather(
+                _fetch_relevant_memory(),
+                _fetch_memory_metadata(),
+                return_exceptions=True,
             )
-            if request_context and hasattr(request_context, "record_phase"):
-                request_context.record_phase("db_memory_metadata", t_mem_gather)
-            global_sum, _project_tag, project_sum = memory_metadata
+            for res in (mem_res, meta_res):
+                if isinstance(res, BaseException) and not isinstance(res, Exception):
+                    raise res
+
+            if isinstance(mem_res, Exception):
+                logger.warning(
+                    "relevant memory lookup failed (%s); preserving metadata",
+                    type(mem_res).__name__,
+                    extra={"conversation_id": conversation_id, "user_id": user_id},
+                )
+                mem_rows = []
+            else:
+                mem_rows = mem_res or []
+
+            if isinstance(meta_res, Exception):
+                logger.warning(
+                    "memory metadata lookup failed (%s); preserving relevant facts",
+                    type(meta_res).__name__,
+                    extra={"conversation_id": conversation_id, "user_id": user_id},
+                )
+                global_sum, _project_tag, project_sum = None, None, None
+            else:
+                global_sum, _project_tag, project_sum = meta_res
 
         # Sanitização de privacidade para provedores externos (Princípio de Minimização de Dados)
         is_local = (provider_id or "").lower() in ("ollama", "lmstudio", "local")
@@ -317,9 +353,13 @@ async def resolve_project_context(
     active_project_id = None
 
     try:
+        # Valida associação existente via JOIN garantindo mesmo dono e projeto ativo (T3.2).
         async with db.execute(
-            "SELECT project_id FROM conversations WHERE id = ?",
-            (conversation_id,),
+            """SELECT p.id
+               FROM conversations c
+               INNER JOIN projects p ON p.id = c.project_id
+               WHERE c.id = ? AND c.user_id = ? AND p.user_id = ? AND p.archived = 0""",
+            (conversation_id, user["id"], user["id"]),
         ) as cur:
             prow = await cur.fetchone()
             active_project_id = prow[0] if prow and prow[0] else None
@@ -454,6 +494,7 @@ async def resolve_project_context(
             provider_id=provider_id,
             safe_input_tokens=safe_input,
             request_context=request_context,
+            user_id=user["id"],
         )
         system_instruction = pctx.system_content
 

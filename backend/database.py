@@ -4137,11 +4137,18 @@ async def get_memory_context_metadata(
             row = await cur.fetchone()
         global_summary = dict(row) if row else None
 
-        async with db.execute(
-            "SELECT project_tag FROM conversations WHERE id = ?",
-            (conversation_id,),
-        ) as cur:
-            tag_row = await cur.fetchone()
+        try:
+            async with db.execute(
+                "SELECT project_tag FROM conversations WHERE id = ? AND (user_id = ? OR user_id IS NULL)",
+                (conversation_id, user_id),
+            ) as cur:
+                tag_row = await cur.fetchone()
+        except aiosqlite.OperationalError:
+            async with db.execute(
+                "SELECT project_tag FROM conversations WHERE id = ?",
+                (conversation_id,),
+            ) as cur:
+                tag_row = await cur.fetchone()
         project_tag = None
         if tag_row and tag_row[0] and str(tag_row[0]).strip():
             project_tag = str(tag_row[0]).strip()
@@ -4270,12 +4277,15 @@ async def delete_orphaned_memory_summaries(user_id: str, keep_project_refs: set[
         return cur.rowcount if cur.rowcount is not None else 0
 
 
-async def get_conversation_project_tag(conversation_id: str) -> str | None:
+async def get_conversation_project_tag(conversation_id: str, user_id: str | None = None) -> str | None:
     async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute(
-            "SELECT project_tag FROM conversations WHERE id = ?",
-            (conversation_id,),
-        ) as cur:
+        if user_id is not None:
+            sql = "SELECT project_tag FROM conversations WHERE id = ? AND user_id = ?"
+            params = (conversation_id, user_id)
+        else:
+            sql = "SELECT project_tag FROM conversations WHERE id = ?"
+            params = (conversation_id,)
+        async with db.execute(sql, params) as cur:
             row = await cur.fetchone()
         if not row:
             return None

@@ -269,6 +269,7 @@ async def assemble_project_context(
     request_context: Optional[Any] = None,
     include_debug: bool = False,
     db_path: str = DB_PATH,
+    user_id: Optional[str] = None,
 ) -> ProjectContextResult:
     """
     Montador de Contexto Único:
@@ -279,30 +280,43 @@ async def assemble_project_context(
       4. Conteúdo de Arquivos (Integral no modo 'full' OU Chunks RAG com [Fonte: ...] no modo 'rag')
       5. Conversas Irmãs (quando couber)
     """
+    fallback_system = (base_system or BASE_SYSTEM_PROMPT)
+    if extra_system_suffix and extra_system_suffix.strip():
+        fallback_system = f"{fallback_system}\n\n{extra_system_suffix.strip()}"
+
     if not project_id:
         return ProjectContextResult(
-            system_content=base_system or BASE_SYSTEM_PROMPT,
+            system_content=fallback_system,
             project_id="",
-            tokens_est=estimate_tokens(base_system or BASE_SYSTEM_PROMPT),
+            tokens_est=estimate_tokens(fallback_system),
         )
 
-    # 1. Carrega dados do projeto garantindo isolamento por project_id
+    # 1. Carrega dados do projeto garantindo isolamento por project_id (e user_id quando informado)
     async with aiosqlite.connect(db_path) as db:
         db.row_factory = aiosqlite.Row
-        async with db.execute(
-            """SELECT id, name, description, instructions, model_default,
-                      retrieval_top_k, retrieval_threshold
-               FROM projects WHERE id = ? AND archived = 0""",
-            (project_id,),
-        ) as cur:
-            p_row = await cur.fetchone()
+        if user_id is not None:
+            async with db.execute(
+                """SELECT id, name, description, instructions, model_default,
+                          retrieval_top_k, retrieval_threshold
+                   FROM projects WHERE id = ? AND user_id = ? AND archived = 0""",
+                (project_id, user_id),
+            ) as cur:
+                p_row = await cur.fetchone()
+        else:
+            async with db.execute(
+                """SELECT id, name, description, instructions, model_default,
+                          retrieval_top_k, retrieval_threshold
+                   FROM projects WHERE id = ? AND archived = 0""",
+                (project_id,),
+            ) as cur:
+                p_row = await cur.fetchone()
         project = dict(p_row) if p_row else None
 
         if not project:
             return ProjectContextResult(
-                system_content=base_system or BASE_SYSTEM_PROMPT,
+                system_content=fallback_system,
                 project_id=project_id,
-                tokens_est=estimate_tokens(base_system or BASE_SYSTEM_PROMPT),
+                tokens_est=estimate_tokens(fallback_system),
             )
 
         # Memória do projeto
@@ -337,9 +351,10 @@ async def assemble_project_context(
         hard_cap=DEFAULT_SAFE_INPUT_CAP,
     )
 
+    effective_base_system = base_system or BASE_SYSTEM_PROMPT
     available_for_context = max(
         1024,
-        safe_total - reserve_for_history - reserve_for_response - estimate_tokens(base_system)
+        safe_total - reserve_for_history - reserve_for_response - estimate_tokens(effective_base_system)
     )
 
     instructions = (project.get("instructions") or "").strip()
@@ -372,6 +387,7 @@ async def assemble_project_context(
         if mode != "rag" or not ready_files:
             return []
 
+        t0 = time.perf_counter()
         top_k = project.get("retrieval_top_k") or DEFAULT_TOP_K
         threshold = project.get("retrieval_threshold") or DEFAULT_RETRIEVAL_THRESHOLD
         p_name = project.get("name") or ""
@@ -400,10 +416,14 @@ async def assemble_project_context(
         except Exception as e:
             logger.error("[context_assembler] RAG file retrieval error:", exc_info=e)
             return []
+        finally:
+            if request_context and hasattr(request_context, "record_phase"):
+                request_context.record_phase("project_file_rag", t0)
 
     async def retrieve_chat_context() -> list[dict]:
         if not query or not query.strip():
             return []
+        t0 = time.perf_counter()
         try:
             return await retrieve_related_chats(
                 query,
@@ -416,12 +436,21 @@ async def assemble_project_context(
         except Exception as e:
             logger.warning("[context_assembler] Related chats retrieval warning: %s", e)
             return []
+        finally:
+            if request_context and hasattr(request_context, "record_phase"):
+                request_context.record_phase("project_chat_rag", t0)
 
     # RAG de arquivos e conversas irmãs não dependem um do outro.
-    file_hits, chat_hits = await asyncio.gather(
+    file_res, chat_res = await asyncio.gather(
         retrieve_file_context(),
         retrieve_chat_context(),
+        return_exceptions=True,
     )
+    for res in (file_res, chat_res):
+        if isinstance(res, BaseException) and not isinstance(res, Exception):
+            raise res
+    file_hits = [] if isinstance(file_res, Exception) else (file_res or [])
+    chat_hits = [] if isinstance(chat_res, Exception) else (chat_res or [])
 
     # 4. Montagem das seções
     # Manifesto compacto de arquivos sempre presente
@@ -495,7 +524,7 @@ async def assemble_project_context(
     manifest_block = f"\n\n{manifest_md}" if manifest_md else ""
 
     parts = {
-        "system": base_system or BASE_SYSTEM_PROMPT,
+        "system": effective_base_system,
         "instructions": instructions_block,
         "memory": memory_block,
         "manifest": manifest_block,
@@ -507,7 +536,7 @@ async def assemble_project_context(
     # Aplica poda de orçamento garantindo que Instruções e Memória tenham precedência máxima
     trimmed_parts, dropped = apply_token_budget(
         parts,
-        budget_tokens=available_for_context + estimate_tokens(base_system),
+        budget_tokens=available_for_context + estimate_tokens(effective_base_system),
         drop_order=["related_chats", "files", "manifest", "memory"],
     )
     trimmed.extend(dropped)

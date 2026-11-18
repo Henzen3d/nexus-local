@@ -572,159 +572,180 @@ async def _run_turn(
     # ── Dispara Busca Web em Paralelo (asyncio.create_task) ─────────────
     # Executa a busca web e raspagem em segundo plano concorrentemente com
     # a seleção de modelo, gravação no banco, carga de anexos e preparação do contexto.
+    # Usa conexão curta própria dentro de _resolve_web_search para não intercalar
+    # transações com a conexão do turno (T3.2).
     turn_ref = {"conversation_id": conversation_id, "user_msg_id": None}
     web_search_task = asyncio.create_task(
         _resolve_web_search(
-            ws, db, req, user_message, None, user_id, conversation_id,
+            ws, None, req, user_message, None, user_id, conversation_id,
             intent_res=intent_res,
             history=raw_history[-4:] if raw_history else [],
             intent_routing=intent_routing,
             turn_ref=turn_ref,
+            defer_telemetry=True,
         )
     )
 
-    if is_auto:
-        policy = await get_router_policy(db)
-        # Nível de esforço configurado para o modo Auto na UI (padrão 'medium'):
-        # calibrado dinamicamente pelo Pré-Router se não fixado pelo usuário.
-        _auto_effort_raw = req.get("reasoning_effort")
-        if not _auto_effort_raw and intent_routing:
-            if intent_routing.intent_tier == "trivial":
-                _auto_effort_raw = "low"
-            elif intent_routing.intent_tier == "deep_technical":
-                _auto_effort_raw = "high"
+    try:
+        if is_auto:
+            policy = await get_router_policy(db)
+            # Nível de esforço configurado para o modo Auto na UI (padrão 'medium'):
+            # calibrado dinamicamente pelo Pré-Router se não fixado pelo usuário.
+            _auto_effort_raw = req.get("reasoning_effort")
+            if not _auto_effort_raw and intent_routing:
+                if intent_routing.intent_tier == "trivial":
+                    _auto_effort_raw = "low"
+                elif intent_routing.intent_tier == "deep_technical":
+                    _auto_effort_raw = "high"
 
-        auto_route_decision = await select_best_model(
-            intent_res, policy, db,
-            previous_model_id=prev_model_id,
-            user_reasoning_effort=str(_auto_effort_raw).strip() if _auto_effort_raw else None,
+            auto_route_decision = await select_best_model(
+                intent_res, policy, db,
+                previous_model_id=prev_model_id,
+                user_reasoning_effort=str(_auto_effort_raw).strip() if _auto_effort_raw else None,
+            )
+            req_ctx.record_phase("intent_classification", t_intent_start)
+            model_id = auto_route_decision.chosen_model_id
+            provider_id = auto_route_decision.provider_id
+
+            # Anexa metadados da triagem para telemetria e transparência
+            auto_route_decision.intent_tier = intent_routing.intent_tier
+            auto_route_decision.strict_constraints = intent_routing.strict_constraints
+
+            # Emite evento auto_route_decision com transparência antes dos primeiros tokens
+            await ws.send_json({"type": "auto_route_decision", **decision_to_dict(auto_route_decision)})
+
+
+        # ── Ensure conversation ─────────────────────────────────────────
+        conversation_id, _proj_id, created_payload = await ensure_conversation(
+            db, conversation_id, user_id, user_message,
+            model_id, provider_id, request_project_id,
         )
-        req_ctx.record_phase("intent_classification", t_intent_start)
-        model_id = auto_route_decision.chosen_model_id
-        provider_id = auto_route_decision.provider_id
-
-        # Anexa metadados da triagem para telemetria e transparência
-        auto_route_decision.intent_tier = intent_routing.intent_tier
-        auto_route_decision.strict_constraints = intent_routing.strict_constraints
-
-        # Emite evento auto_route_decision com transparência antes dos primeiros tokens
-        await ws.send_json({"type": "auto_route_decision", **decision_to_dict(auto_route_decision)})
-
-
-    # ── Ensure conversation ─────────────────────────────────────────
-    conversation_id, _proj_id, created_payload = await ensure_conversation(
-        db, conversation_id, user_id, user_message,
-        model_id, provider_id, request_project_id,
-    )
-    turn_ref["conversation_id"] = conversation_id
-    if created_payload:
-        await ws.send_json(
-            dump_ws_event(
-                ConversationCreatedEvent(
-                    conversation_id=conversation_id,
-                    title=created_payload.get("title", ""),
-                    project_id=created_payload.get("project_id"),
-                    turn_id=turn_id,
+        turn_ref["conversation_id"] = conversation_id
+        if created_payload:
+            await ws.send_json(
+                dump_ws_event(
+                    ConversationCreatedEvent(
+                        conversation_id=conversation_id,
+                        title=created_payload.get("title", ""),
+                        project_id=created_payload.get("project_id"),
+                        turn_id=turn_id,
+                    )
                 )
             )
+        if turn is not None:
+            turn.start(conversation_id)
+
+        # ── Save user message ───────────────────────────────────────────
+        t_save_user = time.perf_counter()
+        user_msg_id = await save_user_message(
+            db, conversation_id, user_message, model_id, provider_id
         )
-    if turn is not None:
-        turn.start(conversation_id)
+        req_ctx.record_phase("db_save_user_msg", t_save_user)
+        turn_ref["user_msg_id"] = user_msg_id
 
-    # ── Save user message ───────────────────────────────────────────
-    t_save_user = time.perf_counter()
-    user_msg_id = await save_user_message(
-        db, conversation_id, user_message, model_id, provider_id
-    )
-    req_ctx.record_phase("db_save_user_msg", t_save_user)
-    turn_ref["user_msg_id"] = user_msg_id
+        # Emite indicador visual dinâmico do modo de triagem no ExecutionSequence
+        if intent_routing and intent_routing.mode_status_pt:
+            triage_step_id = f"triage-{user_msg_id}"
+            triage_detail = ", ".join(intent_routing.strict_constraints) if intent_routing.strict_constraints else None
+            await ws.send_json({
+                "type": "process_step_start",
+                "id": triage_step_id,
+                "step_type": "tool",
+                "title": intent_routing.mode_status_pt,
+                "detail": triage_detail,
+            })
+            await ws.send_json({
+                "type": "process_step_end",
+                "id": triage_step_id,
+                "status": "completed",
+            })
 
-    # Emite indicador visual dinâmico do modo de triagem no ExecutionSequence
-    if intent_routing and intent_routing.mode_status_pt:
-        triage_step_id = f"triage-{user_msg_id}"
-        triage_detail = ", ".join(intent_routing.strict_constraints) if intent_routing.strict_constraints else None
-        await ws.send_json({
-            "type": "process_step_start",
-            "id": triage_step_id,
-            "step_type": "tool",
-            "title": intent_routing.mode_status_pt,
-            "detail": triage_detail,
-        })
-        await ws.send_json({
-            "type": "process_step_end",
-            "id": triage_step_id,
-            "status": "completed",
-        })
+        # ── Job de imagem em paralelo para pedido misto ─────────────────
+        if image_job_created and img_prompt:
+            from backend.image_gen.queue import insert_image_task
+            from backend.image_gen.worker import notify_new_task
 
-    # ── Job de imagem em paralelo para pedido misto ─────────────────
-    if image_job_created and img_prompt:
-        from backend.image_gen.queue import insert_image_task
-        from backend.image_gen.worker import notify_new_task
+            placeholder_msg_id = await save_assistant_message(
+                db,
+                conversation_id,
+                "Gerando imagem…",
+                img_config.model_id or "cloudflare/flux-1-schnell",
+                img_config.provider_id or "cloudflare",
+            )
+            task_id = await insert_image_task(
+                db,
+                conversation_id=conversation_id,
+                user_id=user_id,
+                message_id=placeholder_msg_id,
+                prompt=img_prompt,
+                model_id=img_config.model_id,
+            )
+            notify_new_task()
+            await ws.send_json({
+                "type": "image_pending",
+                "task_id": task_id,
+                "message_id": placeholder_msg_id,
+                "conversation_id": conversation_id,
+                "msg_id": placeholder_msg_id,
+                "conv_id": conversation_id,
+                "prompt": img_prompt,
+            })
 
-        placeholder_msg_id = await save_assistant_message(
-            db,
-            conversation_id,
-            "Gerando imagem…",
-            img_config.model_id or "cloudflare/flux-1-schnell",
-            img_config.provider_id or "cloudflare",
-        )
-        task_id = await insert_image_task(
-            db,
-            conversation_id=conversation_id,
-            user_id=user_id,
-            message_id=placeholder_msg_id,
-            prompt=img_prompt,
-            model_id=img_config.model_id,
-        )
-        notify_new_task()
-        await ws.send_json({
-            "type": "image_pending",
-            "task_id": task_id,
-            "message_id": placeholder_msg_id,
-            "conversation_id": conversation_id,
-            "msg_id": placeholder_msg_id,
-            "conv_id": conversation_id,
-            "prompt": img_prompt,
-        })
+        # ── Attachments ─────────────────────────────────────────────────
+        if attachment_ids:
+            await move_attachments_to_conversation(
+                attachment_ids, conversation_id, user_msg_id, db, user_id=user_id
+            )
 
-    # ── Attachments ─────────────────────────────────────────────────
-    if attachment_ids:
-        await move_attachments_to_conversation(
-            attachment_ids, conversation_id, user_msg_id, db, user_id=user_id
-        )
+        attachments_by_msg, extracted_text_by_id = await load_attachments(db, conversation_id)
+        model_supports_vision = await check_model_vision_support(db, model_id)
 
-    attachments_by_msg, extracted_text_by_id = await load_attachments(db, conversation_id)
-    model_supports_vision = await check_model_vision_support(db, model_id)
-
-    # ── Aguarda Busca Web Paralela Concluir ──────────────────────────
-    t_web_wait = time.perf_counter()
-    try:
-        web_search_used, web_search_query, web_search_sources, search_results, search_config, process_steps = (
-            await asyncio.wait_for(web_search_task, timeout=14.0)
-        )
-    except asyncio.TimeoutError:
-        web_search_task.cancel()
+        # ── Aguarda Busca Web Paralela Concluir ──────────────────────────
+        t_web_wait = time.perf_counter()
         try:
-            await web_search_task
-        except BaseException:
-            pass
-        logger.warning(
-            "[chat] Timeout na busca web paralela (timeout_s=14.0)",
-            extra={"user_id": user_id, "conversation_id": conversation_id},
-        )
-        web_search_used, web_search_query, web_search_sources, search_results, search_config, process_steps = (
-            False, "", [], [], None, []
-        )
-    except Exception as e_web:
-        logger.error(
-            "[chat] Falha na busca web paralela (%s)",
-            type(e_web).__name__,
-            extra={"user_id": user_id, "conversation_id": conversation_id},
-        )
-        web_search_used, web_search_query, web_search_sources, search_results, search_config, process_steps = (
-            False, "", [], [], None, []
-        )
-    req_ctx.record_phase("web_search_wait", t_web_wait)
+            web_search_used, web_search_query, web_search_sources, search_results, search_config, process_steps = (
+                await asyncio.wait_for(web_search_task, timeout=14.0)
+            )
+        except asyncio.TimeoutError:
+            await _cancel_pending_task(web_search_task)
+            logger.warning(
+                "[chat] Timeout na busca web paralela (timeout_s=14.0)",
+                extra={"user_id": user_id, "conversation_id": conversation_id},
+            )
+            web_search_used, web_search_query, web_search_sources, search_results, search_config, process_steps = (
+                False, "", [], [], None, []
+            )
+        except Exception as e_web:
+            logger.error(
+                "[chat] Falha na busca web paralela (%s)",
+                type(e_web).__name__,
+                extra={"user_id": user_id, "conversation_id": conversation_id},
+            )
+            web_search_used, web_search_query, web_search_sources, search_results, search_config, process_steps = (
+                False, "", [], [], None, []
+            )
+        req_ctx.record_phase("web_search_wait", t_web_wait)
+    finally:
+        await _cancel_pending_task(web_search_task)
+
+    # Fase explícita de telemetria de busca web em conexão curta própria (T3.2)
+    if web_search_used and isinstance(search_config, dict) and search_config.get("_telemetry"):
+        tel = search_config["_telemetry"]
+        try:
+            await _record_web_search_telemetry(
+                conversation_id=conversation_id,
+                message_id=user_msg_id,
+                query=tel.get("primary_query") or web_search_query,
+                trigger_type=tel.get("trigger_type"),
+                results_count=tel.get("results_count", len(web_search_sources)),
+                user_id=user_id,
+            )
+        except Exception as tel_err:
+            logger.warning(
+                "[chat] Falha ao registrar telemetria de busca web (%s)",
+                type(tel_err).__name__,
+                extra={"user_id": user_id, "conversation_id": conversation_id},
+            )
 
     t_load_hist = time.perf_counter()
     history, relay_used, relay_model_id = await load_history(
@@ -1148,12 +1169,56 @@ async def _run_turn(
         logger.debug("[Proactive] agendamento falhou: %s", exc)
 
 
+async def _cancel_pending_task(task: asyncio.Task | None) -> None:
+    """Cancela e aguarda uma tarefa assíncrona pendente sem propagar erros de cancelamento."""
+    if task is None or task.done():
+        return
+    task.cancel()
+    try:
+        await task
+    except BaseException:
+        pass
+
+
+async def _record_web_search_telemetry(
+    *,
+    conversation_id: str | None,
+    message_id: str | None,
+    query: str,
+    trigger_type: str | None,
+    results_count: int,
+    user_id: str,
+) -> None:
+    """Persiste telemetria de busca web em conexão curta própria com commit isolado (T3.2)."""
+    log_db = await get_db()
+    try:
+        await log_db.execute(
+            """INSERT INTO web_search_log
+               (id, conversation_id, message_id, query,
+                trigger_type, results_count, user_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (
+                str(uuid.uuid4()),
+                conversation_id,
+                message_id,
+                query,
+                trigger_type,
+                int(results_count),
+                user_id,
+            ),
+        )
+        await log_db.commit()
+    finally:
+        await log_db.close()
+
+
 async def _resolve_web_search(
     ws, db, req, user_message, user_msg_id, user_id, conversation_id,
     intent_res: Any | None = None,
     history: list[dict] | None = None,
     intent_routing: Any | None = None,
     turn_ref: dict | None = None,
+    defer_telemetry: bool = False,
 ) -> tuple[bool, str, list, list, dict | None, list]:
     """Resolve e executa web search se aplicável.
 
@@ -1167,155 +1232,169 @@ async def _resolve_web_search(
     search_results: list = []
     process_steps: list[dict] = []
 
-    search_config = await get_web_search_config(db)
+    owns_db = db is None
+    search_db = await get_db() if owns_db else db
+    try:
+        search_config = await get_web_search_config(search_db)
 
-    should_do_search = False
-    trigger_type = None
+        should_do_search = False
+        trigger_type = None
 
-    if search_config and search_config["enabled"]:
-        intent_val = getattr(getattr(intent_res, "intent", None), "value", None) or str(getattr(intent_res, "intent", ""))
-        is_trivial = bool(intent_routing and getattr(intent_routing, "intent_tier", None) == "trivial")
+        if search_config and search_config["enabled"]:
+            intent_val = getattr(getattr(intent_res, "intent", None), "value", None) or str(getattr(intent_res, "intent", ""))
+            is_trivial = bool(intent_routing and getattr(intent_routing, "intent_tier", None) == "trivial")
 
-        if web_search_requested:
-            should_do_search = True
-            trigger_type = "manual"
-        elif not is_trivial:
-            if intent_routing and getattr(intent_routing, "needs_web_search", False):
+            if web_search_requested:
                 should_do_search = True
-                trigger_type = "pre_router_triage"
-            elif intent_val == "web_research":
-                should_do_search = True
-                trigger_type = "auto_router"
-            elif search_config["heuristic_enabled"]:
-                should, _score = should_search(
-                    user_message, search_config["heuristic_sensitivity"]
-                )
-                if should:
+                trigger_type = "manual"
+            elif not is_trivial:
+                if intent_routing and getattr(intent_routing, "needs_web_search", False):
                     should_do_search = True
-                    trigger_type = "heuristic"
+                    trigger_type = "pre_router_triage"
+                elif intent_val == "web_research":
+                    should_do_search = True
+                    trigger_type = "auto_router"
+                elif search_config["heuristic_enabled"]:
+                    should, _score = should_search(
+                        user_message, search_config["heuristic_sensitivity"]
+                    )
+                    if should:
+                        should_do_search = True
+                        trigger_type = "heuristic"
 
-    if should_do_search:
-        pre_queries = getattr(intent_routing, "search_queries", None) if intent_routing else None
-        web_search_query = pre_queries[0] if pre_queries and len(pre_queries) > 0 else user_message
-        await ws.send_json({"type": "search_start", "query": web_search_query})
+        if should_do_search:
+            pre_queries = getattr(intent_routing, "search_queries", None) if intent_routing else None
+            web_search_query = pre_queries[0] if pre_queries and len(pre_queries) > 0 else user_message
+            await ws.send_json({"type": "search_start", "query": web_search_query})
 
-        async def send_ws_event(evt: dict):
-            if evt.get("type") == "process_step_start":
-                process_steps.append({
-                    "id": evt.get("id"),
-                    "type": evt.get("step_type") or "tool",
-                    "title": evt.get("title") or "",
-                    "detail": evt.get("detail"),
-                    "status": "running",
-                })
-            elif evt.get("type") == "process_step_end":
-                for step in process_steps:
-                    if step.get("id") == evt.get("id"):
-                        step["status"] = evt.get("status") or "completed"
-            try:
-                await ws.send_json(evt)
-            except Exception:
-                pass
+            async def send_ws_event(evt: dict):
+                if evt.get("type") == "process_step_start":
+                    process_steps.append({
+                        "id": evt.get("id"),
+                        "type": evt.get("step_type") or "tool",
+                        "title": evt.get("title") or "",
+                        "detail": evt.get("detail"),
+                        "status": "running",
+                    })
+                elif evt.get("type") == "process_step_end":
+                    for step in process_steps:
+                        if step.get("id") == evt.get("id"):
+                            step["status"] = evt.get("status") or "completed"
+                try:
+                    await ws.send_json(evt)
+                except Exception:
+                    pass
 
-        search_failed = False
-        search_results = []
-        scraped_pages = []
-
-        try:
-            from backend.web_search.agent import select_search_budget
-
-            search_budget = select_search_budget(
-                user_message,
-                intent_routing=intent_routing,
-                web_search_requested=bool(web_search_requested),
-            )
-            agent_result = await execute_agentic_search(
-                user_message, db, search_config,
-                on_event=send_ws_event,
-                history=history,
-                pre_planned_queries=pre_queries,
-                budget=search_budget,
-            )
-            search_results = agent_result.get("search_results", [])
-            scraped_pages = agent_result.get("scraped_pages", [])
-            executed_queries = agent_result.get("executed_queries", [user_message])
-            search_metrics = agent_result.get("metrics") or {}
-            primary_query = executed_queries[0] if executed_queries else user_message
-
-            if search_config is not None:
-                search_config["_metrics"] = search_metrics
-
-            if search_results or scraped_pages:
-                web_search_used = True
-
-                # Combina páginas lidas no Deep Reader com resultados gerais da busca
-                sources_map = {}
-                for page in scraped_pages:
-                    p_url = page.get("url")
-                    if p_url:
-                        sample = (page.get("text_sample") or "").strip()
-                        sources_map[p_url] = {
-                            "title": page.get("title") or p_url,
-                            "url": p_url,
-                            "snippet": sample[:280],
-                            "was_read": True,
-                        }
-                for r in search_results:
-                    r_url = r.get("url")
-                    if not r_url:
-                        continue
-                    snippet = (r.get("snippet") or "").strip()[:280]
-                    if r_url not in sources_map:
-                        sources_map[r_url] = {
-                            "title": r.get("title") or r_url,
-                            "url": r_url,
-                            "snippet": snippet,
-                            "was_read": False,
-                        }
-                    elif snippet and not sources_map[r_url].get("snippet"):
-                        sources_map[r_url]["snippet"] = snippet
-
-                web_search_sources = list(sources_map.values())
-
-                if search_config:
-                    search_config["scraped_pages"] = scraped_pages
-
-                actual_conv_id = (turn_ref.get("conversation_id") if turn_ref else None) or conversation_id
-                actual_msg_id = (turn_ref.get("user_msg_id") if turn_ref else None) or user_msg_id
-                log_id = str(uuid.uuid4())
-                await db.execute(
-                    """INSERT INTO web_search_log
-                       (id, conversation_id, message_id, query,
-                        trigger_type, results_count, user_id)
-                       VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                    (
-                        log_id, actual_conv_id, actual_msg_id,
-                        primary_query, trigger_type,
-                        len(web_search_sources), user_id,
-                    ),
-                )
-                await db.commit()
-        except Exception:
-            search_failed = True
-            logger.error(
-                "agentic web search failed",
-                exc_info=True,
-                extra={"user_id": user_id, "conversation_id": conversation_id},
-            )
+            search_failed = False
             search_results = []
             scraped_pages = []
 
-    # Prepend o passo de triagem na sequência para persistência consistente no histórico
-    actual_msg_id = (turn_ref.get("user_msg_id") if turn_ref else None) or user_msg_id
-    if intent_routing and getattr(intent_routing, "mode_status_pt", None):
-        triage_id = f"triage-{actual_msg_id or '0'}"
-        if not any(step.get("id") == triage_id for step in process_steps):
-            process_steps.insert(0, {
-                "id": triage_id,
-                "type": "tool",
-                "title": intent_routing.mode_status_pt,
-                "detail": ", ".join(intent_routing.strict_constraints) if intent_routing.strict_constraints else None,
-                "status": "completed",
-            })
+            try:
+                from backend.web_search.agent import select_search_budget
 
-    return web_search_used, web_search_query, web_search_sources, search_results, search_config, process_steps
+                search_budget = select_search_budget(
+                    user_message,
+                    intent_routing=intent_routing,
+                    web_search_requested=bool(web_search_requested),
+                )
+                agent_result = await execute_agentic_search(
+                    user_message, search_db, search_config,
+                    on_event=send_ws_event,
+                    history=history,
+                    pre_planned_queries=pre_queries,
+                    budget=search_budget,
+                )
+                search_results = agent_result.get("search_results", [])
+                scraped_pages = agent_result.get("scraped_pages", [])
+                executed_queries = agent_result.get("executed_queries", [user_message])
+                search_metrics = agent_result.get("metrics") or {}
+                primary_query = executed_queries[0] if executed_queries else user_message
+
+                if search_config is not None:
+                    search_config["_metrics"] = search_metrics
+
+                if search_results or scraped_pages:
+                    web_search_used = True
+
+                    # Combina páginas lidas no Deep Reader com resultados gerais da busca
+                    sources_map = {}
+                    for page in scraped_pages:
+                        p_url = page.get("url")
+                        if p_url:
+                            sample = (page.get("text_sample") or "").strip()
+                            sources_map[p_url] = {
+                                "title": page.get("title") or p_url,
+                                "url": p_url,
+                                "snippet": sample[:280],
+                                "was_read": True,
+                            }
+                    for r in search_results:
+                        r_url = r.get("url")
+                        if not r_url:
+                            continue
+                        snippet = (r.get("snippet") or "").strip()[:280]
+                        if r_url not in sources_map:
+                            sources_map[r_url] = {
+                                "title": r.get("title") or r_url,
+                                "url": r_url,
+                                "snippet": snippet,
+                                "was_read": False,
+                            }
+                        elif snippet and not sources_map[r_url].get("snippet"):
+                            sources_map[r_url]["snippet"] = snippet
+
+                    web_search_sources = list(sources_map.values())
+
+                    if search_config is not None:
+                        search_config["scraped_pages"] = scraped_pages
+                        search_config["_telemetry"] = {
+                            "primary_query": primary_query,
+                            "trigger_type": trigger_type,
+                            "results_count": len(web_search_sources),
+                        }
+
+                    if not defer_telemetry:
+                        actual_conv_id = (turn_ref.get("conversation_id") if turn_ref else None) or conversation_id
+                        actual_msg_id = (turn_ref.get("user_msg_id") if turn_ref else None) or user_msg_id
+                        try:
+                            await _record_web_search_telemetry(
+                                conversation_id=actual_conv_id,
+                                message_id=actual_msg_id,
+                                query=primary_query,
+                                trigger_type=trigger_type,
+                                results_count=len(web_search_sources),
+                                user_id=user_id,
+                            )
+                        except Exception as tel_err:
+                            logger.warning(
+                                "[chat] Falha ao gravar telemetria de busca web (%s)",
+                                type(tel_err).__name__,
+                                extra={"user_id": user_id, "conversation_id": actual_conv_id},
+                            )
+            except Exception:
+                search_failed = True
+                logger.error(
+                    "agentic web search failed",
+                    exc_info=True,
+                    extra={"user_id": user_id, "conversation_id": conversation_id},
+                )
+                search_results = []
+                scraped_pages = []
+
+        # Prepend o passo de triagem na sequência para persistência consistente no histórico
+        actual_msg_id = (turn_ref.get("user_msg_id") if turn_ref else None) or user_msg_id
+        if intent_routing and getattr(intent_routing, "mode_status_pt", None):
+            triage_id = f"triage-{actual_msg_id or '0'}"
+            if not any(step.get("id") == triage_id for step in process_steps):
+                process_steps.insert(0, {
+                    "id": triage_id,
+                    "type": "tool",
+                    "title": intent_routing.mode_status_pt,
+                    "detail": ", ".join(intent_routing.strict_constraints) if intent_routing.strict_constraints else None,
+                    "status": "completed",
+                })
+
+        return web_search_used, web_search_query, web_search_sources, search_results, search_config, process_steps
+    finally:
+        if owns_db and search_db is not None:
+            await search_db.close()
