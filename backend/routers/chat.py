@@ -501,6 +501,25 @@ async def _run_turn(
         except Exception:
             raw_history = []
 
+    # ── Ensure conversation (emite ConversationCreatedEvent como primeiro frame) ───
+    conversation_id, _proj_id, created_payload = await ensure_conversation(
+        db, conversation_id, user_id, user_message,
+        model_id, provider_id, request_project_id,
+    )
+    if created_payload:
+        await ws.send_json(
+            dump_ws_event(
+                ConversationCreatedEvent(
+                    conversation_id=conversation_id,
+                    title=created_payload.get("title", ""),
+                    project_id=created_payload.get("project_id"),
+                    turn_id=turn_id,
+                )
+            )
+        )
+    if turn is not None:
+        turn.start(conversation_id)
+
     # ── Pré-Router & Triage Agent (Arquitetura de Triagem em Dois Estágios) ───
     from backend.orchestration.pre_router import (
         run_pre_router_triage,
@@ -522,6 +541,7 @@ async def _run_turn(
     if intent_routing:
         await ws.send_json({
             "type": "triage_decision",
+            "conversation_id": conversation_id,
             "intent_tier": intent_routing.intent_tier,
             "reasoning_effort": intent_routing.reasoning_effort,
             "needs_web_search": intent_routing.needs_web_search,
@@ -615,25 +635,7 @@ async def _run_turn(
             await ws.send_json({"type": "auto_route_decision", **decision_to_dict(auto_route_decision)})
 
 
-        # ── Ensure conversation ─────────────────────────────────────────
-        conversation_id, _proj_id, created_payload = await ensure_conversation(
-            db, conversation_id, user_id, user_message,
-            model_id, provider_id, request_project_id,
-        )
         turn_ref["conversation_id"] = conversation_id
-        if created_payload:
-            await ws.send_json(
-                dump_ws_event(
-                    ConversationCreatedEvent(
-                        conversation_id=conversation_id,
-                        title=created_payload.get("title", ""),
-                        project_id=created_payload.get("project_id"),
-                        turn_id=turn_id,
-                    )
-                )
-            )
-        if turn is not None:
-            turn.start(conversation_id)
 
         # ── Save user message ───────────────────────────────────────────
         t_save_user = time.perf_counter()

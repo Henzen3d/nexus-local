@@ -484,8 +484,9 @@ async def build_project_context(
     reserve_hist = max(512, int(reserve_for_history or 0))
     reserve_resp = max(256, int(reserve_for_response or 0))
     # Budget for the whole system-side project context (garante espaço para o prompt base + diretrizes)
+    base_sys_tokens = estimate_tokens(base_system or BASE_SYSTEM)
     system_budget = max(
-        700,
+        max(850, base_sys_tokens + 150),
         safe_total - reserve_hist - reserve_resp,
     )
     # Sub-budgets: files get the lion's share of retrieval; chats are secondary

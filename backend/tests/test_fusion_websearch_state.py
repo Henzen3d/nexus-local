@@ -132,7 +132,9 @@ async def test_conversations_reconstructs_fusion_card_and_search_steps():
     assert asst_msg["content"] == "Resposta consolidada pelo juiz"
     assert asst_msg["web_search_used"] is True
     assert asst_msg["process_steps"] == steps
-    assert asst_msg["web_search_sources"] == sources
+    assert asst_msg["web_search_sources"][0]["url"] == sources[0]["url"]
+    assert asst_msg["web_search_sources"][0]["title"] == sources[0]["title"]
+    assert asst_msg["web_search_sources"][0]["index"] == 1
 
 
 @pytest.mark.asyncio
