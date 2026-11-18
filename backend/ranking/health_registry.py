@@ -158,8 +158,8 @@ class InMemoryHealthRegistry:
             # Poda eventos mais velhos que 24h (86400s)
             rec.recent_events = [e for e in rec.recent_events if (now_mono - e[0]) <= 86400.0]
 
-            # Atualiza TTFT EWMA
-            if ttft_ms is not None and ttft_ms > 0:
+            # Atualiza TTFT EWMA (apenas medições finitas e positivas)
+            if ttft_ms is not None and math.isfinite(ttft_ms) and ttft_ms > 0:
                 if rec.ewma_ttft_ms is None:
                     rec.ewma_ttft_ms = float(ttft_ms)
                 else:
@@ -169,7 +169,7 @@ class InMemoryHealthRegistry:
                     )
 
             # Atualiza Velocidade EWMA
-            if chars_per_sec is not None and chars_per_sec > 0:
+            if chars_per_sec is not None and math.isfinite(chars_per_sec) and chars_per_sec > 0:
                 # 4 caracteres por token aproximado para tps
                 tps = chars_per_sec / 4.0
                 if rec.ewma_tps is None:

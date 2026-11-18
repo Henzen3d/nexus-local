@@ -4,6 +4,7 @@ Extraído de websocket_chat (chat.py) — responsabilidade 11-13 do God function
 """
 from __future__ import annotations
 
+import math
 import time
 import asyncio
 import json
@@ -30,14 +31,52 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+def _parse_positive_finite_float(
+    raw: Any,
+    *,
+    min_val: float = 0.05,
+    max_val: float = 3600.0,
+) -> float | None:
+    """Valida que um valor de configuração é número finito estritamente positivo dentro da faixa."""
+    if raw is None:
+        return None
+    try:
+        val = float(str(raw).strip())
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(val) or val <= 0.0:
+        return None
+    if val < min_val or val > max_val:
+        return None
+    return val
+
+
 _MAX_FAILOVER_ATTEMPTS = int(os.getenv("FAILOVER_MAX_ATTEMPTS", "7"))
 DEFAULT_FAILOVER_TOTAL_BUDGET_SECONDS = 45.0
-DEFAULT_STREAM_TTFT_TIMEOUT_SECONDS = float(
-    os.getenv("FAILOVER_STREAM_TTFT_TIMEOUT_SECONDS") or "25.0"
+DEFAULT_STREAM_TTFT_TIMEOUT_SECONDS = (
+    _parse_positive_finite_float(os.getenv("FAILOVER_STREAM_TTFT_TIMEOUT_SECONDS"))
+    or 25.0
+)
+DEFAULT_INTER_TOKEN_TIMEOUT_SECONDS = (
+    _parse_positive_finite_float(os.getenv("FAILOVER_INTER_TOKEN_TIMEOUT_SECONDS"))
+    or 35.0
 )
 MIN_RETRY_BUDGET_SECONDS = 3.0
 DEFAULT_MIN_COMMIT_CHARS = int(os.getenv("FAILOVER_MIN_COMMIT_CHARS", "24"))
-DEFAULT_MAX_PRECOMMIT_HOLD_MS = float(os.getenv("FAILOVER_MAX_PRECOMMIT_HOLD_MS", "450.0"))
+DEFAULT_MAX_PRECOMMIT_HOLD_MS = (
+    _parse_positive_finite_float(os.getenv("FAILOVER_MAX_PRECOMMIT_HOLD_MS"), min_val=1.0, max_val=30000.0)
+    or 450.0
+)
+
+
+class _InterTokenTimeoutError(Exception):
+    """Sinaliza silêncio prolongado entre tokens após o início do stream (nunca conta como sucesso)."""
+
+    def __init__(self, timeout_s: float, partial_chars: int, committed: bool):
+        self.timeout_s = timeout_s
+        self.partial_chars = partial_chars
+        self.committed = committed
+        super().__init__(f"Inter-token timeout ({timeout_s:.1f}s)")
 
 
 def _build_cascade_debug_log(cascade_history: list[dict], main_msg: str) -> str:
@@ -148,42 +187,54 @@ class ResolveAndStreamResult(tuple):
 
 
 async def get_failover_total_budget(db) -> float:
-    """Carrega o orçamento de tempo total para o turno/failover da tabela meta ou env."""
-    import os
-    env_budget = os.getenv("FAILOVER_TOTAL_BUDGET_SECONDS")
-    if env_budget:
+    """Carrega o orçamento de tempo total da cascata (precedência: env > meta > padrão 45s)."""
+    env_val = _parse_positive_finite_float(os.getenv("FAILOVER_TOTAL_BUDGET_SECONDS"))
+    if env_val is not None:
+        return env_val
+    if db:
         try:
-            return float(env_budget)
-        except ValueError:
+            async with db.execute("SELECT value FROM meta WHERE key = 'failover_total_budget_sec'") as cur:
+                row = await cur.fetchone()
+            meta_val = _parse_positive_finite_float(row[0] if row else None)
+            if meta_val is not None:
+                return meta_val
+        except Exception:
             pass
-    try:
-        async with db.execute("SELECT value FROM meta WHERE key = 'failover_total_budget_sec'") as cur:
-            row = await cur.fetchone()
-        if row and row[0]:
-            return float(row[0])
-    except Exception:
-        pass
     return DEFAULT_FAILOVER_TOTAL_BUDGET_SECONDS
 
 
 async def get_failover_stream_ttft_timeout(db) -> float:
-    """Carrega o tempo limite de TTFT para o stream inicial da tabela meta ou env."""
-    import os
-    env_ttft = os.getenv("FAILOVER_STREAM_TTFT_TIMEOUT_SECONDS")
-    if env_ttft:
-        try:
-            return float(env_ttft)
-        except ValueError:
-            pass
+    """Carrega o limite de TTFT do stream inicial (precedência: env > meta > padrão 25s)."""
+    env_val = _parse_positive_finite_float(os.getenv("FAILOVER_STREAM_TTFT_TIMEOUT_SECONDS"))
+    if env_val is not None:
+        return env_val
     if db:
         try:
             async with db.execute("SELECT value FROM meta WHERE key = 'stream_ttft_timeout_sec'") as cur:
                 row = await cur.fetchone()
-            if row and row[0]:
-                return float(row[0])
+            meta_val = _parse_positive_finite_float(row[0] if row else None)
+            if meta_val is not None:
+                return meta_val
         except Exception:
             pass
     return DEFAULT_STREAM_TTFT_TIMEOUT_SECONDS
+
+
+async def get_failover_inter_token_timeout(db) -> float:
+    """Carrega o timeout entre tokens após início da geração (precedência: env > meta > padrão 35s)."""
+    env_val = _parse_positive_finite_float(os.getenv("FAILOVER_INTER_TOKEN_TIMEOUT_SECONDS"))
+    if env_val is not None:
+        return env_val
+    if db:
+        try:
+            async with db.execute("SELECT value FROM meta WHERE key = 'stream_inter_token_timeout_sec'") as cur:
+                row = await cur.fetchone()
+            meta_val = _parse_positive_finite_float(row[0] if row else None)
+            if meta_val is not None:
+                return meta_val
+        except Exception:
+            pass
+    return DEFAULT_INTER_TOKEN_TIMEOUT_SECONDS
 
 
 async def check_cache(
@@ -273,8 +324,14 @@ async def stream_from_llm(
 
     total_budget = await get_failover_total_budget(db)
     base_stream_ttft_timeout = await get_failover_stream_ttft_timeout(db)
+    inter_token_timeout = await get_failover_inter_token_timeout(db)
     turn_start_time = time.monotonic()
     cascade_history: list[dict] = []
+    turn_first_send_ms: float | None = None
+    turn_precommit_hold_ms: float | None = None
+    turn_failover_recovery_ms: float | None = None
+    first_token_elapsed_ms: float | None = None
+    effort_compat_retry_models: set[str] = set()
 
     while attempt < _MAX_FAILOVER_ATTEMPTS and not success:
         now = time.monotonic()
@@ -556,233 +613,353 @@ async def stream_from_llm(
 
             max_ttft = base_stream_ttft_timeout if attempt == 1 else min(15.0, max(5.0, remaining_budget * 0.5))
             stream_ttft_timeout = max(0.5, min(max_ttft, remaining_budget))
-            stream_start_time = time.perf_counter()
             first_token_received = False
-            first_token_elapsed_ms: float | None = None
+            first_token_elapsed_ms = None
             is_committed = False
-            precommit_buffer: list[str] = []
-            precommit_chars = 0
             candidate_response = ""
-            token_buffer: list[str] = []
-            last_flush = time.perf_counter()
 
-            async def flush_tokens():
-                nonlocal token_buffer, last_flush, tokens_flushed_to_client, client_ttft_recorded
-                if token_buffer:
-                    batch_text = "".join(token_buffer)
-                    await ws.send_json({"type": "token", "content": batch_text})
-                    token_buffer.clear()
-                    last_flush = time.perf_counter()
-                    tokens_flushed_to_client = True
-                    if not client_ttft_recorded:
-                        if request_context and hasattr(request_context, "record_phase"):
-                            turn_started_at = getattr(request_context, "started_at", None)
-                            if turn_started_at is not None:
-                                request_context.record_phase("client_ttft", turn_started_at)
-                        client_ttft_recorded = True
+            async def _consume_candidate_stream(
+                call_kwargs: dict,
+                *,
+                ttft_budget_s: float,
+            ) -> tuple[str, bool, float | None, bool]:
+                """Consumidor único de stream (usado pela tentativa normal e pelo retry sem esforço)."""
+                nonlocal tokens_flushed_to_client, client_ttft_recorded, is_committed
+                nonlocal turn_first_send_ms, turn_precommit_hold_ms, turn_failover_recovery_ms
 
-            def commit_if_needed(force: bool = False):
-                nonlocal is_committed, precommit_buffer, precommit_chars, token_buffer, candidate_response
-                if is_committed:
-                    return
-                elapsed_ms = (time.perf_counter() - stream_start_time) * 1000.0
-                if force or precommit_chars >= DEFAULT_MIN_COMMIT_CHARS or elapsed_ms >= DEFAULT_MAX_PRECOMMIT_HOLD_MS:
-                    is_committed = True
-                    if precommit_buffer:
-                        buffered_str = "".join(precommit_buffer)
-                        candidate_response += buffered_str
-                        token_buffer.append(buffered_str)
-                        precommit_buffer.clear()
+                is_committed = False
+                stream_start_mono = time.monotonic()
+                stream_start_perf = time.perf_counter()
+                local_first_nonempty_mono: float | None = None
+                local_first_token_ms: float | None = None
+                local_first_frame_sent_mono: float | None = None
+                local_committed = False
+                precommit_buffer: list[str] = []
+                precommit_chars = 0
+                local_response = ""
+                token_buffer: list[str] = []
+                last_flush_mono = stream_start_mono
 
-            from backend.ranking.admission import admission_controller
-            admission_acquired = admission_controller.acquire(current_model_id, current_provider_id)
-            stream_iter = None
-            pending_next_token: asyncio.Task | None = None
-            try:
-                try:
-                    stream_iter = provider.stream_chat(model=model_name, messages=history, **stream_kwargs).__aiter__()
+                async def flush_tokens():
+                    nonlocal last_flush_mono, tokens_flushed_to_client, client_ttft_recorded
+                    nonlocal local_first_frame_sent_mono, turn_first_send_ms, turn_precommit_hold_ms
+                    nonlocal turn_failover_recovery_ms
+                    if token_buffer:
+                        batch_text = "".join(token_buffer)
+                        await ws.send_json({"type": "token", "content": batch_text})
+                        now_mono = time.monotonic()
+                        token_buffer.clear()
+                        last_flush_mono = now_mono
+                        tokens_flushed_to_client = True
+                        if local_first_frame_sent_mono is None:
+                            local_first_frame_sent_mono = now_mono
+                            if local_first_nonempty_mono is not None:
+                                hold_ms = round((now_mono - local_first_nonempty_mono) * 1000.0, 2)
+                                turn_precommit_hold_ms = hold_ms
+                                if request_context and hasattr(request_context, "phase_latencies"):
+                                    request_context.phase_latencies["precommit_hold_ms"] = hold_ms
+                            if attempt > 1 and turn_failover_recovery_ms is None:
+                                rec_ms = round((now_mono - turn_start_time) * 1000.0, 2)
+                                turn_failover_recovery_ms = rec_ms
+                                if request_context and hasattr(request_context, "phase_latencies"):
+                                    request_context.phase_latencies["failover_recovery_ms"] = rec_ms
+                                    request_context.phase_latencies["failover_cascade"] = rec_ms
+                        if not client_ttft_recorded:
+                            turn_first_send_ms = round((now_mono - turn_start_time) * 1000.0, 2)
+                            if request_context and hasattr(request_context, "record_phase"):
+                                turn_started_at = getattr(request_context, "started_at", None)
+                                if turn_started_at is not None:
+                                    request_context.record_phase("client_ttft", turn_started_at)
+                                else:
+                                    request_context.phase_latencies["client_ttft"] = turn_first_send_ms
+                            client_ttft_recorded = True
 
-                    # Aguarda o primeiro token com prazo limite de TTFT (clamped ao restante do orçamento de tempo)
-                    # Heartbeat visual a cada 3s para manter o frontend vivo durante esperas longas
+                def commit_if_needed(force: bool = False):
+                    nonlocal local_committed, local_response, is_committed
+                    if local_committed:
+                        return
+                    elapsed_ms = (time.monotonic() - stream_start_mono) * 1000.0
+                    if force or precommit_chars >= DEFAULT_MIN_COMMIT_CHARS or elapsed_ms >= DEFAULT_MAX_PRECOMMIT_HOLD_MS:
+                        local_committed = True
+                        is_committed = True
+                        if precommit_buffer:
+                            buffered_str = "".join(precommit_buffer)
+                            local_response += buffered_str
+                            token_buffer.append(buffered_str)
+                            precommit_buffer.clear()
+
+                from backend.ranking.admission import admission_controller
+                admission_acquired = admission_controller.acquire(current_model_id, current_provider_id)
+                stream_iter = None
+                pending_next_token: asyncio.Task | None = None
+                heartbeat_task: asyncio.Task | None = None
+
+                async def _cancel_and_drain_pending():
+                    nonlocal pending_next_token
+                    task = pending_next_token
+                    pending_next_token = None
+                    if task is None:
+                        return
+                    if not task.done():
+                        task.cancel()
                     try:
-                        _heartbeat_task = None
-                        async def _ttft_heartbeat():
-                            """Envia pulsos visuais ao frontend durante espera do TTFT."""
-                            await asyncio.sleep(3.0)
-                            while True:
-                                try:
-                                    await ws.send_json({
-                                        "type": "process_step_update",
-                                        "id": f"model-connect-{attempt}",
-                                        "title": "Conectando ao modelo...",
-                                        "status": "working",
-                                    })
-                                except Exception:
-                                    break
-                                await asyncio.sleep(3.0)
+                        await task
+                    except BaseException:
+                        # Consome qualquer erro concorrente / StopAsyncIteration / CancelledError
+                        # para nunca vazar "Task exception was never retrieved".
+                        pass
 
-                        _heartbeat_task = asyncio.create_task(_ttft_heartbeat())
-                        try:
-                            first_token = await asyncio.wait_for(
-                                stream_iter.__anext__(),
-                                timeout=stream_ttft_timeout,
-                            )
-                        finally:
-                            if _heartbeat_task:
-                                _heartbeat_task.cancel()
-                                try:
-                                    await _heartbeat_task
-                                except (asyncio.CancelledError, Exception):
-                                    pass
+                try:
+                    stream_iter = provider.stream_chat(model=model_name, messages=history, **call_kwargs).__aiter__()
 
-                        first_token_received = True
-                        first_token_elapsed_ms = (time.perf_counter() - stream_start_time) * 1000.0
-                        if request_context and hasattr(request_context, "record_phase"):
-                            request_context.record_phase("llm_ttfb", stream_start_time)
-                            request_context.record_phase(
-                                f"llm_ttft_attempt_{attempt}", stream_start_time
-                            )
-                        token_str = str(first_token)
-                        precommit_buffer.append(token_str)
-                        precommit_chars += len(token_str)
-                        commit_if_needed()
-                        if is_committed:
-                            await flush_tokens()
-                    except (asyncio.TimeoutError, TimeoutError):
-                        if request_context and hasattr(request_context, "record_phase"):
-                            request_context.record_phase(
-                                f"llm_ttft_attempt_{attempt}", stream_start_time
-                            )
-                        logger.warning(
-                            "TTFT Timeout (%.1fs excedido) no provedor '%s' (modelo '%s'). Acionando failover cascade precoce.",
-                            stream_ttft_timeout, current_provider_id, current_model_id,
-                        )
-                        from backend.ranking.health_registry import health_registry
-                        health_registry.record_failure(current_model_id, current_provider_id, "TIMEOUT", stage="pre_stream")
-                        ttft_fail_ms = (time.perf_counter() - stream_start_time) * 1000.0
-                        cascade_history.append({
-                            "attempt": attempt,
-                            "model_id": current_model_id,
-                            "provider_id": current_provider_id,
-                            "detail": f"Tempo limite de resposta excedido ({int(stream_ttft_timeout)}s)",
-                            "latency_ms": round(ttft_fail_ms, 2),
-                            "reason": "ttft_timeout",
-                        })
-                        if attempt > 1:
+                    async def _ttft_heartbeat():
+                        await asyncio.sleep(3.0)
+                        while True:
                             try:
                                 await ws.send_json({
-                                    "type": "process_step_end",
-                                    "id": f"failover-{attempt}",
-                                    "status": "failed",
+                                    "type": "process_step_update",
+                                    "id": f"model-connect-{attempt}",
+                                    "title": "Conectando ao modelo...",
+                                    "status": "working",
                                 })
                             except Exception:
-                                pass
-                        attempted_model_ids.add(current_model_id)
-                        elapsed_after = time.monotonic() - turn_start_time
-                        if (total_budget - elapsed_after) < MIN_RETRY_BUDGET_SECONDS or attempt >= _MAX_FAILOVER_ATTEMPTS:
-                            msg = (
-                                "Tempo limite de resposta esgotado após tentativas de failover."
-                                if (total_budget - elapsed_after) < MIN_RETRY_BUDGET_SECONDS
-                                else f"Tempo limite de resposta excedido ({int(stream_ttft_timeout)}s) no modelo '{current_model_id}'."
-                            )
-                            await send_and_persist_error(
-                                ws, db, conversation_id,
-                                msg,
-                                cascade_history,
-                                current_model_id,
-                                current_provider_id,
-                            )
-                            return None
-                        continue
+                                break
+                            await asyncio.sleep(3.0)
 
-                    # Consome o restante do stream com micro-lotes de coalescência (~35ms ou 8 tokens)
-                    # e guarda timeout entre tokens para não travar conexões abandonadas
+                    # Fase 1: aguarda primeiro delta não vazio dentro do deadline monotônico de TTFT
+                    ttft_deadline = stream_start_mono + max(0.05, float(ttft_budget_s))
+                    heartbeat_task = asyncio.create_task(_ttft_heartbeat())
+                    try:
+                        while local_first_nonempty_mono is None:
+                            rem_ttft = ttft_deadline - time.monotonic()
+                            if rem_ttft <= 0.0:
+                                raise asyncio.TimeoutError()
+                            if pending_next_token is None:
+                                pending_next_token = asyncio.create_task(stream_iter.__anext__())
+                            done, _ = await asyncio.wait({pending_next_token}, timeout=rem_ttft)
+                            if not done:
+                                raise asyncio.TimeoutError()
+                            task = pending_next_token
+                            pending_next_token = None
+                            try:
+                                tok = task.result()
+                            except StopAsyncIteration:
+                                # Stream encerrou sem produzir nenhum delta não vazio
+                                return local_response, False, None, local_committed
+                            tok_str = str(tok) if tok is not None else ""
+                            if not tok_str:
+                                continue
+                            now_mono = time.monotonic()
+                            local_first_nonempty_mono = now_mono
+                            local_first_token_ms = (now_mono - stream_start_mono) * 1000.0
+                            if request_context and hasattr(request_context, "record_phase"):
+                                request_context.record_phase("llm_ttfb", stream_start_perf)
+                                request_context.record_phase(f"llm_ttft_attempt_{attempt}", stream_start_perf)
+                            precommit_buffer.append(tok_str)
+                            precommit_chars += len(tok_str)
+                            commit_if_needed()
+                            if local_committed:
+                                await flush_tokens()
+                    finally:
+                        if heartbeat_task is not None:
+                            heartbeat_task.cancel()
+                            try:
+                                await heartbeat_task
+                            except BaseException:
+                                pass
+                            heartbeat_task = None
+
+                    # Fase 2: consome restante do stream com uma única tarefa __anext__ pendente por vez
+                    # e timeout monotônico entre tokens (inter_token_timeout).
+                    last_token_mono = time.monotonic()
                     while True:
-                        wait_timeout = 35.0
-                        precommit_deadline_wait = False
-                        if not is_committed and precommit_buffer:
-                            elapsed_ms = (time.perf_counter() - stream_start_time) * 1000.0
-                            hold_remaining = max(
-                                0.0,
-                                (DEFAULT_MAX_PRECOMMIT_HOLD_MS - elapsed_ms) / 1000.0,
+                        now_mono = time.monotonic()
+                        inter_remaining = inter_token_timeout - (now_mono - last_token_mono)
+                        if inter_remaining <= 0.0:
+                            raise _InterTokenTimeoutError(
+                                inter_token_timeout,
+                                len(local_response) + precommit_chars,
+                                local_committed,
                             )
+
+                        wait_timeout = inter_remaining
+                        precommit_deadline_wait = False
+                        if not local_committed and precommit_buffer:
+                            elapsed_ms = (now_mono - stream_start_mono) * 1000.0
+                            hold_remaining = max(0.0, (DEFAULT_MAX_PRECOMMIT_HOLD_MS - elapsed_ms) / 1000.0)
                             if hold_remaining <= 0.0:
                                 commit_if_needed(force=True)
                                 await flush_tokens()
                                 continue
-                            wait_timeout = min(wait_timeout, hold_remaining)
-                            precommit_deadline_wait = wait_timeout < 35.0
+                            if hold_remaining < wait_timeout:
+                                wait_timeout = hold_remaining
+                                precommit_deadline_wait = True
+
                         if pending_next_token is None:
                             pending_next_token = asyncio.create_task(stream_iter.__anext__())
-                        done, _ = await asyncio.wait(
-                            {pending_next_token}, timeout=wait_timeout
-                        )
+                        done, _ = await asyncio.wait({pending_next_token}, timeout=wait_timeout)
                         if not done:
-                            if precommit_deadline_wait and not is_committed:
+                            if precommit_deadline_wait and not local_committed:
                                 commit_if_needed(force=True)
                                 await flush_tokens()
                                 continue
-                            logger.warning(
-                                "Timeout entre tokens (35s) no provedor '%s' (modelo '%s'). Finalizando stream.",
-                                current_provider_id, current_model_id,
+                            raise _InterTokenTimeoutError(
+                                inter_token_timeout,
+                                len(local_response) + precommit_chars,
+                                local_committed,
                             )
-                            break
+
+                        task = pending_next_token
+                        pending_next_token = None
                         try:
-                            token = pending_next_token.result()
+                            token = task.result()
                         except StopAsyncIteration:
-                            pending_next_token = None
                             break
                         except (asyncio.TimeoutError, TimeoutError):
-                            pending_next_token = None
-                            logger.warning(
-                                "Timeout entre tokens (35s) no provedor '%s' (modelo '%s'). Finalizando stream.",
-                                current_provider_id, current_model_id,
+                            raise _InterTokenTimeoutError(
+                                inter_token_timeout,
+                                len(local_response) + precommit_chars,
+                                local_committed,
                             )
-                            break
-                        pending_next_token = None
 
-                        token_str = str(token)
-                        if not is_committed:
+                        last_token_mono = time.monotonic()
+                        token_str = str(token) if token is not None else ""
+                        if not token_str:
+                            continue
+                        if not local_committed:
                             precommit_buffer.append(token_str)
                             precommit_chars += len(token_str)
                             commit_if_needed()
-                            if is_committed:
+                            if local_committed:
                                 await flush_tokens()
                         else:
-                            candidate_response += token_str
+                            local_response += token_str
                             token_buffer.append(token_str)
-                            if len(token_buffer) >= 8 or (time.perf_counter() - last_flush) >= 0.035:
+                            if len(token_buffer) >= 8 or (last_token_mono - last_flush_mono) >= 0.035:
                                 await flush_tokens()
 
-                    # Final de stream: se completou antes do threshold de commit (respostas muito curtas), força o commit
-                    if not is_committed and precommit_buffer:
+                    # Fim natural do stream: se resposta curta não atingiu min_commit_chars, força commit
+                    if not local_committed and precommit_buffer:
                         commit_if_needed(force=True)
                     await flush_tokens()
-                except StopAsyncIteration:
-                    if not is_committed and precommit_buffer:
-                        commit_if_needed(force=True)
-                    await flush_tokens()
-            finally:
-                if pending_next_token is not None and not pending_next_token.done():
-                    pending_next_token.cancel()
+                    return local_response, True, local_first_token_ms, local_committed
+                finally:
+                    if heartbeat_task is not None:
+                        heartbeat_task.cancel()
+                        try:
+                            await heartbeat_task
+                        except BaseException:
+                            pass
+                    await _cancel_and_drain_pending()
+                    if not local_committed:
+                        precommit_buffer.clear()
+                        token_buffer.clear()
+                        local_response = ""
+                    if admission_acquired:
+                        admission_controller.release(current_model_id, current_provider_id)
+                    if stream_iter is not None:
+                        try:
+                            if hasattr(stream_iter, "aclose"):
+                                await stream_iter.aclose()
+                        except Exception:
+                            pass
+
+            stream_attempt_start_perf = time.perf_counter()
+            try:
+                candidate_response, first_token_received, first_token_elapsed_ms, is_committed = (
+                    await _consume_candidate_stream(stream_kwargs, ttft_budget_s=stream_ttft_timeout)
+                )
+            except (asyncio.TimeoutError, TimeoutError):
+                # Série própria para timeouts de TTFT (nunca misturada em llm_ttft_attempt_N)
+                if request_context and hasattr(request_context, "record_phase"):
+                    request_context.record_phase(
+                        f"llm_ttft_timeout_attempt_{attempt}", stream_attempt_start_perf
+                    )
+                logger.warning(
+                    "TTFT Timeout (%.1fs excedido) no provedor '%s' (modelo '%s'). Acionando failover cascade precoce.",
+                    stream_ttft_timeout, current_provider_id, current_model_id,
+                )
+                from backend.ranking.health_registry import health_registry
+                health_registry.record_failure(current_model_id, current_provider_id, "TIMEOUT", stage="pre_stream")
+                ttft_fail_ms = (time.perf_counter() - stream_attempt_start_perf) * 1000.0
+                cascade_history.append({
+                    "attempt": attempt,
+                    "model_id": current_model_id,
+                    "provider_id": current_provider_id,
+                    "detail": f"Tempo limite de resposta excedido ({int(stream_ttft_timeout)}s)",
+                    "latency_ms": round(ttft_fail_ms, 2),
+                    "reason": "ttft_timeout",
+                })
+                if attempt > 1:
                     try:
-                        await pending_next_token
-                    except (asyncio.CancelledError, Exception):
-                        pass
-                if not is_committed:
-                    # UX C2: buffer do candidato descartado integralmente se falhou antes do commit
-                    precommit_buffer.clear()
-                    token_buffer.clear()
-                    candidate_response = ""
-                if admission_acquired:
-                    admission_controller.release(current_model_id, current_provider_id)
-                    admission_acquired = False
-                if stream_iter is not None:
-                    try:
-                        if hasattr(stream_iter, "aclose"):
-                            await stream_iter.aclose()
+                        await ws.send_json({
+                            "type": "process_step_end",
+                            "id": f"failover-{attempt}",
+                            "status": "failed",
+                        })
                     except Exception:
                         pass
+                attempted_model_ids.add(current_model_id)
+                elapsed_after = time.monotonic() - turn_start_time
+                if (total_budget - elapsed_after) < MIN_RETRY_BUDGET_SECONDS or attempt >= _MAX_FAILOVER_ATTEMPTS:
+                    msg = (
+                        "Tempo limite de resposta esgotado após tentativas de failover."
+                        if (total_budget - elapsed_after) < MIN_RETRY_BUDGET_SECONDS
+                        else f"Tempo limite de resposta excedido ({int(stream_ttft_timeout)}s) no modelo '{current_model_id}'."
+                    )
+                    await send_and_persist_error(
+                        ws, db, conversation_id,
+                        msg,
+                        cascade_history,
+                        current_model_id,
+                        current_provider_id,
+                    )
+                    return None
+                continue
+            except _InterTokenTimeoutError as it_err:
+                if request_context and hasattr(request_context, "record_phase"):
+                    request_context.record_phase(
+                        f"llm_inter_token_timeout_attempt_{attempt}", stream_attempt_start_perf
+                    )
+                logger.warning(
+                    "Timeout entre tokens (%.1fs) no provedor '%s' (modelo '%s').",
+                    it_err.timeout_s, current_provider_id, current_model_id,
+                )
+                from backend.ranking.health_registry import health_registry
+                health_registry.record_failure(
+                    current_model_id, current_provider_id, "MID_STREAM_TIMEOUT", stage="mid_stream"
+                )
+                cascade_history.append({
+                    "attempt": attempt,
+                    "model_id": current_model_id,
+                    "provider_id": current_provider_id,
+                    "detail": f"Silêncio prolongado entre tokens ({it_err.timeout_s:.1f}s)",
+                    "reason": "inter_token_timeout",
+                })
+                if attempt > 1:
+                    try:
+                        await ws.send_json({
+                            "type": "process_step_end",
+                            "id": f"failover-{attempt}",
+                            "status": "failed",
+                        })
+                    except Exception:
+                        pass
+                attempted_model_ids.add(current_model_id)
+                next_failover_reason = "inter_token_timeout"
+                if it_err.committed:
+                    tokens_flushed_to_client = True
+                elapsed_after = time.monotonic() - turn_start_time
+                if (total_budget - elapsed_after) >= MIN_RETRY_BUDGET_SECONDS and attempt < _MAX_FAILOVER_ATTEMPTS:
+                    continue
+                await send_and_persist_error(
+                    ws, db, conversation_id,
+                    "A geração foi interrompida por silêncio prolongado do modelo.",
+                    cascade_history,
+                    current_model_id,
+                    current_provider_id,
+                )
+                return None
 
             # Salvaguarda de truncamento no raciocínio (R1)
             open_th = re.findall(r"<(think|thinking|reasoning|analysis)\b[^>]*>", candidate_response, re.IGNORECASE)
@@ -791,8 +968,8 @@ async def stream_from_llm(
                 tag_to_close = open_th[-1]
                 closed_suffix = f"</{tag_to_close}>\n\n"
                 candidate_response += closed_suffix
-                token_buffer.append(closed_suffix)
-                await flush_tokens()
+                await ws.send_json({"type": "token", "content": closed_suffix})
+                tokens_flushed_to_client = True
 
             pure_answer = re.sub(
                 r"<(think|thinking|reasoning|analysis)\b[^>]*>[\s\S]*?</\1>",
@@ -824,8 +1001,8 @@ async def stream_from_llm(
                         "Tente reduzir o esforço de raciocínio ou reformular a pergunta.]"
                     )
                     candidate_response += notice
-                    token_buffer.append(notice)
-                    await flush_tokens()
+                    await ws.send_json({"type": "token", "content": notice})
+                    tokens_flushed_to_client = True
 
             if not candidate_response.strip():
                 logger.warning(
@@ -883,8 +1060,6 @@ async def stream_from_llm(
             await record_request(current_model_id, db)
             success = True
             if attempt > 1:
-                if request_context and hasattr(request_context, "record_phase"):
-                    request_context.record_phase("failover_cascade", turn_start_time)
                 try:
                     await ws.send_json({
                         "type": "process_step_end",
@@ -1004,6 +1179,7 @@ async def stream_from_llm(
             # com reason 'provider_rejected' e retenta UMA ÚNICA vez sem esforço, sem desativar o modelo.
             is_reasoning_reject = (
                 active_effort is not None
+                and current_model_id not in effort_compat_retry_models
                 and (
                     "reasoning_effort" in error_msg.lower()
                     or "thinkingconfig" in error_msg.lower()
@@ -1013,9 +1189,10 @@ async def stream_from_llm(
                 )
             )
             if is_reasoning_reject:
+                effort_compat_retry_models.add(current_model_id)
                 logger.warning(
-                    "Provedor rejeitou parâmetro de reasoning (%s). Retentando sem esforço.",
-                    error_msg
+                    "Provedor '%s' rejeitou parâmetro de reasoning (modelo '%s'). Retentando uma vez sem esforço no saldo de orçamento.",
+                    current_provider_id, current_model_id,
                 )
                 await ws.send_json({
                     "type": "effort_dropped",
@@ -1027,23 +1204,50 @@ async def stream_from_llm(
                 stream_kwargs.pop("reasoning_control", None)
                 active_effort = None
                 active_ctrl = None
-                try:
-                    full_response = ""
-                    async for token in provider.stream_chat(model=model_name, messages=history, **stream_kwargs):
-                        token_str = str(token)
-                        full_response += token_str
-                        await ws.send_json({"type": "token", "content": token_str})
-                        tokens_flushed_to_client = True
-
-                    await mark_model_success(current_model_id, db)
-                    await record_request(current_model_id, db)
-                    success = True
-
-                    model_id = current_model_id
-                    provider_id = current_provider_id
-                    break
-                except Exception as retry_err:
-                    error_msg = str(retry_err)
+                rem_retry_budget = total_budget - (time.monotonic() - turn_start_time)
+                if rem_retry_budget >= MIN_RETRY_BUDGET_SECONDS:
+                    retry_ttft = max(0.5, min(stream_ttft_timeout, rem_retry_budget))
+                    try:
+                        retry_resp, retry_got_tok, retry_ttft_ms, _retry_comm = (
+                            await _consume_candidate_stream(stream_kwargs, ttft_budget_s=retry_ttft)
+                        )
+                        if retry_resp.strip():
+                            full_response = retry_resp
+                            first_token_elapsed_ms = retry_ttft_ms
+                            health_registry.record_success(
+                                current_model_id,
+                                current_provider_id,
+                                ttft_ms=retry_ttft_ms if retry_got_tok else None,
+                            )
+                            await mark_model_success(current_model_id, db)
+                            await record_request(current_model_id, db)
+                            success = True
+                            model_id = current_model_id
+                            provider_id = current_provider_id
+                            break
+                        error_msg = "Retry sem esforço retornou resposta vazia."
+                    except asyncio.CancelledError:
+                        raise
+                    except _InterTokenTimeoutError as retry_it_err:
+                        health_registry.record_failure(
+                            current_model_id, current_provider_id, "MID_STREAM_TIMEOUT", stage="mid_stream"
+                        )
+                        if retry_it_err.committed:
+                            tokens_flushed_to_client = True
+                        error_msg = f"Inter-token timeout no retry sem esforço ({retry_it_err.timeout_s:.1f}s)"
+                    except (asyncio.TimeoutError, TimeoutError):
+                        if request_context and hasattr(request_context, "record_phase"):
+                            request_context.record_phase(
+                                f"llm_ttft_timeout_attempt_{attempt}", time.perf_counter()
+                            )
+                        health_registry.record_failure(
+                            current_model_id, current_provider_id, "TIMEOUT", stage="pre_stream"
+                        )
+                        error_msg = f"TTFT timeout no retry sem esforço ({retry_ttft:.1f}s)"
+                    except Exception as retry_err:
+                        error_msg = type(retry_err).__name__
+                else:
+                    error_msg = "Orçamento esgotado antes do retry sem esforço."
 
             from backend.orchestration.handle_attachments import (
                 history_contains_images,
@@ -1183,7 +1387,10 @@ async def stream_from_llm(
         "spliced": False,
         "outcome": "success",
         "attempt_count": attempt,
-        "ttft_ms": round(first_token_elapsed_ms, 2) if first_token_elapsed_ms else None,
+        "ttft_ms": round(first_token_elapsed_ms, 2) if first_token_elapsed_ms is not None else None,
+        "first_send_ms": turn_first_send_ms,
+        "precommit_hold_ms": turn_precommit_hold_ms,
+        "failover_recovery_ms": turn_failover_recovery_ms,
         "cascade_history": cascade_history,
     }
     return StreamLlmResult(full_response, model_id, provider_id, failover_meta=failover_meta)

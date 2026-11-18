@@ -254,3 +254,247 @@ async def test_get_db_pragmas(tmp_path, monkeypatch):
             assert row[0] == 2
     finally:
         await db.close()
+
+
+# ── T2.2: Unified stream consumer, finite config, inter-token timeout, separate TTFT series ──
+
+@pytest.mark.asyncio
+async def test_failover_config_rejects_non_finite_and_non_positive():
+    from backend.orchestration.resolve_request import (
+        DEFAULT_FAILOVER_TOTAL_BUDGET_SECONDS,
+        DEFAULT_INTER_TOKEN_TIMEOUT_SECONDS,
+        get_failover_inter_token_timeout,
+        get_failover_total_budget,
+    )
+
+    async with aiosqlite.connect(":memory:") as db:
+        await db.execute("CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT)")
+        await db.execute("INSERT INTO meta (key, value) VALUES ('stream_ttft_timeout_sec', 'nan')")
+        await db.execute("INSERT INTO meta (key, value) VALUES ('failover_total_budget_sec', '-5')")
+        await db.execute("INSERT INTO meta (key, value) VALUES ('stream_inter_token_timeout_sec', 'inf')")
+        await db.commit()
+
+        for bad in ("nan", "inf", "-inf", "0", "-3.5", "not-a-num"):
+            with patch.dict(
+                os.environ,
+                {
+                    "FAILOVER_STREAM_TTFT_TIMEOUT_SECONDS": bad,
+                    "FAILOVER_TOTAL_BUDGET_SECONDS": bad,
+                    "FAILOVER_INTER_TOKEN_TIMEOUT_SECONDS": bad,
+                },
+            ):
+                assert await get_failover_stream_ttft_timeout(db) == DEFAULT_STREAM_TTFT_TIMEOUT_SECONDS
+                assert await get_failover_total_budget(db) == DEFAULT_FAILOVER_TOTAL_BUDGET_SECONDS
+                assert await get_failover_inter_token_timeout(db) == DEFAULT_INTER_TOKEN_TIMEOUT_SECONDS
+
+
+async def _make_two_model_db():
+    db = await aiosqlite.connect(":memory:")
+    await db.executescript(
+        """
+        CREATE TABLE providers (
+            id TEXT PRIMARY KEY, name TEXT NOT NULL, enabled INTEGER DEFAULT 1,
+            is_free INTEGER DEFAULT 0, is_local INTEGER DEFAULT 0,
+            base_url TEXT DEFAULT '', api_key TEXT DEFAULT 'k', share_admin_key INTEGER DEFAULT 1
+        );
+        CREATE TABLE models (
+            id TEXT PRIMARY KEY, name TEXT NOT NULL, display_name TEXT NOT NULL,
+            provider_id TEXT NOT NULL, enabled INTEGER DEFAULT 1, context_length INTEGER DEFAULT 8192,
+            reasoning_control TEXT DEFAULT 'none', reasoning_levels TEXT DEFAULT NULL,
+            reasoning_default TEXT DEFAULT NULL
+        );
+        CREATE TABLE model_families (id TEXT PRIMARY KEY, display_name TEXT NOT NULL);
+        CREATE TABLE model_family_members (
+            family_id TEXT NOT NULL, model_id TEXT NOT NULL, fallback_order INTEGER DEFAULT 1,
+            PRIMARY KEY (family_id, model_id)
+        );
+        CREATE TABLE user_api_keys (
+            user_id TEXT NOT NULL, provider_id TEXT NOT NULL, api_key TEXT NOT NULL,
+            PRIMARY KEY (user_id, provider_id)
+        );
+        CREATE TABLE model_quota_status (
+            model_id TEXT PRIMARY KEY, status TEXT NOT NULL, consecutive_errors INTEGER DEFAULT 0,
+            exhausted_at TEXT, estimated_reset_at TEXT, last_error_message TEXT,
+            known_rpm INTEGER DEFAULT NULL, known_rpd INTEGER DEFAULT NULL,
+            current_minute_count INTEGER DEFAULT 0, current_day_count INTEGER DEFAULT 0
+        );
+        CREATE TABLE model_usage_log (
+            id TEXT PRIMARY KEY, model_id TEXT, provider_id TEXT, conversation_id TEXT,
+            user_id TEXT, was_fallback INTEGER DEFAULT 0, fallback_from_model_id TEXT,
+            fallback_reason TEXT, was_auto_routed INTEGER DEFAULT 0, route_intent TEXT,
+            route_confidence REAL, route_latency_ms REAL, route_policy TEXT,
+            created_at TEXT DEFAULT (datetime('now'))
+        );
+        CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT);
+        INSERT INTO providers (id, name) VALUES ('p1', 'P1'), ('p2', 'P2');
+        INSERT INTO models (id, name, display_name, provider_id, reasoning_control, reasoning_levels)
+            VALUES ('p1/m1', 'm1', 'M1', 'p1', 'effort', '["low","medium","high"]'),
+                   ('p2/m2', 'm2', 'M2', 'p2', 'none', NULL);
+        INSERT INTO model_families (id, display_name) VALUES ('fam1', 'Fam 1');
+        INSERT INTO model_family_members (family_id, model_id, fallback_order)
+            VALUES ('fam1', 'p1/m1', 1), ('fam1', 'p2/m2', 2);
+        INSERT INTO user_api_keys (user_id, provider_id, api_key)
+            VALUES ('u_t22', 'p1', 'sk-1'), ('u_t22', 'p2', 'sk-2');
+        """
+    )
+    await db.commit()
+    return db
+
+
+@pytest.mark.asyncio
+async def test_inter_token_timeout_triggers_failover_with_stream_clear_and_no_false_success():
+    from backend.ranking.health_registry import health_registry
+
+    db = await _make_two_model_db()
+    try:
+        sent_ws = []
+
+        class MockWs:
+            async def send_json(self, payload):
+                sent_ws.append(payload)
+
+        class StallingMidStreamProvider:
+            async def stream_chat(self, **kwargs):
+                yield "Começo longo o suficiente para commitar no cliente..."
+                await asyncio.sleep(5.0)
+                yield "nunca chega"
+
+        class HealthyFallbackProvider:
+            async def stream_chat(self, **kwargs):
+                yield "Resposta completa e integra do candidato reserva!"
+
+        async def fake_get_provider(pid, _db, user_id=None):
+            return StallingMidStreamProvider() if pid == "p1" else HealthyFallbackProvider()
+
+        req_ctx = RequestContext(request_id="req-it-1")
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "FAILOVER_INTER_TOKEN_TIMEOUT_SECONDS": "0.15",
+                    "FAILOVER_TOTAL_BUDGET_SECONDS": "15.0",
+                },
+            ),
+            patch("backend.orchestration.resolve_request.get_provider", side_effect=fake_get_provider),
+            patch.object(health_registry, "record_success", wraps=health_registry.record_success) as spy_succ,
+            patch.object(health_registry, "record_failure", wraps=health_registry.record_failure) as spy_fail,
+        ):
+            res = await stream_from_llm(
+                ws=MockWs(),
+                db=db,
+                conversation_id="conv-it-1",
+                user_id="u_t22",
+                model_id="p1/m1",
+                provider_id="p1",
+                history=[{"role": "user", "content": "teste"}],
+                request_context=req_ctx,
+            )
+
+        assert res is not None
+        assert res[0] == "Resposta completa e integra do candidato reserva!"
+        assert res[1] == "p2/m2"
+        # stream_clear MUST have been emitted between candidate 1 and candidate 2
+        assert any(m.get("type") == "stream_clear" for m in sent_ws)
+        # Candidate 1 must have recorded MID_STREAM_TIMEOUT failure and NEVER success!
+        assert any(
+            call.args[:3] == ("p1/m1", "p1", "MID_STREAM_TIMEOUT")
+            for call in spy_fail.call_args_list
+        )
+        assert not any(call.args[0] == "p1/m1" for call in spy_succ.call_args_list)
+        assert "llm_inter_token_timeout_attempt_1" in req_ctx.phase_latencies
+        assert "failover_recovery_ms" in req_ctx.phase_latencies
+    finally:
+        await db.close()
+
+
+@pytest.mark.asyncio
+async def test_ttft_timeout_uses_separate_metric_series_and_effort_retry_uses_unified_consumer():
+    db = await _make_two_model_db()
+    try:
+        sent_ws = []
+
+        class MockWs:
+            async def send_json(self, payload):
+                sent_ws.append(payload)
+
+        # Scenario A: effort rejected -> single unified retry succeeds and records llm_ttfb + client_ttft
+        class RejectEffortOnceProvider:
+            def __init__(self):
+                self.calls = 0
+
+            async def stream_chat(self, **kwargs):
+                self.calls += 1
+                if kwargs.get("reasoning_effort"):
+                    raise RuntimeError("HTTP 400 unsupported parameter: reasoning_effort")
+                yield "Ok"
+                await asyncio.sleep(0.02)
+                yield " sem esforço com resposta válida!"
+
+        prov = RejectEffortOnceProvider()
+        req_ctx = RequestContext(request_id="req-effort-1")
+        with patch("backend.orchestration.resolve_request.get_provider", return_value=prov):
+            res = await stream_from_llm(
+                ws=MockWs(),
+                db=db,
+                conversation_id="conv-eff-1",
+                user_id="u_t22",
+                model_id="p1/m1",
+                provider_id="p1",
+                history=[{"role": "user", "content": "olá"}],
+                reasoning_effort="high",
+                request_context=req_ctx,
+            )
+
+        assert res is not None
+        assert res[0] == "Ok sem esforço com resposta válida!"
+        assert prov.calls == 2
+        assert any(m.get("type") == "effort_dropped" for m in sent_ws)
+        assert "llm_ttfb" in req_ctx.phase_latencies
+        assert "client_ttft" in req_ctx.phase_latencies
+        assert "precommit_hold_ms" in req_ctx.phase_latencies
+
+        # Scenario B: TTFT timeout on candidate 1 -> recorded in llm_ttft_timeout_attempt_1, NOT llm_ttft_attempt_1
+        sent_ws.clear()
+
+        class SlowTtftProvider:
+            async def stream_chat(self, **kwargs):
+                await asyncio.sleep(5.0)
+                yield "late"
+
+        class FastBackupProvider:
+            async def stream_chat(self, **kwargs):
+                yield "Backup rápido respondeu com sucesso completo!"
+
+        async def fake_prov_b(pid, _db, user_id=None):
+            return SlowTtftProvider() if pid == "p1" else FastBackupProvider()
+
+        req_ctx_b = RequestContext(request_id="req-ttft-series")
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "FAILOVER_STREAM_TTFT_TIMEOUT_SECONDS": "0.15",
+                    "FAILOVER_TOTAL_BUDGET_SECONDS": "15.0",
+                },
+            ),
+            patch("backend.orchestration.resolve_request.get_provider", side_effect=fake_prov_b),
+        ):
+            res_b = await stream_from_llm(
+                ws=MockWs(),
+                db=db,
+                conversation_id="conv-ttft-series",
+                user_id="u_t22",
+                model_id="p1/m1",
+                provider_id="p1",
+                history=[{"role": "user", "content": "oi"}],
+                request_context=req_ctx_b,
+            )
+
+        assert res_b is not None
+        assert res_b[1] == "p2/m2"
+        assert "llm_ttft_timeout_attempt_1" in req_ctx_b.phase_latencies
+        assert "llm_ttft_attempt_1" not in req_ctx_b.phase_latencies
+        assert "llm_ttft_attempt_2" in req_ctx_b.phase_latencies
+        assert "failover_recovery_ms" in req_ctx_b.phase_latencies
+    finally:
+        await db.close()

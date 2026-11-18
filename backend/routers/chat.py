@@ -1010,7 +1010,7 @@ async def _run_turn(
         db,
         requested_model_id,
         model_id,
-        requested_provider_id,
+        provider_id,
         failover_tier=failover_meta.get("failover_tier"),
         spliced=failover_meta.get("spliced", False),
         outcome=failover_meta.get("outcome", "success"),
