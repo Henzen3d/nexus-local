@@ -60,16 +60,32 @@ class RateLimitError(Exception):
     Raised when a provider returns HTTP 429 Too Many Requests.
     Carries the Retry-After value (seconds) from the response header, if present.
     """
+    status_code: int = 429
+
     def __init__(self, retry_after: int | None = None, provider: str | None = None):
         self.retry_after = retry_after
         self.provider = provider
+        self.status_code = 429
         super().__init__(
             f"Rate limit exceeded{f' on {provider}' if provider else ''}"
             f"{f' — retry after {retry_after}s' if retry_after else ''}"
         )
 
 
+class ProviderHTTPError(RuntimeError):
+    """
+    Normalized HTTP error from an LLM provider adapter.
+    Inherits RuntimeError for backward compatibility while exposing structured status_code.
+    """
+    def __init__(self, status_code: int, message: str, provider: str | None = None):
+        self.status_code = int(status_code)
+        self.provider = provider
+        super().__init__(message)
+
+
 class BaseProvider(ABC):
+    supports_response_format: bool = False
+
     def __init__(self, api_key: str, base_url: str):
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
@@ -92,6 +108,7 @@ class OpenAICompatProvider(BaseProvider):
     Adapter for all OpenAI-compatible providers (Groq, OpenRouter,
     Gemini OpenAI-compat, Cerebras, NVIDIA NIM, SambaNova, SiliconFlow...).
     """
+    supports_response_format: bool = True
 
     async def stream_chat(
         self,
@@ -101,6 +118,7 @@ class OpenAICompatProvider(BaseProvider):
         max_tokens: int = 4096,
         reasoning_effort: Optional[str] = None,
         reasoning_control: Optional[str] = None,
+        response_format: Optional[Dict[str, Any]] = None,
     ) -> AsyncIterator[str]:
         headers = {
             "Content-Type": "application/json",
@@ -134,6 +152,8 @@ class OpenAICompatProvider(BaseProvider):
             "max_tokens": max_tokens,
             "stream": True,
         }
+        if response_format:
+            payload["response_format"] = response_format
 
         if reasoning_effort and reasoning_control:
             from backend.reasoning.payload import build_effort_payload
@@ -158,14 +178,18 @@ class OpenAICompatProvider(BaseProvider):
                     body = await response.aread()
                     detail = body.decode(errors="replace")
                     if response.status_code == 403:
-                        raise RuntimeError(
+                        raise ProviderHTTPError(
+                            403,
                             "Provider error 403 (access_denied): a chave de API foi rejeitada "
                             "pelo provedor (inválida, expirada, sem saldo/plano ou sem permissão "
                             f"para este modelo). Confira a chave e a conta no console do provedor. "
-                            f"Detalhe: {detail}"
+                            f"Detalhe: {detail}",
+                            provider=self.base_url,
                         )
-                    raise RuntimeError(
-                        f"Provider error {response.status_code}: {detail}"
+                    raise ProviderHTTPError(
+                        response.status_code,
+                        f"Provider error {response.status_code}: {detail}",
+                        provider=self.base_url,
                     )
 
                 in_thinking = False
@@ -435,8 +459,10 @@ class CloudflareProvider(BaseProvider):
                         retry_after = int(retry_after_raw) if retry_after_raw and retry_after_raw.isdigit() else None
                         raise RateLimitError(retry_after=retry_after, provider="cloudflare")
                     body = await response.aread()
-                    raise RuntimeError(
-                        f"Provider error {response.status_code}: {body.decode()}"
+                    raise ProviderHTTPError(
+                        response.status_code,
+                        f"Provider error {response.status_code}: {body.decode(errors='replace')}",
+                        provider="cloudflare",
                     )
 
                 async for line in response.aiter_lines():
@@ -742,9 +768,12 @@ class GeminiProvider(BaseProvider):
                                 retry_after = int(retry_after_raw) if retry_after_raw and retry_after_raw.isdigit() else None
                                 raise RateLimitError(retry_after=retry_after, provider="gemini")
                             body = await response.aread()
-                            err = f"[Gemini Native] API error {response.status_code}: {body.decode()}"
-                            logger.info(err)
-                            raise RuntimeError(err)
+                            logger.info("[Gemini Native] API error status=%d", response.status_code)
+                            raise ProviderHTTPError(
+                                response.status_code,
+                                f"[Gemini Native] API error {response.status_code}: {body.decode(errors='replace')}",
+                                provider="gemini",
+                            )
             except (RuntimeError, RateLimitError):
                 raise  # Propagate API errors upward — do NOT swallow into OpenAICompat
             except Exception as e:

@@ -1,11 +1,12 @@
 import asyncio
+import inspect
 import json
 import re
 import time
 import uuid
 import datetime
-from typing import Optional, Literal, Callable, Awaitable
-from pydantic import BaseModel, Field
+from typing import Optional, Literal, Callable, Awaitable, Any
+from pydantic import BaseModel, Field, model_validator
 
 import aiosqlite
 
@@ -17,10 +18,17 @@ from backend.database import (
     update_dream_log,
     _try_embed_fact,
 )
+from backend.providers.base import ProviderHTTPError, RateLimitError
 from backend.providers.registry import get_provider, get_model_name
 from backend.logging_config import get_logger
 
 logger = get_logger(__name__)
+
+# Limites e prazos de execução do Dream Consolidator (T1.2)
+DREAM_MAX_RESPONSE_CHARS = 250_000
+DREAM_EXECUTION_DEADLINE_S = 180.0
+DREAM_PER_CALL_TIMEOUT_S = 30.0
+DREAM_MAX_CANDIDATES_PER_BATCH = 3
 
 
 # =========================================================
@@ -42,6 +50,23 @@ class DreamOperation(BaseModel):
     fact_id: Optional[str] = None
     new_fact: Optional[NewFactPayload] = None
     reason: Optional[str] = None
+
+    @model_validator(mode="after")
+    def _validate_action_fields(self) -> "DreamOperation":
+        if self.action == "merge":
+            if not self.source_fact_ids or len(self.source_fact_ids) < 1:
+                raise ValueError("Operação 'merge' requer 'source_fact_ids' não vazio.")
+            if self.new_fact is None:
+                raise ValueError("Operação 'merge' requer 'new_fact'.")
+        elif self.action == "supersede":
+            if not self.old_fact_id:
+                raise ValueError("Operação 'supersede' requer 'old_fact_id'.")
+            if self.new_fact is None:
+                raise ValueError("Operação 'supersede' requer 'new_fact'.")
+        elif self.action in ("keep", "archive"):
+            if not self.fact_id:
+                raise ValueError(f"Operação '{self.action}' requer 'fact_id'.")
+        return self
 
 
 class DreamResponseSchema(BaseModel):
@@ -318,9 +343,45 @@ def remap_operation_ids(
             ]
 
 
-def _llm_error_is_too_large(exc: Exception) -> bool:
+def _classify_dream_error(exc: Exception) -> tuple[str, Optional[int]]:
+    """Classifica erro operacional do provedor usando tipo/status sem expor corpo cru ou segredos."""
+    if isinstance(exc, asyncio.TimeoutError):
+        return "timeout", None
+    if isinstance(exc, RateLimitError):
+        return "rate_limit", 429
+    status = getattr(exc, "status_code", None)
+    if isinstance(status, int):
+        if status == 413:
+            return "too_large", 413
+        if status == 429:
+            return "rate_limit", 429
+        if status in (401, 403):
+            return "auth_error", status
+        if status == 503:
+            return "http_503", 503
+        if 500 <= status < 600:
+            return f"http_{status}", status
+        return f"http_{status}", status
+
     text = str(exc).lower()
-    return "413" in text or "too large" in text or "request too large" in text
+    if "413" in text or "too large" in text or "request too large" in text:
+        return "too_large", 413
+    if "503" in text or "service unavailable" in text:
+        return "http_503", 503
+    if "429" in text or "rate limit" in text:
+        return "rate_limit", 429
+    if "timeout" in text or "timed out" in text:
+        return "timeout", None
+    m = re.search(r"\b(50[0-4]|40[134])\b", text)
+    if m:
+        code = int(m.group(1))
+        return f"http_{code}", code
+    return type(exc).__name__, None
+
+
+def _llm_error_is_too_large(exc: Exception) -> bool:
+    kind, status = _classify_dream_error(exc)
+    return kind == "too_large" or status == 413
 
 
 async def analyze_facts(
@@ -329,6 +390,7 @@ async def analyze_facts(
     caller: Callable[[str, str], Awaitable[str]],
     max_tokens: int = DREAM_REQUEST_TOKEN_BUDGET,
     current_date: Optional[str] = None,
+    deadline: Optional[float] = None,
 ) -> tuple[list[DreamOperation], list[str]]:
     """Chama o modelo em lotes que cabem no teto. 413 fatia de novo. Devolve IDs reais."""
     current_date = current_date or datetime.date.today().isoformat()
@@ -340,18 +402,24 @@ async def analyze_facts(
     async def run_chunk(chunk: list[dict]) -> None:
         if not chunk:
             return
+        if deadline is not None and time.monotonic() >= deadline:
+            raise DreamLLMError("Prazo máximo global da consolidação excedido.")
         _map, payload = render_facts_payload(chunk, current_date, alias_map)
         try:
             raw = await caller(system_prompt, payload)
-        except DreamLLMError as exc:
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
             if _llm_error_is_too_large(exc) and len(chunk) > 1:
                 mid = max(1, len(chunk) // 2)
                 await run_chunk(chunk[:mid])
                 await run_chunk(chunk[mid:])
                 return
-            raise
-        data = json.loads(raw)
-        schema = DreamResponseSchema(**data)
+            if isinstance(exc, DreamLLMError):
+                raise
+            kind, status = _classify_dream_error(exc)
+            raise DreamLLMError(f"Falha operacional no lote ({kind}, status={status}).") from exc
+        schema = raw if isinstance(raw, DreamResponseSchema) else parse_dream_response(raw)
         remap_operation_ids(schema.operations, alias_map, facts)
         all_ops.extend(schema.operations)
         if schema.summary_of_changes:
@@ -362,7 +430,115 @@ async def analyze_facts(
     return all_ops, notes
 
 
-_THINK_BLOCK = re.compile(r"<think>(.*?)</think>", re.DOTALL)
+_THINK_BLOCK = re.compile(r"<think>(.*?)</think>", re.DOTALL | re.IGNORECASE)
+_REASONING_TAGS = re.compile(
+    r"<(?:think|thought|reasoning)>(.*?)</(?:think|thought|reasoning)>",
+    re.DOTALL | re.IGNORECASE,
+)
+_OPEN_CLOSE_REASONING_TAGS = re.compile(r"</?(?:think|thought|reasoning)>", re.IGNORECASE)
+_CODE_FENCE_BLOCK = re.compile(r"```(?:json)?\s*([\s\S]*?)```", re.IGNORECASE)
+
+
+def _strip_fences_and_reasoning(text: str) -> tuple[str, list[str]]:
+    """Remove tags de raciocínio e cercas markdown, retornando texto principal e blocos internos."""
+    insides = _REASONING_TAGS.findall(text)
+    outside = _REASONING_TAGS.sub("\n", text)
+    outside = _OPEN_CLOSE_REASONING_TAGS.sub("", outside)
+    # Desembrulha cercas markdown mantendo o conteúdo interno
+    outside = _CODE_FENCE_BLOCK.sub(lambda m: "\n" + m.group(1) + "\n", outside)
+    outside = re.sub(r"^```(?:json)?\s*", "", outside.strip(), flags=re.IGNORECASE)
+    outside = re.sub(r"\s*```$", "", outside).strip()
+    return outside, insides
+
+
+def _scan_json_candidates(text: str, *, max_scan_positions: int = 64) -> tuple[list[Any], bool]:
+    """
+    Varre valores JSON de topo em ``text`` de forma limitada.
+    Retorna ``(decoded_objects, saw_root_array)``.
+    """
+    decoder = json.JSONDecoder()
+    decoded: list[Any] = []
+    saw_root_array = False
+    idx = 0
+    n = len(text)
+    attempts = 0
+    stripped = text.lstrip()
+    if stripped.startswith("["):
+        try:
+            arr_val, arr_end = decoder.raw_decode(stripped)
+            if isinstance(arr_val, list):
+                saw_root_array = True
+                if not stripped[arr_end:].strip():
+                    return [], True
+        except json.JSONDecodeError:
+            pass
+
+    while idx < n and attempts < max_scan_positions:
+        pos = text.find("{", idx)
+        if pos == -1:
+            break
+        attempts += 1
+        try:
+            obj, end_offset = decoder.raw_decode(text[pos:])
+            if isinstance(obj, dict):
+                decoded.append(obj)
+            idx = pos + max(1, end_offset)
+        except json.JSONDecodeError:
+            idx = pos + 1
+    return decoded, saw_root_array
+
+
+def _validate_dream_candidates(candidates: list[Any]) -> list[DreamResponseSchema]:
+    valid: list[DreamResponseSchema] = []
+    for obj in candidates:
+        if not isinstance(obj, dict):
+            continue
+        if "operations" not in obj or not isinstance(obj["operations"], list):
+            continue
+        if "summary_of_changes" not in obj or not isinstance(obj["summary_of_changes"], str):
+            continue
+        try:
+            valid.append(DreamResponseSchema.model_validate(obj))
+        except Exception:
+            continue
+    return valid
+
+
+def parse_dream_response(raw: str, *, max_chars: int = DREAM_MAX_RESPONSE_CHARS) -> DreamResponseSchema:
+    """
+    Analisa e valida rigorosamente a resposta do Dream com Pydantic.
+    Rejeita saídas acima do limite, raiz array, schema inválido e objetos conflitantes.
+    """
+    if not isinstance(raw, str):
+        raise DreamLLMError("Resposta do modelo não é texto.")
+    if len(raw) > max_chars:
+        raise DreamLLMError(f"Resposta do modelo excedeu o limite máximo ({max_chars} chars).")
+    if not raw.strip():
+        raise DreamLLMError("Resposta vazia do modelo.")
+
+    outside, insides = _strip_fences_and_reasoning(raw)
+    candidates, saw_root_array = _scan_json_candidates(outside)
+    if saw_root_array and not candidates:
+        raise DreamLLMError("Resposta JSON inválida: raiz array não permitida.")
+
+    valid = _validate_dream_candidates(candidates)
+    if not valid and insides:
+        inner_text = "\n".join(insides)
+        inner_candidates, inner_root_arr = _scan_json_candidates(inner_text)
+        if inner_root_arr and not inner_candidates:
+            raise DreamLLMError("Resposta JSON inválida: raiz array não permitida.")
+        valid = _validate_dream_candidates(inner_candidates)
+
+    if not valid:
+        raise DreamLLMError("Nenhum objeto JSON compatível com DreamResponseSchema encontrado na resposta.")
+
+    if len(valid) > 1:
+        canonical = [v.model_dump(mode="json") for v in valid]
+        first = canonical[0]
+        if any(item != first for item in canonical[1:]):
+            raise DreamLLMError("Resposta ambígua: múltiplos objetos DreamResponseSchema conflitantes.")
+
+    return valid[0]
 
 
 def _slice_first_valid_json(text: str) -> str:
@@ -661,93 +837,204 @@ def verify_dream_safety(facts_before: list[dict], operations: list[DreamOperatio
 
 
 # =========================================================
-# WATERFALL DE PROVEDOR E LLM
+# WATERFALL / AUTO-ROUTER DE CANDIDATOS E EXECUÇÃO RESILIENTE (T1.2)
 # =========================================================
 
-async def resolve_dream_provider(user_id: str, custom_provider: str = None, custom_model: str = None):
+def _provider_supports_response_format(provider) -> bool:
+    """Envia response_format apenas quando o adaptador o declara explicitamente e o aceita."""
+    if not getattr(provider, "supports_response_format", False):
+        return False
+    target = getattr(provider, "stream_chat", None) or getattr(provider, "chat", None)
+    if target is None:
+        return False
+    try:
+        sig = inspect.signature(target)
+        return "response_format" in sig.parameters
+    except (TypeError, ValueError):
+        return False
+
+
+async def resolve_dream_candidates(
+    user_id: str,
+    custom_provider: Optional[str] = None,
+    custom_model: Optional[str] = None,
+    *,
+    excluded_ids: tuple[str, ...] | list[str] = (),
+    max_candidates: int = 6,
+) -> list[dict]:
     """
-    Resolve o provedor para o Dream Memory com suporte a fallbacks:
-      1. Configuração explícita do Dream (custom ou meta.dream_provider_id)
-      2. Configuração do Extrator de Memória (meta.memory_extractor_*)
-      3. Enhancer (tabela enhancer_config)
-      4. Provedor padrão do chat
+    Resolve lista ordenada de candidatos elegíveis para o Dream via Auto-Router,
+    intersectada com regras de usuário (chaves, modelos/provedores ativos, cotas).
     """
-    async with aiosqlite.connect(dbmod.DB_PATH) as db:
+    from backend.ranking.smart_router import route_dream_candidates
+
+    excluded_set = {str(x) for x in (excluded_ids or ()) if x}
+    preferred_pairs: list[tuple[Optional[str], Optional[str], str]] = []
+
+    async with aiosqlite.connect(dbmod.DB_PATH, timeout=10.0) as db:
         await db.execute("PRAGMA busy_timeout = 10000;")
-        # 1. Custom ou parâmetros dedicados do Dream em meta
-        p_id = custom_provider
-        m_id = custom_model
+
+        # 1. Preferência explícita (override da chamada ou meta.dream_*)
+        p_id = (custom_provider or "").strip() or None
+        m_id = (custom_model or "").strip() or None
         if not p_id:
             async with db.execute("SELECT value FROM meta WHERE key = 'dream_provider_id'") as cur:
                 row = await cur.fetchone()
-                p_id = row[0] if row and row[0] else None
+                p_id = (row[0] or "").strip() or None if row else None
         if not m_id:
             async with db.execute("SELECT value FROM meta WHERE key = 'dream_model_id'") as cur:
                 row = await cur.fetchone()
-                m_id = row[0] if row and row[0] else None
+                m_id = (row[0] or "").strip() or None if row else None
+        if m_id:
+            preferred_pairs.append((p_id, m_id, "dream_dedicated"))
 
-        if p_id and m_id:
-            try:
-                prov = await get_provider(p_id, db, user_id=user_id)
-                m_name = await get_model_name(m_id, db)
-                return prov, m_name, p_id, m_id, "dream_dedicated"
-            except Exception as e:
-                logger.warning("[Dream] Provedor dedicado falhou ao resolver: %s", e)
-
-        # 2. Extrator de memória
+        # 2. Preferência secundária: extrator de memória
         async with db.execute("SELECT value FROM meta WHERE key = 'memory_extractor_provider_id'") as cur:
             row = await cur.fetchone()
-            ext_p = row[0] if row and row[0] else None
+            ext_p = (row[0] or "").strip() or None if row else None
         async with db.execute("SELECT value FROM meta WHERE key = 'memory_extractor_model_id'") as cur:
             row = await cur.fetchone()
-            ext_m = row[0] if row and row[0] else None
+            ext_m = (row[0] or "").strip() or None if row else None
+        if ext_m:
+            preferred_pairs.append((ext_p, ext_m, "memory_extractor"))
 
-        if ext_p and ext_m:
-            try:
-                prov = await get_provider(ext_p, db, user_id=user_id)
-                m_name = await get_model_name(ext_m, db)
-                return prov, m_name, ext_p, ext_m, "memory_extractor"
-            except Exception:
-                pass
-
-        # 3. Enhancer config
+        # 3. Preferência terciária: enhancer_config
         try:
             async with db.execute(
                 "SELECT enhancer_provider_id, enhancer_model_id FROM enhancer_config WHERE id = 1"
             ) as cur:
                 row = await cur.fetchone()
-            if row and row[0] and row[1]:
-                prov = await get_provider(row[0], db, user_id=user_id)
-                m_name = await get_model_name(row[1], db)
-                return prov, m_name, row[0], row[1], "enhancer"
+            if row and row[1]:
+                preferred_pairs.append(((row[0] or "").strip() or None, str(row[1]).strip(), "enhancer"))
         except Exception:
             pass
 
-        # 4. Provedores habilitados livres (gemini, groq, etc.)
-        async with db.execute(
-            "SELECT id FROM providers WHERE enabled = 1 ORDER BY is_free DESC, id ASC"
-        ) as cur:
-            prov_rows = await cur.fetchall()
+        # Determina primeiro modelo preferido válido para priorizar no Auto-Router
+        primary_pref_model = preferred_pairs[0][1] if preferred_pairs else None
 
-        for (cand_id,) in prov_rows:
+        async with db.execute("SELECT value FROM meta WHERE key = 'router_policy'") as cur:
+            pol_row = await cur.fetchone()
+            router_policy = pol_row[0] if pol_row and pol_row[0] else "balanced_smart"
+
+        routed = await route_dream_candidates(
+            db,
+            user_id,
+            preferred_model_id=primary_pref_model,
+            excluded_ids=tuple(excluded_set),
+            policy=router_policy,
+            max_candidates=max(max_candidates * 2, 12),
+        )
+
+        # Constrói lista final de specs sem duplicatas: preferidos explícitos + Auto-Router
+        raw_specs: list[dict] = []
+        seen_ids: set[str] = set()
+
+        # Primeiro, verifica se o preferido explícito (ex: custom/meta) já veio no topo do Auto-Router;
+        # se veio, preserva ordem do Auto-Router; se um preferido secundário está no roteamento, prioriza se válido.
+        for pref_p, pref_m, pref_src in preferred_pairs:
+            if not pref_m or pref_m in excluded_set or pref_m in seen_ids:
+                continue
+            match = next((c for c in routed if c["model_id"] == pref_m), None)
+            if match is not None:
+                entry = dict(match)
+                entry["source"] = pref_src
+                raw_specs.append(entry)
+                seen_ids.add(pref_m)
+                break  # apenas a preferência válida de maior prioridade vai ao topo
+
+        for c in routed:
+            mid = c["model_id"]
+            if mid in seen_ids or mid in excluded_set:
+                continue
+            seen_ids.add(mid)
+            raw_specs.append(dict(c))
+
+        # Instancia adaptadores validando credenciais em tempo de execução (sem falhar toda a lista por um sem chave)
+        resolved: list[dict] = []
+        for spec in raw_specs:
+            pid = spec["provider_id"]
+            mid = spec["model_id"]
             try:
-                prov = await get_provider(cand_id, db, user_id=user_id)
-                async with db.execute(
-                    "SELECT id, name FROM models WHERE provider_id = ? AND enabled = 1 LIMIT 1",
-                    (cand_id,),
-                ) as m_cur:
-                    m_row = await m_cur.fetchone()
-                if m_row:
-                    return prov, m_row[1], cand_id, m_row[0], "provider_fallback"
+                prov = await get_provider(pid, db, user_id=user_id)
+                m_name = spec.get("model_name") or await get_model_name(mid, db)
+                resolved.append({
+                    "provider": prov,
+                    "provider_id": pid,
+                    "model_id": mid,
+                    "model_name": m_name,
+                    "display_name": spec.get("display_name") or m_name,
+                    "source": spec.get("source", "auto_router"),
+                })
+                if len(resolved) >= max(1, int(max_candidates)):
+                    break
             except Exception:
+                logger.debug(
+                    "[Dream] Candidato ignorado na resolução (provider=%s, model=%s)",
+                    pid,
+                    mid,
+                )
                 continue
 
-    raise DreamLLMError("Nenhum provedor de IA disponível ou configurado para executar a consolidação.")
+    if not resolved:
+        raise DreamLLMError("Nenhum provedor de IA elegível disponível para executar a consolidação.")
+    return resolved
+
+
+async def resolve_dream_provider(user_id: str, custom_provider: str = None, custom_model: str = None):
+    """Compatibilidade: retorna o candidato principal resolvido pelo Auto-Router do Dream."""
+    candidates = await resolve_dream_candidates(
+        user_id, custom_provider=custom_provider, custom_model=custom_model, max_candidates=1
+    )
+    top = candidates[0]
+    return top["provider"], top["model_name"], top["provider_id"], top["model_id"], top["source"]
 
 
 # =========================================================
-# EXECUÇÃO DO LLM COM TRATAMENTO DE ERROS E RETRIES
+# EXECUÇÃO DO LLM COM TIMEOUT, SCHEMA ESTRUTURADO E FALLBACK
 # =========================================================
+
+async def _invoke_dream_candidate(
+    provider,
+    model_name: str,
+    provider_id: str,
+    system_prompt: str,
+    user_payload: str,
+    *,
+    timeout_s: float = DREAM_PER_CALL_TIMEOUT_S,
+) -> DreamResponseSchema:
+    """Executa uma chamada única a um candidato dentro de ``timeout_s`` e valida com Pydantic."""
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": f"Fatos para Consolidação:\n{user_payload}"},
+    ]
+
+    kwargs: dict[str, Any] = {"temperature": 0.05}
+    if provider_id == "ollama":
+        kwargs["options"] = {"num_ctx": 8192, "temperature": 0.05}
+    if _provider_supports_response_format(provider):
+        kwargs["response_format"] = {"type": "json_object"}
+
+    async def _run_call() -> str:
+        full_response = ""
+        if hasattr(provider, "stream_chat"):
+            async for token in provider.stream_chat(model=model_name, messages=messages, **kwargs):
+                full_response += str(token)
+                if len(full_response) > DREAM_MAX_RESPONSE_CHARS:
+                    raise DreamLLMError(
+                        f"Resposta do modelo excedeu o limite máximo ({DREAM_MAX_RESPONSE_CHARS} chars)."
+                    )
+            return full_response
+        if hasattr(provider, "chat"):
+            resp = await provider.chat(model=model_name, messages=messages, **kwargs)
+            return resp if isinstance(resp, str) else str(resp)
+        raise DreamLLMError(f"Provedor '{provider_id}' não suporta chat.")
+
+    if timeout_s <= 0:
+        raise asyncio.TimeoutError("Prazo da chamada esgotado.")
+
+    raw_response = await asyncio.wait_for(_run_call(), timeout=timeout_s)
+    return parse_dream_response(raw_response)
+
 
 async def call_dream_llm(
     provider,
@@ -755,42 +1042,179 @@ async def call_dream_llm(
     provider_id: str,
     system_prompt: str,
     user_payload: str,
+    *,
+    timeout_s: float = DREAM_PER_CALL_TIMEOUT_S,
 ) -> str:
-    """Executa a inferência LLM com 3 tentativas e sanitização de cercas de markdown."""
-    messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": f"Fatos para Consolidação:\n{user_payload}"},
+    """Executa uma inferência única validada por ``parse_dream_response`` e devolve JSON canônico."""
+    try:
+        schema = await _invoke_dream_candidate(
+            provider,
+            model_name,
+            provider_id,
+            system_prompt,
+            user_payload,
+            timeout_s=timeout_s,
+        )
+        return schema.model_dump_json()
+    except asyncio.CancelledError:
+        raise
+    except DreamLLMError:
+        raise
+    except Exception as exc:
+        kind, status = _classify_dream_error(exc)
+        raise DreamLLMError(
+            f"Falha na chamada ao modelo {model_name} ({provider_id}): {kind}"
+            + (f" [{status}]" if status else "")
+        ) from exc
+
+
+def _format_models_usage_summary(model_batch_counts: dict[tuple[str, str], int]) -> str:
+    """Gera resumo sanitizado dos modelos usados em múltiplos lotes (sem texto de memória)."""
+    if len(model_batch_counts) <= 1:
+        return ""
+    parts = [
+        f"{pid}/{mid} ({cnt} {'lote' if cnt == 1 else 'lotes'})"
+        for (pid, mid), cnt in model_batch_counts.items()
     ]
+    return "Modelos utilizados: " + ", ".join(parts) + "."
 
-    # Configuração explícita para Ollama local para impedir truncamento de contexto
-    kwargs = {"temperature": 0.05}
-    if provider_id == "ollama":
-        kwargs["options"] = {"num_ctx": 8192, "temperature": 0.05}
 
-    last_err = None
-    for attempt in range(1, 4):
-        full_response = ""
-        try:
-            if hasattr(provider, "stream_chat"):
-                async for token in provider.stream_chat(model=model_name, messages=messages, **kwargs):
-                    full_response += str(token)
-            elif hasattr(provider, "chat"):
-                resp = await provider.chat(model=model_name, messages=messages, **kwargs)
-                full_response = resp if isinstance(resp, str) else str(resp)
-            else:
-                raise DreamLLMError(f"Provedor {provider} não suporta chat.")
+async def run_dream_analysis(
+    active_facts: list[dict],
+    candidates: list[dict],
+    *,
+    current_date: Optional[str] = None,
+    max_tokens: int = DREAM_REQUEST_TOKEN_BUDGET,
+    execution_deadline_s: float = DREAM_EXECUTION_DEADLINE_S,
+    per_call_timeout_s: float = DREAM_PER_CALL_TIMEOUT_S,
+    max_candidates_per_batch: int = DREAM_MAX_CANDIDATES_PER_BATCH,
+    progress_cb: Optional[Callable[[str, int, str], Awaitable[None]]] = None,
+) -> dict:
+    """
+    Executor unificado (usado em preview e consolidação real):
+    - Deadline monotônico absoluto por execução (padrão 180s) e limite por chamada (30s)
+    - Até 3 candidatos por lote; avança para próximo candidato em 503, timeout ou saída/schema inválido
+    - Reaproveita candidato vencedor entre lotes mantendo fallback disponível
+    - Divide lote em 413 dentro do mesmo deadline
+    - Propaga asyncio.CancelledError sem engolir
+    """
+    if not candidates:
+        raise DreamLLMError("Nenhum candidato disponível para análise do Dream.")
 
-            full_response = extract_json_payload(full_response)
+    current_date = current_date or datetime.date.today().isoformat()
+    system_prompt = _DREAM_SYSTEM_PROMPT.replace("{CURRENT_DATE}", current_date)
+    deadline = time.monotonic() + max(0.05, float(execution_deadline_s))
 
-            json.loads(full_response)
-            return full_response
+    sticky_model_id: Optional[str] = candidates[0]["model_id"]
+    demoted_ids: list[str] = []
+    model_batch_counts: dict[tuple[str, str], int] = {}
+    last_effective: dict = candidates[0]
 
-        except Exception as e:
-            last_err = e
-            logger.warning("[Dream] Tentativa %d falhou na chamada/parse do LLM: %s", attempt, e)
-            kwargs["temperature"] = 0.10 + (attempt * 0.05)
+    async def _report_model(cand: dict):
+        if progress_cb:
+            try:
+                await progress_cb(
+                    "connecting",
+                    45,
+                    f"Modelo ativo: {cand['model_name']} ({cand['provider_id']})",
+                )
+            except Exception:
+                pass
 
-    raise DreamLLMError(f"Falha ao obter resposta JSON válida do LLM após 3 tentativas: {last_err}")
+    def _ordered_candidates_for_batch() -> list[dict]:
+        primary = [c for c in candidates if c["model_id"] == sticky_model_id and c["model_id"] not in demoted_ids]
+        healthy = [c for c in candidates if c["model_id"] != sticky_model_id and c["model_id"] not in demoted_ids]
+        fallback_demoted = [c for c in candidates if c["model_id"] in demoted_ids]
+        ordered = primary + healthy + fallback_demoted
+        return ordered[: max(1, int(max_candidates_per_batch))]
+
+    async def routed_caller(prompt: str, payload: str) -> DreamResponseSchema:
+        nonlocal sticky_model_id, last_effective
+        batch_candidates = _ordered_candidates_for_batch()
+        last_kind = "unknown"
+        last_status: Optional[int] = None
+
+        for cand in batch_candidates:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise DreamLLMError("Prazo máximo global da consolidação excedido.")
+            call_timeout = min(float(per_call_timeout_s), remaining)
+            pid = cand["provider_id"]
+            mid = cand["model_id"]
+            mname = cand["model_name"]
+
+            try:
+                schema = await _invoke_dream_candidate(
+                    cand["provider"],
+                    mname,
+                    pid,
+                    prompt,
+                    payload,
+                    timeout_s=call_timeout,
+                )
+                sticky_model_id = mid
+                if mid in demoted_ids:
+                    demoted_ids.remove(mid)
+                if last_effective.get("model_id") != mid:
+                    await _report_model(cand)
+                last_effective = cand
+                key = (pid, mid)
+                model_batch_counts[key] = model_batch_counts.get(key, 0) + 1
+                return schema
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                kind, status = _classify_dream_error(exc)
+                # 413 deve subir para analyze_facts dividir o lote mantendo o mesmo deadline
+                if kind == "too_large" or status == 413:
+                    logger.warning(
+                        "[Dream] Lote excedeu limite do modelo (provider=%s, model=%s, status=413); dividindo lote",
+                        pid,
+                        mid,
+                    )
+                    raise ProviderHTTPError(413, "Payload excedeu o limite do modelo (413).", provider=pid) from exc
+
+                last_kind, last_status = kind, status
+                if mid not in demoted_ids:
+                    demoted_ids.append(mid)
+                logger.warning(
+                    "[Dream] Candidato falhou (provider=%s, model=%s, error_kind=%s, status=%s); tentando próximo candidato",
+                    pid,
+                    mid,
+                    kind,
+                    status,
+                )
+                continue
+
+        raise DreamLLMError(
+            f"Todos os candidatos falharam na consolidação (último erro: {last_kind}"
+            + (f", status={last_status}" if last_status else "")
+            + ")."
+        )
+
+    operations, notes = await analyze_facts(
+        active_facts,
+        system_prompt,
+        routed_caller,
+        max_tokens=max_tokens,
+        current_date=current_date,
+        deadline=deadline,
+    )
+    operations = drop_impossible_age_rewrites(active_facts, operations)
+    model_summary = _format_models_usage_summary(model_batch_counts)
+
+    return {
+        "operations": operations,
+        "notes": notes,
+        "effective_provider_id": last_effective["provider_id"],
+        "effective_model_id": last_effective["model_id"],
+        "effective_model_name": last_effective["model_name"],
+        "models_used": [
+            {"provider_id": pid, "model_id": mid, "batches": cnt}
+            for (pid, mid), cnt in model_batch_counts.items()
+        ],
+        "model_summary": model_summary,
+    }
 
 
 # =========================================================
@@ -935,10 +1359,15 @@ async def simulate_dream_consolidation(
     user_id: str,
     custom_provider: str = None,
     custom_model: str = None,
+    *,
+    candidates: Optional[list[dict]] = None,
+    execution_deadline_s: float = DREAM_EXECUTION_DEADLINE_S,
+    per_call_timeout_s: float = DREAM_PER_CALL_TIMEOUT_S,
+    max_tokens: int = DREAM_REQUEST_TOKEN_BUDGET,
 ) -> dict:
     """
     Executa a análise do Dream sem persistir nenhuma alteração no banco.
-    Retorna o relatório de diff estruturado para revisão do usuário.
+    Usa o mesmo executor roteado de ``execute_dream_consolidation``.
     """
     active_facts = await get_user_memory(user_id, limit=5000, active_only=True)
     if not active_facts:
@@ -959,21 +1388,29 @@ async def simulate_dream_consolidation(
             "actions_breakdown": {"merge": 0, "supersede": 0, "archive": 0, "keep": 1},
         }
 
-    provider, model_name, p_id, m_id, source = await resolve_dream_provider(
-        user_id, custom_provider, custom_model
+    resolved_candidates = (
+        candidates
+        if candidates is not None
+        else await resolve_dream_candidates(user_id, custom_provider, custom_model)
     )
 
     current_date = datetime.date.today().isoformat()
-    system_prompt = _DREAM_SYSTEM_PROMPT.replace("{CURRENT_DATE}", current_date)
+    analysis = await run_dream_analysis(
+        active_facts,
+        resolved_candidates,
+        current_date=current_date,
+        max_tokens=max_tokens,
+        execution_deadline_s=execution_deadline_s,
+        per_call_timeout_s=per_call_timeout_s,
+    )
 
-    async def caller(prompt: str, payload: str) -> str:
-        return await call_dream_llm(provider, model_name, p_id, prompt, payload)
+    summary_text = " ".join(analysis["notes"]) or "Simulação concluída."
+    if analysis["model_summary"]:
+        summary_text = f"{summary_text} ({analysis['model_summary']})"
 
-    operations, notes = await analyze_facts(active_facts, system_prompt, caller)
-    operations = drop_impossible_age_rewrites(active_facts, operations)
     schema = DreamResponseSchema(
-        summary_of_changes=" ".join(notes) or "Simulação concluída.",
-        operations=operations,
+        summary_of_changes=summary_text,
+        operations=analysis["operations"],
     )
 
     # Validação rigorosa dos limiares
@@ -984,18 +1421,18 @@ async def simulate_dream_consolidation(
         breakdown[op.action] = breakdown.get(op.action, 0) + 1
 
     projected_active = breakdown["keep"] + breakdown["merge"] + breakdown["supersede"]
-
     clusters = cluster_facts_semantically(active_facts)
 
     return {
         "summary_of_changes": schema.summary_of_changes,
-        "operations": [op.dict() for op in schema.operations],
+        "operations": [op.model_dump() for op in schema.operations],
         "facts_before": len(active_facts),
         "projected_active": projected_active,
         "actions_breakdown": breakdown,
         "clusters_count": len(clusters),
-        "provider_id": p_id,
-        "model_id": m_id,
+        "provider_id": analysis["effective_provider_id"],
+        "model_id": analysis["effective_model_id"],
+        "models_used": analysis["models_used"],
     }
 
 
@@ -1009,12 +1446,17 @@ async def execute_dream_consolidation(
     custom_provider: str = None,
     custom_model: str = None,
     progress_cb: Optional[Callable[[str, int, str], Awaitable[None]]] = None,
+    *,
+    candidates: Optional[list[dict]] = None,
+    execution_deadline_s: float = DREAM_EXECUTION_DEADLINE_S,
+    per_call_timeout_s: float = DREAM_PER_CALL_TIMEOUT_S,
+    max_tokens: int = DREAM_REQUEST_TOKEN_BUDGET,
 ) -> dict:
     """
     Executa o fluxo completo do Dream Memory:
       1. Snapshot atômico & leitura dos fatos
-      2. Resolução do modelo LLM
-      3. Análise semântica & geração de operações
+      2. Resolução de candidatos pelo Auto-Router (com fallback)
+      3. Análise semântica & validação estrita por lote (sem mutação parcial)
       4. Validação de segurança anti-alucinação
       5. Aplicação relâmpago (<100ms) + FastEmbed + resumos
     """
@@ -1035,34 +1477,68 @@ async def execute_dream_consolidation(
         logger.info("[Dream] Usuário %s não possui fatos ativos. No-op.", user_id)
         return {"status": "no_op", "message": "Sem fatos ativos para consolidar."}
 
-    provider, model_name, p_id, m_id, source = await resolve_dream_provider(
-        user_id, custom_provider, custom_model
-    )
+    try:
+        resolved_candidates = (
+            candidates
+            if candidates is not None
+            else await resolve_dream_candidates(user_id, custom_provider, custom_model)
+        )
+    except asyncio.CancelledError:
+        raise
+    except Exception as res_err:
+        duration_ms = int((time.time() - start_time) * 1000)
+        await record_dream_log({
+            "user_id": user_id,
+            "snapshot_id": snap_id,
+            "provider_id": custom_provider or "auto",
+            "model_id": custom_model or "unresolved",
+            "facts_before": len(active_facts),
+            "facts_after": len(active_facts),
+            "facts_total_active": len(active_facts),
+            "duration_ms": duration_ms,
+            "status": "failed",
+            "error_message": str(res_err)[:500],
+        })
+        raise
 
+    primary = resolved_candidates[0]
     dream_id = await record_dream_log({
         "user_id": user_id,
         "snapshot_id": snap_id,
-        "provider_id": p_id,
-        "model_id": m_id,
+        "provider_id": primary["provider_id"],
+        "model_id": primary["model_id"],
         "facts_before": len(active_facts),
         "status": "running",
     })
 
     try:
-        await report("connecting", 35, f"Conectado ao modelo {model_name} ({p_id}). Analisando memórias...")
+        await report(
+            "connecting",
+            35,
+            f"Conectado ao modelo {primary['model_name']} ({primary['provider_id']}). Analisando memórias...",
+        )
         current_date = datetime.date.today().isoformat()
-        system_prompt = _DREAM_SYSTEM_PROMPT.replace("{CURRENT_DATE}", current_date)
 
         await report("reasoning", 60, "Processando desduplicação, contradições e marcos temporais...")
+        analysis = await run_dream_analysis(
+            active_facts,
+            resolved_candidates,
+            current_date=current_date,
+            max_tokens=max_tokens,
+            execution_deadline_s=execution_deadline_s,
+            per_call_timeout_s=per_call_timeout_s,
+            progress_cb=report,
+        )
 
-        async def caller(prompt: str, payload: str) -> str:
-            return await call_dream_llm(provider, model_name, p_id, prompt, payload)
+        eff_provider_id = analysis["effective_provider_id"]
+        eff_model_id = analysis["effective_model_id"]
+        summary_text = " ".join(analysis["notes"]) or "Consolidação concluída."
+        if analysis["model_summary"]:
+            summary_text = f"{summary_text} ({analysis['model_summary']})"
 
-        operations, notes = await analyze_facts(active_facts, system_prompt, caller, current_date=current_date)
-        operations = drop_impossible_age_rewrites(active_facts, operations)
         schema = DreamResponseSchema(
-            summary_of_changes=" ".join(notes) or "Consolidação concluída.",
-            operations=operations,
+            summary_of_changes=summary_text,
+            operations=analysis["operations"],
         )
 
         await report("validating", 80, "Verificando barreiras de integridade e retenção anti-ruído...")
@@ -1072,8 +1548,11 @@ async def execute_dream_consolidation(
             duration_ms = int((time.time() - start_time) * 1000)
             await update_dream_log(dream_id, {
                 "status": "aborted_safety",
-                "error_message": str(safety_err),
+                "provider_id": eff_provider_id,
+                "model_id": eff_model_id,
+                "error_message": str(safety_err)[:500],
                 "duration_ms": duration_ms,
+                "facts_after": len(active_facts),
             })
             raise safety_err
 
@@ -1085,6 +1564,8 @@ async def execute_dream_consolidation(
 
         await update_dream_log(dream_id, {
             "status": "success",
+            "provider_id": eff_provider_id,
+            "model_id": eff_model_id,
             "facts_after": len(active_after),
             "facts_merged": stats["facts_merged"],
             "facts_superseded": stats["facts_superseded"],
@@ -1094,12 +1575,19 @@ async def execute_dream_consolidation(
             "summary_notes": schema.summary_of_changes,
         })
 
-        await report("done", 100, f"Consolidação concluída com sucesso! ({len(active_facts)} ➔ {len(active_after)} fatos).")
+        await report(
+            "done",
+            100,
+            f"Consolidação concluída com sucesso ({eff_model_id})! ({len(active_facts)} ➔ {len(active_after)} fatos).",
+        )
 
         return {
             "status": "success",
             "dream_id": dream_id,
             "snapshot_id": snap_id,
+            "provider_id": eff_provider_id,
+            "model_id": eff_model_id,
+            "models_used": analysis["models_used"],
             "facts_before": len(active_facts),
             "facts_after": len(active_after),
             "compression_ratio": (len(active_facts) - len(active_after)) / len(active_facts) if active_facts else 0.0,
@@ -1108,16 +1596,33 @@ async def execute_dream_consolidation(
             "stats": stats,
         }
 
-    except Exception as exc:
+    except asyncio.CancelledError:
         duration_ms = int((time.time() - start_time) * 1000)
-        status_to_record = "aborted_safety" if isinstance(exc, DreamSafetyError) else "failed"
         await update_dream_log(dream_id, {
-            "status": status_to_record,
-            "error_message": str(exc)[:2000],
+            "status": "failed",
+            "error_message": "Consolidação cancelada.",
             "duration_ms": duration_ms,
             "facts_after": len(active_facts),
         })
-        logger.error("[Dream] Falha na execução da consolidação: %s", exc, exc_info=exc)
+        raise
+    except DreamSafetyError:
+        raise
+    except Exception as exc:
+        duration_ms = int((time.time() - start_time) * 1000)
+        kind, status = _classify_dream_error(exc)
+        safe_msg = str(exc) if isinstance(exc, DreamLLMError) else f"Erro operacional ({kind}, status={status})."
+        await update_dream_log(dream_id, {
+            "status": "failed",
+            "error_message": safe_msg[:500],
+            "duration_ms": duration_ms,
+            "facts_after": len(active_facts),
+        })
+        logger.error(
+            "[Dream] Falha na execução da consolidação (user=%s, error_kind=%s, status=%s)",
+            user_id,
+            kind,
+            status,
+        )
         raise exc
 
 

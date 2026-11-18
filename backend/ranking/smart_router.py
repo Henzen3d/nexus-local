@@ -1310,3 +1310,194 @@ def decision_to_dict(decision: AutoRouteDecision) -> Dict[str, Any]:
         "intent_tier": decision.intent_tier,
         "strict_constraints": decision.strict_constraints,
     }
+
+
+async def route_dream_candidates(
+    db: aiosqlite.Connection,
+    user_id: Optional[str],
+    intent: Optional[IntentClassificationResult] = None,
+    *,
+    preferred_model_id: Optional[str] = None,
+    excluded_ids: tuple[str, ...] | list[str] | set[str] = (),
+    policy: str | RoutingPolicy = RoutingPolicy.BALANCED_SMART,
+    min_context_length: int = 8192,
+    max_candidates: int = 6,
+) -> List[Dict[str, Any]]:
+    """
+    Seleciona e ordena candidatos elegíveis para o Dream Consolidator usando o ranking do
+    Auto-Router intersectado com as regras de elegibilidade do usuário (chaves, provedores/modelos
+    habilitados, cotas e exclusões), sem contaminar o catálogo global ``_MODEL_CACHE``.
+    """
+    from backend.ranking.failover import _usable_key_clause
+    from backend.ranking.availability import load_hide_unconfirmed_flag
+
+    excluded_set = {str(x) for x in (excluded_ids or ()) if x}
+    if isinstance(policy, RoutingPolicy):
+        policy_str = policy.value
+    else:
+        policy_str = str(policy or RoutingPolicy.BALANCED_SMART.value).lower().strip()
+    if policy_str not in _COST_PENALTY:
+        policy_str = RoutingPolicy.BALANCED_SMART.value
+
+    if intent is None:
+        intent_result = IntentClassificationResult(
+            intent=IntentKey.DEEP_REASONING,
+            complexity=ComplexityTier.MEDIUM,
+            confidence=0.9,
+            matched_signals=["dream_structured_consolidation"],
+            reason_label_pt="Consolidação Estruturada de Memória (Dream)",
+            min_context_length_required=max(4096, int(min_context_length or 8192)),
+            recommended_temperature=0.05,
+        )
+    else:
+        intent_result = intent
+
+    key_clause, key_params, join_keys = _usable_key_clause(user_id)
+    hide_unconfirmed = await load_hide_unconfirmed_flag(db)
+
+    query_full = f"""
+        SELECT m.id, m.provider_id, m.name, m.display_name, m.context_length,
+               COALESCE(m.confirmed_free, 0) as confirmed_free,
+               COALESCE(p.is_free, 0) as prov_is_free,
+               mr.nexuslocal_score,
+               mr.quality_score,
+               COALESCE(mqs.status, 'available') as quota_status,
+               COALESCE(m.supports_vision, 0) as supports_vision,
+               COALESCE(m.reasoning_control, 'none') as reasoning_control,
+               m.reasoning_levels,
+               COALESCE(p.is_local, 0) as prov_is_local
+        FROM models m
+        JOIN providers p ON p.id = m.provider_id
+        LEFT JOIN user_provider_settings ups ON ups.provider_id = p.id AND ups.user_id = ?
+        LEFT JOIN user_model_settings ums ON ums.model_id = m.id AND ums.user_id = ?
+        {join_keys}
+        LEFT JOIN model_rankings mr ON mr.model_id = m.id
+        LEFT JOIN model_quota_status mqs ON mqs.model_id = m.id
+        WHERE COALESCE(ums.enabled, m.enabled) = 1
+          AND COALESCE(ups.enabled, p.enabled) = 1
+          AND {key_clause}
+          AND COALESCE(mqs.status, 'available') NOT IN ('exhausted', 'cooldown')
+    """
+    params_full = [user_id, user_id] + list(key_params)
+
+    try:
+        async with db.execute(query_full, tuple(params_full)) as cur:
+            rows = await cur.fetchall()
+    except Exception:
+        query_fallback = f"""
+            SELECT m.id, m.provider_id, m.name, m.display_name, m.context_length,
+                   COALESCE(m.confirmed_free, 0) as confirmed_free,
+                   COALESCE(p.is_free, 0) as prov_is_free,
+                   mr.nexuslocal_score,
+                   mr.quality_score,
+                   COALESCE(mqs.status, 'available') as quota_status,
+                   COALESCE(m.supports_vision, 0) as supports_vision,
+                   COALESCE(m.reasoning_control, 'none') as reasoning_control,
+                   m.reasoning_levels,
+                   COALESCE(p.is_local, 0) as prov_is_local
+            FROM models m
+            JOIN providers p ON p.id = m.provider_id
+            {join_keys}
+            LEFT JOIN model_rankings mr ON mr.model_id = m.id
+            LEFT JOIN model_quota_status mqs ON mqs.model_id = m.id
+            WHERE m.enabled = 1
+              AND p.enabled = 1
+              AND {key_clause}
+              AND COALESCE(mqs.status, 'available') NOT IN ('exhausted', 'cooldown')
+        """
+        async with db.execute(query_fallback, tuple(key_params)) as cur:
+            rows = await cur.fetchall()
+
+    models_data: List[Dict[str, Any]] = []
+    for r in rows:
+        mid = r[0]
+        if mid in excluded_set:
+            continue
+        confirmed_free = int(r[5] or 0)
+        prov_is_free = int(r[6] or 0)
+        is_local = int(r[13] or 0)
+        # Respeita filtro de modelos gratuitos não confirmados, exceto quando explicitamente preferido
+        if hide_unconfirmed and prov_is_free and not confirmed_free and not is_local and mid != preferred_model_id:
+            continue
+        prof = profile_model(mid, r[2], r[1], r[11], int(r[10] or 0))
+        rank_q = float(r[8]) if r[8] is not None else None
+        rank_n = float(r[7]) if r[7] is not None else None
+        has_ranking = rank_q is not None and rank_q > 50.0
+        quality = rank_q if has_ranking else prof.baseline_quality
+        nexus = rank_n if (rank_n is not None and rank_n > 50.0) else quality
+        models_data.append({
+            "id": mid,
+            "provider_id": r[1],
+            "name": r[2],
+            "display_name": clean_model_display_name(r[3], r[1]),
+            "context_length": int(r[4] or 8192),
+            "confirmed_free": confirmed_free,
+            "prov_is_free": prov_is_free,
+            "is_free": 1 if (confirmed_free == 1 or prov_is_free == 1 or is_local == 1) else 0,
+            "nexuslocal_score": nexus,
+            "quality_score": quality,
+            "has_ranking": has_ranking,
+            "quota_status": r[9] or "available",
+            "supports_vision": int(r[10] or 0),
+            "reasoning_control": r[11] or "none",
+            "reasoning_levels": _parse_levels(r[12]),
+            "is_local": is_local,
+            "tags": list(prof.tags()),
+        })
+
+    if not models_data:
+        return []
+
+    ranked = rank_candidates(models_data, intent_result, policy_str)
+    if not ranked:
+        ranked = [{"model": m, "fit": float(m.get("nexuslocal_score", 50.0))} for m in models_data]
+
+    # Ajuste de adequação a tarefa estruturada JSON + janela de contexto suficiente
+    req_ctx = max(4096, int(intent_result.min_context_length_required or min_context_length))
+    scored: List[Tuple[float, Dict[str, Any]]] = []
+    for entry in ranked:
+        m = entry["model"]
+        fit = float(entry["fit"])
+        ctx = int(m.get("context_length") or 8192)
+        if ctx >= req_ctx:
+            fit += 5.0
+        else:
+            fit -= 15.0
+        scored.append((fit, m))
+    scored.sort(key=lambda item: item[0], reverse=True)
+
+    ordered: List[Dict[str, Any]] = []
+    seen: set[str] = set()
+
+    if preferred_model_id and preferred_model_id not in excluded_set:
+        pref_entry = next((item for item in scored if item[1]["id"] == preferred_model_id), None)
+        if pref_entry is not None:
+            fit, m = pref_entry
+            seen.add(m["id"])
+            ordered.append({
+                "model_id": m["id"],
+                "provider_id": m["provider_id"],
+                "model_name": m["name"],
+                "display_name": m["display_name"],
+                "context_length": m["context_length"],
+                "fit": round(fit, 2),
+                "source": "preferred",
+            })
+
+    for fit, m in scored:
+        if m["id"] in seen:
+            continue
+        seen.add(m["id"])
+        ordered.append({
+            "model_id": m["id"],
+            "provider_id": m["provider_id"],
+            "model_name": m["name"],
+            "display_name": m["display_name"],
+            "context_length": m["context_length"],
+            "fit": round(fit, 2),
+            "source": "auto_router",
+        })
+        if len(ordered) >= max(1, int(max_candidates)):
+            break
+
+    return ordered
