@@ -436,6 +436,15 @@ CREATE TABLE IF NOT EXISTS dream_logs (
 );
 CREATE INDEX IF NOT EXISTS idx_dream_logs_user ON dream_logs(user_id, created_at DESC);
 
+CREATE TABLE IF NOT EXISTS dream_breaker_state (
+    user_id              TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    consecutive_failures INTEGER NOT NULL DEFAULT 0,
+    opened_at            TEXT,
+    probe_until          TEXT,
+    generation           INTEGER NOT NULL DEFAULT 0,
+    updated_at           TEXT
+);
+
 -- =========================================================
 -- PROJECTS MODULE (persistent context workspaces + RAG)
 -- =========================================================
@@ -1717,6 +1726,18 @@ async def init_db():
                 """
             )
             await db.execute("CREATE INDEX IF NOT EXISTS idx_dream_logs_user ON dream_logs(user_id, created_at DESC)")
+            await db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS dream_breaker_state (
+                    user_id              TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+                    consecutive_failures INTEGER NOT NULL DEFAULT 0,
+                    opened_at            TEXT,
+                    probe_until          TEXT,
+                    generation           INTEGER NOT NULL DEFAULT 0,
+                    updated_at           TEXT
+                )
+                """
+            )
             await db.commit()
         except Exception as e:
             logger.error("[database migration] erro ao migrar memory_snapshots e dream_logs:", exc_info=e)
@@ -3552,6 +3573,467 @@ async def update_dream_log(dream_id: str, updates: dict) -> None:
             values,
         )
         await db.commit()
+
+
+# =========================================================
+# DREAM CIRCUIT BREAKER & SCHEDULING HELPERS (T1.1)
+# =========================================================
+
+DREAM_BREAKER_THRESHOLD = 3
+DREAM_BREAKER_DEFAULT_COOLDOWN_MINUTES = 60
+DREAM_BREAKER_MIN_COOLDOWN_MINUTES = 1
+DREAM_BREAKER_MAX_COOLDOWN_MINUTES = 1440
+DREAM_BREAKER_PROBE_LEASE_SECONDS = 300
+
+
+def parse_utc_timestamp(raw: Optional[str]):
+    """Parse ISO-8601 or legacy SQLite UTC timestamp into timezone-aware UTC datetime."""
+    from datetime import datetime, timezone
+
+    if not raw or not isinstance(raw, str):
+        return None
+    s = raw.strip()
+    if not s:
+        return None
+    if s.endswith("Z"):
+        s = s[:-1] + "+00:00"
+    dt = None
+    try:
+        dt = datetime.fromisoformat(s)
+    except ValueError:
+        for fmt in ("%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S"):
+            try:
+                dt = datetime.strptime(s, fmt)
+                break
+            except ValueError:
+                dt = None
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def format_utc_timestamp(dt) -> str:
+    """Format a datetime as explicit ISO-8601 UTC string ending in 'Z'."""
+    from datetime import timezone
+
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    else:
+        dt = dt.astimezone(timezone.utc)
+    return dt.isoformat().replace("+00:00", "Z")
+
+
+def _coerce_utc_now(now=None):
+    from datetime import datetime, timezone
+
+    if now is None:
+        return datetime.now(timezone.utc)
+    if isinstance(now, str):
+        parsed = parse_utc_timestamp(now)
+        return parsed if parsed is not None else datetime.now(timezone.utc)
+    if now.tzinfo is None:
+        return now.replace(tzinfo=timezone.utc)
+    return now.astimezone(timezone.utc)
+
+
+def clamp_dream_breaker_cooldown_minutes(raw) -> int:
+    """Validate and clamp dream_breaker_cooldown_minutes into [1, 1440], default 60."""
+    try:
+        val = int(str(raw).strip())
+    except (TypeError, ValueError):
+        return DREAM_BREAKER_DEFAULT_COOLDOWN_MINUTES
+    if val < DREAM_BREAKER_MIN_COOLDOWN_MINUTES:
+        return DREAM_BREAKER_MIN_COOLDOWN_MINUTES
+    if val > DREAM_BREAKER_MAX_COOLDOWN_MINUTES:
+        return DREAM_BREAKER_MAX_COOLDOWN_MINUTES
+    return val
+
+
+async def _read_dream_breaker_cooldown(db, cooldown_minutes: Optional[int] = None) -> int:
+    if cooldown_minutes is not None:
+        return clamp_dream_breaker_cooldown_minutes(cooldown_minutes)
+    async with db.execute(
+        "SELECT value FROM meta WHERE key = 'dream_breaker_cooldown_minutes'"
+    ) as cur:
+        row = await cur.fetchone()
+    return clamp_dream_breaker_cooldown_minutes(row[0] if row else None)
+
+
+async def _ensure_dream_breaker_row(db, user_id: str, now_dt) -> dict:
+    """Return existing dream_breaker_state row or bootstrap once from dream_logs history."""
+    async with db.execute(
+        """SELECT user_id, consecutive_failures, opened_at, probe_until, generation, updated_at
+           FROM dream_breaker_state WHERE user_id = ?""",
+        (user_id,),
+    ) as cur:
+        row = await cur.fetchone()
+    if row is not None:
+        return dict(row)
+
+    # First access only: bootstrap from historical failures after the latest operational success.
+    async with db.execute(
+        """SELECT status, created_at
+           FROM dream_logs
+           WHERE user_id = ?
+           ORDER BY created_at DESC, rowid DESC""",
+        (user_id,),
+    ) as cur:
+        log_rows = await cur.fetchall()
+
+    failures = 0
+    latest_failure_at = None
+    for lr in log_rows:
+        st = lr["status"]
+        if st == "success":
+            break
+        if st == "failed":
+            failures += 1
+            if latest_failure_at is None:
+                latest_failure_at = lr["created_at"]
+
+    opened_at = None
+    if failures >= DREAM_BREAKER_THRESHOLD:
+        fail_dt = parse_utc_timestamp(latest_failure_at) or now_dt
+        opened_at = format_utc_timestamp(fail_dt)
+
+    now_str = format_utc_timestamp(now_dt)
+    await db.execute(
+        """INSERT OR IGNORE INTO dream_breaker_state
+           (user_id, consecutive_failures, opened_at, probe_until, generation, updated_at)
+           VALUES (?, ?, ?, NULL, 0, ?)""",
+        (user_id, failures, opened_at, now_str),
+    )
+    async with db.execute(
+        """SELECT user_id, consecutive_failures, opened_at, probe_until, generation, updated_at
+           FROM dream_breaker_state WHERE user_id = ?""",
+        (user_id,),
+    ) as cur:
+        created = await cur.fetchone()
+    return dict(created)
+
+
+def _compute_breaker_view(row: dict, now_dt, cooldown_minutes: int) -> dict:
+    from datetime import timedelta
+
+    failures = int(row.get("consecutive_failures") or 0)
+    opened_at_raw = row.get("opened_at")
+    probe_until_raw = row.get("probe_until")
+    generation = int(row.get("generation") or 0)
+
+    if not opened_at_raw:
+        return {
+            "state": "closed",
+            "consecutive_failures": failures,
+            "retry_at": None,
+            "generation": generation,
+            "opened_at": None,
+            "probe_until": None,
+        }
+
+    opened_dt = parse_utc_timestamp(opened_at_raw) or now_dt
+    retry_dt = opened_dt + timedelta(minutes=cooldown_minutes)
+    probe_dt = parse_utc_timestamp(probe_until_raw) if probe_until_raw else None
+
+    if now_dt < retry_dt:
+        return {
+            "state": "open",
+            "consecutive_failures": failures,
+            "retry_at": format_utc_timestamp(retry_dt),
+            "generation": generation,
+            "opened_at": format_utc_timestamp(opened_dt),
+            "probe_until": format_utc_timestamp(probe_dt) if probe_dt and probe_dt > now_dt else None,
+        }
+
+    # Cooldown has elapsed -> half_open
+    active_probe_until = format_utc_timestamp(probe_dt) if (probe_dt and probe_dt > now_dt) else None
+    return {
+        "state": "half_open",
+        "consecutive_failures": failures,
+        "retry_at": active_probe_until,
+        "generation": generation,
+        "opened_at": format_utc_timestamp(opened_dt),
+        "probe_until": active_probe_until,
+    }
+
+
+async def get_dream_breaker_status(
+    user_id: str,
+    now=None,
+    *,
+    cooldown_minutes: Optional[int] = None,
+) -> dict:
+    """Returns current Dream circuit breaker status for user_id, bootstrapping on first access."""
+    now_dt = _coerce_utc_now(now)
+    async with aiosqlite.connect(DB_PATH, timeout=10.0) as db:
+        db.row_factory = aiosqlite.Row
+        cd = await _read_dream_breaker_cooldown(db, cooldown_minutes)
+        async with db.execute(
+            """SELECT user_id, consecutive_failures, opened_at, probe_until, generation, updated_at
+               FROM dream_breaker_state WHERE user_id = ?""",
+            (user_id,),
+        ) as cur:
+            existing = await cur.fetchone()
+        if existing is not None:
+            row = dict(existing)
+        else:
+            await db.execute("BEGIN IMMEDIATE")
+            try:
+                row = await _ensure_dream_breaker_row(db, user_id, now_dt)
+                await db.commit()
+            except Exception:
+                await db.rollback()
+                raise
+        return _compute_breaker_view(row, now_dt, cd)
+
+
+async def try_acquire_dream_probe(
+    user_id: str,
+    now=None,
+    *,
+    cooldown_minutes: Optional[int] = None,
+    lease_seconds: int = DREAM_BREAKER_PROBE_LEASE_SECONDS,
+) -> dict:
+    """Atomically check breaker state and reserve a single probe lease when half_open."""
+    from datetime import timedelta
+
+    now_dt = _coerce_utc_now(now)
+    now_str = format_utc_timestamp(now_dt)
+    async with aiosqlite.connect(DB_PATH, timeout=10.0) as db:
+        db.row_factory = aiosqlite.Row
+        await db.execute("BEGIN IMMEDIATE")
+        try:
+            cd = await _read_dream_breaker_cooldown(db, cooldown_minutes)
+            row = await _ensure_dream_breaker_row(db, user_id, now_dt)
+            gen = int(row["generation"] or 0)
+            opened_at_raw = row["opened_at"]
+
+            if not opened_at_raw:
+                await db.commit()
+                return {
+                    "allowed": True,
+                    "mode": "closed",
+                    "state": "closed",
+                    "consecutive_failures": int(row["consecutive_failures"] or 0),
+                    "retry_at": None,
+                    "generation": gen,
+                }
+
+            opened_dt = parse_utc_timestamp(opened_at_raw) or now_dt
+            retry_dt = opened_dt + timedelta(minutes=cd)
+            if now_dt < retry_dt:
+                await db.commit()
+                return {
+                    "allowed": False,
+                    "mode": "open",
+                    "state": "open",
+                    "consecutive_failures": int(row["consecutive_failures"] or 0),
+                    "retry_at": format_utc_timestamp(retry_dt),
+                    "generation": gen,
+                }
+
+            probe_dt = parse_utc_timestamp(row["probe_until"]) if row["probe_until"] else None
+            if probe_dt is not None and probe_dt > now_dt:
+                await db.commit()
+                return {
+                    "allowed": False,
+                    "mode": "probe_busy",
+                    "state": "half_open",
+                    "consecutive_failures": int(row["consecutive_failures"] or 0),
+                    "retry_at": format_utc_timestamp(probe_dt),
+                    "generation": gen,
+                }
+
+            lease_until = format_utc_timestamp(now_dt + timedelta(seconds=max(1, int(lease_seconds))))
+            cur = await db.execute(
+                """UPDATE dream_breaker_state
+                   SET probe_until = ?, updated_at = ?
+                   WHERE user_id = ? AND generation = ?""",
+                (lease_until, now_str, user_id, gen),
+            )
+            await db.commit()
+            if cur.rowcount != 1:
+                return {
+                    "allowed": False,
+                    "mode": "conflict",
+                    "state": "half_open",
+                    "consecutive_failures": int(row["consecutive_failures"] or 0),
+                    "retry_at": lease_until,
+                    "generation": gen,
+                }
+            return {
+                "allowed": True,
+                "mode": "probe",
+                "state": "half_open",
+                "consecutive_failures": int(row["consecutive_failures"] or 0),
+                "retry_at": lease_until,
+                "probe_until": lease_until,
+                "generation": gen,
+            }
+        except Exception:
+            await db.rollback()
+            raise
+
+
+async def record_dream_attempt(
+    user_id: str,
+    generation: Optional[int],
+    outcome: str,
+    now=None,
+    *,
+    cooldown_minutes: Optional[int] = None,
+) -> dict:
+    """Record the outcome of a real Dream consolidation attempt for circuit breaker tracking."""
+    now_dt = _coerce_utc_now(now)
+    now_str = format_utc_timestamp(now_dt)
+    norm_outcome = (outcome or "").strip().lower()
+    if norm_outcome in ("failed", "failure", "error"):
+        norm_outcome = "failure"
+    elif norm_outcome in ("no_op", "aborted_safety", "cancelled", "canceled", "neutral"):
+        norm_outcome = "neutral"
+    elif norm_outcome == "success":
+        norm_outcome = "success"
+    else:
+        norm_outcome = "neutral"
+
+    async with aiosqlite.connect(DB_PATH, timeout=10.0) as db:
+        db.row_factory = aiosqlite.Row
+        await db.execute("BEGIN IMMEDIATE")
+        try:
+            cd = await _read_dream_breaker_cooldown(db, cooldown_minutes)
+            row = await _ensure_dream_breaker_row(db, user_id, now_dt)
+            cur_gen = int(row["generation"] or 0)
+
+            if generation is not None and cur_gen != int(generation):
+                await db.commit()
+                view = _compute_breaker_view(row, now_dt, cd)
+                view["ignored_stale_generation"] = True
+                view["transitioned_to_open"] = False
+                return view
+
+            failures = int(row["consecutive_failures"] or 0)
+            opened_at = row["opened_at"]
+            transitioned_to_open = False
+
+            if norm_outcome == "success":
+                failures = 0
+                opened_at = None
+            elif norm_outcome == "failure":
+                failures += 1
+                if opened_at is not None or failures >= DREAM_BREAKER_THRESHOLD:
+                    opened_at = now_str
+                    transitioned_to_open = True
+            else:
+                # neutral (no_op, aborted_safety, cancelled): keep failure streak & opened_at, just release probe
+                pass
+
+            await db.execute(
+                """UPDATE dream_breaker_state
+                   SET consecutive_failures = ?, opened_at = ?, probe_until = NULL, updated_at = ?
+                   WHERE user_id = ? AND generation = ?""",
+                (failures, opened_at, now_str, user_id, cur_gen),
+            )
+            await db.commit()
+            updated_row = {
+                "user_id": user_id,
+                "consecutive_failures": failures,
+                "opened_at": opened_at,
+                "probe_until": None,
+                "generation": cur_gen,
+                "updated_at": now_str,
+            }
+            view = _compute_breaker_view(updated_row, now_dt, cd)
+            view["ignored_stale_generation"] = False
+            view["transitioned_to_open"] = transitioned_to_open
+            return view
+        except Exception:
+            await db.rollback()
+            raise
+
+
+async def reset_dream_breaker(user_id: str, now=None) -> dict:
+    """Idempotently reset user's Dream circuit breaker, incrementing generation and preserving history/snapshots."""
+    now_dt = _coerce_utc_now(now)
+    now_str = format_utc_timestamp(now_dt)
+    async with aiosqlite.connect(DB_PATH, timeout=10.0) as db:
+        db.row_factory = aiosqlite.Row
+        await db.execute("BEGIN IMMEDIATE")
+        try:
+            async with db.execute(
+                "SELECT generation FROM dream_breaker_state WHERE user_id = ?",
+                (user_id,),
+            ) as cur:
+                row = await cur.fetchone()
+            if row is not None:
+                new_gen = int(row["generation"] or 0) + 1
+                await db.execute(
+                    """UPDATE dream_breaker_state
+                       SET consecutive_failures = 0, opened_at = NULL, probe_until = NULL,
+                           generation = ?, updated_at = ?
+                       WHERE user_id = ?""",
+                    (new_gen, now_str, user_id),
+                )
+            else:
+                new_gen = 1
+                await db.execute(
+                    """INSERT INTO dream_breaker_state
+                       (user_id, consecutive_failures, opened_at, probe_until, generation, updated_at)
+                       VALUES (?, 0, NULL, NULL, ?, ?)""",
+                    (user_id, new_gen, now_str),
+                )
+            await db.commit()
+        except Exception:
+            await db.rollback()
+            raise
+    return {
+        "state": "closed",
+        "consecutive_failures": 0,
+        "retry_at": None,
+        "generation": new_gen,
+    }
+
+
+async def clear_orphan_dream_probes(now=None) -> int:
+    """Release any in-flight Dream probe leases left over from an abrupt process restart."""
+    now_str = format_utc_timestamp(_coerce_utc_now(now))
+    async with aiosqlite.connect(DB_PATH, timeout=10.0) as db:
+        cur = await db.execute(
+            """UPDATE dream_breaker_state
+               SET probe_until = NULL, updated_at = ?
+               WHERE probe_until IS NOT NULL""",
+            (now_str,),
+        )
+        await db.commit()
+        return cur.rowcount or 0
+
+
+async def get_last_dream_success_at(user_id: str) -> Optional[str]:
+    """Return created_at of the most recent successful dream consolidation for user_id."""
+    async with aiosqlite.connect(DB_PATH, timeout=10.0) as db:
+        async with db.execute(
+            """SELECT created_at FROM dream_logs
+               WHERE user_id = ? AND status = 'success'
+               ORDER BY created_at DESC, rowid DESC
+               LIMIT 1""",
+            (user_id,),
+        ) as cur:
+            row = await cur.fetchone()
+        return row[0] if row and row[0] else None
+
+
+async def count_active_memory_facts(user_id: str) -> int:
+    """Fast COUNT(*) of active memory facts for eligibility checks."""
+    async with aiosqlite.connect(DB_PATH, timeout=10.0) as db:
+        async with db.execute(
+            """SELECT COUNT(*) FROM user_memory
+               WHERE user_id = ?
+                 AND is_active = 1
+                 AND COALESCE(NULLIF(status, ''), 'active') = 'active'""",
+            (user_id,),
+        ) as cur:
+            row = await cur.fetchone()
+        return int(row[0] or 0) if row else 0
 
 
 async def increment_memory_extraction_stats(user_id: str) -> None:

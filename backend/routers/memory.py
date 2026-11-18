@@ -3,8 +3,8 @@ import asyncio
 import re
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
-from typing import Optional
+from pydantic import BaseModel, Field
+from typing import Literal, Optional
 
 from backend.auth import get_current_user, require_admin
 from backend.database import (
@@ -25,6 +25,9 @@ from backend.database import (
     update_memory_fact,
     list_dream_logs,
     list_memory_snapshots,
+    get_dream_breaker_status,
+    reset_dream_breaker,
+    clamp_dream_breaker_cooldown_minutes,
     MEMORY_CATEGORIES,
 )
 from backend.memory import (
@@ -37,6 +40,7 @@ from backend.memory import (
 from backend.memory_dream import (
     simulate_dream_consolidation,
     execute_dream_consolidation,
+    run_dream_with_breaker,
     iter_sse_events,
     DreamSafetyError,
     DreamLLMError,
@@ -95,8 +99,15 @@ class DreamConfigIn(BaseModel):
     dream_min_idle_minutes: Optional[int] = None
     dream_min_hours_between_runs: Optional[int] = None
     dream_min_active_facts: Optional[int] = None
+    dream_breaker_cooldown_minutes: Optional[int] = Field(default=None, ge=1, le=1440)
     dream_provider_id: Optional[str] = None
     dream_model_id: Optional[str] = None
+
+
+class DreamBreakerStatusOut(BaseModel):
+    state: Literal["closed", "open", "half_open"]
+    consecutive_failures: int
+    retry_at: Optional[str] = None
 
 
 class FactUpdateIn(BaseModel):
@@ -689,6 +700,7 @@ async def get_dream_config(user: dict = Depends(get_current_user)):
         idle_s = await _meta_get(db, "dream_min_idle_minutes")
         hours_s = await _meta_get(db, "dream_min_hours_between_runs")
         min_facts_s = await _meta_get(db, "dream_min_active_facts")
+        cooldown_s = await _meta_get(db, "dream_breaker_cooldown_minutes")
         provider_id = await _meta_get(db, "dream_provider_id") or ""
         model_id = await _meta_get(db, "dream_model_id") or ""
 
@@ -697,6 +709,7 @@ async def get_dream_config(user: dict = Depends(get_current_user)):
             "dream_min_idle_minutes": int(idle_s) if idle_s and idle_s.isdigit() else 15,
             "dream_min_hours_between_runs": int(hours_s) if hours_s and hours_s.isdigit() else 24,
             "dream_min_active_facts": int(min_facts_s) if min_facts_s and min_facts_s.isdigit() else 5,
+            "dream_breaker_cooldown_minutes": clamp_dream_breaker_cooldown_minutes(cooldown_s),
             "dream_provider_id": provider_id,
             "dream_model_id": model_id,
         }
@@ -719,6 +732,12 @@ async def save_dream_config(body: DreamConfigIn, user: dict = Depends(require_ad
             await _meta_set(db, "dream_min_hours_between_runs", str(max(1, body.dream_min_hours_between_runs)))
         if body.dream_min_active_facts is not None:
             await _meta_set(db, "dream_min_active_facts", str(max(1, body.dream_min_active_facts)))
+        if body.dream_breaker_cooldown_minutes is not None:
+            await _meta_set(
+                db,
+                "dream_breaker_cooldown_minutes",
+                str(clamp_dream_breaker_cooldown_minutes(body.dream_breaker_cooldown_minutes)),
+            )
         if body.dream_provider_id is not None:
             await _meta_set(db, "dream_provider_id", body.dream_provider_id.strip())
         if body.dream_model_id is not None:
@@ -727,6 +746,32 @@ async def save_dream_config(body: DreamConfigIn, user: dict = Depends(require_ad
         return {"status": "ok"}
     finally:
         await db.close()
+
+
+@router.get("/dream-breaker", response_model=DreamBreakerStatusOut)
+async def get_user_dream_breaker(user: dict = Depends(get_current_user)):
+    """Retorna o estado atual do circuit breaker do Dream exclusivamente para o usuário autenticado."""
+    if not user:
+        raise HTTPException(status_code=401, detail="Não autorizado")
+    status = await get_dream_breaker_status(user["id"])
+    return DreamBreakerStatusOut(
+        state=status["state"],
+        consecutive_failures=status["consecutive_failures"],
+        retry_at=status["retry_at"],
+    )
+
+
+@router.post("/dream-breaker/reset", response_model=DreamBreakerStatusOut)
+async def reset_user_dream_breaker(user: dict = Depends(get_current_user)):
+    """Redefine o circuit breaker do Dream do usuário autenticado, preservando histórico e snapshots."""
+    if not user:
+        raise HTTPException(status_code=401, detail="Não autorizado")
+    status = await reset_dream_breaker(user["id"])
+    return DreamBreakerStatusOut(
+        state=status["state"],
+        consecutive_failures=status["consecutive_failures"],
+        retry_at=status["retry_at"],
+    )
 
 
 @router.get("/snapshots")
@@ -817,14 +862,14 @@ async def dream_run_now(body: DreamRunIn = DreamRunIn(), user: dict = Depends(ge
 
         async def worker():
             try:
-                async with memory_pipeline_lock:
-                    res = await execute_dream_consolidation(
-                        user_id=user["id"],
-                        trigger_type="dream_manual",
-                        custom_provider=body.provider_id,
-                        custom_model=body.model_id,
-                        progress_cb=progress_cb,
-                    )
+                res = await run_dream_with_breaker(
+                    user_id=user["id"],
+                    trigger_type="dream_manual",
+                    custom_provider=body.provider_id,
+                    custom_model=body.model_id,
+                    progress_cb=progress_cb,
+                    respect_breaker=False,
+                )
                 await queue.put({"step": "done", "pct": 100, "result": res})
             except Exception as exc:
                 await queue.put({"step": "error", "pct": 0, "error": str(exc)})

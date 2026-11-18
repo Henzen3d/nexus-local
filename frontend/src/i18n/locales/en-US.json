@@ -1079,7 +1079,17 @@
     "dreamJournalFilterSuccess": "Success",
     "dreamJournalFilterRolledBack": "Rolled back",
     "dreamJournalFilterFailed": "Failed",
-    "dreamJournalShowingCount": "Showing {{shown}} of {{total}} consolidations"
+    "dreamJournalShowingCount": "Showing {{shown}} of {{total}} consolidations",
+    "dreamBreakerLabel": "Automatic protection (Circuit Breaker)",
+    "dreamBreakerStateClosed": "Active",
+    "dreamBreakerStateOpen": "Paused after failures",
+    "dreamBreakerStateHalfOpen": "Waiting for recovery probe",
+    "dreamBreakerFailures": "{{count}} consecutive failures",
+    "dreamBreakerRetryAt": "Next automatic retry: {{time}}",
+    "dreamBreakerResetBtn": "Reset breaker",
+    "dreamBreakerResetting": "Resetting...",
+    "dreamBreakerResetSuccess": "Breaker reset. Automatic consolidation is enabled again.",
+    "dreamBreakerResetError": "Could not reset the breaker right now."
   },
   "autoRouter": {
     "title": "Smart Router",

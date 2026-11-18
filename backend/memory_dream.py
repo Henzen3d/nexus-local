@@ -1119,3 +1119,100 @@ async def execute_dream_consolidation(
         })
         logger.error("[Dream] Falha na execução da consolidação: %s", exc, exc_info=exc)
         raise exc
+
+
+async def run_dream_with_breaker(
+    user_id: str,
+    *,
+    trigger_type: str = "dream_manual",
+    custom_provider: Optional[str] = None,
+    custom_model: Optional[str] = None,
+    progress_cb: Optional[Callable[[str, int, str], Awaitable[None]]] = None,
+    respect_breaker: bool = False,
+    cooldown_minutes: Optional[int] = None,
+    consolidator: Optional[Callable[..., Awaitable[dict]]] = None,
+    now_fn: Optional[Callable[[], datetime.datetime]] = None,
+    already_locked: bool = False,
+) -> dict:
+    """
+    Shared service entry point for both background worker and manual Dream runs.
+    Enforces `memory_pipeline_lock`, atomic half-open probe reservation, generation fencing,
+    and operational failure accounting (ignoring no_op, safety aborts, and cancellations).
+    """
+    from contextlib import nullcontext
+    from backend.memory_lock import memory_pipeline_lock
+
+    now_getter = now_fn or (lambda: datetime.datetime.now(datetime.timezone.utc))
+    exec_fn = consolidator or execute_dream_consolidation
+
+    if respect_breaker:
+        probe = await dbmod.try_acquire_dream_probe(
+            user_id,
+            now=now_getter(),
+            cooldown_minutes=cooldown_minutes,
+        )
+        if not probe.get("allowed"):
+            return {"status": "skipped_breaker", "breaker": probe}
+        generation = probe["generation"]
+    else:
+        status_before = await dbmod.get_dream_breaker_status(
+            user_id,
+            now=now_getter(),
+            cooldown_minutes=cooldown_minutes,
+        )
+        generation = status_before["generation"]
+
+    lock_cm = nullcontext() if already_locked else memory_pipeline_lock
+    try:
+        async with lock_cm:
+            result = await exec_fn(
+                user_id=user_id,
+                trigger_type=trigger_type,
+                custom_provider=custom_provider,
+                custom_model=custom_model,
+                progress_cb=progress_cb,
+            )
+    except DreamSafetyError:
+        await dbmod.record_dream_attempt(
+            user_id,
+            generation,
+            "aborted_safety",
+            now=now_getter(),
+            cooldown_minutes=cooldown_minutes,
+        )
+        raise
+    except asyncio.CancelledError:
+        await dbmod.record_dream_attempt(
+            user_id,
+            generation,
+            "cancelled",
+            now=now_getter(),
+            cooldown_minutes=cooldown_minutes,
+        )
+        raise
+    except Exception:
+        breaker_res = await dbmod.record_dream_attempt(
+            user_id,
+            generation,
+            "failure",
+            now=now_getter(),
+            cooldown_minutes=cooldown_minutes,
+        )
+        if breaker_res.get("transitioned_to_open"):
+            logger.warning(
+                "[Dream Circuit Breaker] Pausando consolidação para usuário %s após %d falhas consecutivas (próxima tentativa em %s)",
+                user_id,
+                breaker_res["consecutive_failures"],
+                breaker_res.get("retry_at"),
+            )
+        raise
+
+    outcome = "no_op" if (isinstance(result, dict) and result.get("status") == "no_op") else "success"
+    await dbmod.record_dream_attempt(
+        user_id,
+        generation,
+        outcome,
+        now=now_getter(),
+        cooldown_minutes=cooldown_minutes,
+    )
+    return result

@@ -464,6 +464,11 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify(data),
     }),
+  getDreamBreaker: () => fetchJSON<DreamBreakerStatusApi>('/memory/dream-breaker'),
+  resetDreamBreaker: () =>
+    fetchJSON<DreamBreakerStatusApi>('/memory/dream-breaker/reset', {
+      method: 'POST',
+    }),
   dreamPreview: (data?: { provider_id?: string; model_id?: string }) =>
     fetchJSON<DreamPreviewResponse>('/memory/dream-preview', {
       method: 'POST',
@@ -983,8 +988,15 @@ export interface DreamConfigApi {
   dream_min_idle_minutes: number
   dream_min_hours_between_runs: number
   dream_min_active_facts: number
+  dream_breaker_cooldown_minutes?: number
   dream_provider_id: string
   dream_model_id: string
+}
+
+export interface DreamBreakerStatusApi {
+  state: 'closed' | 'open' | 'half_open'
+  consecutive_failures: number
+  retry_at: string | null
 }
 
 export interface DreamSnapshotApi {

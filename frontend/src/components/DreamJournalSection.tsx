@@ -10,8 +10,11 @@ import {
   ChevronDown,
   ChevronUp,
   History,
+  ShieldAlert,
+  ShieldCheck,
+  RefreshCw,
 } from 'lucide-react'
-import type { DreamLogApi } from '../api/client'
+import type { DreamLogApi, DreamBreakerStatusApi } from '../api/client'
 import { dreamStepState } from '../lib/dreamLog'
 import { DreamLogCard } from './DreamLogCard'
 import { DreamFullHistoryModal } from './DreamFullHistoryModal'
@@ -22,6 +25,10 @@ interface DreamJournalSectionProps {
   isLiveRunning: boolean
   liveProgress: { step: string; pct: number; msg?: string; error?: string } | null
   rollingBackId: string | null
+  breakerStatus?: DreamBreakerStatusApi | null
+  resettingBreaker?: boolean
+  breakerFeedback?: { type: 'success' | 'error'; text: string } | null
+  onResetBreaker?: () => void
   onSimulate: () => void
   onRunNow: () => void
   onRollback: (log: DreamLogApi) => void
@@ -33,6 +40,10 @@ export function DreamJournalSection({
   isLiveRunning,
   liveProgress,
   rollingBackId,
+  breakerStatus,
+  resettingBreaker = false,
+  breakerFeedback = null,
+  onResetBreaker,
   onSimulate,
   onRunNow,
   onRollback,
@@ -138,6 +149,127 @@ export function DreamJournalSection({
           </button>
         </div>
       </div>
+
+      {/* Dream Circuit Breaker Status Banner (T1.1) */}
+      {(breakerStatus || breakerFeedback) && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: '10px',
+            padding: '10px 14px',
+            borderRadius: '10px',
+            marginBottom: '14px',
+            background:
+              breakerStatus?.state === 'open'
+                ? 'rgba(239, 68, 68, 0.08)'
+                : breakerStatus?.state === 'half_open'
+                  ? 'rgba(245, 158, 11, 0.09)'
+                  : 'var(--surface-soft)',
+            border: '1px solid',
+            borderColor:
+              breakerStatus?.state === 'open'
+                ? 'rgba(239, 68, 68, 0.32)'
+                : breakerStatus?.state === 'half_open'
+                  ? 'rgba(245, 158, 11, 0.35)'
+                  : 'var(--hairline)',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', minWidth: 0, flex: 1 }}>
+            {breakerStatus?.state === 'open' || breakerStatus?.state === 'half_open' ? (
+              <ShieldAlert
+                size={15}
+                style={{
+                  color: breakerStatus.state === 'open' ? 'var(--error, #ef4444)' : '#d97706',
+                  flexShrink: 0,
+                }}
+              />
+            ) : (
+              <ShieldCheck size={15} style={{ color: 'var(--success, #22c55e)', flexShrink: 0 }} />
+            )}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', fontSize: '12px' }}>
+                <span style={{ fontWeight: 600, color: 'var(--ink)' }}>
+                  {t('memory.dreamBreakerLabel')}:
+                </span>
+                <span
+                  style={{
+                    fontWeight: 600,
+                    color:
+                      breakerStatus?.state === 'open'
+                        ? 'var(--error, #ef4444)'
+                        : breakerStatus?.state === 'half_open'
+                          ? '#d97706'
+                          : 'var(--success, #22c55e)',
+                  }}
+                >
+                  {breakerStatus?.state === 'open'
+                    ? t('memory.dreamBreakerStateOpen')
+                    : breakerStatus?.state === 'half_open'
+                      ? t('memory.dreamBreakerStateHalfOpen')
+                      : t('memory.dreamBreakerStateClosed')}
+                </span>
+                {breakerStatus && breakerStatus.consecutive_failures > 0 && (
+                  <span style={{ color: 'var(--muted)' }}>
+                    ({t('memory.dreamBreakerFailures', { count: breakerStatus.consecutive_failures })})
+                  </span>
+                )}
+              </div>
+              {breakerStatus?.retry_at && (
+                <span style={{ fontSize: '11.5px', color: 'var(--muted)' }}>
+                  {t('memory.dreamBreakerRetryAt', {
+                    time: new Date(breakerStatus.retry_at).toLocaleString(),
+                  })}
+                </span>
+              )}
+              {breakerFeedback && (
+                <span
+                  role="status"
+                  style={{
+                    fontSize: '11.5px',
+                    fontWeight: 500,
+                    color: breakerFeedback.type === 'error' ? 'var(--error, #ef4444)' : 'var(--success, #22c55e)',
+                  }}
+                >
+                  {breakerFeedback.text}
+                </span>
+              )}
+            </div>
+          </div>
+
+          {onResetBreaker && breakerStatus && (breakerStatus.state !== 'closed' || breakerStatus.consecutive_failures > 0) && (
+            <button
+              type="button"
+              onClick={onResetBreaker}
+              disabled={resettingBreaker || isLiveRunning}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '6px 12px',
+                borderRadius: '8px',
+                border: '1px solid var(--hairline)',
+                background: 'var(--surface-card)',
+                color: 'var(--ink)',
+                fontSize: '12px',
+                fontWeight: 600,
+                cursor: resettingBreaker || isLiveRunning ? 'not-allowed' : 'pointer',
+                opacity: resettingBreaker || isLiveRunning ? 0.6 : 1,
+                flexShrink: 0,
+              }}
+            >
+              {resettingBreaker ? (
+                <Loader2 size={13} className="spin-animation" />
+              ) : (
+                <RefreshCw size={13} />
+              )}
+              {resettingBreaker ? t('memory.dreamBreakerResetting') : t('memory.dreamBreakerResetBtn')}
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Live Running Progress Card */}
       {isLiveRunning && (

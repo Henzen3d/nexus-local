@@ -32,6 +32,7 @@ import {
   type MemoryExtractorConfig,
   type MemoryStatsApi,
   type DreamLogApi,
+  type DreamBreakerStatusApi,
   type DreamPreviewResponse,
 } from '../api/client'
 import type { MemorySummary, Provider } from '../types'
@@ -119,23 +120,52 @@ export function UserMemoryPanel() {
     error?: string
   } | null>(null)
   const [rollingBackId, setRollingBackId] = useState<string | null>(null)
+  const [dreamBreaker, setDreamBreaker] = useState<DreamBreakerStatusApi | null>(null)
+  const [resettingDreamBreaker, setResettingDreamBreaker] = useState(false)
+  const [dreamBreakerFeedback, setDreamBreakerFeedback] = useState<{
+    type: 'success' | 'error'
+    text: string
+  } | null>(null)
   const [postDreamBanner, setPostDreamBanner] = useState<{
     visible: boolean
     log: DreamLogApi | null
   }>({ visible: false, log: null })
 
+  const handleResetDreamBreaker = async () => {
+    if (resettingDreamBreaker) return
+    setResettingDreamBreaker(true)
+    setDreamBreakerFeedback(null)
+    try {
+      const updated = await api.resetDreamBreaker()
+      setDreamBreaker(updated)
+      setDreamBreakerFeedback({
+        type: 'success',
+        text: t('memory.dreamBreakerResetSuccess'),
+      })
+    } catch {
+      setDreamBreakerFeedback({
+        type: 'error',
+        text: t('memory.dreamBreakerResetError'),
+      })
+    } finally {
+      setResettingDreamBreaker(false)
+    }
+  }
+
   const reloadAll = async () => {
     try {
-      const [data, sums, st, logs] = await Promise.all([
+      const [data, sums, st, logs, breaker] = await Promise.all([
         api.getUserMemory(),
         api.getMemorySummaries().catch(() => [] as MemorySummary[]),
         api.getMemoryStats().catch(() => null),
         api.getDreamLogs().catch(() => [] as DreamLogApi[]),
+        api.getDreamBreaker().catch(() => null),
       ])
       setMemories(data)
       setSummaries(sums || [])
       setStats(st)
       setDreamLogs(logs || [])
+      if (breaker) setDreamBreaker(breaker)
     } catch (err) {
       console.error('Failed to reload memory state', err)
     }
@@ -145,7 +175,7 @@ export function UserMemoryPanel() {
     setLoading(true)
     setError('')
     try {
-      const [data, profile, ext, provs, sums, st, logs] = await Promise.all([
+      const [data, profile, ext, provs, sums, st, logs, breaker] = await Promise.all([
         api.getUserMemory(),
         api.getUserProfile().catch(() => null),
         api.getMemoryExtractorConfig().catch(() => null),
@@ -153,6 +183,7 @@ export function UserMemoryPanel() {
         api.getMemorySummaries().catch(() => [] as MemorySummary[]),
         api.getMemoryStats().catch(() => null),
         api.getDreamLogs().catch(() => [] as DreamLogApi[]),
+        api.getDreamBreaker().catch(() => null),
       ])
       setMemories(data)
       if (profile) {
@@ -163,6 +194,7 @@ export function UserMemoryPanel() {
       setSummaries(sums || [])
       setStats(st)
       setDreamLogs(logs || [])
+      setDreamBreaker(breaker)
 
       // Check if recent dream occurred in last 24h
       if (logs && logs.length > 0) {
@@ -965,6 +997,10 @@ export function UserMemoryPanel() {
         isLiveRunning={dreamLiveRunning}
         liveProgress={dreamLiveProgress}
         rollingBackId={rollingBackId}
+        breakerStatus={dreamBreaker}
+        resettingBreaker={resettingDreamBreaker}
+        breakerFeedback={dreamBreakerFeedback}
+        onResetBreaker={handleResetDreamBreaker}
         onSimulate={handleOpenDreamPreview}
         onRunNow={handleRunDreamNow}
         onRollback={handleRollback}

@@ -952,7 +952,17 @@
     "unpin": "Quitar fijado",
     "pinError": "Error al fijar.",
     "llmSummaries": "Resúmenes con LLM",
-    "llmSummariesDesc": "Refina resúmenes con el modelo extractor."
+    "llmSummariesDesc": "Refina resúmenes con el modelo extractor.",
+    "dreamBreakerLabel": "Protección automática (Circuit Breaker)",
+    "dreamBreakerStateClosed": "Activa",
+    "dreamBreakerStateOpen": "Pausada por fallos",
+    "dreamBreakerStateHalfOpen": "Esperando prueba de recuperación",
+    "dreamBreakerFailures": "{{count}} fallos seguidos",
+    "dreamBreakerRetryAt": "Próximo intento automático: {{time}}",
+    "dreamBreakerResetBtn": "Restablecer protección",
+    "dreamBreakerResetting": "Restableciendo...",
+    "dreamBreakerResetSuccess": "Protección restablecida. La consolidación automática vuelve a estar habilitada.",
+    "dreamBreakerResetError": "No se pudo restablecer la protección en este momento."
   },
   "autoRouter": {
     "title": "Enrutamiento Inteligente",

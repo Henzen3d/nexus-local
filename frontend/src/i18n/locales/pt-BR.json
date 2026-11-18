@@ -1078,7 +1078,17 @@
     "dreamJournalFilterSuccess": "Sucesso",
     "dreamJournalFilterRolledBack": "Revertidos",
     "dreamJournalFilterFailed": "Falhas",
-    "dreamJournalShowingCount": "Exibindo {{shown}} de {{total}} consolidações"
+    "dreamJournalShowingCount": "Exibindo {{shown}} de {{total}} consolidações",
+    "dreamBreakerLabel": "Proteção automática (Circuit Breaker)",
+    "dreamBreakerStateClosed": "Ativo",
+    "dreamBreakerStateOpen": "Pausado por falhas",
+    "dreamBreakerStateHalfOpen": "Aguardando teste de retomada",
+    "dreamBreakerFailures": "{{count}} falhas seguidas",
+    "dreamBreakerRetryAt": "Próxima tentativa automática: {{time}}",
+    "dreamBreakerResetBtn": "Redefinir proteção",
+    "dreamBreakerResetting": "Redefinindo...",
+    "dreamBreakerResetSuccess": "Proteção redefinida. A consolidação automática foi liberada.",
+    "dreamBreakerResetError": "Não foi possível redefinir a proteção agora."
   },
   "autoRouter": {
     "title": "Roteamento Inteligente",
