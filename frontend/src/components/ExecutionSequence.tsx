@@ -94,6 +94,8 @@ function formatTriageTitle(title: string): string {
 
 export function ExecutionSequence({ steps, isWorking, startedAt, durationMs, thinkingContent }: Props) {
   const { t } = useTranslation()
+  const regionId = useId()
+  const toggleButtonRef = useRef<HTMLButtonElement | null>(null)
   const [isOpen, setIsOpen] = useState(isWorking)
   const [isReasoningOpen, setIsReasoningOpen] = useState(() => Boolean(isWorking && thinkingContent))
   const [elapsedMs, setElapsedMs] = useState(() => (startedAt ? Date.now() - startedAt : 0))
@@ -208,9 +210,6 @@ export function ExecutionSequence({ steps, isWorking, startedAt, durationMs, thi
         )
     }
   }
-
-  const regionId = useId()
-  const toggleButtonRef = useRef<HTMLButtonElement | null>(null)
 
   return (
     <section className={`execution-sequence${isWorking ? ' is-working' : ''}`} aria-label={t('chat.processLabel')}>

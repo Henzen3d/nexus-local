@@ -34,13 +34,16 @@ function SourceCards({ sources }: { sources: WebSearchSource[] }) {
   const { t } = useTranslation()
   return (
     <div className="source-card-list">
-      {sources.map((source) => {
+      {sources.map((source, idx) => {
         const host = sourceHost(source.url)
         const label = source.title || host
+        const sourceIndex = source.index ?? (idx + 1)
         return (
-          <article key={source.url} className="source-card">
+          <article key={`${source.url}-${idx}`} className="source-card">
             <a className="source-card-main" href={source.url} target="_blank" rel="noopener noreferrer">
-              <div className="source-card-title">{label}</div>
+              <div className="source-card-title">
+                <span className="source-card-idx">[{sourceIndex}]</span> {label}
+              </div>
               {source.snippet && <p className="source-card-snippet">{source.snippet}</p>}
             </a>
             <div className="source-card-foot">

@@ -1316,37 +1316,13 @@ async def _resolve_web_search(
                 if search_results or scraped_pages:
                     web_search_used = True
 
-                    # Combina páginas lidas no Deep Reader com resultados gerais da busca
-                    sources_map = {}
-                    for page in scraped_pages:
-                        p_url = page.get("url")
-                        if p_url:
-                            sample = (page.get("text_sample") or "").strip()
-                            sources_map[p_url] = {
-                                "title": page.get("title") or p_url,
-                                "url": p_url,
-                                "snippet": sample[:280],
-                                "was_read": True,
-                            }
-                    for r in search_results:
-                        r_url = r.get("url")
-                        if not r_url:
-                            continue
-                        snippet = (r.get("snippet") or "").strip()[:280]
-                        if r_url not in sources_map:
-                            sources_map[r_url] = {
-                                "title": r.get("title") or r_url,
-                                "url": r_url,
-                                "snippet": snippet,
-                                "was_read": False,
-                            }
-                        elif snippet and not sources_map[r_url].get("snippet"):
-                            sources_map[r_url]["snippet"] = snippet
-
-                    web_search_sources = list(sources_map.values())
+                    # Constrói lista canônica de fontes com numeração estável 1..N (T4.2)
+                    from backend.web_search.formatter import build_canonical_sources
+                    web_search_sources = build_canonical_sources(search_results, scraped_pages)
 
                     if search_config is not None:
                         search_config["scraped_pages"] = scraped_pages
+                        search_config["canonical_sources"] = web_search_sources
                         search_config["_telemetry"] = {
                             "primary_query": primary_query,
                             "trigger_type": trigger_type,

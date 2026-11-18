@@ -11938,15 +11938,24 @@ html[data-theme="light"] .model-option-provider-tag {
 .source-chip-favs {
   display: inline-flex;
   align-items: center;
+  gap: 3px;
 }
 
 .source-chip-favs .source-favicon {
-  margin-left: -6px;
-  border: 2px solid var(--surface);
+  margin-left: 0;
+  box-sizing: border-box;
+  box-shadow: 0 0 0 1.5px var(--surface-card);
 }
 
 .source-chip-favs .source-favicon:first-child {
   margin-left: 0;
+}
+
+.source-card-idx {
+  display: inline-block;
+  font-weight: 600;
+  color: var(--primary);
+  margin-right: 4px;
 }
 
 .source-favicon {

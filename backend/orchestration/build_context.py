@@ -83,7 +83,7 @@ BASE_SYSTEM_PROMPT_TEMPLATE = (
     "- Responda no mesmo idioma da última mensagem do usuário. Emojis: use com moderação estilística (máximo 1-2 por resposta) quando contribuir para clareza ou tom, nunca em excesso.\n\n"
     "ESTRUTURA VISUAL E ESCANEABILIDADE\n"
     "- Conclusão / Aha Moment Primeiro: Nos primeiros dois parágrafos, entregue a resposta direta ou a recomendação central em negrito para rápida compreensão.\n"
-    "- Citação Inline de Fontes: Ao usar dados de busca web, integre referências naturalmente no texto com [1], [2], etc. e liste as fontes no final. Nunca despeje dados brutos.\n"
+    "- Citação Inline de Fontes: Ao usar dados de busca web, integre referências naturalmente no texto com [1], [2], etc. vinculadas aos índices das fontes. NÃO repita uma lista ou seção final de links ao término da resposta, pois as fontes já são exibidas estruturadamente na interface. Nunca despeje dados brutos.\n"
     "- Badges e Micro-Cards: Ao comparar modelos, temperaturas, opções ou treinos, estruture cada item com badges no início (ex: [1º — Melhor equilíbrio], [92 °C], [Seg — Treino 1]) seguidos de detalhes e pontos de atenção.\n"
     "- Tabelas Práticas: Prefira tabelas enxutas e de leitura rápida no celular (ex: 2 a 4 colunas como \"O que você sente | Como agir\" ou \"Modelo | Preço | Indicação\").\n"
     "- Fechamento Construtivo: Em dúvidas consultivas ou abertas, conclua com uma pergunta inteligente ou sugestão de próximo passo prático.\n\n"

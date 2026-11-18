@@ -271,20 +271,25 @@ async def load_history(
 
         # 0. Web Search injection
         scraped_pages = (search_config or {}).get("scraped_pages")
-        if msg["id"] == user_msg_id and web_search_used and (search_results or scraped_pages):
+        canonical_sources = (search_config or {}).get("canonical_sources")
+        if msg["id"] == user_msg_id and web_search_used and (search_results or scraped_pages or canonical_sources):
+            fmt_kwargs = {
+                "template": (search_config or {}).get("injection_template"),
+                "scraped_pages": scraped_pages,
+            }
+            if canonical_sources is not None:
+                fmt_kwargs["canonical_sources"] = canonical_sources
             search_context = (
                 format_search_results_fn(
                     search_results,
                     web_search_query,
-                    template=(search_config or {}).get("injection_template"),
-                    scraped_pages=scraped_pages,
+                    **fmt_kwargs,
                 )
                 if format_search_results_fn
                 else _fmt(
                     search_results,
                     web_search_query,
-                    template=(search_config or {}).get("injection_template"),
-                    scraped_pages=scraped_pages,
+                    **fmt_kwargs,
                 )
             )
             text_content = f"{search_context}\n\n---\n\n{text_content}"

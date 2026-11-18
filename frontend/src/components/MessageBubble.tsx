@@ -24,6 +24,7 @@ import { ExecutionSequence } from './ExecutionSequence'
 import { mergeProcessTree } from '../lib/processTree'
 import { SourceShelf } from './SourceShelf'
 import { GeneratedImage } from './ImageLightbox'
+import { stripDuplicateTrailingSources } from '../lib/sourceCards'
 
 const REMARK_PLUGINS = [remarkGfm]
 const STALE_STREAM_STYLE: React.CSSProperties = { opacity: 0.92 }
@@ -507,6 +508,14 @@ export const MessageBubble = React.memo(function MessageBubble({ message }: Prop
     [textWithoutUi, artifacts],
   )
 
+  const displayedContent = useMemo(() => {
+    if (!cleanedContent) return ''
+    if (message.web_search_sources && message.web_search_sources.length > 0) {
+      return stripDuplicateTrailingSources(cleanedContent, message.web_search_sources)
+    }
+    return cleanedContent
+  }, [cleanedContent, message.web_search_sources])
+
   const hasExecutionSequence =
     message.role === 'assistant' && Boolean(reasoning || message.process_steps?.length || message.web_search_used)
   const mergedProcessSteps = useMemo(() => {
@@ -572,9 +581,9 @@ export const MessageBubble = React.memo(function MessageBubble({ message }: Prop
                 />
               ) : null}
 
-              {cleanedContent ? (
+              {displayedContent ? (
                 <div className="assistant-response">
-                  <MemoizedMarkdownBody content={cleanedContent} />
+                  <MemoizedMarkdownBody content={displayedContent} />
                 </div>
               ) : reasoning ? (
                 <div className="reasoning-exhausted-card">

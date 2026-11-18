@@ -243,6 +243,12 @@ async def get_conversation(conversation_id: str, current_user: dict = Depends(ge
         for m in messages:
             msg_kind = (m[14] if len(m) > 14 else None) or "normal"
             msg_role = "error" if msg_kind == "error" else m[1]
+            sources_val = _loads(m[12]) if len(m) > 12 else None
+            if isinstance(sources_val, list):
+                for idx, src in enumerate(sources_val, start=1):
+                    if isinstance(src, dict) and "index" not in src:
+                        src["index"] = idx
+
             item = {
                 "id": m[0],
                 "role": msg_role,
@@ -261,7 +267,7 @@ async def get_conversation(conversation_id: str, current_user: dict = Depends(ge
                 "ui_blocks": msg_ui_blocks.get(m[0]),
                 "web_search_used": bool(m[10]) if len(m) > 10 else False,
                 "web_search_query": m[11] if len(m) > 11 else None,
-                "web_search_sources": _loads(m[12]) if len(m) > 12 else None,
+                "web_search_sources": sources_val,
                 "process_steps": _loads(m[13]) if len(m) > 13 else None,
                 "process_duration_ms": m[17] if len(m) > 17 else None,
                 "kind": msg_kind,
