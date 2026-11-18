@@ -923,6 +923,7 @@ export const api = {
 }
 
 export interface MemoryStatsApi {
+  total_facts?: number
   active_facts: number
   inactive_facts: number
   pinned_facts?: number

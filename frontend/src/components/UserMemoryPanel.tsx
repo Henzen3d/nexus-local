@@ -372,9 +372,7 @@ export function UserMemoryPanel() {
   const handleDelete = async (id: string) => {
     try {
       await api.deleteMemoryFact(id)
-      setMemories((prev) => prev.filter((m) => m.id !== id))
-      const st = await api.getMemoryStats().catch(() => null)
-      if (st) setStats(st)
+      await reloadAll()
     } catch (err) {
       console.error(err)
       alert(t('memory.deleteError'))
@@ -385,9 +383,7 @@ export function UserMemoryPanel() {
     const next = !m.is_pinned
     try {
       await api.pinMemoryFact(m.id, !!next)
-      setMemories((prev) =>
-        prev.map((x) => (x.id === m.id ? { ...x, is_pinned: next ? 1 : 0 } : x))
-      )
+      await reloadAll()
     } catch (err) {
       console.error(err)
       alert(t('memory.pinError'))
@@ -491,12 +487,9 @@ export function UserMemoryPanel() {
   const handleClearAll = async () => {
     try {
       await api.clearAllMemory()
-      setMemories([])
-      setSummaries([])
       setPreview(null)
       setClearConfirm(false)
-      const st = await api.getMemoryStats().catch(() => null)
-      if (st) setStats(st)
+      await reloadAll()
     } catch (err) {
       console.error(err)
       alert(t('memory.clearError'))
@@ -584,17 +577,18 @@ export function UserMemoryPanel() {
     'project', 'tech', 'prefs', 'preference', 'other',
   ]
 
-  // Filtering facts based on includeHistory and active status
-  const activeFactsCount = memories.filter(
-    (m) => m.is_active !== 0 && (!m.status || m.status === 'active')
-  ).length
-  const historyFactsCount = memories.filter(
-    (m) => m.is_active === 0 || (m.status && m.status !== 'active')
-  ).length
+  // Single presentation predicate matching backend ACTIVE_MEMORY_FACT_SQL (T1.3):
+  // active iff is_active === 1 AND COALESCE(NULLIF(status, ''), 'active') === 'active'
+  const isFactActive = (m: MemoryFact): boolean =>
+    m.is_active === 1 && (!m.status || m.status === 'active')
 
-  const factsToDisplay = includeHistory
-    ? memories
-    : memories.filter((m) => m.is_active !== 0 && (!m.status || m.status === 'active'))
+  // Server stats are the single source of truth for totals (never derive totals from the LIMIT 500 sample)
+  const activeFactsCount = stats ? stats.active_facts : null
+  const historyFactsCount = stats ? stats.inactive_facts : null
+  const hasAnyActiveForActions =
+    activeFactsCount !== null ? activeFactsCount > 0 : memories.some(isFactActive)
+
+  const factsToDisplay = includeHistory ? memories : memories.filter(isFactActive)
 
   const q = searchQuery.toLowerCase().trim()
   const filteredMemories = factsToDisplay.filter((m) => {
@@ -721,25 +715,42 @@ export function UserMemoryPanel() {
           <Brain size={22} style={{ color: 'var(--primary)' }} />
           <h2 style={{ fontSize: '18px', fontWeight: 600, color: 'var(--ink)', margin: 0 }}>
             {t('settings.memory')}
-            {activeFactsCount > 0 && (
+            {activeFactsCount !== null ? (
+              (activeFactsCount > 0 || (historyFactsCount ?? 0) > 0) && (
+                <span
+                  style={{
+                    marginLeft: '10px',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    background: 'var(--primary)',
+                    color: '#fff',
+                    borderRadius: '20px',
+                    padding: '1px 8px',
+                    verticalAlign: 'middle',
+                  }}
+                >
+                  {(historyFactsCount ?? 0) > 0
+                    ? t('memory.dreamActiveCountWithHistory', {
+                        active: activeFactsCount,
+                        history: historyFactsCount,
+                      })
+                    : t('memory.factsCount', { count: activeFactsCount })}
+                </span>
+              )
+            ) : (
               <span
                 style={{
                   marginLeft: '10px',
                   fontSize: '12px',
                   fontWeight: 600,
-                  background: 'var(--primary)',
-                  color: '#fff',
+                  background: 'var(--surface-soft)',
+                  color: 'var(--muted)',
                   borderRadius: '20px',
                   padding: '1px 8px',
                   verticalAlign: 'middle',
                 }}
               >
-                {historyFactsCount > 0
-                  ? t('memory.dreamActiveCountWithHistory', {
-                      active: activeFactsCount,
-                      history: historyFactsCount,
-                    })
-                  : t('memory.factsCount', { count: activeFactsCount })}
+                {loading ? '…' : '—'}
               </span>
             )}
           </h2>
@@ -837,7 +848,7 @@ export function UserMemoryPanel() {
             <Eye size={14} />
             {t('memory.previewBtn')}
           </button>
-          {activeFactsCount > 0 && !clearConfirm && (
+          {hasAnyActiveForActions && !clearConfirm && (
             <button
               onClick={() => setClearConfirm(true)}
               style={{
@@ -900,42 +911,40 @@ export function UserMemoryPanel() {
       </p>
 
       {/* Metrics Bar */}
-      {stats && (
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(135px, 1fr))',
-            gap: '10px',
-            marginBottom: '16px',
-          }}
-        >
-          {[
-            { label: t('memory.statActive'), value: stats.active_facts },
-            { label: t('memory.statInactive'), value: stats.inactive_facts },
-            { label: t('memory.statSummaries'), value: stats.summaries_count },
-            { label: t('memory.statExtractToday'), value: stats.extractions_today },
-            { label: t('memory.statExtractTotal'), value: stats.extractions_total },
-          ].map((item) => (
-            <div
-              key={item.label}
-              style={{
-                background: 'var(--surface-card)',
-                border: '1px solid var(--hairline)',
-                borderRadius: '10px',
-                padding: '10px 12px',
-              }}
-            >
-              <div style={{ fontSize: '11px', color: 'var(--muted)', display: 'flex', alignItems: 'center', gap: 4 }}>
-                <BarChart3 size={12} />
-                {item.label}
-              </div>
-              <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--ink)', marginTop: 4 }}>
-                {item.value}
-              </div>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(135px, 1fr))',
+          gap: '10px',
+          marginBottom: '16px',
+        }}
+      >
+        {[
+          { label: t('memory.statActive'), value: stats ? stats.active_facts : loading ? '…' : '—' },
+          { label: t('memory.statInactive'), value: stats ? stats.inactive_facts : loading ? '…' : '—' },
+          { label: t('memory.statSummaries'), value: stats ? stats.summaries_count : loading ? '…' : '—' },
+          { label: t('memory.statExtractToday'), value: stats ? stats.extractions_today : loading ? '…' : '—' },
+          { label: t('memory.statExtractTotal'), value: stats ? stats.extractions_total : loading ? '…' : '—' },
+        ].map((item) => (
+          <div
+            key={item.label}
+            style={{
+              background: 'var(--surface-card)',
+              border: '1px solid var(--hairline)',
+              borderRadius: '10px',
+              padding: '10px 12px',
+            }}
+          >
+            <div style={{ fontSize: '11px', color: 'var(--muted)', display: 'flex', alignItems: 'center', gap: 4 }}>
+              <BarChart3 size={12} />
+              {item.label}
             </div>
-          ))}
-        </div>
-      )}
+            <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--ink)', marginTop: 4 }}>
+              {item.value}
+            </div>
+          </div>
+        ))}
+      </div>
 
       {/* Global memory toggle */}
       <div
@@ -1181,7 +1190,7 @@ export function UserMemoryPanel() {
             style={{ cursor: 'pointer' }}
           />
           {t('memory.dreamIncludeHistory')}
-          {historyFactsCount > 0 && (
+          {historyFactsCount !== null && historyFactsCount > 0 && (
             <span
               style={{
                 fontSize: '11px',

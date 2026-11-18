@@ -2772,6 +2772,9 @@ def _reasoning_row_matches(ctrl, levels, default, want_ctrl, want_levels, want_d
 
 MEMORY_CATEGORIES = ('professional', 'personal', 'project', 'preference', 'identity', 'tech')
 
+# Predicado único de apresentação para fatos ativos (T1.3)
+ACTIVE_MEMORY_FACT_SQL = "is_active = 1 AND COALESCE(NULLIF(status, ''), 'active') = 'active'"
+
 # Max chars (~tokens x4) to inject into system prompt from memory block
 MEMORY_INJECT_MAX_CHARS = 4000
 
@@ -3157,27 +3160,34 @@ async def clear_all_memory(user_id: str) -> None:
 
 
 async def get_memory_stats(user_id: str) -> dict:
-    """Local metrics for memory dashboard with Dream telemetries (Phase D & Dream)."""
+    """Local metrics for memory dashboard with Dream telemetries (Phase D & Dream, T1.3 unified predicate)."""
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute(
-            "SELECT COUNT(*) FROM user_memory WHERE user_id = ? AND is_active = 1",
+            f"""SELECT
+                    COUNT(*) AS total_facts,
+                    COALESCE(SUM(CASE WHEN {ACTIVE_MEMORY_FACT_SQL} THEN 1 ELSE 0 END), 0) AS active_facts,
+                    COALESCE(SUM(CASE WHEN is_pinned = 1 AND {ACTIVE_MEMORY_FACT_SQL} THEN 1 ELSE 0 END), 0) AS pinned_facts,
+                    COALESCE(SUM(CASE WHEN source_dream_id IS NOT NULL THEN 1 ELSE 0 END), 0) AS consolidated_facts,
+                    COALESCE(SUM(LENGTH(fact)), 0) AS total_fact_chars,
+                    MAX(CASE WHEN {ACTIVE_MEMORY_FACT_SQL} THEN updated_at ELSE NULL END) AS last_fact_update
+                FROM user_memory
+                WHERE user_id = ?""",
             (user_id,),
         ) as cur:
-            (active_facts,) = await cur.fetchone()
+            agg_row = await cur.fetchone()
+        total_facts = int(agg_row[0] or 0) if agg_row else 0
+        active_facts = int(agg_row[1] or 0) if agg_row else 0
+        inactive_facts = max(0, total_facts - active_facts)
+        pinned_facts = int(agg_row[2] or 0) if agg_row else 0
+        consolidated_facts = int(agg_row[3] or 0) if agg_row else 0
+        txt_len = int(agg_row[4] or 0) if agg_row else 0
+        last_fact_update = agg_row[5] if agg_row else None
+        kb_estimate = round((txt_len + total_facts * 650) / 1024, 1)
+
         async with db.execute(
-            "SELECT COUNT(*) FROM user_memory WHERE user_id = ? AND (is_active = 0 OR is_active IS NULL)",
-            (user_id,),
-        ) as cur:
-            (inactive_facts,) = await cur.fetchone()
-        async with db.execute(
-            "SELECT COUNT(*) FROM user_memory WHERE user_id = ? AND is_pinned = 1 AND is_active = 1",
-            (user_id,),
-        ) as cur:
-            (pinned_facts,) = await cur.fetchone()
-        async with db.execute(
-            """SELECT category, COUNT(*) FROM user_memory
-               WHERE user_id = ? AND is_active = 1
-               GROUP BY category""",
+            f"""SELECT category, COUNT(*) FROM user_memory
+                WHERE user_id = ? AND {ACTIVE_MEMORY_FACT_SQL}
+                GROUP BY category""",
             (user_id,),
         ) as cur:
             by_category = {row[0]: row[1] for row in await cur.fetchall()}
@@ -3186,12 +3196,6 @@ async def get_memory_stats(user_id: str) -> dict:
             (user_id,),
         ) as cur:
             (summaries_count,) = await cur.fetchone()
-        async with db.execute(
-            "SELECT MAX(updated_at) FROM user_memory WHERE user_id = ? AND is_active = 1",
-            (user_id,),
-        ) as cur:
-            row = await cur.fetchone()
-            last_fact_update = row[0] if row else None
 
         # Dream history telemetry
         async with db.execute(
@@ -3227,26 +3231,12 @@ async def get_memory_stats(user_id: str) -> dict:
         if extractions_day_date != today:
             extractions_today = 0
 
-        async with db.execute(
-            "SELECT COUNT(*) FROM user_memory WHERE user_id = ? AND source_dream_id IS NOT NULL",
-            (user_id,),
-        ) as cur:
-            (consolidated_facts,) = await cur.fetchone()
-
-        async with db.execute(
-            "SELECT COUNT(*), SUM(LENGTH(fact)) FROM user_memory WHERE user_id = ?",
-            (user_id,),
-        ) as cur:
-            tot_row = await cur.fetchone()
-            tot_cnt = tot_row[0] if tot_row else 0
-            txt_len = tot_row[1] if (tot_row and tot_row[1]) else 0
-            kb_estimate = round((txt_len + tot_cnt * 650) / 1024, 1)
-
     return {
-        "active_facts": active_facts or 0,
-        "inactive_facts": inactive_facts or 0,
-        "pinned_facts": pinned_facts or 0,
-        "consolidated_facts": consolidated_facts or 0,
+        "total_facts": total_facts,
+        "active_facts": active_facts,
+        "inactive_facts": inactive_facts,
+        "pinned_facts": pinned_facts,
+        "consolidated_facts": consolidated_facts,
         "kb_estimate": kb_estimate or 0.0,
         "dream_count": dream_count or 0,
         "last_dream_at": last_dream_at,
