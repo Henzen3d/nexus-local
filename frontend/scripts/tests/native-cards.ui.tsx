@@ -8,6 +8,7 @@ import { ChecklistCard } from '../../src/ui/components/ChecklistCard'
 import { ImageCard } from '../../src/ui/components/ImageCard'
 import { ControlsCard } from '../../src/ui/components/ControlsCard'
 import { FollowUpCard } from '../../src/ui/components/FollowUpCard'
+import { ClarificationCard } from '../../src/ui/components/ClarificationCard'
 import { MetricCard } from '../../src/ui/components/MetricCard'
 import { CalloutCard } from '../../src/ui/components/CalloutCard'
 import type {
@@ -15,6 +16,7 @@ import type {
   CardBlock,
   ControlsBlock,
   FollowUpBlock,
+  ClarificationBlock,
   MetricBlock,
   CalloutBlock,
 } from '../../src/types'
@@ -147,6 +149,32 @@ test('FollowUpCard renders clickable suggestions and respects stream', () => {
   })
   const disabledButtons = view!.root.findAllByType('button')
   assert.equal(disabledButtons[0].props.disabled, true)
+
+  act(() => {
+    view!.unmount()
+  })
+
+  // Envio recusado (sendMessage retorna false) mantém o botão disponível para nova tentativa
+  reset()
+  controls.sendSuccess = false
+  act(() => {
+    view = Renderer.create(<FollowUpCard block={block} />)
+  })
+  const retryButtons = view!.root.findAllByType('button')
+  act(() => {
+    retryButtons[0].props.onClick()
+  })
+  assert.equal(controls.sent.length, 1)
+  assert.equal(retryButtons[0].props['data-chosen'], undefined)
+  assert.equal(retryButtons[0].props.disabled, false)
+
+  // Próxima tentativa com sucesso marca o item escolhido
+  controls.sendSuccess = true
+  act(() => {
+    retryButtons[0].props.onClick()
+  })
+  assert.equal(controls.sent.length, 2)
+  assert.equal(retryButtons[0].props['data-chosen'], true)
 
   act(() => {
     view!.unmount()
@@ -313,6 +341,87 @@ test('ControlsCard set_model hides when models empty and changes model when avai
 
   assert.equal(controls.selectedModels.length, 1)
   assert.deepEqual(controls.selectedModels[0], ['gpt-4o', 'openai'])
+
+  act(() => {
+    view!.unmount()
+  })
+})
+
+test('ClarificationCard: renderiza fieldsets, valida seleções completas e submete mensagem formatada', () => {
+  reset()
+  const block: ClarificationBlock = {
+    id: 'clarify_test',
+    type: 'clarification',
+    submit_label: 'Confirmar escolhas',
+    questions: [
+      {
+        id: 'prioridade',
+        label: 'Prioridade',
+        allow_other: true,
+        options: [
+          { id: 'renda', label: 'renda recorrente' },
+          { id: 'retorno', label: 'retorno rápido' },
+        ],
+      },
+      {
+        id: 'tempo',
+        label: 'Tempo semanal',
+        options: [
+          { id: 't1', label: 'de 5 a 10 horas' },
+          { id: 't2', label: 'mais de 10 horas' },
+        ],
+      },
+    ],
+  }
+
+  // Define mensagens no store para simular última mensagem
+  useStore.setState({
+    messages: [{ id: 'msg_1', role: 'assistant', content: 'Resposta' }],
+    activeConversationId: 'conv_1',
+  })
+
+  let view: Renderer.ReactTestRenderer
+  act(() => {
+    view = Renderer.create(<ClarificationCard block={block} messageId="msg_1" />)
+  })
+
+  const form = view!.root.findByType('form')
+  assert.ok(form)
+
+  // Duas fieldsets para as 2 perguntas
+  const fieldsets = view!.root.findAllByType('fieldset')
+  assert.equal(fieldsets.length, 2)
+
+  // Botão de envio inicialmente desabilitado porque não há seleção
+  const submitBtn = view!.root.findByProps({ type: 'submit' })
+  assert.equal(submitBtn.props.disabled, true)
+
+  // Seleciona primeira opção na primeira pergunta
+  const radios = view!.root.findAllByType('input').filter((i) => i.props.type === 'radio')
+  act(() => {
+    radios[0].props.onChange({ target: { value: 'renda' } })
+  })
+
+  // Ainda desabilitado pois falta a segunda pergunta
+  assert.equal(submitBtn.props.disabled, true)
+
+  // Seleciona primeira opção na segunda pergunta (índice 3, pois índice 2 é 'outro' de Q1)
+  act(() => {
+    radios[3].props.onChange({ target: { value: 't1' } })
+  })
+
+  // Agora habilitado!
+  const enabledSubmitBtn = view!.root.findByProps({ type: 'submit' })
+  assert.equal(enabledSubmitBtn.props.disabled, false)
+
+  // Submete o formulário
+  act(() => {
+    form.props.onSubmit({ preventDefault: () => {} })
+  })
+
+  // Verifica mensagem única enviada
+  assert.equal(controls.sent.length, 1)
+  assert.equal(controls.sent[0][0], 'Prioridade — renda recorrente. Tempo semanal — de 5 a 10 horas.')
 
   act(() => {
     view!.unmount()

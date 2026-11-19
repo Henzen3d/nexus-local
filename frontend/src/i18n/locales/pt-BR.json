@@ -1198,7 +1198,14 @@
     "sceneError": "Falha na cena: {{message}}",
     "sceneCorrectionPrompt": "Corrija a cena \"{{title}}\": falhou com: {{message}}. Mantenha o mesmo bloco sandbox kind scene.",
     "sceneWebGlLost": "O contexto gráfico 3D foi perdido.",
-    "sceneReadoutTitle": "Valores da cena"
+    "sceneReadoutTitle": "Valores da cena",
+    "clarificationTitle": "Perguntas de continuidade",
+    "clarificationSubmit": "Enviar respostas",
+    "clarificationOther": "Outra resposta",
+    "clarificationOtherPlaceholder": "Digite sua resposta...",
+    "clarificationOtherLabel": "Outra resposta para {{question}}",
+    "clarificationAnswered": "Respostas enviadas",
+    "clarificationReadOnly": "Perguntas respondidas"
   },
   "proactive": {
     "bubbleBadge": "Assistente proativo",

@@ -13,6 +13,7 @@ const SceneCard = React.lazy(() => import('./components/SceneCard'))
 const MetricCard = React.lazy(() => import('./components/MetricCard'))
 const TableCard = React.lazy(() => import('./components/TableCard'))
 const OptionsCard = React.lazy(() => import('./components/OptionsCard'))
+const ClarificationCard = React.lazy(() => import('./components/ClarificationCard'))
 const CalloutCard = React.lazy(() => import('./components/CalloutCard'))
 const FollowUpCard = React.lazy(() => import('./components/FollowUpCard'))
 
@@ -60,6 +61,10 @@ function reservedHeight(block: { type: string; [k: string]: any }): number {
     case 'options': {
       const count = Array.isArray(block.options) ? block.options.length : 3
       return 56 + Math.ceil(count / 2) * 58
+    }
+    case 'clarification': {
+      const qCount = Array.isArray(block.questions) ? block.questions.length : 2
+      return 60 + qCount * 90
     }
     case 'callout': {
       const len = typeof block.body === 'string' ? block.body.length : 60
@@ -153,6 +158,10 @@ export function DynamicRenderer({ envelope, streaming, pendingType, messageId, o
 
           if (block.type === 'options') {
             return <OptionsCard key={block.id} block={block} streaming={streaming} />
+          }
+
+          if (block.type === 'clarification') {
+            return <ClarificationCard key={block.id} block={block} streaming={streaming} messageId={messageId} />
           }
 
           if (block.type === 'callout') {

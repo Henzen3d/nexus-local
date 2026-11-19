@@ -1,1 +1,1 @@
-follow_up: items com 1 a 4 sugestões curtas de próxima pergunta, sem repetir o que a prosa já respondeu.
+follow_up: items com 1 a 3 sugestões curtas de próximo passo específico e concreto (ex: "Estimar custo para 3 parceiros"), sem repetir o que a prosa já respondeu.

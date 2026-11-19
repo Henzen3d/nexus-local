@@ -17,6 +17,11 @@ from backend.ui_blocks.telemetry import IntelligentUiTelemetry
     ('bom dia', ()),
     ('compartilhe comparecer simultaneamente cartaz barraco', ()),
     ('1, 2 e 3 contratempos no modelito', ()),
+    ('Quero lançar um curso online', ('clarification',)),
+    ('Como monetizar minhas habilidades online', ('clarification',)),
+    ('Plan my launch strategy', ('clarification',)),
+    ('Recomienda cómo priorizar mi negocio', ('clarification',)),
+    ('Etapas para planejar o negócio', ('progress', 'clarification')),
 ])
 def test_modules(text, modules):
     catalog, selected = build_catalog(text)
@@ -38,6 +43,10 @@ def test_priority_and_supported_contracts():
     o_text, o_mods = build_catalog('qual das opções você prefere')
     assert 'options' in o_mods
     assert 'options:' in o_text
+    # Quando pedido planejamento/recomendação, o módulo clarification: entra no catálogo
+    c_text, c_mods = build_catalog('como planejar o lançamento de um produto')
+    assert 'clarification' in c_mods
+    assert 'clarification:' in c_text
     with pytest.raises(ValueError):
         compose_catalog(('unknown',))
 

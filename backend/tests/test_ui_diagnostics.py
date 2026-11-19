@@ -64,3 +64,43 @@ def test_correction_counters_are_deduplicated_owner_scoped_and_bounded():
     for idx in range(2100):
         telemetry.offer_correction('u', str(idx), 'model')
     assert len(telemetry._correction_messages) == 2048
+
+
+def test_clarification_diagnostics():
+    # Clarification válido tem 0 erros e dropped 0
+    valid_raw = {
+        'blocks': [
+            {
+                'type': 'clarification',
+                'questions': [
+                    {'id': 'q1', 'label': 'Pergunta', 'options': [{'id': '1', 'label': 'A'}, {'id': '2', 'label': 'B'}]}
+                ],
+            }
+        ]
+    }
+    rep = validate_with_diagnostics(valid_raw)
+    assert rep['errors'] == []
+    assert rep['dropped'] == 0
+
+    # Questions vazias ou ausentes reporta missing_required
+    missing_raw = {'blocks': [{'type': 'clarification'}]}
+    rep_missing = validate_with_diagnostics(missing_raw)
+    assert rep_missing['errors'][0]['code'] == 'missing_required'
+    assert rep_missing['errors'][0]['path'] == 'questions'
+    assert rep_missing['dropped'] == 1
+
+    # Questions com IDs duplicados reporta duplicate_id
+    duplicate_raw = {
+        'blocks': [
+            {
+                'type': 'clarification',
+                'questions': [
+                    {'id': 'same', 'label': 'P1', 'options': [{'id': '1', 'label': 'A'}, {'id': '2', 'label': 'B'}]},
+                    {'id': 'same', 'label': 'P2', 'options': [{'id': '1', 'label': 'A'}, {'id': '2', 'label': 'B'}]},
+                ],
+            }
+        ]
+    }
+    rep_dup = validate_with_diagnostics(duplicate_raw)
+    assert rep_dup['errors'][0]['code'] == 'duplicate_id'
+    assert rep_dup['dropped'] == 1

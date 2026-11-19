@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { CornerDownRight } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useChatContext } from '../../context/ChatContext'
@@ -11,11 +11,11 @@ interface Props {
 }
 
 /**
- * Bloco `follow_up` (plano 12 §2.3): lista vertical de sugestões de próxima pergunta,
- * no desenho dos FollowUps do Open WebUI (linhas finas, texto à esquerda, ícone de
- * "continuar"). Clique = `sendMessage(texto)` — gesto do usuário, sem auto-envio
- * (spec §7). O item escolhido fica marcado; os outros continuam clicáveis, e a
- * lista permanece no histórico como estava.
+ * Bloco `follow_up` (plano 12 §2.3 / perguntas-adicionais §1):
+ * Ações agrupadas em estilo chip no rodapé da resposta com fundo e borda discretos.
+ * Permite quebra de linha em desktop e empilhamento em telas estreitas.
+ * Clique = `sendMessage(texto)` — somente marca o item quando sendMessage retornar true.
+ * Se retornar false, mantém o bloco utilizável para nova tentativa.
  */
 export function FollowUpCard({ block, streaming }: Props) {
   const { t } = useTranslation()
@@ -25,23 +25,31 @@ export function FollowUpCard({ block, streaming }: Props) {
   const [pendingText, setPendingText] = useState<string | null>(null)
   const isDisabled = isStreaming || Boolean(streaming) || Boolean(pendingText)
 
+  // Ao encerrar geração, reseta o estado pending para permitir novas tentativas ou seleções
+  useEffect(() => {
+    if (!isStreaming && !streaming) {
+      setPendingText(null)
+    }
+  }, [isStreaming, streaming])
+
   const handleClick = (text: string) => {
     if (isDisabled) return
     setPendingText(text)
-    setChosen(text)
-    sendMessage(text)
+    const accepted = sendMessage(text)
+    if (accepted) {
+      setChosen(text)
+    } else {
+      setPendingText(null)
+    }
   }
 
   return (
     <nav className="nexus-ui-followups" aria-label={t('intelligentUi.followUpTitle')}>
-      <p className="nexus-ui-followups__title" aria-hidden="true">
-        {t('intelligentUi.followUpTitle')}
-      </p>
       <ul className="nexus-ui-followups__list">
         {block.items.map((text) => {
           const isChosen = chosen === text
           return (
-            <li key={text}>
+            <li key={text} className="nexus-ui-followups__item">
               <button
                 type="button"
                 className="nexus-ui-followup"
@@ -52,7 +60,7 @@ export function FollowUpCard({ block, streaming }: Props) {
                 data-chosen={isChosen || undefined}
               >
                 <span className="nexus-ui-followup__text">{text}</span>
-                <CornerDownRight size={14} aria-hidden="true" className="nexus-ui-followup__icon" />
+                <CornerDownRight size={13} aria-hidden="true" className="nexus-ui-followup__icon" />
               </button>
             </li>
           )

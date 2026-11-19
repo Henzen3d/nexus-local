@@ -758,7 +758,14 @@
     "sceneError": "Error en la escena: {{message}}",
     "sceneCorrectionPrompt": "Corrige la escena \"{{title}}\": falló con: {{message}}. Mantén el mismo bloque sandbox kind scene.",
     "sceneWebGlLost": "Se perdió el contexto gráfico 3D.",
-    "sceneReadoutTitle": "Valores de la escena"
+    "sceneReadoutTitle": "Valores de la escena",
+    "clarificationTitle": "Preguntas de seguimiento",
+    "clarificationSubmit": "Enviar respuestas",
+    "clarificationOther": "Otra respuesta",
+    "clarificationOtherPlaceholder": "Escribe tu respuesta...",
+    "clarificationOtherLabel": "Otra respuesta para {{question}}",
+    "clarificationAnswered": "Respuestas enviadas",
+    "clarificationReadOnly": "Preguntas respondidas"
   },
   "artifacts": {
     "preview": "Vista previa",
@@ -782,7 +789,22 @@
     "editPlaceholder": "Describe lo que deseas modificar...",
     "applyEdit": "Aplicar"
   },
+  "autoRouter": {
+    "policyEconomicalTag": "Máximo ahorro",
+    "policyBalancedTag": "OPCIÓN RECOMENDADA",
+    "policyPerformanceTag": "Calidad extrema"
+  },
   "memory": {
+    "dreamBreakerLabel": "Protección automática",
+    "dreamBreakerStateClosed": "Activa",
+    "dreamBreakerStateOpen": "Pausada por fallas",
+    "dreamBreakerStateHalfOpen": "En espera de una prueba de recuperación",
+    "dreamBreakerFailures": "{{count}} fallas seguidas",
+    "dreamBreakerRetryAt": "Próximo intento automático: {{time}}",
+    "dreamBreakerResetBtn": "Restablecer protección",
+    "dreamBreakerResetting": "Restableciendo…",
+    "dreamBreakerResetSuccess": "Protección restablecida. La consolidación automática está habilitada de nuevo.",
+    "dreamBreakerResetError": "No se pudo restablecer la protección en este momento.",
     "useMemoryGlobal": "Memoria en las conversaciones (predeterminado: activada)",
     "useMemoryGlobalDesc": "Activada por defecto: correlaciona lo que preguntas con lo ya aprendido. Desactívala aquí si quieres chats sin memoria del pasado.",
     "extractorTitle": "Modelo extractor (barato)",

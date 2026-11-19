@@ -1072,7 +1072,14 @@
     "sceneError": "Error en la escena: {{message}}",
     "sceneCorrectionPrompt": "Corrige la escena \"{{title}}\": falló con: {{message}}. Mantén el mismo bloque sandbox kind scene.",
     "sceneWebGlLost": "Se perdió el contexto gráfico 3D.",
-    "sceneReadoutTitle": "Valores de la escena"
+    "sceneReadoutTitle": "Valores de la escena",
+    "clarificationTitle": "Preguntas de seguimiento",
+    "clarificationSubmit": "Enviar respuestas",
+    "clarificationOther": "Otra respuesta",
+    "clarificationOtherPlaceholder": "Escribe tu respuesta...",
+    "clarificationOtherLabel": "Otra respuesta para {{question}}",
+    "clarificationAnswered": "Respuestas enviadas",
+    "clarificationReadOnly": "Preguntas respondidas"
   },
   "proactive": {
     "bubbleBadge": "Asistente proactivo",

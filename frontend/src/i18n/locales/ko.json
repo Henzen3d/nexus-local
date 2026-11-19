@@ -758,7 +758,14 @@
     "sceneError": "장면 오류: {{message}}",
     "sceneCorrectionPrompt": "\"{{title}}\" 장면을 수정해 주세요: 실패 이유: {{message}}. 동일한 sandbox kind scene 블록을 유지해 주세요.",
     "sceneWebGlLost": "3D 그래픽 컨텍스트가 손실되었습니다.",
-    "sceneReadoutTitle": "장면 값"
+    "sceneReadoutTitle": "장면 값",
+    "clarificationTitle": "추가 질문",
+    "clarificationSubmit": "답변 제출",
+    "clarificationOther": "기타 답변",
+    "clarificationOtherPlaceholder": "답변을 입력하세요...",
+    "clarificationOtherLabel": "{{question}}에 대한 기타 답변",
+    "clarificationAnswered": "답변 전송됨",
+    "clarificationReadOnly": "질문 답변 완료"
   },
   "artifacts": {
     "preview": "미리보기",
@@ -782,7 +789,22 @@
     "editPlaceholder": "변경할 내용을 입력하세요...",
     "applyEdit": "적용"
   },
+  "autoRouter": {
+    "policyEconomicalTag": "최대 절약",
+    "policyBalancedTag": "권장 기본값",
+    "policyPerformanceTag": "최고 품질"
+  },
   "memory": {
+    "dreamBreakerLabel": "자동 보호",
+    "dreamBreakerStateClosed": "활성",
+    "dreamBreakerStateOpen": "실패로 일시 중지됨",
+    "dreamBreakerStateHalfOpen": "복구 확인을 기다리는 중",
+    "dreamBreakerFailures": "연속 실패 {{count}}회",
+    "dreamBreakerRetryAt": "다음 자동 재시도: {{time}}",
+    "dreamBreakerResetBtn": "보호 재설정",
+    "dreamBreakerResetting": "재설정 중…",
+    "dreamBreakerResetSuccess": "보호가 재설정되었습니다. 자동 통합이 다시 활성화되었습니다.",
+    "dreamBreakerResetError": "지금은 보호를 재설정할 수 없습니다.",
     "useMemoryGlobal": "대화 메모리 (기본: 켜짐)",
     "useMemoryGlobalDesc": "기본으로 켜짐: 지금 묻는 내용과 이미 학습한 내용을 연결합니다. 과거 메모리 없이 대화하려면 여기서 끄세요.",
     "extractorTitle": "추출 모델(저렴)",

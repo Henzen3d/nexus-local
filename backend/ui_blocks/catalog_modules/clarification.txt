@@ -1,0 +1,1 @@
+clarification: questions 1 a 3 [{id, label (1-160), options 2 a 4 [{id, label (1-80)}], allow_other? (bool)}], submit_label? (1-60). Use quando dados em aberto mudarem a recomendação e houver opções claras. Nunca use em pedidos objetivos já fechados nem com follow_up.

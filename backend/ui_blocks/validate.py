@@ -28,10 +28,13 @@ DATE_REGEX = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 MAX_RAW_JSON_LENGTH = 16000
 # Plano 12 §0: teto 6 com subtetos por tipo (iframe pesado, gráfico caro, follow_up único).
 MAX_BLOCKS = 6
-MAX_BLOCKS_PER_TYPE = {"sandbox": 1, "chart": 2, "follow_up": 1, "options": 1}
+MAX_BLOCKS_PER_TYPE = {"sandbox": 1, "chart": 2, "follow_up": 1, "options": 1, "clarification": 1}
 MAX_CONTROL_FIELDS = 4
 MAX_METRIC_ITEMS = 4
 MAX_FOLLOW_UP_ITEMS = 4
+MAX_CLARIFICATION_QUESTIONS = 3
+MIN_CLARIFICATION_OPTIONS = 2
+MAX_CLARIFICATION_OPTIONS = 4
 CALLOUT_KINDS = ("info", "success", "warning", "danger")
 # Sinônimos que modelos usam; qualquer outra coisa vira `info`.
 CALLOUT_KIND_ALIASES = {
@@ -1077,6 +1080,95 @@ def _validate_options(block: dict[str, Any]) -> dict[str, Any] | None:
     return out
 
 
+def _validate_clarification(block: dict[str, Any]) -> dict[str, Any] | None:
+    """Valida o bloco `clarification` (quadro de perguntas de continuidade).
+
+    Esquema:
+    - id: string opcional sanitizada
+    - questions: 1 a 3 perguntas (cada uma com id único, label até 160 chars,
+      2 a 4 opções com id único e label até 80 chars, e allow_other opcional)
+    - submit_label: rótulo opcional do botão até 60 chars
+    """
+    raw_questions = block.get("questions")
+    if not isinstance(raw_questions, list) or not raw_questions:
+        return None
+
+    clean_questions: list[dict[str, Any]] = []
+    seen_q_ids: set[str] = set()
+
+    for q_idx, q in enumerate(raw_questions[:MAX_CLARIFICATION_QUESTIONS]):
+        if not isinstance(q, dict):
+            continue
+
+        raw_q_id = q.get("id")
+        if raw_q_id is not None and str(raw_q_id).strip() in seen_q_ids:
+            return None
+        q_id = str(raw_q_id).strip() if raw_q_id is not None else ""
+        if not q_id or not ID_REGEX.match(q_id):
+            q_id = f"q_{q_idx+1}"
+        if q_id in seen_q_ids:
+            return None
+
+        label = _clean_text(q.get("label"), 1, 160)
+        if label is None:
+            continue
+
+        raw_options = q.get("options")
+        if not isinstance(raw_options, list) or len(raw_options) < MIN_CLARIFICATION_OPTIONS:
+            continue
+
+        clean_options: list[dict[str, Any]] = []
+        seen_opt_ids: set[str] = set()
+
+        for opt_idx, opt in enumerate(raw_options[:MAX_CLARIFICATION_OPTIONS]):
+            if not isinstance(opt, dict):
+                continue
+            raw_opt_id = opt.get("id") if opt.get("id") is not None else opt.get("value")
+            if raw_opt_id is not None and str(raw_opt_id).strip() in seen_opt_ids:
+                return None
+            opt_id = str(raw_opt_id).strip() if raw_opt_id is not None else ""
+            if not opt_id or not SELECT_VALUE_REGEX.match(opt_id):
+                opt_id = f"opt_{opt_idx+1}"
+            if opt_id in seen_opt_ids:
+                return None
+
+            raw_opt_label = opt.get("label") if opt.get("label") is not None else opt.get("text")
+            opt_label = _clean_text(raw_opt_label or opt_id, 1, 80)
+            if opt_label is None:
+                continue
+
+            seen_opt_ids.add(opt_id)
+            clean_options.append({"id": opt_id, "label": opt_label})
+
+        if len(clean_options) < MIN_CLARIFICATION_OPTIONS:
+            continue
+
+        seen_q_ids.add(q_id)
+        clean_q: dict[str, Any] = {
+            "id": q_id,
+            "label": label,
+            "options": clean_options,
+        }
+        if bool(q.get("allow_other", False)):
+            clean_q["allow_other"] = True
+
+        clean_questions.append(clean_q)
+
+    if not clean_questions:
+        return None
+
+    out: dict[str, Any] = {
+        "id": block.get("id") or "clarification_1",
+        "type": "clarification",
+        "questions": clean_questions,
+    }
+    submit_label = _clean_text(block.get("submit_label"), 1, 60)
+    if submit_label:
+        out["submit_label"] = submit_label
+
+    return out
+
+
 def _infer_type(item: dict[str, Any]) -> str | None:
     """Bloco sem `type`: inferido pelos campos, na mesma ordem do frontend (spec §4).
 
@@ -1094,6 +1186,8 @@ def _infer_type(item: dict[str, Any]) -> str | None:
         return "controls"
     if "question" in item and "options" in item:
         return "options"
+    if "questions" in item and isinstance(item.get("questions"), list):
+        return "clarification"
     if "html" in item or ("code" in item and "html" not in item):
         return "sandbox"
     items = item.get("items")
@@ -1219,6 +1313,8 @@ def validate_envelope(
             validated = _validate_callout(item)
         elif b_type == "follow_up":
             validated = _validate_follow_up(item)
+        elif b_type == "clarification":
+            validated = _validate_clarification(item)
 
         if validated is not None:
             if b_type == "controls":
@@ -1288,6 +1384,10 @@ def validate_envelope(
                     valid, _, _ = validate_expression(val, all_control_ids)
                     if not valid:
                         f["value"] = "—"
+
+    # Se houver um clarification válido e um follow_up no mesmo envelope, exibir só o quadro.
+    if any(b["type"] == "clarification" for b in clean_blocks):
+        clean_blocks = [b for b in clean_blocks if b["type"] != "follow_up"]
 
     # `follow_up` é sempre o último bloco (plano 12 §2.3): se veio antes, vai para o fim.
     follow_ups = [b for b in clean_blocks if b["type"] == "follow_up"]

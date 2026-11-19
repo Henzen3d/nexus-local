@@ -758,7 +758,14 @@
     "sceneError": "シーンエラー: {{message}}",
     "sceneCorrectionPrompt": "シーン「{{title}}」を修正してください: エラー「{{message}}」。同じsandbox kind sceneブロックを維持してください。",
     "sceneWebGlLost": "3Dグラフィックコンテキストが失われました。",
-    "sceneReadoutTitle": "シーンの値"
+    "sceneReadoutTitle": "シーンの値",
+    "clarificationTitle": "追加の質問",
+    "clarificationSubmit": "回答を送信",
+    "clarificationOther": "その他の回答",
+    "clarificationOtherPlaceholder": "回答を入力...",
+    "clarificationOtherLabel": "{{question}}のその他の回答",
+    "clarificationAnswered": "回答を送信しました",
+    "clarificationReadOnly": "質問は回答済みです"
   },
   "artifacts": {
     "preview": "プレビュー",
@@ -782,7 +789,22 @@
     "editPlaceholder": "変更内容を入力してください...",
     "applyEdit": "適用"
   },
+  "autoRouter": {
+    "policyEconomicalTag": "最大限の節約",
+    "policyBalancedTag": "推奨の既定値",
+    "policyPerformanceTag": "最高品質"
+  },
   "memory": {
+    "dreamBreakerLabel": "自動保護",
+    "dreamBreakerStateClosed": "有効",
+    "dreamBreakerStateOpen": "エラーにより一時停止中",
+    "dreamBreakerStateHalfOpen": "復旧確認の試行を待機中",
+    "dreamBreakerFailures": "連続エラー {{count}} 回",
+    "dreamBreakerRetryAt": "次の自動試行：{{time}}",
+    "dreamBreakerResetBtn": "保護をリセット",
+    "dreamBreakerResetting": "リセット中…",
+    "dreamBreakerResetSuccess": "保護をリセットしました。自動整理が再び有効になりました。",
+    "dreamBreakerResetError": "現在、保護をリセットできませんでした。",
     "useMemoryGlobal": "会話のメモリ（デフォルト: オン）",
     "useMemoryGlobalDesc": "デフォルトでオン：過去に学んだ内容と現在の質問を関連付けます。過去メモリなしの会話にする場合はここでオフに。",
     "extractorTitle": "抽出モデル（安価）",

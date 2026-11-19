@@ -758,7 +758,14 @@
     "sceneError": "Erreur de scène : {{message}}",
     "sceneCorrectionPrompt": "Corrigez la scène \"{{title}}\" : échec avec : {{message}}. Conservez le même bloc sandbox kind scene.",
     "sceneWebGlLost": "Le contexte graphique 3D a été perdu.",
-    "sceneReadoutTitle": "Valeurs de la scène"
+    "sceneReadoutTitle": "Valeurs de la scène",
+    "clarificationTitle": "Questions de suivi",
+    "clarificationSubmit": "Envoyer les réponses",
+    "clarificationOther": "Autre réponse",
+    "clarificationOtherPlaceholder": "Tapez votre réponse...",
+    "clarificationOtherLabel": "Autre réponse pour {{question}}",
+    "clarificationAnswered": "Réponses envoyées",
+    "clarificationReadOnly": "Questions répondues"
   },
   "artifacts": {
     "preview": "Aperçu",
@@ -782,7 +789,22 @@
     "editPlaceholder": "Décrivez ce que vous souhaitez modifier...",
     "applyEdit": "Appliquer"
   },
+  "autoRouter": {
+    "policyEconomicalTag": "Économies maximales",
+    "policyBalancedTag": "CHOIX RECOMMANDÉ",
+    "policyPerformanceTag": "Qualité maximale"
+  },
   "memory": {
+    "dreamBreakerLabel": "Protection automatique",
+    "dreamBreakerStateClosed": "Active",
+    "dreamBreakerStateOpen": "Suspendue après des échecs",
+    "dreamBreakerStateHalfOpen": "En attente du test de reprise",
+    "dreamBreakerFailures": "{{count}} échecs consécutifs",
+    "dreamBreakerRetryAt": "Prochaine tentative automatique : {{time}}",
+    "dreamBreakerResetBtn": "Réinitialiser la protection",
+    "dreamBreakerResetting": "Réinitialisation…",
+    "dreamBreakerResetSuccess": "Protection réinitialisée. La consolidation automatique est de nouveau activée.",
+    "dreamBreakerResetError": "Impossible de réinitialiser la protection pour le moment.",
     "useMemoryGlobal": "Mémoire dans les conversations (par défaut : activée)",
     "useMemoryGlobalDesc": "Activée par défaut : corrèle vos questions avec ce qui a déjà été appris. Désactivez ici pour des chats sans mémoire du passé.",
     "extractorTitle": "Modèle extracteur (économique)",

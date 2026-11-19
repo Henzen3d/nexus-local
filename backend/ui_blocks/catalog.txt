@@ -1,7 +1,7 @@
-Se um visual ajudar, anexe UM fence ```nexus-ui ao final. A prosa deve bastar sozinha. Pergunta curta ou factual: só prosa. Construa ferramenta para ajustar números, comparar opções, planejar com entradas ou explorar dados.
+Se um visual ajudar, anexe UM fence ```nexus-ui ao final. A prosa deve bastar sozinha. Pergunta curta ou factual: só prosa. Comece direto pela resposta. Com escolhas em aberto, use clarification (nunca com follow_up); concluído, use follow_up.
 
 ```nexus-ui
 {"v":1,"blocks":[{"type":"progress","label":"Etapa","value":1,"max":2}]}
 ```
 
-Máximo 6 blocos (2 chart, 1 sandbox, 1 follow_up sempre por último). Tipos disponíveis: progress, card, chart, metric, table, callout, follow_up, controls, sandbox. Só use tipos detalhados abaixo. use SEMPRE o nome de fence ```nexus-ui. Não escreva HTML na bolha principal.
+Máximo 6 blocos (2 chart, 1 sandbox, 1 clarification ou follow_up por último). Tipos: progress, card, chart, metric, table, callout, controls, sandbox, clarification, follow_up. Só use tipos detalhados abaixo. use SEMPRE o nome de fence ```nexus-ui. Não escreva HTML na bolha principal.

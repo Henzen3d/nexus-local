@@ -1199,7 +1199,14 @@
     "sceneError": "Scene error: {{message}}",
     "sceneCorrectionPrompt": "Fix the scene \"{{title}}\": failed with: {{message}}. Keep the same sandbox kind scene block.",
     "sceneWebGlLost": "3D graphics context was lost.",
-    "sceneReadoutTitle": "Scene values"
+    "sceneReadoutTitle": "Scene values",
+    "clarificationTitle": "Follow-up questions",
+    "clarificationSubmit": "Submit answers",
+    "clarificationOther": "Other answer",
+    "clarificationOtherPlaceholder": "Type your answer...",
+    "clarificationOtherLabel": "Other answer for {{question}}",
+    "clarificationAnswered": "Answers submitted",
+    "clarificationReadOnly": "Questions completed"
   },
   "proactive": {
     "bubbleBadge": "Proactive assistant",

@@ -441,6 +441,7 @@ export type UiBlockType =
   | 'metric'
   | 'callout'
   | 'follow_up'
+  | 'clarification'
 
 export interface ProgressStep {
   id: string
@@ -633,6 +634,26 @@ export interface OptionsBlock {
   }
 }
 
+export interface ClarificationOption {
+  id: string
+  label: string
+}
+
+export interface ClarificationQuestion {
+  id: string
+  label: string
+  options: ClarificationOption[]
+  allow_other?: boolean
+}
+
+/** Quadro de perguntas de continuidade (plano perguntas-adicionais §2/§3). */
+export interface ClarificationBlock {
+  id: string
+  type: 'clarification'
+  questions: ClarificationQuestion[]
+  submit_label?: string
+}
+
 export type UiBlock =
   | ProgressBlock
   | CardBlock
@@ -644,6 +665,7 @@ export type UiBlock =
   | MetricBlock
   | CalloutBlock
   | FollowUpBlock
+  | ClarificationBlock
 
 export interface UiEnvelope {
   v: 1

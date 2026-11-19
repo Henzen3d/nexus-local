@@ -1150,3 +1150,151 @@ def test_scene_triggers_should_offer():
     assert "scene" in select_modules("Mostre o movimento do pêndulo em 2D")
     assert "scene" in select_modules("Simulação de partículas em suspensão")
     assert "scene" in select_modules("Passo a passo animado do algoritmo")
+
+
+def test_clarification_valido():
+    payload = {
+        "v": 1,
+        "blocks": [
+            {
+                "id": "clarify_1",
+                "type": "clarification",
+                "submit_label": "Confirmar escolhas",
+                "questions": [
+                    {
+                        "id": "prioridade",
+                        "label": "Qual é a sua prioridade?",
+                        "allow_other": True,
+                        "options": [
+                            {"id": "renda", "label": "Renda recorrente"},
+                            {"id": "rapido", "label": "Retorno rápido"},
+                        ],
+                    },
+                    {
+                        "id": "tempo",
+                        "label": "Tempo semanal disponível",
+                        "options": [
+                            {"id": "t1", "label": "Até 5 horas"},
+                            {"id": "t2", "label": "5 a 10 horas"},
+                            {"id": "t3", "label": "Mais de 10 horas"},
+                        ],
+                    },
+                ],
+            }
+        ],
+    }
+    out = validate_envelope(payload)
+    assert out is not None
+    block = out["blocks"][0]
+    assert block["type"] == "clarification"
+    assert block["id"] == "clarify_1"
+    assert block["submit_label"] == "Confirmar escolhas"
+    assert len(block["questions"]) == 2
+    assert block["questions"][0]["allow_other"] is True
+    assert len(block["questions"][0]["options"]) == 2
+    assert len(block["questions"][1]["options"]) == 3
+
+
+def test_clarification_limites_e_sanitizacao():
+    # Corta em 3 questions e 4 opções por pergunta
+    questions = [
+        {
+            "id": f"q_{i}",
+            "label": f"Pergunta {i}",
+            "options": [{"id": f"o_{j}", "label": f"Opção {j}"} for j in range(6)],
+        }
+        for i in range(5)
+    ]
+    out = validate_envelope({"v": 1, "blocks": [{"type": "clarification", "questions": questions}]})
+    assert out is not None
+    b = out["blocks"][0]
+    assert len(b["questions"]) == 3
+    for q in b["questions"]:
+        assert len(q["options"]) == 4
+
+
+def test_clarification_opcoes_insuficientes_e_invalidas():
+    # Menos de 2 opções descarta a pergunta
+    payload = {
+        "v": 1,
+        "blocks": [
+            {
+                "type": "clarification",
+                "questions": [
+                    {"id": "q1", "label": "P1", "options": [{"id": "o1", "label": "Apenas uma"}]},
+                ],
+            }
+        ],
+    }
+    assert validate_envelope(payload) is None
+
+    # Se uma pergunta for válida e outra inválida, preserva a válida
+    payload_misto = {
+        "v": 1,
+        "blocks": [
+            {
+                "type": "clarification",
+                "questions": [
+                    {"id": "q1", "label": "P1", "options": [{"id": "o1", "label": "Só uma"}]},
+                    {"id": "q2", "label": "P2", "options": [{"id": "a", "label": "Op A"}, {"id": "b", "label": "Op B"}]},
+                ],
+            }
+        ],
+    }
+    out = validate_envelope(payload_misto)
+    assert out is not None
+    assert len(out["blocks"][0]["questions"]) == 1
+    assert out["blocks"][0]["questions"][0]["id"] == "q2"
+
+
+def test_clarification_coexistencia_com_follow_up():
+    # Com clarification válido e follow_up no mesmo envelope, exibe só o quadro
+    payload = {
+        "v": 1,
+        "blocks": [
+            {
+                "type": "clarification",
+                "questions": [
+                    {"id": "q1", "label": "Pergunta", "options": [{"id": "1", "label": "A"}, {"id": "2", "label": "B"}]},
+                ],
+            },
+            {
+                "type": "follow_up",
+                "items": ["Opção 1", "Opção 2"],
+            },
+        ],
+    }
+    out = validate_envelope(payload)
+    assert out is not None
+    types = [b["type"] for b in out["blocks"]]
+    assert types == ["clarification"]
+
+    # Se clarification for inválido, o follow_up válido permanece disponível
+    payload_invalido = {
+        "v": 1,
+        "blocks": [
+            {
+                "type": "clarification",
+                "questions": [],  # inválido
+            },
+            {
+                "type": "follow_up",
+                "items": ["Opção 1", "Opção 2"],
+            },
+        ],
+    }
+    out_invalido = validate_envelope(payload_invalido)
+    assert out_invalido is not None
+    types_invalido = [b["type"] for b in out_invalido["blocks"]]
+    assert types_invalido == ["follow_up"]
+
+
+def test_clarification_infer_type():
+    payload = {
+        "questions": [
+            {"id": "q1", "label": "Pergunta", "options": [{"id": "1", "label": "A"}, {"id": "2", "label": "B"}]},
+        ]
+    }
+    out = validate_envelope(payload)
+    assert out is not None
+    assert out["blocks"][0]["type"] == "clarification"

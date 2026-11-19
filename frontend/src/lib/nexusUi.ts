@@ -8,6 +8,9 @@ import type {
   CalloutBlock,
   CardBlock,
   ChartBlock,
+  ClarificationBlock,
+  ClarificationOption,
+  ClarificationQuestion,
   ControlsBlock,
   FollowUpBlock,
   MetricBlock,
@@ -39,11 +42,14 @@ const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/
 // Espelham backend/ui_blocks/validate.py — mudar lá e aqui juntos (spec, seção 4).
 // Plano 12 §0: teto 6 com subtetos por tipo (iframe pesado, gráfico caro, follow_up único).
 export const MAX_BLOCKS = 6
-const MAX_BLOCKS_PER_TYPE: Record<string, number> = { sandbox: 1, chart: 2, table: 1, follow_up: 1, options: 1 }
+const MAX_BLOCKS_PER_TYPE: Record<string, number> = { sandbox: 1, chart: 2, table: 1, follow_up: 1, options: 1, clarification: 1 }
 const MAX_RAW_JSON_LENGTH = 16000
 const MAX_CONTROL_FIELDS = 4
 const MAX_METRIC_ITEMS = 4
 const MAX_FOLLOW_UP_ITEMS = 4
+const MAX_CLARIFICATION_QUESTIONS = 3
+const MIN_CLARIFICATION_OPTIONS = 2
+const MAX_CLARIFICATION_OPTIONS = 4
 const CALLOUT_KINDS = ['info', 'success', 'warning', 'danger'] as const
 // Sinônimos que modelos usam; qualquer outra coisa vira `info`.
 const CALLOUT_KIND_ALIASES: Record<string, CalloutBlock['kind']> = {
@@ -991,6 +997,84 @@ function validateOptions(item: Record<string, unknown>): OptionsBlock | null {
   return out
 }
 
+function validateClarification(item: Record<string, unknown>): ClarificationBlock | null {
+  const rawQuestions = item.questions
+  if (!Array.isArray(rawQuestions) || rawQuestions.length === 0) return null
+
+  const cleanQuestions: ClarificationQuestion[] = []
+  const seenQIds = new Set<string>()
+
+  for (let qIdx = 0; qIdx < rawQuestions.slice(0, MAX_CLARIFICATION_QUESTIONS).length; qIdx++) {
+    const q = rawQuestions[qIdx]
+    if (!q || typeof q !== 'object') continue
+
+    const rawQId = typeof (q as Record<string, unknown>).id === 'string' ? String((q as Record<string, unknown>).id).trim() : ''
+    if (rawQId && seenQIds.has(rawQId)) return null
+    let qId = rawQId
+    if (!qId || !ID_REGEX.test(qId)) {
+      qId = `q_${qIdx + 1}`
+    }
+    if (seenQIds.has(qId)) return null
+
+    const label = cleanText((q as Record<string, unknown>).label, 1, 160)
+    if (!label) continue
+
+    const rawOptions = (q as Record<string, unknown>).options
+    if (!Array.isArray(rawOptions) || rawOptions.length < MIN_CLARIFICATION_OPTIONS) continue
+
+    const cleanOptions: ClarificationOption[] = []
+    const seenOptIds = new Set<string>()
+
+    for (let optIdx = 0; optIdx < rawOptions.slice(0, MAX_CLARIFICATION_OPTIONS).length; optIdx++) {
+      const opt = rawOptions[optIdx]
+      if (!opt || typeof opt !== 'object') continue
+
+      const rawOptId = (opt as Record<string, unknown>).id ?? (opt as Record<string, unknown>).value
+      const strRawOptId = typeof rawOptId === 'string' || typeof rawOptId === 'number' ? String(rawOptId).trim() : ''
+      if (strRawOptId && seenOptIds.has(strRawOptId)) return null
+      let optId = strRawOptId
+      if (!optId || !SELECT_VALUE_REGEX.test(optId)) {
+        optId = `opt_${optIdx + 1}`
+      }
+      if (seenOptIds.has(optId)) return null
+
+      const rawOptLabel = (opt as Record<string, unknown>).label ?? (opt as Record<string, unknown>).text
+      const optLabel = cleanText(rawOptLabel ?? optId, 1, 80)
+      if (!optLabel) continue
+
+      seenOptIds.add(optId)
+      cleanOptions.push({ id: optId, label: optLabel })
+    }
+
+    if (cleanOptions.length < MIN_CLARIFICATION_OPTIONS) continue
+
+    seenQIds.add(qId)
+    const cleanQ: ClarificationQuestion = {
+      id: qId,
+      label,
+      options: cleanOptions,
+    }
+    if (Boolean((q as Record<string, unknown>).allow_other)) {
+      cleanQ.allow_other = true
+    }
+    cleanQuestions.push(cleanQ)
+  }
+
+  if (cleanQuestions.length === 0) return null
+
+  const out: ClarificationBlock = {
+    id: (item.id as string) || 'clarification_1',
+    type: 'clarification',
+    questions: cleanQuestions,
+  }
+  const submitLabel = cleanText(item.submit_label, 1, 60)
+  if (submitLabel) {
+    out.submit_label = submitLabel
+  }
+
+  return out
+}
+
 /**
  * Bloco sem `type`: inferido pelos campos, na mesma ordem do Python (spec §4).
  * `items` de textos → follow_up; `items` de {label, value} → metric; `kind` de
@@ -1002,6 +1086,7 @@ function inferType(obj: Record<string, unknown>): string | null {
   if (obj.steps || (obj.value !== undefined && obj.max !== undefined)) return 'progress'
   if (obj.fields) return 'controls'
   if (typeof obj.question === 'string' && Array.isArray(obj.options)) return 'options'
+  if (Array.isArray(obj.questions)) return 'clarification'
   if (obj.html || ('code' in obj && !('html' in obj))) return 'sandbox'
   if (Array.isArray(obj.items) && obj.items.length > 0) {
     if (obj.items.every((x) => typeof x === 'string')) return 'follow_up'
@@ -1090,6 +1175,7 @@ export function parseUiEnvelope(raw: unknown): UiEnvelope | null {
     else if (bType === 'metric') validated = validateMetric(obj)
     else if (bType === 'callout') validated = validateCallout(obj)
     else if (bType === 'follow_up') validated = validateFollowUp(obj)
+    else if (bType === 'clarification') validated = validateClarification(obj)
 
     if (validated) {
       if (bType === 'controls') {
@@ -1174,6 +1260,11 @@ export function parseUiEnvelope(raw: unknown): UiEnvelope | null {
     }
   }
 
+  // Se houver um clarification válido e um follow_up no mesmo envelope, exibir só o quadro.
+  if (cleanBlocks.some((b) => b.type === 'clarification')) {
+    cleanBlocks = cleanBlocks.filter((b) => b.type !== 'follow_up')
+  }
+
   // `follow_up` é sempre o último bloco (plano 12 §2.3): se veio antes, vai para o fim.
   if (cleanBlocks.some((b) => b.type === 'follow_up') && cleanBlocks[cleanBlocks.length - 1].type !== 'follow_up') {
     cleanBlocks = [...cleanBlocks.filter((b) => b.type !== 'follow_up'), ...cleanBlocks.filter((b) => b.type === 'follow_up')]
@@ -1227,9 +1318,10 @@ const UI_SIGNATURES: Record<string, string> = {
   metric: 'metric: items[{label,value}]',
   callout: 'callout: body, kind info|success|warning|danger',
   follow_up: 'follow_up: items[string]',
+  clarification: 'clarification: questions[{id,label,options[{id,label}]}], submit_label?',
 }
 const UI_REQUIRED: Record<string, string> = {
-  chart: 'series', table: 'columns', controls: 'fields', options: 'question', sandbox: 'html', metric: 'items', callout: 'body', follow_up: 'items',
+  chart: 'series', table: 'columns', controls: 'fields', options: 'question', sandbox: 'html', metric: 'items', callout: 'body', follow_up: 'items', clarification: 'questions',
 }
 export function parseUiEnvelopeWithDiagnostics(raw: unknown, imageHosts: string[] = [], allowPrivateHttp = false): { envelope: UiEnvelope | null; errors: UiError[]; dropped: number } {
   const result: { envelope: UiEnvelope | null; errors: UiError[]; dropped: number } = { envelope: null, errors: [], dropped: 0 }
@@ -1314,6 +1406,47 @@ export function parseUiEnvelopeWithDiagnostics(raw: unknown, imageHosts: string[
       else if (kind === 'options' && (!action || String(action.name) !== 'send_message')) { code = 'invalid_action'; path = 'action.name' }
       else if (kind === 'options' && (typeof action?.template !== 'string' || !action.template.includes('{choice}'))) { code = 'invalid_action'; path = 'action.template' }
       else if (kind === 'options' && (!Array.isArray(block.options) || block.options.length < 2)) { code = 'missing_required'; path = 'options' }
+      else if (kind === 'clarification') {
+        const qs = block.questions
+        if (!Array.isArray(qs) || qs.length < 1) {
+          code = 'missing_required'
+          path = 'questions'
+        } else if (qs.length > 3) {
+          code = 'limit_exceeded'
+          path = 'questions'
+        } else {
+          const qIds = qs.filter((q) => q && typeof q === 'object' && (q as Record<string, unknown>).id).map((q) => String((q as Record<string, unknown>).id))
+          if (qIds.length !== new Set(qIds).size) {
+            code = 'duplicate_id'
+            path = 'questions'
+          } else {
+            for (const q of qs) {
+              if (!q || typeof q !== 'object' || !(q as Record<string, unknown>).label) {
+                code = 'missing_required'
+                path = 'questions.label'
+                break
+              }
+              const opts = (q as Record<string, unknown>).options
+              if (!Array.isArray(opts) || opts.length < 2) {
+                code = 'missing_required'
+                path = 'questions.options'
+                break
+              }
+              if (opts.length > 4) {
+                code = 'limit_exceeded'
+                path = 'questions.options'
+                break
+              }
+              const optIds = opts.filter((o) => o && typeof o === 'object').map((o) => String((o as Record<string, unknown>).id || (o as Record<string, unknown>).value || ''))
+              if (optIds.length !== new Set(optIds).size) {
+                code = 'duplicate_id'
+                path = 'questions.options'
+                break
+              }
+            }
+          }
+        }
+      }
       else if (kind === 'sandbox' && (block.kind === 'scene' || ('code' in block && !('html' in block)))) {
         const codeStr = block.code
         if (typeof codeStr !== 'string' || !codeStr.trim()) {

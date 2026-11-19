@@ -758,7 +758,14 @@
     "sceneError": "Szenenfehler: {{message}}",
     "sceneCorrectionPrompt": "Korrigieren Sie die Szene \"{{title}}\": fehlgeschlagen mit: {{message}}. Behalten Sie denselben sandbox kind scene Block bei.",
     "sceneWebGlLost": "Der 3D-Grafikkontext ist verloren gegangen.",
-    "sceneReadoutTitle": "Szenenwerte"
+    "sceneReadoutTitle": "Szenenwerte",
+    "clarificationTitle": "Folgefragen",
+    "clarificationSubmit": "Antworten senden",
+    "clarificationOther": "Andere Antwort",
+    "clarificationOtherPlaceholder": "Geben Sie Ihre Antwort ein...",
+    "clarificationOtherLabel": "Andere Antwort für {{question}}",
+    "clarificationAnswered": "Antworten gesendet",
+    "clarificationReadOnly": "Fragen beantwortet"
   },
   "artifacts": {
     "preview": "Vorschau",
@@ -782,7 +789,22 @@
     "editPlaceholder": "Beschreiben Sie die gewünschten Änderungen...",
     "applyEdit": "Anwenden"
   },
+  "autoRouter": {
+    "policyEconomicalTag": "Maximale Ersparnis",
+    "policyBalancedTag": "EMPFOHLENE STANDARDEINSTELLUNG",
+    "policyPerformanceTag": "Höchste Qualität"
+  },
   "memory": {
+    "dreamBreakerLabel": "Automatischer Schutz",
+    "dreamBreakerStateClosed": "Aktiv",
+    "dreamBreakerStateOpen": "Nach Fehlern pausiert",
+    "dreamBreakerStateHalfOpen": "Wartet auf einen Testlauf zur Wiederaufnahme",
+    "dreamBreakerFailures": "{{count}} aufeinanderfolgende Fehler",
+    "dreamBreakerRetryAt": "Nächster automatischer Versuch: {{time}}",
+    "dreamBreakerResetBtn": "Schutz zurücksetzen",
+    "dreamBreakerResetting": "Wird zurückgesetzt…",
+    "dreamBreakerResetSuccess": "Der Schutz wurde zurückgesetzt. Die automatische Konsolidierung ist wieder aktiviert.",
+    "dreamBreakerResetError": "Der Schutz konnte gerade nicht zurückgesetzt werden.",
     "useMemoryGlobal": "Gedächtnis in Gesprächen (Standard: an)",
     "useMemoryGlobalDesc": "Standardmäßig an: korreliert aktuelle Fragen mit bereits Gelerntem. Hier ausschalten für Chats ohne Vergangenheitsspeicher.",
     "extractorTitle": "Extraktor-Modell (günstig)",

@@ -14610,16 +14610,17 @@ html[data-theme="light"] .model-option-provider-tag {
   white-space: pre-line;
 }
 
-/* Sugestões (`follow_up`, plano 12 §2.3) ----------------------------------- */
+/* Sugestões (`follow_up`, plano 12 §2.3 / perguntas-adicionais §1) ----------- */
 .nexus-ui-followups {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  margin-top: 2px;
+  gap: 6px;
+  margin-top: 6px;
+  width: 100%;
 }
 
 .nexus-ui-followups__title {
-  margin: 0 0 2px;
+  margin: 0;
   font-size: 11px;
   font-weight: 600;
   color: var(--muted);
@@ -14629,42 +14630,51 @@ html[data-theme="light"] .model-option-provider-tag {
 
 .nexus-ui-followups__list {
   display: flex;
-  flex-direction: column;
+  flex-wrap: wrap;
+  gap: 8px;
   margin: 0;
   padding: 0;
   list-style: none;
-  border-top: 1px solid var(--hairline);
+}
+
+.nexus-ui-followups__item {
+  display: inline-flex;
+  margin: 0;
+  padding: 0;
 }
 
 .nexus-ui-followup {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  width: 100%;
-  min-height: 40px;
-  padding: 8px 4px;
-  border: 0;
-  border-bottom: 1px solid var(--hairline);
-  border-radius: 0;
-  background: transparent;
+  gap: 8px;
+  max-width: 100%;
+  min-height: 36px;
+  padding: 6px 12px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md, 10px);
+  background: var(--surface-soft);
   color: var(--ink);
   font: inherit;
   font-size: 13px;
+  font-weight: 500;
+  line-height: 1.4;
   text-align: left;
+  text-transform: none;
   cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  user-select: none;
 }
 
 .nexus-ui-followup:hover:not(:disabled) {
-  background: var(--surface-soft);
+  background: var(--surface-card);
+  border-color: color-mix(in srgb, var(--primary) 35%, var(--hairline));
   color: var(--primary);
 }
 
 .nexus-ui-followup:focus-visible {
   outline: 2px solid var(--primary);
-  outline-offset: -2px;
-  border-radius: 6px;
+  outline-offset: 2px;
 }
 
 .nexus-ui-followup:disabled {
@@ -14674,17 +14684,21 @@ html[data-theme="light"] .model-option-provider-tag {
 
 .nexus-ui-followup[data-chosen] {
   color: var(--primary);
+  border-color: color-mix(in srgb, var(--primary) 40%, transparent);
+  background: var(--accent-dim, rgba(204, 120, 92, 0.1));
   font-weight: 600;
 }
 
 .nexus-ui-followup__text {
   min-width: 0;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 .nexus-ui-followup__icon {
   flex-shrink: 0;
   color: var(--muted);
+  transition: color 0.15s ease;
 }
 
 .nexus-ui-followup:hover:not(:disabled) .nexus-ui-followup__icon,
@@ -14692,9 +14706,34 @@ html[data-theme="light"] .model-option-provider-tag {
   color: var(--primary);
 }
 
+@media (max-width: 600px) {
+  .nexus-ui-followups__list {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .nexus-ui-followups__item {
+    width: 100%;
+  }
+
+  .nexus-ui-followup {
+    width: 100%;
+    min-height: 44px;
+    padding: 8px 12px;
+  }
+}
+
 @media (pointer: coarse) {
   .nexus-ui-followup {
     min-height: 44px;
+    padding: 8px 14px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nexus-ui-followup,
+  .nexus-ui-followup__icon {
+    transition: none;
   }
 }
 
@@ -14932,6 +14971,170 @@ html[data-theme="light"] .model-option-provider-tag {
 .nexus-ui-options__other {
   margin-top: 10px;
   width: 100%;
+}
+
+/* Quadro de perguntas (`clarification`, plano perguntas-adicionais §2/§3) ---- */
+.nexus-ui-clarification__form {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+.nexus-ui-clarification__groups {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+}
+
+.nexus-ui-clarification__group {
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md, 10px);
+  background: var(--surface-soft);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.nexus-ui-clarification__legend {
+  padding: 0 4px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink);
+  line-height: 1.4;
+  overflow-wrap: break-word;
+}
+
+.nexus-ui-clarification__options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
+}
+
+.nexus-ui-clarification__option {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm, 8px);
+  background: var(--surface-card);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.nexus-ui-clarification__option:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--primary) 5%, var(--surface-card));
+  border-color: var(--primary);
+}
+
+.nexus-ui-clarification__option:has(.nexus-ui-clarification__radio:focus-visible) {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.nexus-ui-clarification__option[data-selected] {
+  background: color-mix(in srgb, var(--primary) 10%, var(--surface-card));
+  border-color: var(--primary);
+  box-shadow: 0 0 0 1px var(--primary);
+  font-weight: 600;
+}
+
+.nexus-ui-clarification__group:disabled .nexus-ui-clarification__option,
+.nexus-ui-clarification__option:disabled {
+  opacity: 0.65;
+  cursor: default;
+}
+
+.nexus-ui-clarification__radio {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  pointer-events: none;
+}
+
+.nexus-ui-clarification__indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  border: 1.5px solid var(--muted-soft);
+  border-radius: 50%;
+  background: var(--surface-card);
+  color: #ffffff;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.nexus-ui-clarification__option[data-selected] .nexus-ui-clarification__indicator {
+  background: var(--selection, #2563eb);
+  border-color: var(--selection, #2563eb);
+}
+
+.nexus-ui-clarification__option-label {
+  min-width: 0;
+  overflow-wrap: break-word;
+}
+
+.nexus-ui-clarification__other-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 100%;
+}
+
+.nexus-ui-clarification__other-input {
+  width: 100%;
+  min-width: 220px;
+  max-width: 440px;
+}
+
+@media (max-width: 600px) {
+  .nexus-ui-clarification__options {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .nexus-ui-clarification__option {
+    width: 100%;
+    min-height: 44px;
+  }
+
+  .nexus-ui-clarification__other-wrapper {
+    width: 100%;
+  }
+
+  .nexus-ui-clarification__other-input {
+    max-width: 100%;
+  }
+}
+
+@media (pointer: coarse) {
+  .nexus-ui-clarification__option {
+    min-height: 44px;
+    padding: 8px 14px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nexus-ui-clarification__option,
+  .nexus-ui-clarification__indicator {
+    transition: none;
+  }
 }
 
 /* Utilidades --------------------------------------------------------------- */

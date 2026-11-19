@@ -26,6 +26,7 @@ MODULE_TRIGGERS = (
     ("progress", r"\betapas?\b|\bprogress|\bchecklist\b|\bpasso a passo\b|\broteiro\b"),
     ("controls", r"\bcalcul|\bc[aá]lculos?\b|\bsimul(?!t)|\bestim|\bparcel|\bdivid"),
     ("options", r"\bescolh|\bselecion|\bprefer|\bqual (?:dos|das)\b|\bop[çc][oõ]es\b|\benquetes?\b|\balternativas?\b"),
+    ("clarification", r"\blan[çc]|\bmonetiz|\bplanej|\bprioriz|\brecomenda|\bestrat[eé]g|\bneg[oó]ci|\bcarreira|\bdecid|\broadmap|\blaunch|\bplan(?!ilha)|\bpriorit|\brecommend|\bstrateg|\bbusiness|\bcareer"),
     ("callout", r"\baten[çc][aã]o\b|\bcuidado\b|\bimportante\b|\baviso\b|\brisco\b"),
     ("card", r"\bimage(?:m|ns)\b|\bfotos?\b|\bfotografia|\bcart(?:[aã]o|[oõ]es)\b|\bproduto|\bficha\b"),
     ("scene", r"\b[oó]rbita|\bp[eê]ndulo|\bpart[ií]cul|\bpasso a passo animado\b"),
@@ -41,7 +42,11 @@ def select_modules(user_text: str) -> tuple[str, ...]:
     if len(NUMBER_REGEX.findall(user_text)) >= 3 and _WORDS_WITH_NUMBERS_REGEX.search(user_text):
         if "chart" not in matches:
             matches.insert(0, "chart")
-    return tuple(matches[:2] + (["follow_up"] if matches else []))
+    if not matches:
+        return ()
+    content_matches = [m for m in matches if m not in ("follow_up", "clarification")]
+    continuity = "clarification" if "clarification" in matches else "follow_up"
+    return tuple(content_matches[:2] + [continuity])
 
 
 def should_offer_ui(user_text: str) -> bool:

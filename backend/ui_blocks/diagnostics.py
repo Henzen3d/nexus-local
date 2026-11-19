@@ -25,9 +25,11 @@ SIGNATURES = {
     'metric': 'metric: items[{label,value}]',
     'callout': 'callout: body, kind info|success|warning|danger',
     'follow_up': 'follow_up: items[string]',
+    'clarification': 'clarification: questions[{id,label,options[{id,label}]}], submit_label?',
 }
 REQUIRED = {'chart': 'series', 'table': 'columns', 'controls': 'fields', 'options': 'question',
-            'sandbox': 'html', 'metric': 'items', 'callout': 'body', 'follow_up': 'items'}
+            'sandbox': 'html', 'metric': 'items', 'callout': 'body', 'follow_up': 'items',
+            'clarification': 'questions'}
 
 
 def ui_error(code: str, block_id: str = '', path: str = '', hint: str = '') -> dict:
@@ -123,6 +125,32 @@ def validate_with_diagnostics(raw: Any, **kwargs) -> dict:
                 code, path = 'invalid_action', 'action.name'
             elif kind == 'options' and (not isinstance(block.get('action', {}).get('template'), str) or '{choice}' not in block['action']['template']):
                 code, path = 'invalid_action', 'action.template'
+            elif kind == 'clarification':
+                qs = block.get('questions')
+                if not isinstance(qs, list) or len(qs) < 1:
+                    code, path = 'missing_required', 'questions'
+                elif len(qs) > 3:
+                    code, path = 'limit_exceeded', 'questions'
+                else:
+                    q_ids = [q.get('id') for q in qs if isinstance(q, dict) and q.get('id')]
+                    if len(q_ids) != len(set(q_ids)):
+                        code, path = 'duplicate_id', 'questions'
+                    else:
+                        for q in qs:
+                            if not isinstance(q, dict) or not q.get('label'):
+                                code, path = 'missing_required', 'questions.label'
+                                break
+                            opts = q.get('options')
+                            if not isinstance(opts, list) or len(opts) < 2:
+                                code, path = 'missing_required', 'questions.options'
+                                break
+                            if len(opts) > 4:
+                                code, path = 'limit_exceeded', 'questions.options'
+                                break
+                            opt_ids = [o.get('id') or o.get('value') for o in opts if isinstance(o, dict) and (o.get('id') or o.get('value'))]
+                            if len(opt_ids) != len(set(opt_ids)):
+                                code, path = 'duplicate_id', 'questions.options'
+                                break
             elif kind == 'sandbox' and (block.get('kind') == 'scene' or ('code' in block and 'html' not in block)):
                 import re
                 from backend.ui_blocks.validate import FORBIDDEN_SCENE_TERMS, MAX_SCENE_CODE

@@ -811,3 +811,96 @@ test('mergeUiEnvelopes deduplica por id e respeita o teto de MAX_BLOCKS', () => 
   const mergedMany = mergeUiEnvelopes(manyHost, null)
   assert.equal(mergedMany?.blocks.length, 6)
 })
+
+test('clarification: valida quadro de perguntas, opções, allow_other e coexistência com follow_up', () => {
+  const valid = {
+    v: 1,
+    blocks: [
+      {
+        id: 'q_frame',
+        type: 'clarification',
+        submit_label: 'Continuar com escolhas',
+        questions: [
+          {
+            id: 'prioridade',
+            label: 'Qual é o seu objetivo?',
+            allow_other: true,
+            options: [
+              { id: 'renda', label: 'Renda recorrente' },
+              { id: 'rapido', label: 'Retorno rápido' },
+            ],
+          },
+          {
+            id: 'tempo',
+            label: 'Tempo semanal',
+            options: [
+              { id: 't1', label: 'Até 5h' },
+              { id: 't2', label: '5h a 10h' },
+              { id: 't3', label: 'Mais de 10h' },
+            ],
+          },
+        ],
+      },
+    ],
+  }
+  const parsed = parseUiEnvelope(valid)
+  assert.notEqual(parsed, null)
+  assert.equal(parsed?.blocks.length, 1)
+  const b = parsed?.blocks[0] as any
+  assert.equal(b.type, 'clarification')
+  assert.equal(b.submit_label, 'Continuar com escolhas')
+  assert.equal(b.questions.length, 2)
+  assert.equal(b.questions[0].allow_other, true)
+  assert.equal(b.questions[0].options.length, 2)
+  assert.equal(b.questions[1].options.length, 3)
+
+  // Coexistência: clarification válido + follow_up no mesmo envelope exibe só clarification
+  const mixed = {
+    v: 1,
+    blocks: [
+      valid.blocks[0],
+      { id: 'f1', type: 'follow_up', items: ['Passo seguinte', 'Outra ideia'] },
+    ],
+  }
+  const parsedMixed = parseUiEnvelope(mixed)
+  assert.notEqual(parsedMixed, null)
+  assert.deepEqual(parsedMixed?.blocks.map((x) => x.type), ['clarification'])
+
+  // Se clarification for inválido, follow_up válido permanece
+  const invalidClarifyMixed = {
+    v: 1,
+    blocks: [
+      { type: 'clarification', questions: [] },
+      { id: 'f1', type: 'follow_up', items: ['Passo seguinte', 'Outra ideia'] },
+    ],
+  }
+  const parsedInvalid = parseUiEnvelope(invalidClarifyMixed)
+  assert.notEqual(parsedInvalid, null)
+  assert.deepEqual(parsedInvalid?.blocks.map((x) => x.type), ['follow_up'])
+
+  // Menos de 2 opções em todas as perguntas invalida o bloco
+  const insufficient = {
+    v: 1,
+    blocks: [
+      {
+        type: 'clarification',
+        questions: [{ id: 'q1', label: 'Pergunta 1', options: [{ id: 'o1', label: 'Apenas uma' }] }],
+      },
+    ],
+  }
+  assert.equal(parseUiEnvelope(insufficient), null)
+
+  // Inferência automática pelo campo questions
+  const inferred = parseUiEnvelope({
+    v: 1,
+    blocks: [
+      {
+        questions: [
+          { label: 'Pergunta?', options: [{ id: '1', label: 'A' }, { id: '2', label: 'B' }] },
+        ],
+      },
+    ],
+  })
+  assert.notEqual(inferred, null)
+  assert.equal(inferred?.blocks[0]?.type, 'clarification')
+})
