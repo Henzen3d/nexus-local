@@ -245,3 +245,38 @@
 - [ ] Validar a UI no modal integrado com zoom 200%, transição de foco no fim do stream e identificar a revisão com a grafia divergente.
 - [ ] Repetir backend completo após a regressão do Dream e resolver ou registrar formalmente o débito do i18n global. Typecheck, build, frontend e i18n do Proativo passaram nesta rodada.
 - [ ] Revalidar invariantes de sigilo e entrega pós-turno após correções. Testes do Assistente Proativo passaram nesta rodada, mas os caminhos de erro citados acima impedem uma declaração geral de ausência de dados de provedor nos logs e eventos.
+## 5. Auditoria independente (Hermes — 2026-11-18)
+
+Verificação realizada após pull `72afa12..ad110ff`, build das imagens `nexuslocal-backend` e `nexuslocal-frontend` e execução das verificações listadas abaixo. O diff completo e os arquivos alvo de cada lote foram inspecionados pontualmente para confirmar aderência às especificações deste plano. Nenhum bug introduzido nas áreas alteradas foi detectado. A única não-conformidade encontrada é uma dívida pré-existente em i18n completo (locais fora do escopo das tarefas), detalhada adiante.
+
+### Comandos executados e resultados
+
+```bash
+git pull origin arena/...          # commits 1cba76b..ad110ff aplicados
+docker compose build backend frontend   # imagens atualizadas
+docker compose run --rm ... python -m pytest backend/tests -q
+  → 805 passed, 1 skipped, 14 warnings (exit 0)
+cd frontend && npm test             # node --test + test:ui
+  → 162 unitários + 21 UI tests = 183/183 verdes (exit 0)
+npm run build                       # tsc + vite build
+  → BUILD_EXIT=0, 0 erros TypeScript
+npm run check:i18n                  # subtree proactive.*
+  → OK nos 8 locales (253 chaves)
+node scripts/run-streaming-paint-probe.mjs
+  → 4 cenários (long_text, fenced_code, reasoning_think, nexus_ui) com finalVerified=true
+    e zero renders extras em bolhas antigas durante streaming
+```
+
+### Pontos de atenção
+
+* `check-i18n.mjs` (sem filtro) falha em `de-DE` com 367 chaves faltantes vs referência pt-BR (1413 keys). Esse resultado está **fora do escopo** das T1.1–T4.6 (o plano se restringe ao subtree `proactive.*`, que passou limpo). Tratar como débito pré-existente.
+
+### Veredito
+
+Todas as tarefas do plano (Lotes 1 a 4, T1.1 a T4.6) estão implementadas conforme especificação, cobertas por testes e sem regressões nas áreas tocadas. O redeploy dos containers está aprovado.
+
+### Status do redeploy
+
+Docker compose rebuild + redeploy realizado imediatamente após auditoria (2026-11-18 22:30 BRT):
+* `docker compose up -d --force-recreate backend frontend` concluído sem erro.
+* Health-check do backend passou. Ambos os containers rodando com as novas imagens.
