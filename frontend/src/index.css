@@ -2175,10 +2175,18 @@ html[data-chat-font="mono"] {
 
 .execution-step-main {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 8px;
   min-height: 24px;
+}
+
+.execution-step-text-group {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+  gap: 2px;
 }
 
 .execution-step-text {
@@ -2336,6 +2344,7 @@ html[data-chat-font="mono"] {
   color: var(--muted);
   line-height: 1.4;
   overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 /* Indicador pulsante de "Preparando resposta..." (Rodada 3) */

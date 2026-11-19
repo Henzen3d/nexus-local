@@ -387,10 +387,12 @@ def _llm_error_is_too_large(exc: Exception) -> bool:
 async def analyze_facts(
     facts: list[dict],
     system_prompt: str,
-    caller: Callable[[str, str], Awaitable[str]],
+    caller: Callable[[str, str], Awaitable[str | DreamResponseSchema]],
     max_tokens: int = DREAM_REQUEST_TOKEN_BUDGET,
     current_date: Optional[str] = None,
     deadline: Optional[float] = None,
+    *,
+    single_fact_caller: Optional[Callable[[str, str], Awaitable[DreamResponseSchema]]] = None,
 ) -> tuple[list[DreamOperation], list[str]]:
     """Chama o modelo em lotes que cabem no teto. 413 fatia de novo. Devolve IDs reais."""
     current_date = current_date or datetime.date.today().isoformat()
@@ -406,7 +408,8 @@ async def analyze_facts(
             raise DreamLLMError("Prazo máximo global da consolidação excedido.")
         _map, payload = render_facts_payload(chunk, current_date, alias_map)
         try:
-            raw = await caller(system_prompt, payload)
+            select_caller = single_fact_caller if len(chunk) == 1 and single_fact_caller else caller
+            raw = await select_caller(system_prompt, payload)
         except asyncio.CancelledError:
             raise
         except Exception as exc:
@@ -418,7 +421,7 @@ async def analyze_facts(
             if isinstance(exc, DreamLLMError):
                 raise
             kind, status = _classify_dream_error(exc)
-            raise DreamLLMError(f"Falha operacional no lote ({kind}, status={status}).") from exc
+            raise DreamLLMError(f"Falha operacional no lote ({kind}, status={status}).") from None
         schema = raw if isinstance(raw, DreamResponseSchema) else parse_dream_response(raw)
         remap_operation_ids(schema.operations, alias_map, facts)
         all_ops.extend(schema.operations)
@@ -431,24 +434,27 @@ async def analyze_facts(
 
 
 _THINK_BLOCK = re.compile(r"<think>(.*?)</think>", re.DOTALL | re.IGNORECASE)
+_DREAM_REASONING_TAG = r"think|thinking|thought|reasoning|analysis"
 _REASONING_TAGS = re.compile(
-    r"<(?:think|thought|reasoning)>(.*?)</(?:think|thought|reasoning)>",
+    rf"<({_DREAM_REASONING_TAG})(?=[\s>])[^>]*>.*?</\1\s*>",
     re.DOTALL | re.IGNORECASE,
 )
-_OPEN_CLOSE_REASONING_TAGS = re.compile(r"</?(?:think|thought|reasoning)>", re.IGNORECASE)
+_UNMATCHED_REASONING_TAG = re.compile(
+    rf"<(?:{_DREAM_REASONING_TAG})(?=[\s>])[^>]*>.*\Z", re.DOTALL | re.IGNORECASE
+)
+_JSON_CONTAINER_START = re.compile(r"[\[{]")
 _CODE_FENCE_BLOCK = re.compile(r"```(?:json)?\s*([\s\S]*?)```", re.IGNORECASE)
 
 
-def _strip_fences_and_reasoning(text: str) -> tuple[str, list[str]]:
-    """Remove tags de raciocínio e cercas markdown, retornando texto principal e blocos internos."""
-    insides = _REASONING_TAGS.findall(text)
+def _strip_fences_and_reasoning(text: str) -> str:
+    """Return only the final answer, discarding reasoning even if its stream was cut short."""
     outside = _REASONING_TAGS.sub("\n", text)
-    outside = _OPEN_CLOSE_REASONING_TAGS.sub("", outside)
+    outside = _UNMATCHED_REASONING_TAG.sub("", outside)
     # Desembrulha cercas markdown mantendo o conteúdo interno
     outside = _CODE_FENCE_BLOCK.sub(lambda m: "\n" + m.group(1) + "\n", outside)
     outside = re.sub(r"^```(?:json)?\s*", "", outside.strip(), flags=re.IGNORECASE)
     outside = re.sub(r"\s*```$", "", outside).strip()
-    return outside, insides
+    return outside
 
 
 def _scan_json_candidates(text: str, *, max_scan_positions: int = 64) -> tuple[list[Any], bool]:
@@ -462,28 +468,27 @@ def _scan_json_candidates(text: str, *, max_scan_positions: int = 64) -> tuple[l
     idx = 0
     n = len(text)
     attempts = 0
-    stripped = text.lstrip()
-    if stripped.startswith("["):
-        try:
-            arr_val, arr_end = decoder.raw_decode(stripped)
-            if isinstance(arr_val, list):
-                saw_root_array = True
-                if not stripped[arr_end:].strip():
-                    return [], True
-        except json.JSONDecodeError:
-            pass
-
     while idx < n and attempts < max_scan_positions:
-        pos = text.find("{", idx)
-        if pos == -1:
+        start = _JSON_CONTAINER_START.search(text, idx)
+        if start is None:
             break
+        pos = start.start()
         attempts += 1
         try:
-            obj, end_offset = decoder.raw_decode(text[pos:])
+            obj, end_pos = decoder.raw_decode(text, pos)
             if isinstance(obj, dict):
                 decoded.append(obj)
-            idx = pos + max(1, end_offset)
+            else:
+                saw_root_array = True
+            idx = end_pos
         except json.JSONDecodeError:
+            # Do not reinterpret nested JSON within a truncated plan or array
+            # as the final output. Plain prose with brackets remains allowed.
+            after_open = text[pos + 1:].lstrip()[:1]
+            if text[pos] == "[" and after_open in ("{", "[", '"'):
+                return decoded, True
+            if text[pos] == "{" and after_open == '"':
+                raise DreamLLMError("Objeto JSON inválido na resposta final.")
             idx = pos + 1
     return decoded, saw_root_array
 
@@ -516,18 +521,12 @@ def parse_dream_response(raw: str, *, max_chars: int = DREAM_MAX_RESPONSE_CHARS)
     if not raw.strip():
         raise DreamLLMError("Resposta vazia do modelo.")
 
-    outside, insides = _strip_fences_and_reasoning(raw)
+    outside = _strip_fences_and_reasoning(raw)
     candidates, saw_root_array = _scan_json_candidates(outside)
-    if saw_root_array and not candidates:
+    if saw_root_array:
         raise DreamLLMError("Resposta JSON inválida: raiz array não permitida.")
 
     valid = _validate_dream_candidates(candidates)
-    if not valid and insides:
-        inner_text = "\n".join(insides)
-        inner_candidates, inner_root_arr = _scan_json_candidates(inner_text)
-        if inner_root_arr and not inner_candidates:
-            raise DreamLLMError("Resposta JSON inválida: raiz array não permitida.")
-        valid = _validate_dream_candidates(inner_candidates)
 
     if not valid:
         raise DreamLLMError("Nenhum objeto JSON compatível com DreamResponseSchema encontrado na resposta.")
@@ -877,16 +876,27 @@ async def resolve_dream_candidates(
         # 1. Preferência explícita (override da chamada ou meta.dream_*)
         p_id = (custom_provider or "").strip() or None
         m_id = (custom_model or "").strip() or None
-        if not p_id:
+        if not p_id and not m_id:
             async with db.execute("SELECT value FROM meta WHERE key = 'dream_provider_id'") as cur:
                 row = await cur.fetchone()
                 p_id = (row[0] or "").strip() or None if row else None
-        if not m_id:
             async with db.execute("SELECT value FROM meta WHERE key = 'dream_model_id'") as cur:
                 row = await cur.fetchone()
                 m_id = (row[0] or "").strip() or None if row else None
         if m_id:
             preferred_pairs.append((p_id, m_id, "dream_dedicated"))
+
+        # A preferred local destination must not silently send memory to a
+        # remote provider when that model is unavailable.
+        local_only = False
+        if p_id or m_id:
+            async with db.execute(
+                """SELECT is_local FROM providers
+                   WHERE id = COALESCE(?, (SELECT provider_id FROM models WHERE id = ?))""",
+                (p_id, m_id),
+            ) as cur:
+                row = await cur.fetchone()
+                local_only = bool(row and row[0])
 
         # 2. Preferência secundária: extrator de memória
         async with db.execute("SELECT value FROM meta WHERE key = 'memory_extractor_provider_id'") as cur:
@@ -910,7 +920,7 @@ async def resolve_dream_candidates(
             pass
 
         # Determina primeiro modelo preferido válido para priorizar no Auto-Router
-        primary_pref_model = preferred_pairs[0][1] if preferred_pairs else None
+        primary_pref_model = m_id or (preferred_pairs[0][1] if not p_id and preferred_pairs else None)
 
         async with db.execute("SELECT value FROM meta WHERE key = 'router_policy'") as cur:
             pol_row = await cur.fetchone()
@@ -923,6 +933,8 @@ async def resolve_dream_candidates(
             excluded_ids=tuple(excluded_set),
             policy=router_policy,
             max_candidates=max(max_candidates * 2, 12),
+            local_only=local_only,
+            preferred_provider_id=p_id if not m_id else None,
         )
 
         # Constrói lista final de specs sem duplicatas: preferidos explícitos + Auto-Router
@@ -931,10 +943,14 @@ async def resolve_dream_candidates(
 
         # Primeiro, verifica se o preferido explícito (ex: custom/meta) já veio no topo do Auto-Router;
         # se veio, preserva ordem do Auto-Router; se um preferido secundário está no roteamento, prioriza se válido.
-        for pref_p, pref_m, pref_src in preferred_pairs:
+        model_preferences = preferred_pairs if m_id or not p_id else ()
+        for pref_p, pref_m, pref_src in model_preferences:
             if not pref_m or pref_m in excluded_set or pref_m in seen_ids:
                 continue
-            match = next((c for c in routed if c["model_id"] == pref_m), None)
+            match = next(
+                (c for c in routed if c["model_id"] == pref_m and pref_p in (None, c["provider_id"])),
+                None,
+            )
             if match is not None:
                 entry = dict(match)
                 entry["source"] = pref_src
@@ -1009,15 +1025,13 @@ async def _invoke_dream_candidate(
     ]
 
     kwargs: dict[str, Any] = {"temperature": 0.05}
-    if provider_id == "ollama":
-        kwargs["options"] = {"num_ctx": 8192, "temperature": 0.05}
     if _provider_supports_response_format(provider):
         kwargs["response_format"] = {"type": "json_object"}
 
-    async def _run_call() -> str:
+    async def _collect_response(call_kwargs: dict[str, Any]) -> str:
         full_response = ""
         if hasattr(provider, "stream_chat"):
-            async for token in provider.stream_chat(model=model_name, messages=messages, **kwargs):
+            async for token in provider.stream_chat(model=model_name, messages=messages, **call_kwargs):
                 full_response += str(token)
                 if len(full_response) > DREAM_MAX_RESPONSE_CHARS:
                     raise DreamLLMError(
@@ -1025,9 +1039,21 @@ async def _invoke_dream_candidate(
                     )
             return full_response
         if hasattr(provider, "chat"):
-            resp = await provider.chat(model=model_name, messages=messages, **kwargs)
+            resp = await provider.chat(model=model_name, messages=messages, **call_kwargs)
             return resp if isinstance(resp, str) else str(resp)
         raise DreamLLMError(f"Provedor '{provider_id}' não suporta chat.")
+
+    async def _run_call() -> str:
+        try:
+            return await _collect_response(kwargs)
+        except Exception as exc:
+            _, status = _classify_dream_error(exc)
+            format_rejected = re.search(r"response[_ ]format|json[_ ]object", str(exc), re.IGNORECASE)
+            if "response_format" not in kwargs or status not in (400, 422) or not format_rejected:
+                raise
+        # Compatible APIs can expose the argument but reject it for this model.
+        # Retry with the JSON prompt within the same timeout.
+        return await _collect_response({"temperature": kwargs["temperature"]})
 
     if timeout_s <= 0:
         raise asyncio.TimeoutError("Prazo da chamada esgotado.")
@@ -1065,7 +1091,7 @@ async def call_dream_llm(
         raise DreamLLMError(
             f"Falha na chamada ao modelo {model_name} ({provider_id}): {kind}"
             + (f" [{status}]" if status else "")
-        ) from exc
+        ) from None
 
 
 def _format_models_usage_summary(model_batch_counts: dict[tuple[str, str], int]) -> str:
@@ -1128,7 +1154,7 @@ async def run_dream_analysis(
         ordered = primary + healthy + fallback_demoted
         return ordered[: max(1, int(max_candidates_per_batch))]
 
-    async def routed_caller(prompt: str, payload: str) -> DreamResponseSchema:
+    async def routed_caller(prompt: str, payload: str, *, can_split: bool = True) -> DreamResponseSchema:
         nonlocal sticky_model_id, last_effective
         batch_candidates = _ordered_candidates_for_batch()
         last_kind = "unknown"
@@ -1166,13 +1192,13 @@ async def run_dream_analysis(
             except Exception as exc:
                 kind, status = _classify_dream_error(exc)
                 # 413 deve subir para analyze_facts dividir o lote mantendo o mesmo deadline
-                if kind == "too_large" or status == 413:
+                if can_split and (kind == "too_large" or status == 413):
                     logger.warning(
                         "[Dream] Lote excedeu limite do modelo (provider=%s, model=%s, status=413); dividindo lote",
                         pid,
                         mid,
                     )
-                    raise ProviderHTTPError(413, "Payload excedeu o limite do modelo (413).", provider=pid) from exc
+                    raise ProviderHTTPError(413, "Payload excedeu o limite do modelo (413).", provider=pid) from None
 
                 last_kind, last_status = kind, status
                 if mid not in demoted_ids:
@@ -1192,6 +1218,9 @@ async def run_dream_analysis(
             + ")."
         )
 
+    async def call_for_single_fact(prompt: str, payload: str) -> DreamResponseSchema:
+        return await routed_caller(prompt, payload, can_split=False)
+
     operations, notes = await analyze_facts(
         active_facts,
         system_prompt,
@@ -1199,6 +1228,7 @@ async def run_dream_analysis(
         max_tokens=max_tokens,
         current_date=current_date,
         deadline=deadline,
+        single_fact_caller=call_for_single_fact,
     )
     operations = drop_impossible_age_rewrites(active_facts, operations)
     model_summary = _format_models_usage_summary(model_batch_counts)
@@ -1650,26 +1680,22 @@ async def run_dream_with_breaker(
     now_getter = now_fn or (lambda: datetime.datetime.now(datetime.timezone.utc))
     exec_fn = consolidator or execute_dream_consolidation
 
-    if respect_breaker:
+    lock_cm = nullcontext() if already_locked else memory_pipeline_lock
+    async with lock_cm:
+        # Read the current breaker after reaching the head of the queue.
+        # Keep the lock until the attempt has updated its breaker state.
         probe = await dbmod.try_acquire_dream_probe(
             user_id,
             now=now_getter(),
             cooldown_minutes=cooldown_minutes,
+            allow_open=not respect_breaker,
         )
         if not probe.get("allowed"):
             return {"status": "skipped_breaker", "breaker": probe}
         generation = probe["generation"]
-    else:
-        status_before = await dbmod.get_dream_breaker_status(
-            user_id,
-            now=now_getter(),
-            cooldown_minutes=cooldown_minutes,
-        )
-        generation = status_before["generation"]
 
-    lock_cm = nullcontext() if already_locked else memory_pipeline_lock
-    try:
-        async with lock_cm:
+        outcome = "failure"
+        try:
             result = await exec_fn(
                 user_id=user_id,
                 trigger_type=trigger_type,
@@ -1677,47 +1703,29 @@ async def run_dream_with_breaker(
                 custom_model=custom_model,
                 progress_cb=progress_cb,
             )
-    except DreamSafetyError:
-        await dbmod.record_dream_attempt(
-            user_id,
-            generation,
-            "aborted_safety",
-            now=now_getter(),
-            cooldown_minutes=cooldown_minutes,
-        )
-        raise
-    except asyncio.CancelledError:
-        await dbmod.record_dream_attempt(
-            user_id,
-            generation,
-            "cancelled",
-            now=now_getter(),
-            cooldown_minutes=cooldown_minutes,
-        )
-        raise
-    except Exception:
-        breaker_res = await dbmod.record_dream_attempt(
-            user_id,
-            generation,
-            "failure",
-            now=now_getter(),
-            cooldown_minutes=cooldown_minutes,
-        )
-        if breaker_res.get("transitioned_to_open"):
-            logger.warning(
-                "[Dream Circuit Breaker] Pausando consolidação para usuário %s após %d falhas consecutivas (próxima tentativa em %s)",
-                user_id,
-                breaker_res["consecutive_failures"],
-                breaker_res.get("retry_at"),
-            )
-        raise
-
-    outcome = "no_op" if (isinstance(result, dict) and result.get("status") == "no_op") else "success"
-    await dbmod.record_dream_attempt(
-        user_id,
-        generation,
-        outcome,
-        now=now_getter(),
-        cooldown_minutes=cooldown_minutes,
-    )
-    return result
+            outcome = "no_op" if result.get("status") == "no_op" else "success"
+            return result
+        except DreamSafetyError:
+            outcome = "aborted_safety"
+            raise
+        except asyncio.CancelledError:
+            outcome = "cancelled"
+            raise
+        finally:
+            try:
+                breaker_res = await dbmod.record_dream_attempt(
+                    user_id,
+                    generation,
+                    outcome,
+                    now=now_getter(),
+                    cooldown_minutes=cooldown_minutes,
+                )
+                if breaker_res.get("transitioned_to_open"):
+                    logger.warning(
+                        "[Dream Circuit Breaker] Pausando consolidação para usuário %s após %d falhas consecutivas (próxima tentativa em %s)",
+                        user_id,
+                        breaker_res["consecutive_failures"],
+                        breaker_res.get("retry_at"),
+                    )
+            except Exception as exc:
+                logger.error("[Dream Circuit Breaker] Erro ao registrar resultado (%s).", type(exc).__name__)

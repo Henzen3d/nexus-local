@@ -54,6 +54,7 @@ async def test_get_memory_context_metadata(tmp_path, monkeypatch):
         await db.execute("""
             CREATE TABLE conversations (
                 id TEXT PRIMARY KEY,
+                user_id TEXT,
                 project_tag TEXT
             )
         """)
@@ -67,7 +68,11 @@ async def test_get_memory_context_metadata(tmp_path, monkeypatch):
                 updated_at TEXT DEFAULT (datetime('now'))
             )
         """)
-        await db.execute("INSERT INTO conversations (id, project_tag) VALUES ('conv-1', 'meu-projeto')")
+        await db.execute(
+            "INSERT INTO conversations (id, user_id, project_tag) VALUES "
+            "('conv-1', 'u1', 'meu-projeto'), ('conv-2', 'u2', 'meu-projeto'), "
+            "('conv-orphan', NULL, 'meu-projeto')"
+        )
         await db.execute("""
             INSERT INTO user_memory_summaries (id, user_id, scope, scope_ref, summary_md)
             VALUES ('s1', 'u1', 'global', '', '# Global Summary')
@@ -84,6 +89,11 @@ async def test_get_memory_context_metadata(tmp_path, monkeypatch):
     assert proj_tag == "meu-projeto"
     assert proj_sum is not None
     assert proj_sum["summary_md"] == "# Project Summary"
+    for conv_id in ("conv-2", "conv-orphan", "missing"):
+        other_global, other_tag, other_project = await get_memory_context_metadata("u1", conv_id)
+        assert other_global == global_sum
+        assert other_tag is None
+        assert other_project is None
 
 
 @pytest.mark.asyncio
@@ -295,6 +305,8 @@ async def test_failover_config_rejects_non_finite_and_non_positive():
 
 
 async def _make_two_model_db():
+    # Initialize lazy project imports before exercising provider wall-clock deadlines.
+    from backend.projects import context_builder  # noqa: F401
     db = await aiosqlite.connect(":memory:")
     await db.executescript(
         """
@@ -502,5 +514,82 @@ async def test_ttft_timeout_uses_separate_metric_series_and_effort_retry_uses_un
         assert "llm_ttft_attempt_1" not in req_ctx_b.phase_latencies
         assert "llm_ttft_attempt_2" in req_ctx_b.phase_latencies
         assert "failover_recovery_ms" in req_ctx_b.phase_latencies
+    finally:
+        await db.close()
+
+
+@pytest.mark.asyncio
+async def test_effort_error_after_commit_cannot_append_a_compatibility_retry():
+    db = await _make_two_model_db()
+    sent = []
+    class Socket:
+        async def send_json(self, event):
+            sent.append(event)
+
+    calls = []
+    async def stream(**kwargs):
+        calls.append(kwargs)
+        yield "Começo longo que já foi apresentado."
+        raise RuntimeError("unsupported parameter: reasoning_effort; private-upstream-body")
+
+    try:
+        with patch("backend.orchestration.resolve_request.get_provider", return_value=type("Provider", (), {"stream_chat": staticmethod(stream)})()):
+            result = await stream_from_llm(
+                ws=Socket(), db=db, conversation_id="conv-effort-committed", user_id="u_t22",
+                model_id="p1/m1", provider_id="p1", history=[{"role": "user", "content": "teste"}],
+                reasoning_effort="high", turn_id="turn-effort-committed",
+            )
+        assert result is None
+        assert len(calls) == 1
+        assert sent[-1]["type"] == "stream_end"
+        assert sent[-1]["outcome"] == "error"
+        assert sent[-1]["turn_id"] == "turn-effort-committed"
+        assert all("private-upstream-body" not in str(event) for event in sent)
+    finally:
+        await db.close()
+
+
+@pytest.mark.asyncio
+async def test_effort_retry_inter_token_timeout_ignores_empty_frames_and_fails_over(monkeypatch):
+    db = await _make_two_model_db()
+    monkeypatch.setenv("FAILOVER_INTER_TOKEN_TIMEOUT_SECONDS", "0.1")
+    monkeypatch.setenv("FAILOVER_TOTAL_BUDGET_SECONDS", "12")
+    sent = []
+    class Socket:
+        async def send_json(self, event):
+            sent.append(event)
+
+    class Primary:
+        async def stream_chat(self, **kwargs):
+            if kwargs.get("reasoning_effort"):
+                raise RuntimeError("HTTP 400 unsupported parameter: reasoning_effort")
+            yield "Rascunho longo da segunda chamada."
+            for _ in range(30):
+                await asyncio.sleep(0.02)
+                yield ""
+            yield "não deve chegar"
+
+    class Backup:
+        async def stream_chat(self, **kwargs):
+            yield "Resposta integral da reserva."
+
+    async def get_provider(provider_id, _db, user_id=None):
+        return Primary() if provider_id == "p1" else Backup()
+
+    ctx = RequestContext(request_id="retry-empty-frames")
+    try:
+        with patch("backend.orchestration.resolve_request.get_provider", side_effect=get_provider):
+            result = await stream_from_llm(
+                ws=Socket(), db=db, conversation_id="conv-retry-empty", user_id="u_t22",
+                model_id="p1/m1", provider_id="p1", history=[{"role": "user", "content": "teste"}],
+                reasoning_effort="high", turn_id="turn-retry-empty", request_context=ctx,
+            )
+        assert result is not None
+        assert result[0] == "Resposta integral da reserva."
+        assert result.failover_meta["attempt_count"] == 3
+        assert "llm_inter_token_timeout_attempt_2" in ctx.phase_latencies
+        clear_idx = next(i for i, event in enumerate(sent) if event["type"] == "stream_clear")
+        assert sent[clear_idx]["turn_id"] == "turn-retry-empty"
+        assert "".join(event["content"] for event in sent[clear_idx + 1:] if event["type"] == "token") == result[0]
     finally:
         await db.close()

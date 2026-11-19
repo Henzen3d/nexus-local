@@ -7,6 +7,16 @@ import { effectivePreferredModel } from '../lib/modelSelection'
 import { MAX_BLOCKS, mergeUiEnvelopes } from '../lib/nexusUi'
 import { bubbleContent, mergePending, newIds, pruneExpired, toastPreview } from '../lib/proactivePending'
 import { StreamDraftBuffer } from '../lib/streamDraftBuffer'
+import {
+  sanitizeErrorText,
+  sanitizeMessage,
+  sanitizeProcessStep,
+  sanitizeProcessSteps,
+  sanitizeStepDetail,
+  setSanitizationTranslator,
+} from '../lib/sanitization'
+
+setSanitizationTranslator((key, opts) => i18n.t(key, opts))
 
 // ── Persistência de provedor/modelo (por usuário quando possível) ───────────
 
@@ -735,7 +745,7 @@ export const useStore = create<AppState>((set, get) => {
         ...cleanDraft,
         activeConversationId: id,
         activeConversation: conv,
-        messages: conv.messages,
+        messages: (conv.messages || []).map(sanitizeMessage),
         activeArtifact: null,
         artifactPanelOpen: false,
         artifactHistory: [],
@@ -795,7 +805,7 @@ export const useStore = create<AppState>((set, get) => {
     const msg: Message = {
       id: `err-${Date.now()}`,
       role: 'error',
-      content,
+      content: sanitizeErrorText(content),
       model_id: selectedModelId ?? undefined,
     }
     set((s) => ({
@@ -1237,7 +1247,7 @@ export const useStore = create<AppState>((set, get) => {
     const convId = event.conversation_id || anyEvt.conv_id
     const msgId = event.message_id || anyEvt.msg_id
     const { activeConversationId, messages } = get()
-    if (convId && activeConversationId && convId !== activeConversationId) return
+    if (convId && convId !== activeConversationId) return
 
     const existing = messages.find((m) => m.id === msgId)
     if (existing) return
@@ -1252,7 +1262,6 @@ export const useStore = create<AppState>((set, get) => {
     }
     set((s) => ({
       messages: [...s.messages, msg],
-      isStreaming: false,
     }))
   },
 
@@ -1273,7 +1282,7 @@ export const useStore = create<AppState>((set, get) => {
     }
 
     const { activeConversationId, messages } = get()
-    if (convId && activeConversationId && convId !== activeConversationId) {
+    if (convId && convId !== activeConversationId) {
       get().showToast('Imagem gerada com sucesso!', 'success')
       return
     }
@@ -1314,9 +1323,9 @@ export const useStore = create<AppState>((set, get) => {
         model_display_name: 'Flux 1 Schnell',
         attachments: [att],
       }
-      set((s) => ({ messages: [...s.messages, newMsg], isStreaming: false }))
+      set((s) => ({ messages: [...s.messages, newMsg] }))
     } else {
-      set({ messages: updated, isStreaming: false })
+      set({ messages: updated })
     }
 
     get().showToast('Imagem gerada com sucesso!', 'success')
@@ -1332,7 +1341,7 @@ export const useStore = create<AppState>((set, get) => {
     const errorText = event.error || anyEvt.error || 'Erro na geração de imagem'
     const { activeConversationId, messages } = get()
 
-    if (!convId || !activeConversationId || convId === activeConversationId) {
+    if (!convId || convId === activeConversationId) {
       const updated = messages.map((m) => {
         if (m.id === msgId) {
           return {
@@ -1342,7 +1351,7 @@ export const useStore = create<AppState>((set, get) => {
         }
         return m
       })
-      set({ messages: updated, isStreaming: false })
+      set({ messages: updated })
     }
     get().showToast(`Falha na geração da imagem: ${errorText}`, 'error')
   },
@@ -1426,10 +1435,17 @@ export const useStore = create<AppState>((set, get) => {
   },
 
   startProcessStep: (step: ProcessStep) => {
+    const sanitized = sanitizeProcessStep(step)
     set((s) => {
-      const steps = s.processSteps.some((item) => item.id === step.id)
-        ? s.processSteps.map((item) => item.id === step.id ? { ...item, ...step } : item)
-        : [...s.processSteps, step]
+      let current = s.processSteps
+      // Se este é um passo de pesquisa específico por consulta (não sintético) e já existe o passo sintético 'web-search',
+      // descarta o sintético para unificar na etapa real por consulta (T3.3)
+      if (sanitized.type === 'search' && sanitized.id !== 'web-search') {
+        current = current.filter((item) => item.id !== 'web-search')
+      }
+      const steps = current.some((item) => item.id === sanitized.id)
+        ? current.map((item) => item.id === sanitized.id ? { ...item, ...sanitized } : item)
+        : [...current, sanitized]
       return {
         isStreaming: true,
         isGenerating: false,
@@ -1440,8 +1456,12 @@ export const useStore = create<AppState>((set, get) => {
   },
 
   updateProcessStep: (id, update) => {
+    const sanitizedUpdate = {
+      ...update,
+      detail: update.detail !== undefined ? (update.detail ? sanitizeStepDetail(update.detail) : '') : undefined,
+    }
     set((s) => ({
-      processSteps: s.processSteps.map((step) => step.id === id ? { ...step, ...update } : step),
+      processSteps: s.processSteps.map((step) => step.id === id ? { ...step, ...sanitizedUpdate } : step),
     }))
   },
 
@@ -1481,20 +1501,36 @@ export const useStore = create<AppState>((set, get) => {
       ? (serverSteps?.length ? [...serverSteps, ...clientSteps] : clientSteps)
       : [...serverSteps, ...clientSteps.filter((step) => step.type === 'think')]
 
+    // Se existirem passos de busca específicos por consulta, descarta o passo sintético 'web-search' (T3.3)
+    const hasSpecificSearch = rawSteps.some((s) => s.type === 'search' && s.id !== 'web-search')
+    const filteredRawSteps = hasSpecificSearch
+      ? rawSteps.filter((s) => s.id !== 'web-search')
+      : rawSteps
+
     // Deduplica os passos pelo id de forma estrita para evitar duplicações na UI
     const seenStepIds = new Set<string>()
     const baseSteps: ProcessStep[] = []
-    for (const step of rawSteps) {
+    for (const step of filteredRawSteps) {
       if (!seenStepIds.has(step.id)) {
         seenStepIds.add(step.id)
         baseSteps.push(step)
       }
     }
 
-    const completedSteps = baseSteps.map((step) => ({
-      ...step,
-      status: step.status === 'failed' ? 'failed' as const : 'completed' as const,
-    }))
+    // Preserva estados de falha, timeout e ausência de resultados (T3.3)
+    // Passos que permaneceram em 'running' ao final do turno (ex: busca/leitura abortada por timeout)
+    // NUNCA são convertidos em 'completed' ✓
+    const completedSteps = baseSteps.map((step) => {
+      const sanitized = sanitizeProcessStep(step)
+      if (sanitized.status === 'failed') return sanitized
+      if (sanitized.status === 'running') {
+        if (sanitized.id === 'thinking' || sanitized.type === 'think') {
+          return { ...sanitized, status: 'completed' as const }
+        }
+        return { ...sanitized, status: 'failed' as const }
+      }
+      return sanitized
+    })
     if (webSearchSources?.length) {
       const existingUrls = new Set(
         completedSteps.filter((s) => s.type === 'navigate' && s.detail).map((s) => s.detail)
@@ -1511,24 +1547,33 @@ export const useStore = create<AppState>((set, get) => {
         }
       })
     }
+
+    // Determina o modelo que efetivamente atendeu a resposta (T3.2)
+    const effectiveServedModelId = finalModelId || servedBy || resolvedModelId || undefined
+    const matchedModel = effectiveServedModelId ? models.find((m) => m.id === effectiveServedModelId) : undefined
+    const effectiveModelName =
+      finalModelName ||
+      matchedModel?.display_name ||
+      lastAutoRouteDecision?.chosen_model_name ||
+      activeModel?.display_name ||
+      effectiveServedModelId
+    const effectiveProvider =
+      finalProviderId ||
+      matchedModel?.provider_name ||
+      lastAutoRouteDecision?.provider_id ||
+      activeModel?.provider_name ||
+      (effectiveServedModelId && effectiveServedModelId.includes('/') ? effectiveServedModelId.split('/')[0] : undefined)
+
     const msg: Message = {
       id: messageId,
       role: 'assistant',
       content: streamingContent,
       // O badge deve apontar o modelo que RESpondeu. Após failover o backend
       // envia finalModel* (pós-failover); sem eles usa o modelo resolvido/solicitado.
-      model_id: (finalModelId || resolvedModelId) ?? undefined,
+      model_id: effectiveServedModelId,
       created_at: new Date().toISOString(),
-      model_display_name:
-        finalModelName ||
-        (finalModelId ? models.find((m) => m.id === finalModelId)?.display_name : undefined) ||
-        lastAutoRouteDecision?.chosen_model_name ||
-        activeModel?.display_name,
-      provider:
-        finalProviderId ||
-        (finalModelId ? models.find((m) => m.id === finalModelId)?.provider_name : undefined) ||
-        lastAutoRouteDecision?.provider_id ||
-        activeModel?.provider_name,
+      model_display_name: effectiveModelName,
+      provider: effectiveProvider,
       relay_used: relayUsed,
       relay_model: relayModel,
       web_search_used: webSearchUsed,
@@ -1538,7 +1583,7 @@ export const useStore = create<AppState>((set, get) => {
       process_duration_ms: processDurationMs ?? (processStartedAt ? Date.now() - processStartedAt : undefined),
       was_fallback: wasFallback,
       requested_model: requestedModel ?? undefined,
-      served_by: (servedBy || finalModelId || resolvedModelId) ?? undefined,
+      served_by: effectiveServedModelId,
       failover_tier: failoverTier ?? undefined,
       spliced: spliced ?? false,
       outcome: outcome ?? 'success',
@@ -1556,7 +1601,7 @@ export const useStore = create<AppState>((set, get) => {
     }
     streamBuffer.resetTurn()
     set((s) => ({
-      messages: [...s.messages, msg],
+      messages: s.messages.some((message) => message.id === messageId) ? s.messages : [...s.messages, msg],
       streamingContent: '',
       streamingUiBlocks: null,
       isStreaming: false,

@@ -104,9 +104,13 @@ export function LogsPanel() {
             <div className="stat-value">{stats.info}</div>
             <div className="stat-label">Info</div>
           </div>
+          <div className="stat-card debug">
+            <div className="stat-value">{stats.debug ?? 0}</div>
+            <div className="stat-label">Debug</div>
+          </div>
           <div className="stat-card total">
             <div className="stat-value">{stats.total}</div>
-            <div className="stat-label">Total Lines</div>
+            <div className="stat-label">Total Eventos</div>
           </div>
         </div>
       )}

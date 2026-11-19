@@ -55,26 +55,27 @@ def test_orchestrator_aplica_cap_no_join_do_juiz():
 
 
 @pytest.mark.asyncio
-async def test_timeout_com_texto_parcial_persiste_e_envia_fusion_status():
-    """Runtime:timeout do juiz com texto já emitido envia fusion_status e salva no DB."""
-    from backend.ranking.failover import ResolvedModel
-    from unittest.mock import patch, AsyncMock, MagicMock
-    import os
-
+@pytest.mark.parametrize("with_grounding", [False, True])
+async def test_fusion_terminal_preserves_partial_or_grounded_sources(with_grounding):
+    """Valida o timeout parcial e o sucesso com fontes reunidas pelo Fusion."""
     sent = []
+    provider_calls = []
 
     class FakeWS:
         async def send_json(self, obj):
             sent.append(obj)
 
-    async def slow_stream(**kwargs):
-        for token in ["RES", "POST", "A"]:
-            await asyncio.sleep(0.02)
-            yield token
-
+    stream_calls = 0
     async def slow_stream_wrapper(**kwargs):
-        async for t in slow_stream(**kwargs):
-            yield t
+        nonlocal stream_calls
+        stream_calls += 1
+        provider_calls.append(kwargs)
+        if stream_calls == 1:
+            yield "PROPOSTA"
+            return
+        yield "PARCIAL"
+        if not with_grounding:
+            await asyncio.Event().wait()
 
     fake_provider = MagicMock()
     fake_provider.stream_chat = slow_stream_wrapper
@@ -86,15 +87,21 @@ async def test_timeout_com_texto_parcial_persiste_e_envia_fusion_status():
     resolved.original_model_id = None
 
     with patch("backend.fusion.orchestrator.get_provider") as mock_get_provider, \
-         patch("backend.fusion.orchestrator.get_model_name", return_value=AsyncMock(return_value="slow")), \
-         patch("backend.fusion.orchestrator.TIMEOUT_JUIZ", 0.05), \
+         patch("backend.fusion.orchestrator.get_model_name", return_value="slow"), \
+         patch("backend.fusion.orchestrator.TIMEOUT_JUIZ", 2 if with_grounding else 0.05), \
          patch("backend.fusion.orchestrator._precisa_refinar", return_value=False), \
-         patch("backend.fusion.orchestrator._refinar_pergunta", return_value=AsyncMock(return_value="Oi")), \
-         patch("backend.ranking.failover.resolve_model_with_failover", return_value=AsyncMock(return_value=resolved)), \
-         patch("backend.fusion.orchestrator.check_and_deactivate_model", return_value=AsyncMock(return_value=None)), \
+         patch("backend.fusion.orchestrator._refinar_pergunta", return_value="Oi"), \
+         patch("backend.ranking.failover.resolve_model_with_failover", return_value=resolved), \
+         patch("backend.fusion.orchestrator.check_and_deactivate_model", return_value=None), \
          patch("backend.fusion.orchestrator.detect_artifacts", return_value=(None, [])), \
          patch("backend.fusion.orchestrator.save_artifact"), \
-         patch("backend.web_search.get_web_search_config", return_value=AsyncMock(return_value={"enabled": False})), \
+         patch("backend.web_search.get_web_search_config", return_value={"enabled": with_grounding}), \
+         patch("backend.fusion.orchestrator._detectar_claims_verificaveis", return_value=["consulta A", "consulta B"]), \
+         patch("backend.fusion.orchestrator._buscar_web", side_effect=[
+             [{"title": "Primeira fonte", "url": "https://example.com/A"}],
+             [{"title": "Segunda fonte", "url": "https://example.com/B"}],
+         ]), \
+         patch("backend.orchestration.persist_turn.save_web_search_metadata", new_callable=AsyncMock) as web_metadata, \
          patch("backend.fusion.orchestrator.get_db") as mock_get_db:
         # get_provider returns the real fake_provider (not wrapped in another coroutine)
         async def _get_provider(*a, **kw):
@@ -133,8 +140,10 @@ async def test_timeout_com_texto_parcial_persiste_e_envia_fusion_status():
             async def __aexit__(self, *a):
                 pass
 
+        writes = []
         class FakeDB:
             def execute(self, sql, *args, **kwargs):
+                writes.append((sql, args))
                 return FakeExecute(sql, *args, **kwargs)
             async def commit(self):
                 pass
@@ -153,18 +162,34 @@ async def test_timeout_com_texto_parcial_persiste_e_envia_fusion_status():
             websocket=FakeWS(),
             conversation_id="conv-timeout",
             user_id="user-1",
-            force_grounding=False,
+            force_grounding=with_grounding,
             web_search_already_done=False,
+            user_msg_id="synthetic-user-message" if with_grounding else None,
+            turn_id="turn-fusion-timeout",
         )
 
     types = [m.get("type") for m in sent]
     assert "stream_start" in types, f"tipos enviados: {types}"
     status_msgs = [m for m in sent if m.get("type") == "fusion_status"]
-    # 3 statuses: running (proposer), done (proposer), timeout (juiz)
     assert len(status_msgs) >= 2, f"esperado >=2 fusion_status, recebeu: {types}"
-    timeout_msg = [m for m in status_msgs if "parcial salva" in m.get("message", "").lower()]
-    assert len(timeout_msg) == 1, f"deveria haver 1 timeout fusion_status; received: {types}"
-    assert "0.05" in timeout_msg[0]["message"], f"TIMEOUT_JUIZ não interpolado: {timeout_msg[0]['message']}"
+    terminal = [m for m in sent if m.get("type") == "stream_end"]
+    assert len(terminal) == 1
+    assert terminal[0]["turn_id"] == "turn-fusion-timeout"
+    if with_grounding:
+        assert terminal[0]["outcome"] == "success"
+        assert terminal[0]["web_search_used"] is True
+        assert terminal[0]["source_count"] == 2
+        expected = [(1, "https://example.com/A"), (2, "https://example.com/B")]
+        assert [(s["index"], s["url"]) for s in terminal[0]["web_search_sources"]] == expected
+        assert web_metadata.await_args.args[4] == terminal[0]["web_search_sources"]
+        judge_input = str(provider_calls[-1]["messages"])
+        assert "[1] Primeira fonte" in judge_input
+        assert "[2] Segunda fonte" in judge_input
+        return
+    assert terminal[0]["outcome"] == "timeout"
+    assert terminal[0]["reason"] == "judge_partial_timeout"
+    assert "0.05" in terminal[0]["message"]
+    assert any("INSERT INTO messages" in sql and "PARCIAL" in args[0] for sql, args in writes)
 
     err_msgs = [m for m in sent if m.get("type") == "error"]
     assert len(err_msgs) == 0, f"não deveria haver error quando há texto parcial; recebeu: {types}"

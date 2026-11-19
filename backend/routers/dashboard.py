@@ -47,9 +47,9 @@ async def get_usage_stats(days: int = 30, current_user: dict = Depends(require_a
 
         # Chamadas por provedor
         async with db.execute(
-            """SELECT provider_id, COUNT(*) as count 
-               FROM model_usage_log 
-               WHERE created_at >= ? 
+            """SELECT provider_id, COUNT(*) as count
+               FROM model_usage_log
+               WHERE created_at >= ?
                GROUP BY provider_id
                ORDER BY count DESC""",
             (cutoff_date,)
@@ -58,9 +58,9 @@ async def get_usage_stats(days: int = 30, current_user: dict = Depends(require_a
 
         # Chamadas por modelo
         async with db.execute(
-            """SELECT model_id, COUNT(*) as count 
-               FROM model_usage_log 
-               WHERE created_at >= ? 
+            """SELECT model_id, COUNT(*) as count
+               FROM model_usage_log
+               WHERE created_at >= ?
                GROUP BY model_id
                ORDER BY count DESC""",
             (cutoff_date,)
@@ -69,9 +69,9 @@ async def get_usage_stats(days: int = 30, current_user: dict = Depends(require_a
 
         # Gráfico de linha (uso por dia)
         async with db.execute(
-            """SELECT date(created_at) as day, COUNT(*) as count 
-               FROM model_usage_log 
-               WHERE created_at >= ? 
+            """SELECT date(created_at) as day, COUNT(*) as count
+               FROM model_usage_log
+               WHERE created_at >= ?
                GROUP BY day
                ORDER BY day ASC""",
             (cutoff_date,)
@@ -99,19 +99,33 @@ async def get_usage_stats(days: int = 30, current_user: dict = Depends(require_a
 
 @router.get("/failovers", response_model=List[Dict[str, Any]])
 async def get_recent_failovers(limit: int = 50, current_user: dict = Depends(require_admin)):
-    """Retorna os eventos recentes de failover, incluindo os motivos e modelos originais."""
+    """Retorna os eventos recentes de failover, incluindo os motivos, modelos originais e turn_id."""
     db = await get_db()
     try:
-        async with db.execute(
-            """SELECT id, model_id, provider_id, conversation_id, user_id, 
-                      fallback_from_model_id, fallback_reason, created_at 
-               FROM model_usage_log 
-               WHERE was_fallback = 1 
-               ORDER BY created_at DESC 
-               LIMIT ?""",
-            (limit,)
-        ) as cur:
-            rows = await cur.fetchall()
+        try:
+            async with db.execute(
+                """SELECT id, model_id, provider_id, conversation_id, user_id,
+                          fallback_from_model_id, fallback_reason, created_at, turn_id
+                   FROM model_usage_log
+                   WHERE was_fallback = 1
+                   ORDER BY created_at DESC
+                   LIMIT ?""",
+                (limit,)
+            ) as cur:
+                rows = await cur.fetchall()
+            has_turn_id = True
+        except Exception:
+            async with db.execute(
+                """SELECT id, model_id, provider_id, conversation_id, user_id,
+                          fallback_from_model_id, fallback_reason, created_at
+                   FROM model_usage_log
+                   WHERE was_fallback = 1
+                   ORDER BY created_at DESC
+                   LIMIT ?""",
+                (limit,)
+            ) as cur:
+                rows = await cur.fetchall()
+            has_turn_id = False
 
         return [{
             "id": row[0],
@@ -122,6 +136,7 @@ async def get_recent_failovers(limit: int = 50, current_user: dict = Depends(req
             "fallback_from_model_id": row[5],
             "fallback_reason": row[6],
             "created_at": row[7],
+            "turn_id": row[8] if has_turn_id and len(row) > 8 else None,
         } for row in rows]
     finally:
         await db.close()
@@ -133,7 +148,7 @@ async def get_quota_status(current_user: dict = Depends(require_admin)):
     db = await get_db()
     try:
         async with db.execute(
-            """SELECT m.id, m.display_name, m.provider_id, q.status, q.consecutive_errors, 
+            """SELECT m.id, m.display_name, m.provider_id, q.status, q.consecutive_errors,
                       q.exhausted_at, q.estimated_reset_at, q.last_error_message
                FROM model_quota_status q
                JOIN models m ON m.id = q.model_id
@@ -194,8 +209,8 @@ async def get_auto_router_stats(
 
         # Distribuição por intenção
         async with db.execute(
-            """SELECT route_intent, COUNT(*) as count 
-               FROM model_usage_log 
+            """SELECT route_intent, COUNT(*) as count
+               FROM model_usage_log
                WHERE created_at >= ? AND was_auto_routed = 1 AND route_intent IS NOT NULL
                GROUP BY route_intent
                ORDER BY count DESC""",

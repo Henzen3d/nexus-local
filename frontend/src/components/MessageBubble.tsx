@@ -25,6 +25,7 @@ import { mergeProcessTree } from '../lib/processTree'
 import { SourceShelf } from './SourceShelf'
 import { GeneratedImage } from './ImageLightbox'
 import { stripDuplicateTrailingSources } from '../lib/sourceCards'
+import { sanitizeErrorText, stripSensitiveSecrets } from '../lib/sanitization'
 
 const REMARK_PLUGINS = [remarkGfm]
 const STALE_STREAM_STYLE: React.CSSProperties = { opacity: 0.92 }
@@ -238,8 +239,16 @@ function formatProviderName(provider?: string): string {
 }
 
 function cleanModelName(displayName: string, provider?: string): { cleanName: string; detectedProvider?: string } {
-  let cleanName = displayName.trim()
+  let cleanName = stripSensitiveSecrets(displayName.trim())
   let detectedProvider = provider
+
+  if (cleanName.includes('/')) {
+    const parts = cleanName.split('/')
+    if (!detectedProvider && parts.length > 1) {
+      detectedProvider = parts[0]
+      cleanName = parts.slice(1).join('/')
+    }
+  }
 
   const parenMatch = cleanName.match(/^(.+?)\s*\(([^)]+)\)$/)
   if (parenMatch) {
@@ -455,7 +464,7 @@ export const MessageBubble = React.memo(function MessageBubble({ message }: Prop
         <ErrorAvatar />
         <div className="message-body error-body">
           <div className="error-title">{t('chat.generationError', { defaultValue: 'Erro na geração da resposta' })}</div>
-          <div className="error-content">{message.content}</div>
+          <div className="error-content">{sanitizeErrorText(message.content)}</div>
         </div>
       </div>
     )

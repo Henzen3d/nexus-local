@@ -21,8 +21,8 @@ test('useChat não zera isGeneratingRef ao receber tokens ou etapas de processo'
     'case token nunca deve setar isGeneratingRef.current = false'
   )
   assert.ok(
-    tokenCaseCode.includes('s.appendToken(msg.content)'),
-    'case token deve chamar appendToken'
+    tokenCaseCode.includes('s.appendToken(msg.content, msg.turn_id ?? activeTurnIdRef.current)'),
+    'case token deve repassar a correlação ou usar o turno local para frames legados'
   )
 
   // Extrai o bloco de case 'search_start':

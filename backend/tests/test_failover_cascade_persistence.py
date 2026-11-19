@@ -70,11 +70,17 @@ async def test_send_and_persist_error(tmp_path):
         cascade,
         "model-b",
         "prov-b",
+        turn_id="turn-timeout",
+        reason="failover_budget_exhausted",
+        outcome="timeout",
     )
 
-    # 1. Checa envio WebSocket: primeiro stream_clear (limpa rascunho residual),
-    # depois o frame de erro.
-    assert len(sent_ws) == 2
+    # Clear, erro legado e terminal moderno compartilham o mesmo turno.
+    assert len(sent_ws) == 3
+    assert all(event["turn_id"] == "turn-timeout" for event in sent_ws)
+    assert sent_ws[2]["type"] == "stream_end"
+    assert sent_ws[2]["outcome"] == "timeout"
+    assert sent_ws[2]["reason"] == "failover_budget_exhausted"
     assert sent_ws[0]["type"] == "stream_clear"
     msg = sent_ws[1]
     assert msg["type"] == "error"

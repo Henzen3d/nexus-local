@@ -60,6 +60,12 @@ async def check_candidate_eligibility(
     if excluded_model_ids and model_id in excluded_model_ids:
         return EligibilityResult(False, "already_attempted_in_cascade")
 
+    # 1b. Quarentena de credencial no escopo de provedor/conta (T2.1)
+    from backend.ranking.quota import resolve_provider_credential, is_credential_quarantined
+    cred_key = await resolve_provider_credential(provider_id, db, user_id=user_id)
+    if cred_key and await is_credential_quarantined(provider_id, cred_key, db):
+        return EligibilityResult(False, "credential_quarantined")
+
     # 2. Mesmo canônico já falho nesta cascata (exceto último recurso)
     if excluded_canonicals and cid in excluded_canonicals:
         if not allow_same_canonical_last_resort:
@@ -140,18 +146,41 @@ async def check_candidate_eligibility(
             return EligibilityResult(False, "model_cooldown_active")
 
     # Cooldown ativo no escopo do CANONICAL_MODEL_ID
-    # Se qualquer variante do mesmo canônico estiver em cooldown ativo com reset futuro
-    async with db.execute("""
-        SELECT q.model_id, q.status, q.estimated_reset_at
-        FROM model_quota_status q
-        WHERE q.status IN ('exhausted', 'cooldown', 'quarantine', 'open')
-          AND (q.estimated_reset_at IS NULL OR q.estimated_reset_at > ?)
-    """, (now_iso,)) as cur:
-        blocked_rows = await cur.fetchall()
+    # T2.2: Aplica apenas quando há cooldown canônico real (status='cooldown' ou mensagem canônica),
+    # impedindo que esgotamento de cota de conta (402) ou 400 de um provedor bloqueiem outros provedores.
+    try:
+        async with db.execute("""
+            SELECT q.model_id, q.status, q.estimated_reset_at, q.last_error_message
+            FROM model_quota_status q
+            WHERE (
+                q.status = 'cooldown'
+                OR (q.status IN ('exhausted', 'quarantine', 'open') AND (
+                    q.last_error_message LIKE 'Canonical cooldown%'
+                    OR q.last_error_message LIKE '%canonical%'
+                ))
+            )
+              AND (q.estimated_reset_at IS NULL OR q.estimated_reset_at > ?)
+        """, (now_iso,)) as cur:
+            blocked_rows = await cur.fetchall()
 
-    for b_mid, b_status, _ in blocked_rows:
-        if canonical_model_id(b_mid) == cid:
-            return EligibilityResult(False, f"canonical_cooldown_active_via_{b_mid}")
+        for b_mid, b_status, _, _ in blocked_rows:
+            if canonical_model_id(b_mid) == cid:
+                return EligibilityResult(False, f"canonical_cooldown_active_via_{b_mid}")
+    except Exception:
+        # Fallback caso a tabela não tenha a coluna last_error_message em schemas mínimos de teste
+        try:
+            async with db.execute("""
+                SELECT q.model_id, q.status, q.estimated_reset_at
+                FROM model_quota_status q
+                WHERE q.status = 'cooldown'
+                  AND (q.estimated_reset_at IS NULL OR q.estimated_reset_at > ?)
+            """, (now_iso,)) as cur:
+                blocked_rows = await cur.fetchall()
+            for b_mid, b_status, _ in blocked_rows:
+                if canonical_model_id(b_mid) == cid:
+                    return EligibilityResult(False, f"canonical_cooldown_active_via_{b_mid}")
+        except Exception:
+            pass
 
     # Saturação de cota >= 0.95 (exceto probe canary)
     if not is_canary_probe:

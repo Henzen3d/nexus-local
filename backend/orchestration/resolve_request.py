@@ -11,7 +11,7 @@ import json
 import re
 import uuid
 import os
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from backend.logging_config import get_logger
 from starlette.websockets import WebSocketDisconnect
@@ -28,6 +28,7 @@ from backend.orchestration.ws_protocol import (
     StreamClearEvent,
     StreamStartEvent,
     StreamTokenEvent,
+    build_stream_end_failure,
     dump_ws_event,
 )
 
@@ -132,6 +133,9 @@ async def send_and_persist_error(
     current_model_id: str | None = None,
     current_provider_id: str | None = None,
     turn_id: str | None = None,
+    *,
+    reason: str = "provider_error",
+    outcome: Literal["error", "empty", "timeout", "cancelled"] = "error",
 ):
     # Log técnico completo para diagnóstico do backend (nunca enviado ao frontend)
     if cascade_history:
@@ -162,6 +166,13 @@ async def send_and_persist_error(
         if conversation_id:
             err_payload["conversation_id"] = conversation_id
         await ws.send_json(err_payload)
+        await ws.send_json(build_stream_end_failure(
+            reason=reason,
+            outcome=outcome,
+            conversation_id=conversation_id or None,
+            turn_id=turn_id,
+            message=summary,
+        ))
     except Exception:
         pass
 
@@ -353,9 +364,26 @@ async def stream_from_llm(
     turn_precommit_hold_ms: float | None = None
     turn_failover_recovery_ms: float | None = None
     first_token_elapsed_ms: float | None = None
-    effort_compat_retry_models: set[str] = set()
+    effort_compat_retries = 0
 
-    while attempt < _MAX_FAILOVER_ATTEMPTS and not success:
+    async def fail_turn(
+        message: str,
+        model: str | None,
+        provider: str | None,
+        *,
+        reason: str = "provider_error",
+        outcome: Literal["error", "empty", "timeout", "cancelled"] = "error",
+    ) -> None:
+        await send_and_persist_error(
+            ws, db, conversation_id, message, cascade_history, model, provider,
+            turn_id=turn_id, reason=reason, outcome=outcome,
+        )
+
+    def can_retry() -> bool:
+        remaining = total_budget - (time.monotonic() - turn_start_time)
+        return remaining >= MIN_RETRY_BUDGET_SECONDS and attempt + effort_compat_retries < _MAX_FAILOVER_ATTEMPTS
+
+    while attempt + effort_compat_retries < _MAX_FAILOVER_ATTEMPTS and not success:
         now = time.monotonic()
         elapsed = now - turn_start_time
         remaining_budget = total_budget - elapsed
@@ -364,12 +392,9 @@ async def stream_from_llm(
                 "Orçamento total de failover esgotado (%.1fs decorridos de %.1fs) após %d tentativas.",
                 elapsed, total_budget, attempt
             )
-            await send_and_persist_error(
-                ws, db, conversation_id,
+            await fail_turn(
                 "Tempo limite de resposta esgotado após tentativas de failover.",
-                cascade_history,
-                original_model_id,
-                "",
+                original_model_id, "", reason="failover_budget_exhausted", outcome="timeout",
             )
             return None
 
@@ -395,14 +420,10 @@ async def stream_from_llm(
                 exclude_model_ids=list(attempted_model_ids),
                 user_id=user_id,
             )
-        except NoAvailableModelError as e:
-            err_msg = str(e)
-            await send_and_persist_error(
-                ws, db, conversation_id,
-                err_msg,
-                cascade_history,
-                original_model_id,
-                "",
+        except NoAvailableModelError:
+            await fail_turn(
+                "Nenhum modelo elegível está disponível. Tente novamente mais tarde.",
+                original_model_id, None, reason="no_available_model",
             )
             return None
 
@@ -459,26 +480,23 @@ async def stream_from_llm(
         try:
             provider = await get_provider(current_provider_id, db, user_id=user_id)
             model_name = await get_model_name(current_model_id, db)
-        except ValueError as e:
-            err_msg = str(e)
+        except ValueError:
             logger.warning(
-                "Falha ao carregar provedor '%s' para modelo '%s': %s. Acionando failover...",
-                current_provider_id, current_model_id, err_msg
+                "Falha ao carregar provedor '%s' para modelo '%s'. Acionando failover...",
+                current_provider_id, current_model_id,
             )
             cascade_history.append({
                 "attempt": attempt,
                 "model_id": current_model_id,
                 "provider_id": current_provider_id,
-                "detail": f"Falha de configuração do provedor: {err_msg}",
+                "detail": "Falha de configuração do provedor.",
+                "reason": "provider_configuration",
             })
             attempted_model_ids.add(current_model_id)
-            if attempt >= _MAX_FAILOVER_ATTEMPTS:
-                await send_and_persist_error(
-                    ws, db, conversation_id,
-                    err_msg,
-                    cascade_history,
-                    current_model_id,
-                    current_provider_id,
+            if not can_retry():
+                await fail_turn(
+                    "Não foi possível carregar um modelo disponível. Tente novamente mais tarde.",
+                    current_model_id, current_provider_id, reason="provider_configuration",
                 )
                 return None
             continue
@@ -604,21 +622,15 @@ async def stream_from_llm(
                 attempted_model_ids.add(current_model_id)
                 elapsed_after = time.monotonic() - turn_start_time
                 if (total_budget - elapsed_after) < MIN_RETRY_BUDGET_SECONDS:
-                    await send_and_persist_error(
-                        ws, db, conversation_id,
+                    await fail_turn(
                         "Tempo limite de resposta esgotado após tentativas de failover.",
-                        cascade_history,
-                        current_model_id,
-                        current_provider_id,
+                        current_model_id, current_provider_id, reason="failover_budget_exhausted", outcome="timeout",
                     )
                     return None
                 if attempt >= _MAX_FAILOVER_ATTEMPTS:
-                    await send_and_persist_error(
-                        ws, db, conversation_id,
+                    await fail_turn(
                         "Todos os provedores elegíveis atingiram o limite temporário de requisições por minuto (RPM). Aguarde alguns instantes.",
-                        cascade_history,
-                        current_model_id,
-                        current_provider_id,
+                        current_model_id, current_provider_id, reason="rate_limit", outcome="error",
                     )
                     return None
                 continue
@@ -630,12 +642,9 @@ async def stream_from_llm(
                     "Orçamento total de failover esgotado (%.1fs decorridos de %.1fs) antes do início do stream.",
                     elapsed_now, total_budget
                 )
-                await send_and_persist_error(
-                    ws, db, conversation_id,
+                await fail_turn(
                     "Tempo limite de resposta esgotado após tentativas de failover.",
-                    cascade_history,
-                    current_model_id,
-                    current_provider_id,
+                    current_model_id, current_provider_id, reason="failover_budget_exhausted", outcome="timeout",
                 )
                 return None
 
@@ -645,6 +654,7 @@ async def stream_from_llm(
             first_token_elapsed_ms = None
             is_committed = False
             candidate_response = ""
+            measurement_attempt = attempt + effort_compat_retries
 
             async def _consume_candidate_stream(
                 call_kwargs: dict,
@@ -790,7 +800,7 @@ async def stream_from_llm(
                             local_first_token_ms = (now_mono - stream_start_mono) * 1000.0
                             if request_context and hasattr(request_context, "record_phase"):
                                 request_context.record_phase("llm_ttfb", stream_start_perf)
-                                request_context.record_phase(f"llm_ttft_attempt_{attempt}", stream_start_perf)
+                                request_context.record_phase(f"llm_ttft_attempt_{measurement_attempt}", stream_start_perf)
                             precommit_buffer.append(tok_str)
                             precommit_chars += len(tok_str)
                             commit_if_needed()
@@ -858,10 +868,10 @@ async def stream_from_llm(
                                 local_committed,
                             )
 
-                        last_token_mono = time.monotonic()
                         token_str = str(token) if token is not None else ""
                         if not token_str:
                             continue
+                        last_token_mono = time.monotonic()
                         if not local_committed:
                             precommit_buffer.append(token_str)
                             precommit_chars += len(token_str)
@@ -902,14 +912,41 @@ async def stream_from_llm(
 
             stream_attempt_start_perf = time.perf_counter()
             try:
-                candidate_response, first_token_received, first_token_elapsed_ms, is_committed = (
-                    await _consume_candidate_stream(stream_kwargs, ttft_budget_s=stream_ttft_timeout)
-                )
+                try:
+                    result = await _consume_candidate_stream(stream_kwargs, ttft_budget_s=stream_ttft_timeout)
+                except Exception as exc:
+                    # Reuse this candidate only for a parameter rejection before it
+                    # publishes any text. The retry shares the ordinary outcome handling.
+                    detail = str(exc).lower()
+                    compatibility_error = active_effort is not None and any(
+                        term in detail for term in (
+                            "reasoning_effort", "thinkingconfig", "thinking_config",
+                        )
+                    )
+                    if not compatibility_error or is_committed or effort_compat_retries or not can_retry():
+                        raise
+                    effort_compat_retries += 1
+                    measurement_attempt += 1
+                    await ws.send_json({
+                        "type": "effort_dropped",
+                        "reason": "provider_rejected",
+                        "model_id": current_model_id,
+                        "requested": active_effort,
+                    })
+                    stream_kwargs.pop("reasoning_effort", None)
+                    stream_kwargs.pop("reasoning_control", None)
+                    stream_attempt_start_perf = time.perf_counter()
+                    remaining = total_budget - (time.monotonic() - turn_start_time)
+                    if remaining <= 0:
+                        raise asyncio.TimeoutError()
+                    stream_ttft_timeout = min(stream_ttft_timeout, remaining)
+                    result = await _consume_candidate_stream(stream_kwargs, ttft_budget_s=stream_ttft_timeout)
+                candidate_response, first_token_received, first_token_elapsed_ms, is_committed = result
             except (asyncio.TimeoutError, TimeoutError):
                 # Série própria para timeouts de TTFT (nunca misturada em llm_ttft_attempt_N)
                 if request_context and hasattr(request_context, "record_phase"):
                     request_context.record_phase(
-                        f"llm_ttft_timeout_attempt_{attempt}", stream_attempt_start_perf
+                        f"llm_ttft_timeout_attempt_{measurement_attempt}", stream_attempt_start_perf
                     )
                 logger.warning(
                     "TTFT Timeout (%.1fs excedido) no provedor '%s' (modelo '%s'). Acionando failover cascade precoce.",
@@ -943,19 +980,16 @@ async def stream_from_llm(
                         if (total_budget - elapsed_after) < MIN_RETRY_BUDGET_SECONDS
                         else f"Tempo limite de resposta excedido ({int(stream_ttft_timeout)}s) no modelo '{current_model_id}'."
                     )
-                    await send_and_persist_error(
-                        ws, db, conversation_id,
-                        msg,
-                        cascade_history,
-                        current_model_id,
-                        current_provider_id,
+                    await fail_turn(
+                        msg, current_model_id, current_provider_id,
+                        reason="ttft_timeout", outcome="timeout",
                     )
                     return None
                 continue
             except _InterTokenTimeoutError as it_err:
                 if request_context and hasattr(request_context, "record_phase"):
                     request_context.record_phase(
-                        f"llm_inter_token_timeout_attempt_{attempt}", stream_attempt_start_perf
+                        f"llm_inter_token_timeout_attempt_{measurement_attempt}", stream_attempt_start_perf
                     )
                 logger.warning(
                     "Timeout entre tokens (%.1fs) no provedor '%s' (modelo '%s').",
@@ -988,12 +1022,9 @@ async def stream_from_llm(
                 elapsed_after = time.monotonic() - turn_start_time
                 if (total_budget - elapsed_after) >= MIN_RETRY_BUDGET_SECONDS and attempt < _MAX_FAILOVER_ATTEMPTS:
                     continue
-                await send_and_persist_error(
-                    ws, db, conversation_id,
+                await fail_turn(
                     "A geração foi interrompida por silêncio prolongado do modelo.",
-                    cascade_history,
-                    current_model_id,
-                    current_provider_id,
+                    current_model_id, current_provider_id, reason="inter_token_timeout", outcome="timeout",
                 )
                 return None
 
@@ -1077,12 +1108,9 @@ async def stream_from_llm(
                         if (total_budget - elapsed_after) < MIN_RETRY_BUDGET_SECONDS
                         else f"O modelo '{current_model_id}' não retornou nenhuma resposta após o failover."
                     )
-                    await send_and_persist_error(
-                        ws, db, conversation_id,
-                        msg,
-                        cascade_history,
-                        current_model_id,
-                        current_provider_id,
+                    await fail_turn(
+                        msg, current_model_id, current_provider_id,
+                        reason="empty_model_response", outcome="empty",
                     )
                     return None
                 continue
@@ -1161,7 +1189,8 @@ async def stream_from_llm(
                 "attempt": attempt,
                 "model_id": current_model_id,
                 "provider_id": current_provider_id,
-                "detail": f"Rate limit / cota esgotada: {str(e)}",
+                "detail": "Limite de requisições excedido (rate limit).",
+                "reason": "rate_limit",
             })
             if attempt > 1:
                 try:
@@ -1173,118 +1202,35 @@ async def stream_from_llm(
                 except Exception:
                     pass
             attempted_model_ids.add(current_model_id)
-            await mark_model_exhausted(current_model_id, db, e.retry_after, str(e))
+            from backend.ranking.health_registry import health_registry
+            health_registry.record_failure(current_model_id, current_provider_id, "RATE_LIMIT_429", stage="pre_stream")
+            await mark_model_exhausted(current_model_id, db, e.retry_after, "HTTP 429 rate limit")
             elapsed_after = time.monotonic() - turn_start_time
-            if (total_budget - elapsed_after) < MIN_RETRY_BUDGET_SECONDS or attempt >= _MAX_FAILOVER_ATTEMPTS:
+            if (total_budget - elapsed_after) < MIN_RETRY_BUDGET_SECONDS or not can_retry():
                 msg = (
                     "Tempo limite de resposta esgotado após tentativas de failover."
                     if (total_budget - elapsed_after) < MIN_RETRY_BUDGET_SECONDS
                     else "Limite de tentativas de failover excedido. O modelo está esgotado."
                 )
-                await send_and_persist_error(
-                    ws, db, conversation_id,
-                    msg,
-                    cascade_history,
-                    current_model_id,
-                    current_provider_id,
+                await fail_turn(
+                    msg, current_model_id, current_provider_id,
+                    reason="rate_limit", outcome="error",
                 )
                 return None
             continue
         except Exception as e:
             error_msg = str(e)
             if isinstance(e, RuntimeError) and any(
-                term in error_msg.lower() for term in ("websocket", "disconnect", "close message", "not connected")
+                term in error_msg.lower() for term in (
+                    "websocket.send", "websocket.disconnect", "websocket is not connected", "close message has been sent",
+                )
             ):
                 logger.info(
-                    "Conexão do cliente encerrada durante streaming (%s). Finalizando sem penalizar modelo nem failover.",
-                    error_msg,
+                    "Conexão do cliente encerrada durante streaming. Finalizando sem penalizar modelo nem failover.",
                 )
                 return None
 
             stage = "mid_stream" if is_committed else "pre_stream"
-            from backend.ranking.health_registry import health_registry
-            health_registry.record_failure(
-                current_model_id,
-                current_provider_id,
-                "PRE_STREAM_ERR" if stage == "pre_stream" else "MID_STREAM_DROP",
-                stage=stage,
-            )
-            next_failover_reason = getattr(e, "failover_reason", None) or "error"
-            # Rede de segurança HTTP 400 com termos de reasoning:
-            # Se a chamada falhou com erro citando parâmetros de reasoning, emite effort_dropped
-            # com reason 'provider_rejected' e retenta UMA ÚNICA vez sem esforço, sem desativar o modelo.
-            is_reasoning_reject = (
-                active_effort is not None
-                and current_model_id not in effort_compat_retry_models
-                and (
-                    "reasoning_effort" in error_msg.lower()
-                    or "thinkingconfig" in error_msg.lower()
-                    or "thinking_config" in error_msg.lower()
-                    or "unsupported parameter" in error_msg.lower()
-                    or ("effort" in error_msg.lower() and "400" in error_msg)
-                )
-            )
-            if is_reasoning_reject:
-                effort_compat_retry_models.add(current_model_id)
-                logger.warning(
-                    "Provedor '%s' rejeitou parâmetro de reasoning (modelo '%s'). Retentando uma vez sem esforço no saldo de orçamento.",
-                    current_provider_id, current_model_id,
-                )
-                await ws.send_json({
-                    "type": "effort_dropped",
-                    "reason": "provider_rejected",
-                    "model_id": current_model_id,
-                    "requested": active_effort,
-                })
-                stream_kwargs.pop("reasoning_effort", None)
-                stream_kwargs.pop("reasoning_control", None)
-                active_effort = None
-                active_ctrl = None
-                rem_retry_budget = total_budget - (time.monotonic() - turn_start_time)
-                if rem_retry_budget >= MIN_RETRY_BUDGET_SECONDS:
-                    retry_ttft = max(0.5, min(stream_ttft_timeout, rem_retry_budget))
-                    try:
-                        retry_resp, retry_got_tok, retry_ttft_ms, _retry_comm = (
-                            await _consume_candidate_stream(stream_kwargs, ttft_budget_s=retry_ttft)
-                        )
-                        if retry_resp.strip():
-                            full_response = retry_resp
-                            first_token_elapsed_ms = retry_ttft_ms
-                            health_registry.record_success(
-                                current_model_id,
-                                current_provider_id,
-                                ttft_ms=retry_ttft_ms if retry_got_tok else None,
-                            )
-                            await mark_model_success(current_model_id, db)
-                            await record_request(current_model_id, db)
-                            success = True
-                            model_id = current_model_id
-                            provider_id = current_provider_id
-                            break
-                        error_msg = "Retry sem esforço retornou resposta vazia."
-                    except asyncio.CancelledError:
-                        raise
-                    except _InterTokenTimeoutError as retry_it_err:
-                        health_registry.record_failure(
-                            current_model_id, current_provider_id, "MID_STREAM_TIMEOUT", stage="mid_stream"
-                        )
-                        if retry_it_err.committed:
-                            tokens_flushed_to_client = True
-                        error_msg = f"Inter-token timeout no retry sem esforço ({retry_it_err.timeout_s:.1f}s)"
-                    except (asyncio.TimeoutError, TimeoutError):
-                        if request_context and hasattr(request_context, "record_phase"):
-                            request_context.record_phase(
-                                f"llm_ttft_timeout_attempt_{attempt}", time.perf_counter()
-                            )
-                        health_registry.record_failure(
-                            current_model_id, current_provider_id, "TIMEOUT", stage="pre_stream"
-                        )
-                        error_msg = f"TTFT timeout no retry sem esforço ({retry_ttft:.1f}s)"
-                    except Exception as retry_err:
-                        error_msg = type(retry_err).__name__
-                else:
-                    error_msg = "Orçamento esgotado antes do retry sem esforço."
-
             from backend.orchestration.handle_attachments import (
                 history_contains_images,
                 is_vision_refusal_error,
@@ -1308,17 +1254,47 @@ async def stream_from_llm(
                         "Vision Relay fallback falhou após recusa de imagem",
                         exc_info=True,
                     )
-            from backend.ranking.quota import is_quota_exhausted_error
-            if is_quota_exhausted_error(error_msg):
+
+            # T1.1: Extrai status_code estruturado e classifica via ranking/classifier.py
+            from backend.ranking.classifier import classify_failure, extract_structured_error
+            structured = extract_structured_error(e)
+            http_status = structured.get("status_code")
+            classification = classify_failure(
+                provider=current_provider_id,
+                http_status=http_status,
+                body=error_msg,
+                tokens_emitted=1 if is_committed else 0,
+                stage=stage,
+            )
+            outcome = classification["outcome"]
+            scope = classification["scope"]
+            reason = classification["reason"]
+            cooldown = classification.get("cooldown", 0)
+
+            # T2.1: Credencial-level quarantine para 402 (insufficient_user_quota / err_credit_gate)
+            if outcome == "QUOTA_402" or reason == "quota_exhausted":
                 logger.warning(
-                    "Cota/limite de uso esgotado no modelo '%s' (provedor '%s'): %s. Aplicando backoff longo de quota (mínimo 1h) e acionando failover...",
-                    current_model_id, current_provider_id, error_msg,
+                    "Cota/crédito esgotado na credencial do provedor '%s' (modelo '%s'). Aplicando quarentena de credencial de 1h...",
+                    current_provider_id, current_model_id,
                 )
+                from backend.ranking.quota import quarantine_credential
+                api_key = getattr(provider, "api_key", None)
+                await quarantine_credential(
+                    current_provider_id,
+                    api_key,
+                    db,
+                    duration_seconds=cooldown or 3600,
+                    reason="quota_exhausted",
+                )
+                await mark_model_exhausted(current_model_id, db, retry_after=cooldown or 3600, error_msg="quota_exhausted")
+                from backend.ranking.health_registry import health_registry
+                health_registry.record_failure(current_model_id, current_provider_id, "QUOTA_402", stage=stage)
                 cascade_history.append({
                     "attempt": attempt,
                     "model_id": current_model_id,
                     "provider_id": current_provider_id,
-                    "detail": f"Cota/crédito esgotado: {error_msg}",
+                    "detail": "Crédito ou cota esgotada.",
+                    "reason": "quota_exhausted",
                 })
                 if attempt > 1:
                     try:
@@ -1329,40 +1305,151 @@ async def stream_from_llm(
                         })
                     except Exception:
                         pass
-                from backend.ranking.token_bucket import token_bucket_manager
-                await token_bucket_manager.on_rate_limit(current_provider_id)
-                await mark_model_exhausted(current_model_id, db, retry_after=3600, error_msg=error_msg)
                 attempted_model_ids.add(current_model_id)
-                next_failover_reason = "rate_limit"
+                next_failover_reason = "quota_exhausted"
                 elapsed_after = time.monotonic() - turn_start_time
                 if (total_budget - elapsed_after) < MIN_RETRY_BUDGET_SECONDS:
-                    await send_and_persist_error(
-                        ws, db, conversation_id,
+                    await fail_turn(
                         "Tempo limite de resposta esgotado após tentativas de failover.",
-                        cascade_history,
-                        current_model_id,
-                        current_provider_id,
+                        current_model_id, current_provider_id, reason="failover_budget_exhausted", outcome="timeout",
                     )
                     return None
-                if not first_token_received and attempt < _MAX_FAILOVER_ATTEMPTS:
+                if not is_committed and can_retry():
                     continue
-                await send_and_persist_error(
-                    ws, db, conversation_id,
-                    f"Limite de cota de uso atingido para o modelo '{current_model_id}'. Tente novamente mais tarde.",
-                    cascade_history,
-                    current_model_id,
-                    current_provider_id,
+                await fail_turn(
+                    "Limite de cota do modelo atingido. Tente novamente mais tarde.",
+                    current_model_id, current_provider_id, reason="quota_exhausted", outcome="error",
                 )
                 return None
 
+            # T1.3: Rate limit 429
+            if outcome == "RATE_LIMIT_429" or reason == "rate_limit":
+                retry_after = getattr(e, "retry_after", None) or cooldown or 60
+                from backend.ranking.token_bucket import token_bucket_manager
+                await token_bucket_manager.on_rate_limit(current_provider_id)
+                await mark_model_exhausted(current_model_id, db, retry_after, "HTTP 429 rate limit")
+                from backend.ranking.health_registry import health_registry
+                health_registry.record_failure(current_model_id, current_provider_id, "RATE_LIMIT_429", stage=stage)
+                cascade_history.append({
+                    "attempt": attempt,
+                    "model_id": current_model_id,
+                    "provider_id": current_provider_id,
+                    "detail": "Limite de requisições excedido (rate limit).",
+                    "reason": "rate_limit",
+                })
+                if attempt > 1:
+                    try:
+                        await ws.send_json({
+                            "type": "process_step_end",
+                            "id": f"failover-{attempt}",
+                            "status": "failed",
+                        })
+                    except Exception:
+                        pass
+                attempted_model_ids.add(current_model_id)
+                next_failover_reason = "rate_limit"
+                elapsed_after = time.monotonic() - turn_start_time
+                if (total_budget - elapsed_after) < MIN_RETRY_BUDGET_SECONDS or not can_retry():
+                    msg = (
+                        "Tempo limite de resposta esgotado após tentativas de failover."
+                        if (total_budget - elapsed_after) < MIN_RETRY_BUDGET_SECONDS
+                        else "Limite de tentativas de failover excedido. O modelo está esgotado."
+                    )
+                    await fail_turn(
+                        msg, current_model_id, current_provider_id,
+                        reason="rate_limit", outcome="error",
+                    )
+                    return None
+                continue
+
+            # T1.2 & T2.2: LLM7 HTTP 400 model_unavailable (cooldown temporário sem desativação permanente)
+            if outcome == "MODEL_UNAVAILABLE" or reason == "model_unavailable":
+                logger.warning(
+                    "Modelo '%s' temporariamente indisponível no provedor '%s' (HTTP 400 model_unavailable). Aplicando cooldown temporário de %ds...",
+                    current_model_id, current_provider_id, cooldown or 300,
+                )
+                await mark_model_exhausted(current_model_id, db, retry_after=cooldown or 300, error_msg="model_unavailable")
+                from backend.ranking.health_registry import health_registry
+                health_registry.record_failure(current_model_id, current_provider_id, "MODEL_UNAVAILABLE", stage=stage)
+                cascade_history.append({
+                    "attempt": attempt,
+                    "model_id": current_model_id,
+                    "provider_id": current_provider_id,
+                    "detail": "Modelo temporariamente indisponível no provedor.",
+                    "reason": "model_unavailable",
+                })
+                if attempt > 1:
+                    try:
+                        await ws.send_json({
+                            "type": "process_step_end",
+                            "id": f"failover-{attempt}",
+                            "status": "failed",
+                        })
+                    except Exception:
+                        pass
+                attempted_model_ids.add(current_model_id)
+                next_failover_reason = "model_unavailable"
+                elapsed_after = time.monotonic() - turn_start_time
+                if (total_budget - elapsed_after) < MIN_RETRY_BUDGET_SECONDS:
+                    await fail_turn(
+                        "Tempo limite de resposta esgotado após tentativas de failover.",
+                        current_model_id, current_provider_id, reason="failover_budget_exhausted", outcome="timeout",
+                    )
+                    return None
+                if not is_committed and can_retry():
+                    continue
+                await fail_turn(
+                    "Modelo temporariamente indisponível. Tente novamente mais tarde.",
+                    current_model_id, current_provider_id, reason="model_unavailable", outcome="error",
+                )
+                return None
+
+            # T1.2: Requisição Inválida (scope=request, cooldown=0) — aborta cascata com o mesmo payload
+            if outcome == "INVALID_REQUEST" or scope == "request":
+                logger.warning(
+                    "Requisição inválida (HTTP 400 schema/payload) no modelo '%s' (provedor '%s'): %s. Interrompendo cascata.",
+                    current_model_id, current_provider_id, classification.get("status_message"),
+                )
+                from backend.ranking.health_registry import health_registry
+                health_registry.record_failure(current_model_id, current_provider_id, "INVALID_REQUEST", stage=stage)
+                cascade_history.append({
+                    "attempt": attempt,
+                    "model_id": current_model_id,
+                    "provider_id": current_provider_id,
+                    "detail": "Requisição inválida enviada ao modelo.",
+                    "reason": "invalid_request",
+                })
+                if attempt > 1:
+                    try:
+                        await ws.send_json({
+                            "type": "process_step_end",
+                            "id": f"failover-{attempt}",
+                            "status": "failed",
+                        })
+                    except Exception:
+                        pass
+                await fail_turn(
+                    "Requisição inválida enviada ao modelo. Verifique os parâmetros e tente novamente.",
+                    current_model_id, current_provider_id, reason="invalid_request", outcome="error",
+                )
+                return None
+
+            from backend.ranking.health_registry import health_registry
+            health_registry.record_failure(
+                current_model_id,
+                current_provider_id,
+                outcome if outcome in ("MODEL_DEPRECATED", "MODEL_NOT_FOUND_404") else ("PRE_STREAM_ERR" if stage == "pre_stream" else "MID_STREAM_DROP"),
+                stage=stage,
+            )
             from backend.database import check_and_deactivate_model
-            await check_and_deactivate_model(current_model_id, error_msg, db)
+            await check_and_deactivate_model(current_model_id, error_msg, db, diagnostic_safe=True)
 
             cascade_history.append({
                 "attempt": attempt,
                 "model_id": current_model_id,
                 "provider_id": current_provider_id,
-                "detail": f"Erro do provedor: {error_msg}",
+                "detail": "Erro do provedor.",
+                "reason": reason or "provider_error",
             })
             if attempt > 1:
                 try:
@@ -1376,29 +1463,24 @@ async def stream_from_llm(
 
             elapsed_after = time.monotonic() - turn_start_time
             if (total_budget - elapsed_after) < MIN_RETRY_BUDGET_SECONDS:
-                await send_and_persist_error(
-                    ws, db, conversation_id,
+                await fail_turn(
                     "Tempo limite de resposta esgotado após tentativas de failover.",
-                    cascade_history,
-                    current_model_id,
-                    current_provider_id,
+                    current_model_id, current_provider_id, reason="failover_budget_exhausted", outcome="timeout",
                 )
                 return None
 
-            if not is_committed and attempt < _MAX_FAILOVER_ATTEMPTS:
+            if not is_committed and can_retry():
                 logger.warning(
                     "Erro antes do commit no modelo '%s' (provedor '%s'): %s. Tentando próximo modelo...",
-                    current_model_id, current_provider_id, error_msg,
+                    current_model_id, current_provider_id, type(e).__name__,
                 )
                 attempted_model_ids.add(current_model_id)
+                next_failover_reason = getattr(e, "failover_reason", None) or "error"
                 continue
 
-            await send_and_persist_error(
-                ws, db, conversation_id,
-                f"Erro ao chamar modelo: {error_msg}",
-                cascade_history,
-                current_model_id,
-                current_provider_id,
+            await fail_turn(
+                "Erro ao chamar o modelo. Tente novamente mais tarde.",
+                current_model_id, current_provider_id, reason="provider_error", outcome="error",
             )
             return None
 
@@ -1407,12 +1489,9 @@ async def stream_from_llm(
             "stream_from_llm encerrou sem sucesso após %s tentativas para conversa '%s'.",
             attempt, conversation_id,
         )
-        await send_and_persist_error(
-            ws, db, conversation_id,
+        await fail_turn(
             "Não foi possível obter resposta de nenhum dos modelos disponíveis. Tente novamente mais tarde.",
-            cascade_history,
-            current_model_id if 'current_model_id' in locals() else None,
-            current_provider_id if 'current_provider_id' in locals() else None,
+            current_model_id if 'current_model_id' in locals() else None, current_provider_id if 'current_provider_id' in locals() else None, reason="no_available_model", outcome="error",
         )
         return None
 
@@ -1422,7 +1501,7 @@ async def stream_from_llm(
         "failover_tier": getattr(resolved, "failover_tier", None),
         "spliced": False,
         "outcome": "success",
-        "attempt_count": attempt,
+        "attempt_count": attempt + effort_compat_retries,
         "ttft_ms": round(first_token_elapsed_ms, 2) if first_token_elapsed_ms is not None else None,
         "first_send_ms": turn_first_send_ms,
         "precommit_hold_ms": turn_precommit_hold_ms,

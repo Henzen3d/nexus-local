@@ -159,11 +159,13 @@ function splitDeterministicChunks(text: string, chunkCount: number): string[] {
   return chunks
 }
 
-function extractTreeText(node: TestRenderer.ReactTestRendererJSON | TestRenderer.ReactTestRendererJSON[] | string | null): string {
-  if (node == null) return ''
-  if (typeof node === 'string') return node
-  if (Array.isArray(node)) return node.map(extractTreeText).join('')
-  return (node.children ?? []).map((c) => extractTreeText(c as TestRenderer.ReactTestRendererJSON | string)).join('')
+function extractResponseText(streaming: boolean): string {
+  const className = streaming ? 'assistant-response streaming-content' : 'assistant-response'
+  const response = renderer!.root.findAllByProps({ className }).at(-1)
+  function readText(child: TestRenderer.ReactTestInstance | string): string {
+    return typeof child === 'string' ? child : child.children.map(readText).join('')
+  }
+  return response ? readText(response) : ''
 }
 
 // ─── Fixed deterministic samples ─────────────────────────────────────────────
@@ -449,6 +451,7 @@ async function runScenario(cfg: ScenarioConfig) {
   // Reset streaming turn cleanly before measuring
   await flushUpdate(async () => {
     useStore.setState({
+      messages,
       isStreaming: false,
       streamingContent: '',
       processSteps: [],
@@ -541,12 +544,10 @@ async function runScenario(cfg: ScenarioConfig) {
     }
   }
 
-  const finalTreeText = extractTreeText(renderer!.toJSON())
-  const finalVerified = finalTreeText.includes(cfg.verifySubstring)
-
+  const streamedText = extractResponseText(true)
   const activeBubbleDelta = (g.__NEXUS_STREAMING_BUBBLE_RENDERS__ ?? 0) - startActiveBubbles
 
-  return {
+  const counters = {
     name: cfg.name,
     frames: cfg.chunks.length,
     statusUpdates: statusIdx,
@@ -565,8 +566,19 @@ async function runScenario(cfg: ScenarioConfig) {
     profilerDurationMs: summarizeMs(activeProfilerDurations),
     frameLatencyMs: summarizeMs(frameLatencies),
     statusUpdateLatencyMs: summarizeMs(statusLatencies),
-    finalVerified,
   }
+
+  const messageId = `probe-final-${cfg.name}`
+  await flushUpdate(async () => {
+    useStore.getState().finalizeStream(messageId)
+  })
+  const state = useStore.getState()
+  const finalMessage = state.messages.at(-1)
+  const finalVerified =
+    !state.isStreaming && state.streamingContent === '' &&
+    finalMessage?.id === messageId && finalMessage.content === cfg.chunks.join('') &&
+    streamedText.includes(cfg.verifySubstring) && extractResponseText(false) === streamedText
+  return { ...counters, finalVerified }
 }
 
 const thinkChunks = [

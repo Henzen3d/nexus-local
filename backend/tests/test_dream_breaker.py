@@ -189,6 +189,71 @@ async def test_parallel_probe_acquires_at_most_one(isolated_db):
 
 
 @pytest.mark.asyncio
+async def test_probe_expiry_fences_previous_owner(isolated_db):
+    uid = "u_expired_probe"
+    await _seed_user(uid, "expired_probe")
+    t0 = datetime(2026, 11, 18, 12, 0, tzinfo=timezone.utc)
+    for _ in range(3):
+        await dbmod.record_dream_attempt(uid, 0, "failure", now=t0)
+    start = t0 + timedelta(minutes=61)
+    first = await dbmod.try_acquire_dream_probe(uid, now=start, lease_seconds=10)
+    assert first["allowed"]
+
+    assert await dbmod.clear_orphan_dream_probes(now=start + timedelta(seconds=1)) == 0
+    assert await dbmod.clear_orphan_dream_probes(now=start + timedelta(seconds=11)) == 1
+    second = await dbmod.try_acquire_dream_probe(uid, now=start + timedelta(seconds=12))
+    assert second["allowed"]
+
+    stale = await dbmod.record_dream_attempt(
+        uid, first["generation"], "failure", now=start + timedelta(seconds=13)
+    )
+    assert stale["ignored_stale_generation"]
+    assert stale["probe_until"] == second["probe_until"]
+    assert stale["consecutive_failures"] == 3
+
+
+@pytest.mark.asyncio
+async def test_queued_automatic_run_rechecks_breaker_after_manual_failure(isolated_db, monkeypatch):
+    uid = "u_queued_probe"
+    await _seed_user(uid, "queued_probe")
+    clock = FakeClock(datetime(2026, 11, 18, 12, 0, tzinfo=timezone.utc))
+    for _ in range(2):
+        await dbmod.record_dream_attempt(uid, 0, "failure", now=clock.now())
+
+    manual_running = asyncio.Event()
+    release_manual = asyncio.Event()
+    acquire_calls = []
+    acquire = dbmod.try_acquire_dream_probe
+
+    async def counted_acquire(*args, **kwargs):
+        acquire_calls.append(kwargs.get("allow_open", False))
+        return await acquire(*args, **kwargs)
+
+    async def manual(**kwargs):
+        manual_running.set()
+        await release_manual.wait()
+        raise RuntimeError("terminal failure")
+
+    async def automatic(**kwargs):
+        pytest.fail("an automatic run queued before OPEN must not run")
+
+    monkeypatch.setattr(dbmod, "try_acquire_dream_probe", counted_acquire)
+    manual_run = asyncio.create_task(run_dream_with_breaker(uid, consolidator=manual, now_fn=clock.now))
+    await asyncio.wait_for(manual_running.wait(), 2)
+    automatic_run = asyncio.create_task(
+        run_dream_with_breaker(uid, consolidator=automatic, now_fn=clock.now, respect_breaker=True)
+    )
+    try:
+        await asyncio.sleep(0)
+        assert acquire_calls == [True]
+    finally:
+        release_manual.set()
+        manual_result, automatic_result = await asyncio.gather(manual_run, automatic_run, return_exceptions=True)
+    assert isinstance(manual_result, RuntimeError)
+    assert automatic_result["status"] == "skipped_breaker"
+
+
+@pytest.mark.asyncio
 async def test_neutral_outcomes_do_not_trip_breaker_and_release_probe(isolated_db):
     """no_op, DreamSafetyError, and CancelledError never count as operational failure and release probes."""
     uid = "u_neutral"
@@ -345,10 +410,10 @@ async def test_legacy_naive_timestamps_and_last_success_outside_top3(isolated_db
 
 @pytest.mark.asyncio
 async def test_startup_recovery_clears_orphan_probes(isolated_db):
-    """recover_interrupted_dreams clears orphan probe_until leases left after process restart."""
+    """Startup recovery can expire an orphan without expiring a different worker's lease."""
     uid = "u_orphan"
     await _seed_user(uid, "orphan", active_facts=6)
-    t0 = datetime(2026, 11, 18, 12, 0, 0, tzinfo=timezone.utc)
+    t0 = datetime.now(timezone.utc) - timedelta(hours=1)
     for i in range(3):
         await dbmod.record_dream_attempt(uid, 0, "failure", now=t0 + timedelta(minutes=i), cooldown_minutes=10)
 
@@ -358,6 +423,8 @@ async def test_startup_recovery_clears_orphan_probes(isolated_db):
 
     await recover_interrupted_dreams()
 
+    # Inspect the state at the original time to distinguish physical lease
+    # removal from merely hiding an expired lease from the reader.
     st = await dbmod.get_dream_breaker_status(uid, now=t0 + timedelta(minutes=21), cooldown_minutes=10)
     assert st["state"] == "half_open"
     assert st["probe_until"] is None

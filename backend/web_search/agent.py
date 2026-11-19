@@ -51,6 +51,134 @@ _RE_BROAD_OR_COMPARISON = re.compile(
     re.IGNORECASE,
 )
 
+_RE_CATALOG_PRICING = re.compile(
+    r"\b("
+    r"(?:modelos?|models?|cat[áa]logo|catalog|vers[õo]es|versions|fam[íi]lia)\s+.*(?:pre[çc]os?|pricing|prices?|custos?|costs?|tabela|tarifas?|quanto\s+custa)|"
+    r"(?:pre[çc]os?|pricing|prices?|custos?|costs?|tabela|tarifas?|quanto\s+custa)\s+.*(?:modelos?|models?|cat[áa]logo|catalog|vers[õo]es|versions|fam[íi]lia)|"
+    r"modelos?\s+(?:e\s+)?pre[çc]os?|models?\s+and\s+prices?|models?\s+and\s+pricing|tabela\s+de\s+pre[çc]os?"
+    r")\b",
+    re.IGNORECASE,
+)
+
+_VENDOR_CATALOG_PRICING_MAP = [
+    {
+        "patterns": [r"\bgoogle\b", r"\bgemini\b", r"\bdeepmind\b"],
+        "vendor": "Google",
+        "catalog_query": "Google Gemini LLM official models catalog documentation",
+        "pricing_query": "Google AI Studio Gemini API pricing token cost official",
+        "distinction_query": "Google Cloud Vertex AI pricing Gemini token official",
+    },
+    {
+        "patterns": [r"\bopenai\b", r"\bchatgpt\b", r"\bgpt[\-\s]?4\b", r"\bgpt[\-\s]?o\b"],
+        "vendor": "OpenAI",
+        "catalog_query": "OpenAI official models catalog documentation",
+        "pricing_query": "OpenAI API pricing input output tokens official",
+        "distinction_query": "OpenAI API pricing per million tokens models",
+    },
+    {
+        "patterns": [r"\banthropic\b", r"\bclaude\b"],
+        "vendor": "Anthropic",
+        "catalog_query": "Anthropic Claude models catalog official documentation",
+        "pricing_query": "Anthropic Claude API pricing input output tokens official",
+        "distinction_query": "Anthropic API pricing per million tokens",
+    },
+    {
+        "patterns": [r"\bmistral\b"],
+        "vendor": "Mistral",
+        "catalog_query": "Mistral AI models catalog official documentation",
+        "pricing_query": "Mistral AI API pricing per million tokens official",
+        "distinction_query": "Mistral AI official pricing documentation",
+    },
+    {
+        "patterns": [r"\bmeta\b", r"\bllama\b"],
+        "vendor": "Meta",
+        "catalog_query": "Meta Llama models catalog official documentation",
+        "pricing_query": "Meta Llama model pricing API hosting official",
+        "distinction_query": "Meta Llama official models",
+    },
+    {
+        "patterns": [r"\bdeepseek\b"],
+        "vendor": "DeepSeek",
+        "catalog_query": "DeepSeek models catalog official documentation",
+        "pricing_query": "DeepSeek API pricing input output tokens official",
+        "distinction_query": "DeepSeek API pricing per million tokens",
+    },
+    {
+        "patterns": [r"\bcohere\b"],
+        "vendor": "Cohere",
+        "catalog_query": "Cohere official models catalog documentation",
+        "pricing_query": "Cohere API pricing input output tokens official",
+        "distinction_query": "Cohere Command models pricing",
+    },
+]
+
+
+def is_catalog_pricing_query(text: str) -> bool:
+    """Detecta se a intenção é buscar catálogo de modelos e documentação de preços."""
+    if not text:
+        return False
+    t_lower = text.lower()
+    if _RE_CATALOG_PRICING.search(t_lower):
+        return True
+    has_model = any(w in t_lower for w in ["modelo", "model", "catálogo", "catalogo", "versão", "versao", "llm"])
+    has_price = any(w in t_lower for w in ["preço", "preco", "precios", "price", "pricing", "custo", "cost", "tabela", "tarifa"])
+    return bool(has_model and has_price)
+
+
+def plan_catalog_pricing_queries(user_message: str) -> list[str]:
+    """Gera sub-consultas focadas para catálogo oficial e preços oficiais (com distinção de ofertas)."""
+    msg_lower = (user_message or "").lower()
+    for entry in _VENDOR_CATALOG_PRICING_MAP:
+        if any(re.search(pat, msg_lower) for pat in entry["patterns"]):
+            queries = [entry["catalog_query"], entry["pricing_query"]]
+            if entry.get("distinction_query"):
+                queries.append(entry["distinction_query"])
+            return queries
+
+    # Fornecedor extraído após preposição ou termo próprio
+    prep_match = re.search(r"\b(?:da|de|do|dos|das|from|by|at|em)\s+([A-Za-z0-9_-]{3,})", user_message, re.IGNORECASE)
+    vendor_name = None
+    if prep_match and prep_match.group(1).lower() not in COMMON_STOPWORDS:
+        cand = prep_match.group(1)
+        if cand.lower() not in {"google", "openai", "anthropic", "empresa", "marca", "loja"}:
+            vendor_name = cand.capitalize()
+
+    if not vendor_name:
+        words = re.findall(r"\b[A-Za-zÀ-ÿ0-9_-]{3,}\b", user_message)
+        candidate_vendors = [
+            w for w in words
+            if w.lower() not in COMMON_STOPWORDS
+            and w.lower() not in {
+                "modelo", "modelos", "model", "models", "preço", "preços", "preco", "precos",
+                "price", "pricing", "custo", "custos", "cost", "costs", "tabela", "qual", "quais",
+                "últimos", "ultimos", "latest", "recentes", "seus", "suas", "current", "todos",
+                "são", "sao", "estão", "estao", "como", "onde", "para", "quem",
+            }
+        ]
+        vendor_name = candidate_vendors[0].capitalize() if candidate_vendors else "LLM"
+
+    return [
+        f"{vendor_name} official models catalog documentation",
+        f"{vendor_name} API pricing input output tokens official",
+        f"{vendor_name} official pricing per million tokens",
+    ]
+
+
+def normalize_query_key(q: str) -> str:
+    cleaned = re.sub(r"[^\w\s]", "", q.lower())
+    return " ".join(cleaned.split())
+
+
+def deduplicate_queries(queries: list[str]) -> list[str]:
+    seen = set()
+    result = []
+    for q in queries:
+        norm = normalize_query_key(q)
+        if norm and norm not in seen:
+            seen.add(norm)
+            result.append(q.strip())
+    return result
+
 _RE_WEATHER_INTENT = re.compile(
     r"\b(clima|tempo|temperatura|previs[ãa]o(?:\s+do\s+tempo)?|chuva|chover|"
     r"weather|forecast|temperature|rain|"
@@ -80,17 +208,32 @@ _WEATHER_NON_LOCALITY_TOKENS = {
     "como", "cómo", "del", "para", "por", "favor", "em", "na", "no", "de", "do", "da",
     "chover", "chuva", "rain", "lluvia", "llover", "vai", "will", "it", "is", "en",
 }
+_WEATHER_PLACE_CUE = re.compile(r"\b(?:em|no|na|nos|nas|in|at|en|para|for)\s+", re.I)
+_WEATHER_TIME_OR_UNIT = re.compile(
+    r"\b(?:hoje|amanh[ãa]|hoy|ma[ñn]ana|today|tomorrow|now|agora|"
+    r"semana|week|semaines?|m[êe]s|month|mes|segunda|terça|quarta|quinta|sexta|s[áa]bado|domingo|"
+    r"monday|tuesday|wednesday|thursday|friday|saturday|sunday|lunes|martes|mi[ée]rcoles|jueves|viernes|"
+    r"esta|nesta|este|neste|this|next|pr[óo]xim[oa]s?|during|durante|"
+    r"manh[ãa]|morning|afternoon|evening|night|noite|madrugada|tarde|noche|"
+    r"minh[ao]|my|mi|nosso|nossa|our|nuestra|aqui|ac[áa]|here|"
+    r"celsius|fahrenheit|degrees|graus|grados|dias|days|horas|hours)\b|\d|°",
+    re.I,
+)
 
 
 def has_explicit_weather_locality(text: str) -> bool:
-    """Retorna True se uma pergunta de clima mencionar explicitamente uma localidade."""
-    tokens = re.findall(r"[A-Za-zÀ-ÿ0-9\-]{2,}", text or "")
-    meaningful = [
-        tok for tok in tokens
-        if tok.lower() not in _WEATHER_NON_LOCALITY_TOKENS
-        and not re.fullmatch(r"\d+(?:[cf°])?", tok.lower())
-    ]
-    return len(meaningful) >= 1
+    """Use an explicit place phrase as a conservative signal for the fast path."""
+    text = text or ""
+    for match in _WEATHER_PLACE_CUE.finditer(text):
+        phrase = re.split(r"[?!;]", text[match.end():], maxsplit=1)[0]
+        place = _WEATHER_TIME_OR_UNIT.split(phrase, maxsplit=1)[0].strip(" ,.-")
+        words = re.findall(r"[^\W\d_]+", place)
+        if 1 <= len(words) <= 5 and any(
+            len(word) > 1 and word.lower() not in _WEATHER_NON_LOCALITY_TOKENS
+            for word in words
+        ):
+            return True
+    return False
 
 
 def select_search_budget(
@@ -263,11 +406,63 @@ def score_search_result(
         match_ratio = len(matched_terms) / len(content_terms)
         score += match_ratio * 30.0
 
+    # 5. Preferência para documentação oficial de catálogo e preços vs comparadores (T4.2)
+    if is_catalog_pricing_query(user_message):
+        OFFICIAL_VENDOR_DOMAINS = {
+            "ai.google.dev", "cloud.google.com", "deepmind.google",
+            "platform.openai.com", "openai.com",
+            "docs.anthropic.com", "anthropic.com",
+            "docs.mistral.ai", "mistral.ai",
+            "llama.meta.com", "ai.meta.com",
+            "api-docs.deepseek.com", "deepseek.com",
+        }
+        COMPARISON_DOMAINS = {
+            "artificialanalysis.ai", "vellum.ai", "techtarget.com",
+            "medium.com", "reddit.com", "tomsguide.com", "theverge.com",
+            "promptingguide.ai", "llm-price.com"
+        }
+        if any(od in url for od in OFFICIAL_VENDOR_DOMAINS) or bool(
+            re.search(r"https?://(?:docs|platform|developer|developers)\.", url)
+        ):
+            score += 60.0
+        elif any(cd in url for cd in COMPARISON_DOMAINS):
+            score += 10.0  # Comparadores como fonte complementar, sempre abaixo da oficial
+
+        if any(p in url for p in ["/pricing", "/precos", "/precios", "/models", "/modelos", "/docs"]):
+            score += 35.0
+
+        if any(k in combined_text for k in ["per million", "por milhão", "tokens", "input", "output", "preço", "pricing", "tabela", "$"]):
+            score += 25.0
+
     # Penalidade severa para PDFs ou formatos não textuais
     if url.endswith((".pdf", ".zip", ".jpg", ".png")):
         score -= 100.0
 
     return score
+
+
+async def _collect_before_deadline(tasks: list[asyncio.Task], remaining: float) -> tuple[list, bool]:
+    """Keep completed results in input order and drain children on every exit."""
+    if not tasks:
+        return [], False
+    try:
+        if remaining <= 0:
+            done, pending = set(), set(tasks)
+        else:
+            done, pending = await asyncio.wait(tasks, timeout=remaining)
+        for task in pending:
+            task.cancel()
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+    except asyncio.CancelledError:
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        raise
+    return [
+        result for task, result in zip(tasks, results)
+        if task in done and not isinstance(result, BaseException)
+    ], bool(pending)
 
 
 async def execute_agentic_search(
@@ -292,10 +487,17 @@ async def execute_agentic_search(
     deadline = t0 + max(0.2, float(eff_budget.deadline_s))
 
     # 1. Planejamento de consultas (usa queries do Pré-Router se disponíveis)
-    if pre_planned_queries and len(pre_planned_queries) > 0:
-        planned_queries = [q.strip() for q in pre_planned_queries if q and q.strip()]
+    if is_catalog_pricing_query(user_message):
+        catalog_pricing_queries = plan_catalog_pricing_queries(user_message)
+        if pre_planned_queries and len(pre_planned_queries) > 0:
+            combined = [q.strip() for q in pre_planned_queries if q and q.strip()] + catalog_pricing_queries
+            planned_queries = deduplicate_queries(combined)
+        else:
+            planned_queries = deduplicate_queries(catalog_pricing_queries)
+    elif pre_planned_queries and len(pre_planned_queries) > 0:
+        planned_queries = deduplicate_queries([q.strip() for q in pre_planned_queries if q and q.strip()])
     else:
-        planned_queries = plan_search_queries(user_message, history=history)
+        planned_queries = deduplicate_queries(plan_search_queries(user_message, history=history))
     planned_queries = planned_queries[: max(1, int(eff_budget.max_queries))]
     logger.info(
         "[agentic_search] mode={} planned_queries={} max_results={} max_reads={} max_sub={} deadline={:.1f}s",
@@ -309,8 +511,8 @@ async def execute_agentic_search(
 
     all_results: list[dict] = []
     seen_urls: set[str] = set()
-    search_timed_out = False
     read_timed_out = False
+    started_queries: set[int] = set()
 
     async def _emit(evt: dict):
         if on_event:
@@ -323,21 +525,21 @@ async def execute_agentic_search(
         # Compatível com mocks/testes que substituem resolve_and_execute_search sem kwargs extras
         try:
             sig = inspect.signature(resolve_and_execute_search)
-            params = sig.parameters
-            kwargs: dict[str, Any] = {}
-            if "max_results_override" in params:
-                kwargs["max_results_override"] = eff_budget.max_results
-            if "timeout" in params:
-                kwargs["timeout"] = timeout_s
-            return await resolve_and_execute_search(query, db, search_config, **kwargs)
         except (TypeError, ValueError):
             return await resolve_and_execute_search(query, db, search_config)
+        kwargs: dict[str, Any] = {}
+        if "max_results_override" in sig.parameters:
+            kwargs["max_results_override"] = eff_budget.max_results
+        if "timeout" in sig.parameters:
+            kwargs["timeout"] = timeout_s
+        return await resolve_and_execute_search(query, db, search_config, **kwargs)
 
     # 2. Executa as buscas planejadas em paralelo dentro do saldo do deadline
     async def _run_single_search(idx: int, query: str) -> list[dict]:
         if idx > 0:
             await asyncio.sleep(0.25 * idx)
 
+        started_queries.add(idx)
         step_id = f"search-step-{idx}"
         await _emit({
             "type": "process_step_start",
@@ -367,29 +569,7 @@ async def execute_agentic_search(
         return results
 
     search_tasks = [asyncio.create_task(_run_single_search(i, q)) for i, q in enumerate(planned_queries)]
-    rem_search = deadline - clock()
-    if search_tasks:
-        if rem_search <= 0:
-            search_timed_out = True
-            for t in search_tasks:
-                t.cancel()
-            search_outputs = await asyncio.gather(*search_tasks, return_exceptions=True)
-        else:
-            done, pending = await asyncio.wait(search_tasks, timeout=rem_search)
-            if pending:
-                search_timed_out = True
-                for t in pending:
-                    t.cancel()
-                await asyncio.gather(*pending, return_exceptions=True)
-            search_outputs = []
-            for t in search_tasks:
-                if t in done and not t.cancelled():
-                    try:
-                        search_outputs.append(t.result())
-                    except Exception:
-                        pass
-    else:
-        search_outputs = []
+    search_outputs, search_timed_out = await _collect_before_deadline(search_tasks, deadline - clock())
 
     for output in search_outputs:
         if isinstance(output, list):
@@ -489,29 +669,19 @@ async def execute_agentic_search(
             return page_data
 
         read_tasks = [asyncio.create_task(_run_single_read(i, u)) for i, u in enumerate(target_urls_to_read)]
-        done_r, pending_r = await asyncio.wait(read_tasks, timeout=max(0.05, rem_read))
-        if pending_r:
-            read_timed_out = True
-            for t in pending_r:
-                t.cancel()
-            await asyncio.gather(*pending_r, return_exceptions=True)
-
-        for t in read_tasks:
-            if t in done_r and not t.cancelled():
-                try:
-                    out = t.result()
-                except Exception:
-                    out = None
-                if isinstance(out, dict) and (out.get("articles") or out.get("text_sample")):
-                    scraped_pages.append(out)
-                    reads_completed += 1
+        read_outputs, read_timed_out = await _collect_before_deadline(read_tasks, deadline - clock())
+        for out in read_outputs:
+            if isinstance(out, dict) and (out.get("articles") or out.get("text_sample")):
+                scraped_pages.append(out)
+                reads_completed += 1
     elif target_urls_to_read and rem_read <= 0.1:
         read_timed_out = True
 
     elapsed_ms = round(max(0.0, (clock() - t0) * 1000.0), 1)
+    executed_queries = [planned_queries[index] for index in sorted(started_queries)]
     metrics = {
         "mode": eff_budget.mode,
-        "queries_executed": len(planned_queries),
+        "queries_executed": len(executed_queries),
         "results_returned": len(returned_results),
         "reads_started": reads_started,
         "reads_completed": reads_completed,
@@ -534,6 +704,6 @@ async def execute_agentic_search(
     return {
         "search_results": returned_results,
         "scraped_pages": scraped_pages,
-        "executed_queries": planned_queries,
+        "executed_queries": executed_queries,
         "metrics": metrics,
     }

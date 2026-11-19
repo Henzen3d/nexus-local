@@ -86,6 +86,7 @@ export function UserMemoryPanel() {
   const [summaries, setSummaries] = useState<MemorySummary[]>([])
   const [refreshingSummaries, setRefreshingSummaries] = useState(false)
   const [stats, setStats] = useState<MemoryStatsApi | null>(null)
+  const memoryReloadVersion = useRef(0)
   const [importing, setImporting] = useState(false)
   const importInputRef = useRef<HTMLInputElement>(null)
 
@@ -153,30 +154,35 @@ export function UserMemoryPanel() {
   }
 
   const reloadAll = async () => {
+    const version = ++memoryReloadVersion.current
+    setStats(null)
     try {
       const [data, sums, st, logs, breaker] = await Promise.all([
-        api.getUserMemory(),
+        api.getUserMemory().catch(() => null),
         api.getMemorySummaries().catch(() => [] as MemorySummary[]),
         api.getMemoryStats().catch(() => null),
         api.getDreamLogs().catch(() => [] as DreamLogApi[]),
         api.getDreamBreaker().catch(() => null),
       ])
-      setMemories(data)
+      if (version !== memoryReloadVersion.current) return
+      if (data !== null) setMemories(data)
       setSummaries(sums || [])
       setStats(st)
       setDreamLogs(logs || [])
       if (breaker) setDreamBreaker(breaker)
+      setError(data === null ? t('memory.loadError') : '')
     } catch (err) {
       console.error('Failed to reload memory state', err)
     }
   }
 
   const loadMemory = async () => {
+    const version = ++memoryReloadVersion.current
     setLoading(true)
     setError('')
     try {
       const [data, profile, ext, provs, sums, st, logs, breaker] = await Promise.all([
-        api.getUserMemory(),
+        api.getUserMemory().catch(() => null),
         api.getUserProfile().catch(() => null),
         api.getMemoryExtractorConfig().catch(() => null),
         api.getProviders().catch(() => [] as Provider[]),
@@ -185,14 +191,17 @@ export function UserMemoryPanel() {
         api.getDreamLogs().catch(() => [] as DreamLogApi[]),
         api.getDreamBreaker().catch(() => null),
       ])
-      setMemories(data)
+      if (version === memoryReloadVersion.current) {
+        if (data !== null) setMemories(data)
+        setStats(st)
+        setError(data === null ? t('memory.loadError') : '')
+      }
       if (profile) {
         setMemoryEnabled(profile.memory_enabled === undefined ? true : !!profile.memory_enabled)
       }
       if (ext) setExtractor(ext)
       setProviders((provs || []).filter((p: Provider) => p.has_key && p.enabled))
       setSummaries(sums || [])
-      setStats(st)
       setDreamLogs(logs || [])
       setDreamBreaker(breaker)
 
@@ -372,6 +381,7 @@ export function UserMemoryPanel() {
   const handleDelete = async (id: string) => {
     try {
       await api.deleteMemoryFact(id)
+      setMemories((facts) => facts.filter((fact) => fact.id !== id))
       await reloadAll()
     } catch (err) {
       console.error(err)
@@ -383,6 +393,7 @@ export function UserMemoryPanel() {
     const next = !m.is_pinned
     try {
       await api.pinMemoryFact(m.id, !!next)
+      setMemories((facts) => facts.map((fact) => fact.id === m.id ? { ...fact, is_pinned: next ? 1 : 0 } : fact))
       await reloadAll()
     } catch (err) {
       console.error(err)
@@ -406,7 +417,8 @@ export function UserMemoryPanel() {
     if (!editText.trim()) return
     setSavingFact(true)
     try {
-      await api.updateMemoryFact(factId, { fact: editText.trim(), category: editCategory })
+      const { fact: updated } = await api.updateMemoryFact(factId, { fact: editText.trim(), category: editCategory })
+      setMemories((facts) => facts.map((fact) => fact.id === factId ? updated : fact))
       await reloadAll()
       setEditingFactId(null)
     } catch (err) {
@@ -487,6 +499,8 @@ export function UserMemoryPanel() {
   const handleClearAll = async () => {
     try {
       await api.clearAllMemory()
+      setMemories([])
+      setSummaries([])
       setPreview(null)
       setClearConfirm(false)
       await reloadAll()
@@ -513,6 +527,25 @@ export function UserMemoryPanel() {
   useEffect(() => {
     loadMemory()
   }, [])
+
+  const breakerRetryAt = dreamBreaker?.retry_at
+  useEffect(() => {
+    if (!breakerRetryAt) return
+    const deadline = new Date(breakerRetryAt).getTime()
+    if (!Number.isFinite(deadline)) return
+    let cancelled = false
+    const timer = window.setTimeout(() => {
+      void api.getDreamBreaker().then((updated) => {
+        if (!cancelled) {
+          setDreamBreaker((current) => current?.retry_at === breakerRetryAt ? updated : current)
+        }
+      }).catch(() => {})
+    }, Math.max(0, deadline - Date.now()) + 250)
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
+  }, [breakerRetryAt])
 
   const getCategoryIcon = (category: string) => {
     switch (category) {

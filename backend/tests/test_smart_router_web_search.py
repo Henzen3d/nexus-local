@@ -104,7 +104,7 @@ async def test_database_heuristic_enabled_default_and_migration(tmp_db):
 
 
 @pytest.mark.asyncio
-async def test_resolve_web_search_auto_router_trigger():
+async def test_resolve_web_search_auto_router_trigger(monkeypatch):
     """Valida que quando intent_res é web_research, o resolvedor ativa auto_router mesmo sem web_search_requested."""
     db_mock = MagicMock()
     # Mock do get_web_search_config
@@ -130,29 +130,30 @@ async def test_resolve_web_search_auto_router_trigger():
     ws_mock = AsyncMock()
     ws_mock.send_json = AsyncMock()
 
-    # Mock da busca executada para não chamar rede real
     import backend.routers.chat as chat_module
-    orig_resolve_and_execute = chat_module.resolve_and_execute_search
-    chat_module.resolve_and_execute_search = AsyncMock(return_value=([], []))
+    question = "Quem são os candidatos do segundo turno este ano?"
+    snippet = {"url": "https://example.com/election", "title": "Resultados", "snippet": "Dados sintéticos"}
+    execute = AsyncMock(return_value={"search_results": [snippet], "executed_queries": [question]})
+    monkeypatch.setattr(chat_module, "execute_agentic_search", execute)
 
-    try:
-        req = {"web_search": False}
-        used, query, sources, results, cfg, steps = await _resolve_web_search(
-            ws=ws_mock,
-            db=db_mock,
-            req=req,
-            user_message="Quem são os candidatos do segundo turno este ano?",
-            user_msg_id="msg-1",
-            user_id="usr-1",
-            conversation_id="conv-1",
-            intent_res=intent_res,
-        )
+    used, query, sources, results, cfg, steps = await _resolve_web_search(
+        ws=ws_mock,
+        db=db_mock,
+        req={"web_search": False},
+        user_message=question,
+        user_msg_id="msg-1",
+        user_id="usr-1",
+        conversation_id="conv-1",
+        intent_res=intent_res,
+        defer_telemetry=True,
+    )
 
-        assert used is True
-        assert query == "Quem são os candidatos do segundo turno este ano?"
-        ws_mock.send_json.assert_any_call({"type": "search_start", "query": query})
-    finally:
-        chat_module.resolve_and_execute_search = orig_resolve_and_execute
+    assert used is True
+    assert query == question
+    assert sources[0]["url"] == snippet["url"]
+    assert cfg["_telemetry"]["trigger_type"] == "auto_router"
+    execute.assert_awaited_once()
+    ws_mock.send_json.assert_any_call({"type": "search_start", "query": query})
 
 
 # ── T2.1: Fast factual budget, deadline sharing, read timeout reuse, reader index fix ──
@@ -165,6 +166,7 @@ def test_select_search_budget_pt_en_es_and_exclusions():
     fast_cases = [
         "Qual o clima em Curitiba amanhã em °C?",
         "What is the weather in Tokyo today in Fahrenheit?",
+        "What is the forecast for Thursday in Porto?",
         "¿Cuál es el pronóstico del clima en Madrid hoy?",
         "Cotação do dólar hoje",
         "Current USD to EUR exchange rate",
@@ -196,6 +198,9 @@ def test_select_search_budget_pt_en_es_and_exclusions():
 
     # Broad research, comparison, or target URL -> standard budget preserved
     standard_cases = [
+        "Qual a previsão do tempo nesta semana?",
+        "What will the weather be like next Tuesday?",
+        "¿Cuál es el pronóstico del tiempo para esta semana?",
         "Compare Python vs Rust para servidores web de alta concorrência",
         "Faça uma pesquisa completa sobre baterias de estado sólido",
         "Veja as novidades no site example.com/blog sobre lançamentos",
@@ -207,6 +212,44 @@ def test_select_search_budget_pt_en_es_and_exclusions():
         assert b.mode == "standard", f"Esperado standard para: {q}"
         assert b.max_main_reads == 2
         assert b.max_sub_articles == 3
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("stage", ["search", "reader"])
+async def test_cancelling_agent_search_drains_running_children(monkeypatch, stage):
+    import asyncio
+    from backend.web_search import agent as agent_mod
+
+    started = asyncio.Event()
+    cleaned = asyncio.Event()
+
+    async def block():
+        started.set()
+        try:
+            await asyncio.Future()
+        finally:
+            cleaned.set()
+
+    async def search(*args, **kwargs):
+        if stage == "search":
+            await block()
+        return [{"title": "Weather in Porto", "url": "https://example.com/porto", "snippet": "Weather"}]
+
+    async def read(*args, **kwargs):
+        if stage == "reader":
+            await block()
+
+    monkeypatch.setattr(agent_mod, "resolve_and_execute_search", search)
+    monkeypatch.setattr(agent_mod, "deep_read_target", read)
+    monkeypatch.setattr(agent_mod, "score_search_result", lambda *args, **kwargs: 10)
+    parent = asyncio.create_task(agent_mod.execute_agentic_search(
+        "Weather in Porto", None, {}, pre_planned_queries=["Weather in Porto"],
+    ))
+    await asyncio.wait_for(started.wait(), timeout=1)
+    parent.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await asyncio.wait_for(parent, timeout=1)
+    assert cleaned.is_set()
 
 
 @pytest.mark.asyncio

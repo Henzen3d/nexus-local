@@ -1,3 +1,4 @@
+import asyncio
 import aiosqlite
 import json
 import os
@@ -335,6 +336,7 @@ CREATE TABLE IF NOT EXISTS model_usage_log (
     route_confidence       REAL,               -- 0.0 a 1.0
     route_latency_ms       REAL,               -- Latência do classificador (< 2.0ms)
     route_policy           TEXT,               -- 'economical_free', 'balanced_smart', 'max_performance'
+    turn_id                TEXT,
     created_at             TEXT DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_usage_model ON model_usage_log(model_id, created_at);
@@ -884,7 +886,21 @@ async def claim_global_provider_keys(db) -> None:
 async def get_db():
     # Configure the busy wait in sqlite3.connect itself; this avoids a separate
     # PRAGMA round-trip on every request/socket connection.
-    db = await aiosqlite.connect(DB_PATH, timeout=10.0)
+    # aiosqlite starts its worker before the open completes. Let the worker
+    # finish opening so cancellation can close it, even without a handle yet.
+    opening = asyncio.ensure_future(aiosqlite.connect(DB_PATH, timeout=10.0))
+    try:
+        db = await asyncio.shield(opening)
+    except asyncio.CancelledError:
+        async def close_after_open() -> None:
+            try:
+                connection = await opening
+                await connection.close()
+            except Exception:
+                logger.warning("Failed to close cancelled SQLite connection", exc_info=True)
+
+        await asyncio.shield(close_after_open())
+        raise
     try:
         await db.execute("PRAGMA foreign_keys = ON")
         await db.execute("PRAGMA synchronous = NORMAL")
@@ -1439,6 +1455,7 @@ async def init_db():
             ("route_confidence", "REAL"),
             ("route_latency_ms", "REAL"),
             ("route_policy", "TEXT"),
+            ("turn_id", "TEXT"),
         ]:
             try:
                 await db.execute(f"SELECT {col} FROM model_usage_log LIMIT 1")
@@ -3804,6 +3821,7 @@ async def try_acquire_dream_probe(
     *,
     cooldown_minutes: Optional[int] = None,
     lease_seconds: int = DREAM_BREAKER_PROBE_LEASE_SECONDS,
+    allow_open: bool = False,
 ) -> dict:
     """Atomically check breaker state and reserve a single probe lease when half_open."""
     from datetime import timedelta
@@ -3835,7 +3853,7 @@ async def try_acquire_dream_probe(
             if now_dt < retry_dt:
                 await db.commit()
                 return {
-                    "allowed": False,
+                    "allowed": allow_open,
                     "mode": "open",
                     "state": "open",
                     "consecutive_failures": int(row["consecutive_failures"] or 0),
@@ -3858,7 +3876,7 @@ async def try_acquire_dream_probe(
             lease_until = format_utc_timestamp(now_dt + timedelta(seconds=max(1, int(lease_seconds))))
             cur = await db.execute(
                 """UPDATE dream_breaker_state
-                   SET probe_until = ?, updated_at = ?
+                   SET probe_until = ?, updated_at = ?, generation = generation + 1
                    WHERE user_id = ? AND generation = ?""",
                 (lease_until, now_str, user_id, gen),
             )
@@ -3879,7 +3897,7 @@ async def try_acquire_dream_probe(
                 "consecutive_failures": int(row["consecutive_failures"] or 0),
                 "retry_at": lease_until,
                 "probe_until": lease_until,
-                "generation": gen,
+                "generation": gen + 1,
             }
         except Exception:
             await db.rollback()
@@ -3931,7 +3949,11 @@ async def record_dream_attempt(
                 opened_at = None
             elif norm_outcome == "failure":
                 failures += 1
-                if opened_at is not None or failures >= DREAM_BREAKER_THRESHOLD:
+                # A manual run during OPEN can succeed, but a failure must not
+                # restart the cooldown or emit another warning. A failed probe can.
+                if row["probe_until"] is not None or (
+                    opened_at is None and failures >= DREAM_BREAKER_THRESHOLD
+                ):
                     opened_at = now_str
                     transitioned_to_open = True
             else:
@@ -4005,14 +4027,15 @@ async def reset_dream_breaker(user_id: str, now=None) -> dict:
 
 
 async def clear_orphan_dream_probes(now=None) -> int:
-    """Release any in-flight Dream probe leases left over from an abrupt process restart."""
+    """Expire leases that cannot still be owned by a healthy worker."""
     now_str = format_utc_timestamp(_coerce_utc_now(now))
     async with aiosqlite.connect(DB_PATH, timeout=10.0) as db:
         cur = await db.execute(
             """UPDATE dream_breaker_state
-               SET probe_until = NULL, updated_at = ?
-               WHERE probe_until IS NOT NULL""",
-            (now_str,),
+               SET probe_until = NULL, updated_at = ?, generation = generation + 1
+               WHERE probe_until IS NOT NULL
+                 AND julianday(probe_until) <= julianday(?)""",
+            (now_str, now_str),
         )
         await db.commit()
         return cur.rowcount or 0
@@ -4137,18 +4160,11 @@ async def get_memory_context_metadata(
             row = await cur.fetchone()
         global_summary = dict(row) if row else None
 
-        try:
-            async with db.execute(
-                "SELECT project_tag FROM conversations WHERE id = ? AND (user_id = ? OR user_id IS NULL)",
-                (conversation_id, user_id),
-            ) as cur:
-                tag_row = await cur.fetchone()
-        except aiosqlite.OperationalError:
-            async with db.execute(
-                "SELECT project_tag FROM conversations WHERE id = ?",
-                (conversation_id,),
-            ) as cur:
-                tag_row = await cur.fetchone()
+        async with db.execute(
+            "SELECT project_tag FROM conversations WHERE id = ? AND user_id = ?",
+            (conversation_id, user_id),
+        ) as cur:
+            tag_row = await cur.fetchone()
         project_tag = None
         if tag_row and tag_row[0] and str(tag_row[0]).strip():
             project_tag = str(tag_row[0]).strip()
@@ -4524,7 +4540,9 @@ def classify_model_error(error_msg: str) -> dict:
     }
 
 
-async def check_and_deactivate_model(model_id: str, error_msg: str, db=None) -> bool:
+async def check_and_deactivate_model(
+    model_id: str, error_msg: str, db=None, *, diagnostic_safe: bool = False,
+) -> bool:
     """
     Verifica se o erro indica um modelo aposentado (deprecated), não encontrado (not found)
     ou erro financeiro/plano/assinatura (billing), desativando-o automaticamente no banco
@@ -4536,9 +4554,10 @@ async def check_and_deactivate_model(model_id: str, error_msg: str, db=None) -> 
         return False
         
     classification = classify_model_error(error_msg)
+    diagnostic = classification["status_message"] if diagnostic_safe else error_msg
     if classification.get("reason") == "quota_exhausted":
         from backend.ranking.quota import mark_model_exhausted
-        await mark_model_exhausted(model_id, db, retry_after=3600, error_msg=error_msg)
+        await mark_model_exhausted(model_id, db, retry_after=3600, error_msg=diagnostic)
         return False
 
     if not classification["is_deactivation"]:
@@ -4557,7 +4576,7 @@ async def check_and_deactivate_model(model_id: str, error_msg: str, db=None) -> 
         await db.execute("UPDATE models SET enabled = 0, confirmed_free = 0 WHERE id = ?", (model_id,))
         
         # Registra no status de cota/erro para auditoria e visibilidade
-        last_err = f"[{status_msg}] {error_msg}"
+        last_err = f"[{status_msg}]" if diagnostic_safe else f"[{status_msg}] {error_msg}"
         await db.execute(
             """
             INSERT INTO model_quota_status (model_id, status, consecutive_errors, last_error_message)
@@ -4580,28 +4599,28 @@ async def check_and_deactivate_model(model_id: str, error_msg: str, db=None) -> 
             if suggested:
                 logger.info(
                     "🚫 Model '%s' automatically disabled (model_deprecated). Suggested replacement: '%s'. Error: %s",
-                    model_id, suggested, error_msg
+                    model_id, suggested, diagnostic
                 )
             else:
                 logger.info(
                     "🚫 Model '%s' automatically disabled (model_deprecated): %s",
-                    model_id, error_msg
+                    model_id, diagnostic
                 )
         elif reason == "model_not_found":
             if suggested:
                 logger.warning(
                     "🚫 Model '%s' automatically disabled (model_not_found). Suggested replacement: '%s'. Error: %s",
-                    model_id, suggested, error_msg
+                    model_id, suggested, diagnostic
                 )
             else:
                 logger.warning(
                     "🚫 Model '%s' automatically disabled (model_not_found): %s",
-                    model_id, error_msg
+                    model_id, diagnostic
                 )
         else:
             logger.error(
                 "🚫 Model '%s' automatically disabled due to billing/subscription error: %s",
-                model_id, error_msg
+                model_id, diagnostic
             )
 
         if should_close:

@@ -268,3 +268,31 @@ def test_custom_fmt_preserves_context_defaults_and_format():
         logger.info("formato fixo", extra={"user_id": "u-9", "conversation_id": "c-10"})
 
     assert buf_minimal.getvalue().splitlines() == ["[INFO] formato fixo"]
+
+
+def test_log_with_turn_id():
+    buf = io.StringIO()
+    with _isolated_logging(stream=buf, level=logging.INFO):
+        logger = lc.get_logger("backend.orchestration.resolve_request")
+        logger.info("Failover acionado", extra={"turn_id": "turn-abc-123"})
+    line = buf.getvalue().strip()
+
+    assert _LOG_LINE_RE.match(line)
+    assert line.endswith("Failover acionado | turn=turn-abc-123")
+    assert "user=" not in line
+    assert "conv=" not in line
+
+
+def test_log_with_user_conv_and_turn_id():
+    buf = io.StringIO()
+    with _isolated_logging(stream=buf, level=logging.INFO):
+        logger = lc.get_logger("backend.routers.chat")
+        logger.info(
+            "Turno concluído",
+            extra={"user_id": "u-1", "conversation_id": "c-2", "turn_id": "turn-3"},
+        )
+    line = buf.getvalue().strip()
+
+    assert _LOG_LINE_RE.match(line)
+    assert line.endswith("Turno concluído | user=u-1 | conv=c-2 | turn=turn-3")
+

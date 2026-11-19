@@ -1,8 +1,201 @@
 import aiosqlite
+import hashlib
 from datetime import datetime, timedelta, timezone
 
 from backend.logging_config import get_logger
 logger = get_logger(__name__)
+
+
+def get_credential_hash(api_key: str | None) -> str:
+    """Retorna um identificador opaco para a credencial."""
+    if not api_key:
+        return "none"
+    return hashlib.sha256(api_key.strip().encode("utf-8")).hexdigest()[:16]
+
+
+def make_quarantine_key(provider_id: str, api_key: str | None) -> str:
+    """Gera chave opaca para provider_quarantine."""
+    return f"{provider_id}::cred_{get_credential_hash(api_key)}"
+
+
+async def resolve_provider_credential(
+    provider_id: str,
+    db: aiosqlite.Connection,
+    user_id: str | None = None,
+) -> str:
+    """
+    Resolve a chave de API efetiva para (provider_id, user_id)
+    conforme lógica de registry.py, sem instanciar o adapter.
+    """
+    if not provider_id:
+        return ""
+    try:
+        async with db.execute(
+            "SELECT api_key, is_free FROM providers WHERE id = ?",
+            (provider_id,),
+        ) as cur:
+            row = await cur.fetchone()
+    except Exception:
+        return ""
+
+    if not row:
+        return ""
+    _global_key = row[0]
+
+    api_key = None
+    if user_id:
+        try:
+            async with db.execute(
+                "SELECT api_key FROM user_api_keys WHERE user_id = ? AND provider_id = ?",
+                (user_id, provider_id),
+            ) as key_cur:
+                key_row = await key_cur.fetchone()
+                if key_row:
+                    api_key = key_row[0]
+        except Exception:
+            pass
+
+    from backend.providers.registry import is_key_sentinel, resolve_env_api_key
+    if is_key_sentinel(api_key):
+        if provider_id == "zenmux" and user_id:
+            try:
+                async with db.execute(
+                    "SELECT role FROM users WHERE id = ?",
+                    (user_id,),
+                ) as role_cur:
+                    role_row = await role_cur.fetchone()
+                if role_row and role_row[0] == "admin":
+                    api_key = resolve_env_api_key(provider_id, api_key)
+            except Exception:
+                pass
+        elif provider_id in ("orcarouter", "bynara", "freetheai", "llm7"):
+            api_key = resolve_env_api_key(provider_id, api_key)
+            if not api_key and _global_key and not is_key_sentinel(_global_key):
+                api_key = _global_key.strip()
+    elif not is_key_sentinel(api_key):
+        api_key = (api_key or "").strip()
+    else:
+        api_key = ""
+
+    return api_key or ""
+
+
+async def is_credential_quarantined(
+    provider_id: str,
+    api_key: str | None,
+    db: aiosqlite.Connection,
+) -> bool:
+    """Verifica se a credencial opaca específica está em quarentena ativa."""
+    if not api_key:
+        return False
+    quarantine_key = make_quarantine_key(provider_id, api_key)
+    now_iso = datetime.now(timezone.utc).isoformat()
+    try:
+        async with db.execute(
+            """
+            SELECT quarantined_until FROM provider_quarantine
+            WHERE provider_id = ? AND quarantined_until > ?
+            """,
+            (quarantine_key, now_iso),
+        ) as cur:
+            row = await cur.fetchone()
+            if row:
+                return True
+        # Verifica também se o provedor inteiro está em quarentena
+        async with db.execute(
+            """
+            SELECT quarantined_until FROM provider_quarantine
+            WHERE provider_id = ? AND quarantined_until > ?
+            """,
+            (provider_id, now_iso),
+        ) as cur:
+            row = await cur.fetchone()
+            if row:
+                return True
+    except Exception as e:
+        logger.debug("[is_credential_quarantined] Verificação de quarentena ignorada: %s", e)
+    return False
+
+
+async def quarantine_credential(
+    provider_id: str,
+    api_key: str | None,
+    db: aiosqlite.Connection,
+    duration_seconds: int = 3600,
+    reason: str = "quota_exhausted",
+) -> None:
+    """Coloca uma credencial específica em quarentena no provider_quarantine."""
+    if not api_key:
+        return
+    quarantine_key = make_quarantine_key(provider_id, api_key)
+    now = datetime.now(timezone.utc)
+    until = (now + timedelta(seconds=duration_seconds)).isoformat()
+    now_str = now.isoformat()
+    try:
+        # Garante tabela caso rode em SQLite de teste sem init_db
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS provider_quarantine (
+                provider_id        TEXT PRIMARY KEY,
+                quarantined_until  TEXT NOT NULL,
+                reason             TEXT,
+                updated_at         TEXT DEFAULT (datetime('now'))
+            )
+        """)
+        await db.execute(
+            """
+            INSERT INTO provider_quarantine (provider_id, quarantined_until, reason, updated_at)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(provider_id) DO UPDATE SET
+                quarantined_until = excluded.quarantined_until,
+                reason = excluded.reason,
+                updated_at = excluded.updated_at
+            """,
+            (quarantine_key, until, reason, now_str),
+        )
+        await db.commit()
+        try:
+            from backend.ranking.smart_router import invalidate_model_cache
+            invalidate_model_cache()
+        except Exception:
+            pass
+        logger.warning(
+            "🔒 Credencial do provedor '%s' colocada em quarentena até %s (%s)",
+            provider_id, until, reason,
+        )
+    except Exception as e:
+        logger.warning("[quarantine_credential] Falha ao gravar em provider_quarantine: %s", e)
+
+
+async def release_expired_quarantines(db: aiosqlite.Connection) -> int:
+    """Remove credenciais expiradas de provider_quarantine."""
+    now_iso = datetime.now(timezone.utc).isoformat()
+    try:
+        async with db.execute(
+            "DELETE FROM provider_quarantine WHERE quarantined_until <= ?",
+            (now_iso,),
+        ) as cur:
+            released = cur.rowcount
+        await db.commit()
+        if released > 0:
+            try:
+                from backend.ranking.smart_router import invalidate_model_cache
+                invalidate_model_cache()
+            except Exception:
+                pass
+            logger.info("🔄 Released %d expired provider/credential quarantines", released)
+        return max(released, 0)
+    except Exception:
+        return 0
+
+
+def is_model_unavailable_error(error_msg: str | None) -> bool:
+    """Detecta se o erro indica indisponibilidade temporária de modelo (MODEL_UNAVAILABLE)."""
+    if not error_msg:
+        return False
+    from backend.ranking.classifier import classify_failure
+    res = classify_failure(body=error_msg)
+    return res["outcome"] == "MODEL_UNAVAILABLE" or res["reason"] == "model_unavailable"
+
 
 async def get_quota_status(model_id: str, db: aiosqlite.Connection) -> dict:
     """Retorna o status de cota de um modelo."""
@@ -116,8 +309,10 @@ async def release_expired_quotas(db: aiosqlite.Connection) -> int:
     """
     Verifica se existem modelos 'exhausted' ou 'degraded' cujo
     tempo de reset estimado já passou, e os libera para 'available'.
+    Também limpa quarentenas de credenciais expiradas.
     Retorna o número de modelos liberados.
     """
+    await release_expired_quarantines(db)
     now = datetime.now(timezone.utc).isoformat()
     
     async with db.execute(

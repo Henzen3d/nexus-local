@@ -51,9 +51,11 @@ from backend.ui_blocks.catalog import MODULE_NAMES, build_catalog, compose_catal
 from backend.orchestration.resolve_request import resolve_and_stream, build_final_model_metadata
 from backend.orchestration.ws_protocol import (
     ConversationCreatedEvent,
+    TurnSocket,
     build_stream_end_failure,
     build_stream_end_success,
     dump_ws_event,
+    parse_turn_id,
 )
 from backend.web_search import (
     execute_agentic_search,
@@ -225,11 +227,21 @@ async def websocket_chat(ws: WebSocket):
 
             is_auto = (model_id == "auto" or not model_id)
             if (not user_message and not attachment_ids):
-                await ws.send_json({"type": "error", "message": "Mensagem ou anexo requerido."})
+                turn_id = parse_turn_id(req.get("turn_id"))
+                message = "Mensagem ou anexo requerido."
+                await ws.send_json({"type": "error", "message": message, **({"turn_id": turn_id} if turn_id else {})})
+                await ws.send_json(build_stream_end_failure(
+                    reason="empty_request", turn_id=turn_id, message=message,
+                ))
                 continue
 
             if not is_auto and (not model_id or not provider_id):
-                await ws.send_json({"type": "error", "message": "Campos obrigatórios faltando."})
+                turn_id = parse_turn_id(req.get("turn_id"))
+                message = "Campos obrigatórios faltando."
+                await ws.send_json({"type": "error", "message": message, **({"turn_id": turn_id} if turn_id else {})})
+                await ws.send_json(build_stream_end_failure(
+                    reason="invalid_request", turn_id=turn_id, message=message,
+                ))
                 continue
 
             if not user_message and attachment_ids:
@@ -246,8 +258,7 @@ async def websocket_chat(ws: WebSocket):
             except ConversationAccessError as access_err:
                 # Conversa de outro usuário / inexistente / ID malformado:
                 # responde sem vazar detalhes e sem derrubar o socket.
-                raw_turn_id = req.get("turn_id")
-                turn_id_val = raw_turn_id.strip() if isinstance(raw_turn_id, str) and raw_turn_id.strip() else None
+                turn_id_val = parse_turn_id(req.get("turn_id"))
                 try:
                     err_evt = {"type": "error", "message": str(access_err)}
                     if turn_id_val:
@@ -267,8 +278,7 @@ async def websocket_chat(ws: WebSocket):
                     break
             except Exception:
                 logger.exception("turno de chat falhou")
-                raw_turn_id = req.get("turn_id")
-                turn_id_val = raw_turn_id.strip() if isinstance(raw_turn_id, str) and raw_turn_id.strip() else None
+                turn_id_val = parse_turn_id(req.get("turn_id"))
                 try:
                     err_evt = {
                         "type": "error",
@@ -333,8 +343,7 @@ async def _run_turn(
     *, turn: "proactive_service.TurnGuard | None" = None,
 ):
     user_id = user["id"]
-    raw_turn_id = req.get("turn_id")
-    turn_id = raw_turn_id.strip() if isinstance(raw_turn_id, str) and raw_turn_id.strip() else None
+    turn_id = parse_turn_id(req.get("turn_id"))
     process_started_at = time.perf_counter()
     is_auto = (model_id == "auto" or not model_id)
     auto_route_decision = None
@@ -347,6 +356,10 @@ async def _run_turn(
         await verify_conversation_owner(db, conversation_id, user_id)
     else:
         conversation_id = None  # normaliza "" / None
+
+    turn_socket = TurnSocket(ws, turn_id, conversation_id) if turn_id else None
+    if turn_socket is not None:
+        ws = turn_socket
 
     from backend.context import RequestContext
     req_ctx = RequestContext(user_id=user_id, conversation_id=conversation_id)
@@ -430,6 +443,8 @@ async def _run_turn(
                         img_config.provider_id or "cloudflare",
                         request_project_id,
                     )
+                    if turn_socket is not None:
+                        turn_socket.conversation_id = conversation_id
                     if created_payload:
                         await ws.send_json(
                             dump_ws_event(
@@ -506,6 +521,8 @@ async def _run_turn(
         db, conversation_id, user_id, user_message,
         model_id, provider_id, request_project_id,
     )
+    if turn_socket is not None:
+        turn_socket.conversation_id = conversation_id
     if created_payload:
         await ws.send_json(
             dump_ws_event(
@@ -765,6 +782,7 @@ async def _run_turn(
     user_mem_text, context_fingerprint = await build_memory_context(
         user, conversation_id, user_message, use_memory, provider_id, model_id,
         request_context=req_ctx,
+        may_use_external_fallback=True,
     )
     req_ctx.record_phase("memory_context", t_memory_start)
 
@@ -787,7 +805,8 @@ async def _run_turn(
     if attachment_ids:
         context_parts.append(f"att:{','.join(sorted(attachment_ids))}")
     if web_search_used:
-        context_parts.append("web:1")
+        from backend.web_search.formatter import citation_cache_scope
+        context_parts.append(citation_cache_scope(web_search_sources))
     context_fingerprint = ":".join(context_parts)
 
 
@@ -996,6 +1015,17 @@ async def _run_turn(
         turn_id=turn_id,
     )
     if result is None:
+        from backend.metrics import task_benchmark_manager
+        await task_benchmark_manager.record_task_async(
+            task_type="chat",
+            latency_ms=(time.perf_counter() - process_started_at) * 1000,
+            model_id=model_id,
+            provider_id=provider_id,
+            success=False,
+            tokens_input=max(1, len(user_message) // 4),
+            phase_latencies=dict(req_ctx.phase_latencies),
+            persist_to_disk=False,
+        )
         return
 
     full_response = result[0]
@@ -1172,13 +1202,19 @@ async def _run_turn(
 
 
 async def _cancel_pending_task(task: asyncio.Task | None) -> None:
-    """Cancela e aguarda uma tarefa assíncrona pendente sem propagar erros de cancelamento."""
-    if task is None or task.done():
+    """Recolhe a tarefa, inclusive quando ela já terminou com erro."""
+    if task is None:
         return
-    task.cancel()
+    if not task.done():
+        task.cancel()
+    current = asyncio.current_task()
+    cancellations = current.cancelling() if current else 0
     try:
-        await task
-    except BaseException:
+        await asyncio.shield(task)
+    except asyncio.CancelledError:
+        if current is not None and current.cancelling() > cancellations:
+            raise
+    except Exception:
         pass
 
 
@@ -1321,6 +1357,7 @@ async def _resolve_web_search(
                     # Constrói lista canônica de fontes com numeração estável 1..N (T4.2)
                     from backend.web_search.formatter import build_canonical_sources
                     web_search_sources = build_canonical_sources(search_results, scraped_pages)
+                    results_count = search_metrics.get("results_returned", len(search_results))
 
                     if search_config is not None:
                         search_config["scraped_pages"] = scraped_pages
@@ -1328,7 +1365,7 @@ async def _resolve_web_search(
                         search_config["_telemetry"] = {
                             "primary_query": primary_query,
                             "trigger_type": trigger_type,
-                            "results_count": len(web_search_sources),
+                            "results_count": results_count,
                         }
 
                     if not defer_telemetry:
@@ -1340,7 +1377,7 @@ async def _resolve_web_search(
                                 message_id=actual_msg_id,
                                 query=primary_query,
                                 trigger_type=trigger_type,
-                                results_count=len(web_search_sources),
+                                results_count=results_count,
                                 user_id=user_id,
                             )
                         except Exception as tel_err:

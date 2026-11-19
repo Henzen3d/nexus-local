@@ -258,30 +258,23 @@ def _precisa_refinar(prompt: str, history: list) -> bool:
     return False
 
 
-async def _buscar_web(query: str, search_config: dict) -> Optional[str]:
-    """Usa o motor de busca web real do NexusLocal."""
+async def _buscar_web(query: str, search_config: dict) -> list[dict]:
+    """Coleta resultados para uma lista de citações compartilhada pelo turno."""
     try:
-        from backend.web_search import resolve_and_execute_search, format_search_results
+        from backend.web_search import resolve_and_execute_search
         from backend.database import get_db
         
         db = await get_db()
         try:
-            results = await asyncio.wait_for(
-                resolve_and_execute_search(query, db, search_config), 
+            return await asyncio.wait_for(
+                resolve_and_execute_search(query, db, search_config),
                 timeout=TIMEOUT_BUSCA_WEB
             )
-            if results:
-                return format_search_results(
-                    results, 
-                    query, 
-                    template=search_config.get("injection_template")
-                )
-            return None
         finally:
             await db.close()
-    except Exception:
-        logger.warning("fusion grounding: erro na busca '%s'", query, exc_info=True)
-        return None
+    except Exception as exc:
+        logger.warning("fusion grounding: busca falhou (%s)", type(exc).__name__)
+        return []
 
 
 async def executar_fusion(
@@ -301,6 +294,7 @@ async def executar_fusion(
     turn_id: str | None = None,
 ):
     from backend.orchestration.ws_protocol import (
+        StreamStartEvent,
         StreamTokenEvent,
         build_stream_end_failure,
         build_stream_end_success,
@@ -514,9 +508,9 @@ async def executar_fusion(
 
             except Exception as e:
                 error_msg = str(e)
-                logger.error("fusion: erro no modelo %s: %s", original_model_id, error_msg)
+                logger.error("fusion: erro no modelo %s: %s", original_model_id, type(e).__name__)
                 try:
-                    await check_and_deactivate_model(original_model_id, error_msg)
+                    await check_and_deactivate_model(original_model_id, error_msg, diagnostic_safe=True)
                 except Exception:
                     pass
                 await safe_send_json({
@@ -530,8 +524,12 @@ async def executar_fusion(
         respostas_validas = [r for r in resultados if r["status"] == "done" and r["response"]]
 
         if not respostas_validas:
-            await safe_send_json({"type": "error", "message": "Nenhum modelo retornou resposta válida."})
-            await safe_send_json({"type": "stream_end", "conversation_id": conversation_id, "finish_reason": "error"})
+            message = "Nenhum modelo retornou resposta válida."
+            await safe_send_json({"type": "error", "message": message, **({"turn_id": turn_id} if turn_id else {})})
+            await safe_send_json(build_stream_end_failure(
+                reason="fusion_no_proposals", outcome="empty", conversation_id=conversation_id,
+                turn_id=turn_id, message=message,
+            ))
             return
 
         # ── Grounding: detectar claims verificáveis e buscar na web ────────
@@ -559,12 +557,20 @@ async def executar_fusion(
                 resultados_busca = await asyncio.gather(
                     *[_buscar_web(q, search_config) for q in queries], return_exceptions=False
                 )
-                partes = [
-                    f"Busca: \"{q}\"\n{res}"
-                    for q, res in zip(queries, resultados_busca) if res
-                ]
-                if partes:
-                    grounding_texto = "\n\n".join(partes)
+                from backend.web_search.formatter import build_canonical_sources, format_search_results
+
+                resultados = [row for batch in resultados_busca for row in batch]
+                fontes = build_canonical_sources(resultados)
+                if fontes:
+                    web_search_used = True
+                    web_search_query = queries[0]
+                    web_search_sources = fontes
+                    grounding_texto = format_search_results(
+                        resultados,
+                        web_search_query,
+                        template=search_config.get("injection_template"),
+                        canonical_sources=fontes,
+                    )
 
             await safe_send_json({
                 "type": "fusion_grounding",
@@ -644,12 +650,11 @@ async def executar_fusion(
         })
 
         full_response = ""
+        judge_partial_timeout = False
         try:
-            await safe_send_json({
-                "type": "stream_start",
-                "conversation_id": conversation_id,
-                "from_cache": False,
-            })
+            await safe_send_json(dump_ws_event(StreamStartEvent(
+                conversation_id=conversation_id, turn_id=turn_id, from_cache=False,
+            )))
 
             async def _stream_juiz():
                 nonlocal full_response
@@ -690,15 +695,12 @@ async def executar_fusion(
                     )
                 )
                 return
-            await safe_send_json({
-                "type": "fusion_status",
-                "message": f"Juiz interrompido no limite de {TIMEOUT_JUIZ}s. Resposta parcial salva.",
-            })
+            judge_partial_timeout = True
         except Exception as e:
             error_msg = str(e)
-            logger.error("Fusion: erro no modelo Juiz (%s)", type(e).__name__, exc_info=True)
+            logger.error("Fusion: erro no modelo Juiz (%s)", type(e).__name__)
             try:
-                await check_and_deactivate_model(judge_model_id, error_msg)
+                await check_and_deactivate_model(judge_model_id, error_msg, diagnostic_safe=True)
             except Exception:
                 pass
             safe_msg = "Erro ao sintetizar a resposta no modelo Juiz. Tente novamente."
@@ -802,6 +804,18 @@ async def executar_fusion(
                     await db.close()
             except Exception:
                 logger.exception("fusion artifact detect/save failed")
+
+        if judge_partial_timeout:
+            message = f"Juiz interrompido no limite de {TIMEOUT_JUIZ}s. Resposta parcial salva."
+            if not turn_id:
+                # Older clients unlock through the error event rather than an
+                # ID-less terminal. New clients rehydrate the persisted partial.
+                await safe_send_json({"type": "error", "message": message})
+            await safe_send_json(build_stream_end_failure(
+                reason="judge_partial_timeout", outcome="timeout", conversation_id=conversation_id,
+                turn_id=turn_id, message=message,
+            ))
+            return
 
         await safe_send_json(
             build_stream_end_success(

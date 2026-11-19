@@ -73,11 +73,21 @@ async def test_build_memory_context_partial_failure_survival(isolated_chat_db, m
         conversation_id="conv-1",
         user_message="Olá",
         use_memory=True,
-        provider_id="openai",
-        model_id="gpt-4o",
+        provider_id="local",
+        model_id="local-test",
     )
     assert "Usuário prefere TypeScript" in mem_text
     assert fingerprint != ""
+
+    external_text, external_fingerprint = await bc.build_memory_context(
+        user, "conv-1", "Olá", True, "openai", "gpt-4o",
+    )
+    assert "Usuário prefere TypeScript" not in external_text
+    assert external_fingerprint != fingerprint
+    failover_text, _ = await bc.build_memory_context(
+        user, "conv-1", "Olá", True, "local", "local-test", may_use_external_fallback=True,
+    )
+    assert "Usuário prefere TypeScript" not in failover_text
 
     # Cenário 2: get_memory_context_metadata falha -> fatos relevantes são preservados
     fake_fact = {

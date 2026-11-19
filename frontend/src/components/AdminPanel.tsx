@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import {
   Eye, EyeOff, Save, ToggleLeft, ToggleRight, Database, Sparkles, Users, Trash2, X, Monitor, Sun, Moon, Search, ChevronDown, ChevronRight,
   ChevronLeft, Info, Settings, CreditCard, Shield, Sliders, Volume2, Lock, Link2, LogOut, Check, User, Palette, Type, Smartphone, Trash, Activity,
@@ -1794,6 +1794,7 @@ function AdminPanelDesktop() {
   const [freeFilters, setFreeFilters] = useState<Record<string, boolean>>({})
   const [expandedProviders, setExpandedProviders] = useState<Record<string, boolean>>({})
   const [tab, setTab] = useState<Tab>('general')
+  const settingsScrollRef = useRef<HTMLDivElement>(null)
   const [editingModelId, setEditingModelId] = useState<string | null>(null)
   const [tempCtx, setTempCtx] = useState('')
   const [usersList, setUsersList] = useState<any[]>([])
@@ -1801,6 +1802,10 @@ function AdminPanelDesktop() {
   const [userError, setUserError] = useState('')
   const [sidebarSearch, setSidebarSearch] = useState('')
   const [shareKeysEnabled, setShareKeysEnabled] = useState(false)
+
+  useLayoutEffect(() => {
+    if (settingsScrollRef.current) settingsScrollRef.current.scrollTop = 0
+  }, [tab])
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -2440,7 +2445,7 @@ function AdminPanelDesktop() {
             <X size={18} />
           </button>
 
-          <div className="settings-content-scroll">
+          <div className="settings-content-scroll" ref={settingsScrollRef}>
             
             {/* 1. General Tab */}
             {tab === 'general' && (

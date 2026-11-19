@@ -76,6 +76,28 @@ async def test_get_db_closes_connection_on_cancellation(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_get_db_closes_connection_cancelled_during_open(monkeypatch):
+    opening = asyncio.Event()
+    finish_open = asyncio.Event()
+    conn = _FakeConn(fail_on_call=0, exc=AssertionError("unused"))
+
+    async def delayed_connect(*args, **kwargs):
+        opening.set()
+        await finish_open.wait()
+        return conn
+
+    monkeypatch.setattr(aiosqlite, "connect", delayed_connect)
+    waiter = asyncio.create_task(db_mod.get_db())
+    await opening.wait()
+    waiter.cancel()
+    finish_open.set()
+    with pytest.raises(asyncio.CancelledError):
+        await asyncio.wait_for(waiter, timeout=1)
+    assert conn.closed
+    assert conn.calls == 0
+
+
+@pytest.mark.asyncio
 async def test_dashboard_read_routes_close_db_on_query_error(monkeypatch):
     closed_count = 0
 
@@ -363,12 +385,13 @@ async def test_list_conversations_equivalence_and_latency_profile(isolated_db):
         finally:
             await db.close()
 
-    for kwargs in (
-        {"search": None, "filter": None, "page": 1, "limit": 30},
-        {"search": None, "filter": None, "page": 2, "limit": 30},
-        {"search": None, "filter": "favorites", "page": 1, "limit": 20},
-        {"search": "Alpha", "filter": None, "page": 1, "limit": 25},
-    ):
+    cases = {
+        "first_page": {"search": None, "filter": None, "page": 1, "limit": 30},
+        "second_page": {"search": None, "filter": None, "page": 2, "limit": 30},
+        "favorites": {"search": None, "filter": "favorites", "page": 1, "limit": 20},
+        "title_search": {"search": "Alpha", "filter": None, "page": 1, "limit": 25},
+    }
+    for name, kwargs in cases.items():
         expected = await _legacy_list(
             search=kwargs["search"],
             filter_val=kwargs["filter"],
@@ -388,28 +411,32 @@ async def test_list_conversations_equivalence_and_latency_profile(isolated_db):
         ]
         assert actual == expected, f"Divergência em {kwargs}"
 
-    # Benchmark leve (15 amostras cada) para p50/p95 em DB descartável sem SQLITE_BUSY
-    legacy_times = []
-    new_times = []
-    for _ in range(15):
-        t0 = time.perf_counter()
-        await _legacy_list(page=1, limit=30)
-        legacy_times.append((time.perf_counter() - t0) * 1000.0)
+        legacy_times = []
+        new_times = []
+        for _ in range(20):
+            t0 = time.perf_counter()
+            await _legacy_list(kwargs["search"], kwargs["filter"], kwargs["page"], kwargs["limit"])
+            legacy_times.append((time.perf_counter() - t0) * 1000.0)
 
-        t1 = time.perf_counter()
-        await conv_router.list_conversations(page=1, limit=30, current_user=user)
-        new_times.append((time.perf_counter() - t1) * 1000.0)
+            t1 = time.perf_counter()
+            await conv_router.list_conversations(**kwargs, current_user=user)
+            new_times.append((time.perf_counter() - t1) * 1000.0)
 
-    legacy_p50 = statistics.median(legacy_times)
-    new_p50 = statistics.median(new_times)
-    legacy_p95 = sorted(legacy_times)[int(len(legacy_times) * 0.95) - 1]
-    new_p95 = sorted(new_times)[int(len(new_times) * 0.95) - 1]
-    # Apenas garante execução rápida e registro sem falhas de concorrência
-    assert new_p50 > 0 and legacy_p50 > 0
-    assert new_p95 >= new_p50 and legacy_p95 >= legacy_p50
+        legacy_p50, new_p50 = statistics.median(legacy_times), statistics.median(new_times)
+        legacy_p95, new_p95 = sorted(legacy_times)[18], sorted(new_times)[18]
+        print(f"{name} (ms): legacy p50={legacy_p50:.2f} p95={legacy_p95:.2f}; "
+              f"current p50={new_p50:.2f} p95={new_p95:.2f}")
+        assert legacy_p95 >= legacy_p50 > 0 and new_p95 >= new_p50 > 0
 
-    # Teste de leituras concorrentes (cache_size / temp_store) sem SQLITE_BUSY
+    async def write_sample():
+        async with aiosqlite.connect(isolated_db, timeout=10.0) as db:
+            for i in range(10):
+                await db.execute("INSERT OR REPLACE INTO meta(key, value) VALUES ('audit_write', ?)", (str(i),))
+                await db.commit()
+
+    # Exercise the existing PRAGMA settings with a writer overlapping readers.
     results = await asyncio.gather(
+        write_sample(),
         *(conv_router.list_conversations(page=1, limit=20, current_user=user) for _ in range(10))
     )
-    assert all(len(r) == 20 for r in results)
+    assert all(len(r) == 20 for r in results[1:])

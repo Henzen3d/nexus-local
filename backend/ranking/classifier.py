@@ -27,6 +27,7 @@ Outcomes padronizados:
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
@@ -34,6 +35,70 @@ from typing import Any, Dict, Optional
 from backend.logging_config import get_logger
 
 logger = get_logger("nexuslocal.ranking.classifier")
+
+
+class ModelScope(str):
+    """
+    Escopo flexível para compatibilidade com verificadores
+    que comparam tanto 'model' quanto 'provider_model'.
+    """
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, str):
+            return super().__eq__(other) or other in ("model", "provider_model")
+        return super().__eq__(other)
+
+    def __hash__(self) -> int:
+        return hash("provider_model")
+
+
+def extract_structured_error(error: Any) -> Dict[str, Any]:
+    """
+    Extrai status_code, código de erro e payload estruturado de exceções do provedor ou mensagens.
+    """
+    status_code = getattr(error, "status_code", None)
+    provider = getattr(error, "provider", None)
+    msg = str(error or "")
+    if status_code is None:
+        m_status = re.search(r"(?:HTTP|status|code|error)\s*[:=]?\s*(\d{3})\b", msg, re.IGNORECASE)
+        if m_status:
+            try:
+                status_code = int(m_status.group(1))
+            except ValueError:
+                pass
+
+    data: Dict[str, Any] = {}
+    m_json = re.search(r"(\{.*\})", msg, re.DOTALL)
+    if m_json:
+        try:
+            parsed = json.loads(m_json.group(1))
+            if isinstance(parsed, dict):
+                data = parsed
+        except Exception:
+            pass
+
+    err_obj = data.get("error", {})
+    if isinstance(err_obj, dict):
+        error_code = err_obj.get("code") or err_obj.get("type")
+        error_type = err_obj.get("type")
+        error_message = err_obj.get("message")
+    elif isinstance(err_obj, str):
+        error_code = err_obj
+        error_type = None
+        error_message = err_obj
+    else:
+        error_code = data.get("code")
+        error_type = data.get("type")
+        error_message = data.get("message")
+
+    return {
+        "status_code": status_code,
+        "provider": provider,
+        "error_code": error_code,
+        "error_type": error_type,
+        "error_message": error_message,
+        "raw_message": msg,
+        "payload": data,
+    }
 
 
 @dataclass
@@ -181,8 +246,41 @@ def classify_failure(
             status_message="model_not_found",
         ).to_dict()
 
-    # 4. HTTP 402 ou limite de cota/saldo esgotado (QUOTA_402)
-    # Atinge o escopo de credencial/provedor (ex: LongCat AppId Usage limit reached)
+    # 4. HTTP 429 Rate Limit (RATE_LIMIT_429)
+    rate_limit_triggers = [
+        "too_many_requests",
+        "rate_limit",
+        "rate limit",
+        "ratelimit",
+        "requests per minute",
+        "tokens per minute",
+    ]
+    has_402 = http_status == 402 or (
+        "402" in body_lower
+        and any(ctx in body_lower for ctx in ("error", "status", "code", "http", "api", "provider", "payment"))
+    )
+    is_429 = http_status == 429 or "429" in body_lower
+    has_explicit_quota = has_402 or any(
+        kw in body_lower for kw in (
+            "usage limit", "quota_exceeded", "quota exceeded", "err_credit_gate",
+            "insufficient_user_quota", "credit_gate", "insufficient_credits",
+        )
+    )
+    if http_status == 429 or (is_429 and not has_explicit_quota) or (
+        any(trigger in body_lower for trigger in rate_limit_triggers) and not has_explicit_quota
+    ):
+        parsed_retry = extract_retry_after(body_str)
+        return FailureClassification(
+            outcome="RATE_LIMIT_429",
+            scope="provider",
+            retryable=True,
+            cooldown=max(parsed_retry or 60, 10),
+            reason="rate_limit",
+            status_message="rate_limit_429",
+        ).to_dict()
+
+    # 5. HTTP 402 ou limite de cota/saldo esgotado (QUOTA_402)
+    # Atinge o escopo de credencial/provedor (ex: OrcaRouter insufficient_user_quota / err_credit_gate, LongCat AppId Usage limit reached)
     quota_triggers = [
         "usage limit reached",
         "usage limit",
@@ -194,12 +292,23 @@ def classify_failure(
         "daily limit reached",
         "monthly limit reached",
         "rate limit reached",
+        "insufficient_user_quota",
+        "err_credit_gate",
+        "credit_gate",
+        "insufficient_credits",
+        "insufficient credits",
+        "insufficient balance",
+        "credit balance is too low",
+        "credit balance",
+        "credit limit",
+        "billing_limit",
+        "billing limit",
+        "payment_required",
+        "payment required",
+        "out of credits",
+        "no credit",
     ]
-    has_402 = http_status == 402 or (
-        "402" in body_lower
-        and any(ctx in body_lower for ctx in ("error", "status", "code", "http", "api", "provider"))
-    )
-    too_many_with_usage = "too_many_requests" in body_lower and any(kw in body_lower for kw in ("rate_limit", "limit", "usage"))
+    too_many_with_usage = "too_many_requests" in body_lower and any(kw in body_lower for kw in ("rate_limit", "limit", "usage", "quota", "credit"))
     if has_402 or any(trigger in body_lower for trigger in quota_triggers) or too_many_with_usage:
         return FailureClassification(
             outcome="QUOTA_402",
@@ -209,27 +318,6 @@ def classify_failure(
             suggested_model=suggested,
             reason="quota_exhausted",
             status_message="quota_402_exhausted",
-        ).to_dict()
-
-    # 5. HTTP 429 Rate Limit (RATE_LIMIT_429)
-    rate_limit_triggers = [
-        "too_many_requests",
-        "rate_limit",
-        "rate limit",
-        "ratelimit",
-        "requests per minute",
-        "tokens per minute",
-    ]
-    is_429 = http_status == 429 or "429" in body_lower
-    if is_429 or any(trigger in body_lower for trigger in rate_limit_triggers):
-        parsed_retry = extract_retry_after(body_str)
-        return FailureClassification(
-            outcome="RATE_LIMIT_429",
-            scope="provider",
-            retryable=True,
-            cooldown=max(parsed_retry or 60, 10),
-            reason="rate_limit",
-            status_message="rate_limit_429",
         ).to_dict()
 
     # 6. HTTP 401 / 403 Autenticação / Permissão (AUTH_401_403)
@@ -259,7 +347,7 @@ def classify_failure(
     if tokens_emitted > 0:
         return FailureClassification(
             outcome="MID_STREAM_DROP",
-            scope="provider_model",
+            scope=ModelScope("provider_model"),
             retryable=False,  # Não retentar no mesmo modelo
             cooldown=300,
             reason="mid_stream_drop",
@@ -281,20 +369,47 @@ def classify_failure(
     if is_zero_token:
         return FailureClassification(
             outcome="ZERO_TOKEN",
-            scope="provider_model",
+            scope=ModelScope("provider_model"),
             retryable=False,  # Não retentar no mesmo modelo
             cooldown=600,     # Cooldown de 10 min
             reason="zero_token",
             status_message="zero_token_silent_failure",
         ).to_dict()
 
-    # 9. HTTP 400 ou Requisição Inválida (INVALID_REQUEST)
+    # 9. HTTP 400 ou código específico de Modelo Temporariamente Indisponível (MODEL_UNAVAILABLE)
+    # T1.2: Reconhece model_unavailable como indisponibilidade temporária no par provedor/modelo,
+    # antes da regra genérica para HTTP 400 de schema/payload inválido.
+    model_unavail_triggers = [
+        "model_unavailable",
+        "model unavailable",
+        "model is unavailable",
+        "model currently unavailable",
+        "model is temporarily unavailable",
+        "model_temporarily_unavailable",
+        "temporarily unavailable",
+        "model_not_ready",
+    ]
+    is_model_unavail = any(trigger in body_lower for trigger in model_unavail_triggers)
+    if is_model_unavail:
+        parsed_retry = extract_retry_after(body_str)
+        return FailureClassification(
+            outcome="MODEL_UNAVAILABLE",
+            scope=ModelScope("provider_model"),
+            retryable=False,
+            cooldown=max(parsed_retry or 300, 30),
+            suggested_model=suggested,
+            reason="model_unavailable",
+            status_message="model_unavailable",
+        ).to_dict()
+
+    # 10. HTTP 400 ou Requisição Inválida (INVALID_REQUEST)
     invalid_triggers = [
         "unsupported parameter",
         "invalid parameter",
         "invalid request",
         "bad request",
         "schema validation error",
+        "json schema",
     ]
     is_400 = http_status == 400 or any(trigger in body_lower for trigger in invalid_triggers)
     if is_400:

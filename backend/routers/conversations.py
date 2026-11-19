@@ -77,7 +77,7 @@ async def list_conversations(
         elapsed_ms = (time.perf_counter() - t0) * 1000.0
         logger.debug(
             "[conversations.list] filter=%s has_search=%s page=%d limit=%d returned=%d elapsed_ms=%.2f",
-            filter or "all",
+            "favorites" if filter == "favorites" else "all",
             bool(search),
             page,
             limit,

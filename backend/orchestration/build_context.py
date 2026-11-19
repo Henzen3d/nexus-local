@@ -216,6 +216,8 @@ async def build_memory_context(
     provider_id: str,
     model_id: str,
     request_context: Any | None = None,
+    *,
+    may_use_external_fallback: bool = False,
 ) -> tuple[str, str]:
     """Carrega perfil + memórias e retorna (memory_text, fingerprint).
 
@@ -305,9 +307,12 @@ async def build_memory_context(
 
         # Sanitização de privacidade para provedores externos (Princípio de Minimização de Dados)
         is_local = (provider_id or "").lower() in ("ollama", "lmstudio", "local")
-        if not is_local and mem_enabled:
+        if mem_enabled and (not is_local or may_use_external_fallback):
             from backend.memory import sanitize_memory_for_external
             mem_rows, profile = sanitize_memory_for_external(mem_rows, profile, user_message)
+            # Stored summaries are free-form and do not preserve the fact-level
+            # boundaries needed to apply the same privacy filter.
+            global_sum = project_sum = None
 
         summaries = [s for s in (global_sum, project_sum) if s]
         mem_text = build_memory_block(

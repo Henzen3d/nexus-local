@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { readFileSync } from 'node:fs'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
+import { build } from 'esbuild'
 import { decodeChatFrame, isStreamEndFailure, isStreamEndSuccess } from './chatProtocol.ts'
 import { StreamDraftBuffer } from './streamDraftBuffer.ts'
 
@@ -203,4 +207,71 @@ test('T2.3: StreamDraftBuffer isola turnos, impede commit de frame antigo após 
   buf.bindTurn('turn-D')
   buf.append('1234567890123456789012345', 'turn-D') // >= flushThresholdChars (20) -> flush imediato
   assert.deepEqual(commits, [{ text: '1234567890123456789012345', turnId: 'turn-D' }])
+})
+
+test('buffer mantém todo o conteúdo no limite e flush por timer quando RAF não dispara', () => {
+  const chunks: string[] = []
+  let timer: (() => void) | undefined
+  const buf = new StreamDraftBuffer({
+    onCommit: (chunk) => chunks.push(chunk),
+    flushThresholdChars: 4,
+    maxBufferChars: 4,
+    scheduler: {
+      requestFrame: () => 1,
+      cancelFrame: () => {},
+      setTimer: (callback) => {
+        timer = callback
+        return 1 as unknown as ReturnType<typeof setTimeout>
+      },
+      clearTimer: () => { timer = undefined },
+      isHidden: () => false,
+    },
+  })
+  buf.bindTurn('turn')
+  buf.append('ab', 'turn')
+  buf.append('cdefghijk', 'turn')
+  assert.ok(buf.bufferedLength <= 4)
+  timer?.()
+  assert.equal(chunks.join(''), 'abcdefghijk')
+  assert.ok(chunks.every((chunk) => chunk.length <= 4))
+})
+
+test('terminal não propaga metadados opcionais malformados e reconhece cancelamento legado', () => {
+  const event = decodeChatFrame(JSON.stringify({
+    type: 'stream_end', outcome: 'success', conversation_id: 'c', message_id: 'm',
+    process_steps: { length: 1 }, web_search_sources: ['inválido'], phase_latencies: 'inválido',
+  }))
+  assert.ok(event && isStreamEndSuccess(event))
+  assert.equal(event.process_steps, undefined)
+  assert.deepEqual(event.web_search_sources, [])
+  assert.equal(event.phase_latencies, undefined)
+  const cancelled = decodeChatFrame('{"type":"stream_end","finish_reason":"cancelled","message_id":"m","conversation_id":"c"}')
+  assert.ok(cancelled && isStreamEndFailure(cancelled))
+  assert.equal(cancelled.outcome, 'cancelled')
+})
+
+test('useChat mantém isolamento na troca de chat, terminal legado, imagem e perda de conexão', async () => {
+  const dir = await mkdtemp(join(process.cwd(), 'node_modules', '.chat-socket-probe-'))
+  try {
+    const outfile = join(dir, 'probe.mjs')
+    await build({
+      entryPoints: ['scripts/tests/chatSocketProbe.tsx'],
+      outfile,
+      bundle: true,
+      packages: 'external',
+      platform: 'node',
+      format: 'esm',
+      jsx: 'automatic',
+      logOverride: { 'duplicate-object-key': 'silent' },
+      define: {
+        'import.meta.env.VITE_API_URL': 'undefined',
+        'import.meta.env.VITE_WS_URL': 'undefined',
+        'import.meta.env.DEV': 'false',
+      },
+    })
+    const { runChatSocketProbe } = await import(pathToFileURL(outfile).href)
+    await runChatSocketProbe()
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
 })

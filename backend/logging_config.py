@@ -27,18 +27,20 @@ _DEFAULT_DATEFMT = "%Y-%m-%d %H:%M:%S"
 
 
 class _ContextDefaults(logging.Filter):
-    """Garante defaults de user_id e conversation_id para formatos customizados."""
+    """Garante defaults de user_id, conversation_id e turn_id para formatos customizados."""
 
     def filter(self, record: logging.LogRecord) -> bool:
         if not hasattr(record, "user_id"):
             record.user_id = "-"
         if not hasattr(record, "conversation_id"):
             record.conversation_id = "-"
+        if not hasattr(record, "turn_id"):
+            record.turn_id = "-"
         return True
 
 
 class _ContextualFormatter(logging.Formatter):
-    """Formatter padrão que compõe sufixos user/conv na linha principal só quando presentes."""
+    """Formatter padrão que compõe sufixos user/conv/turn na linha principal só quando presentes."""
 
     @staticmethod
     def _normalize_context_value(value: object) -> Optional[str]:
@@ -60,6 +62,9 @@ class _ContextualFormatter(logging.Formatter):
         )
         if conversation_id is not None:
             parts.append(f"conv={conversation_id}")
+        turn_id = self._normalize_context_value(getattr(record, "turn_id", None))
+        if turn_id is not None:
+            parts.append(f"turn={turn_id}")
         if not parts:
             return base
         return f"{base} | {' | '.join(parts)}"

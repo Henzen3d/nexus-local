@@ -23,7 +23,7 @@ import {
 import { stopSpeech } from '../lib/ttsPlayer'
 
 interface Props {
-  onSend: (text: string, displayText?: string, attachmentIds?: string[], attachments?: Attachment[], voiceMode?: boolean) => void
+  onSend: (text: string, displayText?: string, attachmentIds?: string[], attachments?: Attachment[], voiceMode?: boolean) => boolean | void
   onStop?: () => void
   isEmpty?: boolean
 }
@@ -211,12 +211,13 @@ export function MessageInput({ onSend, onStop, isEmpty = false }: Props) {
       showToast(t('artifacts.uploadError', { defaultValue: 'Anexo inválido. Remova e anexe novamente.' }), 'error')
       return
     }
-    onSend(
+    const sent = onSend(
       trimmed || (ids.length > 0 ? t('chat.attachedFileOnly', { defaultValue: '(arquivo anexado)' }) : ''),
       undefined,
       ids.length > 0 ? ids : undefined,
       attachments.length > 0 ? attachments : undefined
     )
+    if (sent === false) return
     setText('')
     setAttachments([])
   }

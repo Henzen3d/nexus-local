@@ -3,9 +3,12 @@ import json
 import logging
 import os
 import tempfile
+import traceback
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import aiosqlite
+import httpx
 import pytest
 
 from backend import database as dbmod
@@ -13,12 +16,15 @@ from backend.memory_dream import (
     DREAM_MAX_RESPONSE_CHARS,
     DreamLLMError,
     DreamSafetyError,
+    call_dream_llm,
     execute_dream_consolidation,
     parse_dream_response,
+    resolve_dream_candidates,
     run_dream_analysis,
     simulate_dream_consolidation,
 )
-from backend.providers.base import ProviderHTTPError
+from backend.providers import base as provider_base
+from backend.providers.base import OpenAICompatProvider, ProviderHTTPError
 from backend.ranking import smart_router
 
 
@@ -111,6 +117,20 @@ def test_parse_dream_response_fences_reasoning_and_extra_text():
 def test_parse_dream_response_rejects_root_array():
     with pytest.raises(DreamLLMError, match="array"):
         parse_dream_response('[{"action": "keep", "fact_id": "f1"}]')
+
+
+@pytest.mark.parametrize("end", ["]", ""])
+def test_parse_dream_response_rejects_prefixed_array_with_valid_plan(end):
+    obj = json.dumps({"summary_of_changes": "hypothesis", "operations": []})
+    with pytest.raises(DreamLLMError, match="array"):
+        parse_dream_response(f"Resultado:\n[{obj}{end}")
+
+
+@pytest.mark.parametrize("end", ["</think>Minha resposta foi interrompida.", ""])
+def test_parse_dream_response_does_not_apply_hypothetical_plan_from_reasoning(end):
+    obj = json.dumps({"summary_of_changes": "hypothesis", "operations": []})
+    with pytest.raises(DreamLLMError, match="compatível"):
+        parse_dream_response(f"<think>{obj}{end}")
 
 
 def test_parse_dream_response_rejects_valid_json_invalid_schema():
@@ -268,6 +288,57 @@ async def test_413_splits_batch_within_same_deadline(temp_db):
 
 
 @pytest.mark.asyncio
+async def test_413_for_one_fact_attempts_fallback_and_omits_provider_body(caplog):
+    facts = [{"id": "id-1", "fact": "Usa Python", "is_pinned": 0, "category": "tech", "fact_key": ""}]
+    marker = "UNSAFE_TEXT_FROM_PROVIDER_BODY"
+
+    async def too_large(**kwargs):
+        raise ProviderHTTPError(413, marker)
+
+    async def succeed(messages, **kwargs):
+        return _keep_all_json(messages)
+
+    first = {"provider": FakeDreamProvider(too_large), "provider_id": "a", "model_id": "a/m", "model_name": "m"}
+    second = {"provider": FakeDreamProvider(succeed), "provider_id": "b", "model_id": "b/m", "model_name": "m"}
+    result = await run_dream_analysis(facts, [first, second])
+    assert result["effective_model_id"] == "b/m"
+    assert [op.fact_id for op in result["operations"]] == ["id-1"]
+
+    with pytest.raises(DreamLLMError, match="413") as err:
+        await run_dream_analysis(facts, [first])
+    assert marker not in "".join(traceback.format_exception(err.value))
+    assert marker not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_ollama_compatible_adapter_retries_rejected_json_object_format(monkeypatch):
+    payloads = []
+    valid_plan = json.dumps({"summary_of_changes": "ok", "operations": []})
+    frame = json.dumps({"choices": [{"delta": {"content": valid_plan}, "finish_reason": "stop"}]})
+
+    def send(request):
+        payload = json.loads(request.content)
+        payloads.append(payload)
+        if "response_format" in payload:
+            return httpx.Response(400, text="response_format json_object is unsupported by this model")
+        return httpx.Response(200, text=f"data: {frame}\n\ndata: [DONE]\n\n")
+
+    @asynccontextmanager
+    async def pooled_client(**kwargs):
+        async with httpx.AsyncClient(transport=httpx.MockTransport(send)) as client:
+            yield client
+
+    monkeypatch.setattr(provider_base, "_pooled_client", pooled_client)
+    provider = OpenAICompatProvider("", "http://127.0.0.1:11434/v1")
+    result = await call_dream_llm(provider, "some/ollama-model", "ollama", "Respond in JSON.", "facts")
+    assert json.loads(result)["summary_of_changes"] == "ok"
+    assert len(payloads) == 2
+    assert payloads[0]["response_format"] == {"type": "json_object"}
+    assert "response_format" not in payloads[1]
+    assert all("options" not in payload for payload in payloads)
+
+
+@pytest.mark.asyncio
 async def test_all_candidates_fail_or_second_batch_fails_no_partial_mutation(temp_db):
     uid = "u_no_partial"
     for i in range(6):
@@ -400,6 +471,51 @@ async def test_route_dream_candidates_respects_keys_user_prefs_and_exclusions(te
 
         # Global _MODEL_CACHE untouched by user-scoped routing
         assert smart_router._MODEL_CACHE is None
+
+
+@pytest.mark.asyncio
+async def test_preferred_local_dream_filters_remote_and_ineligible_models(temp_db):
+    uid = "u_local_dream"
+    async with aiosqlite.connect(temp_db) as db:
+        await db.execute(
+            "INSERT INTO users (id, username, password_hash) VALUES (?, 'local_dream', 'unused')",
+            (uid,),
+        )
+        await db.execute("UPDATE providers SET enabled = 0")
+        await db.execute("UPDATE models SET enabled = 0")
+        await db.executemany(
+            """INSERT INTO providers (id, name, base_url, enabled, is_local)
+               VALUES (?, ?, ?, 1, ?)""",
+            [
+                ("dream-local", "Local", "http://localhost:8001/v1", 1),
+                ("dream-remote", "Remote", "https://example.invalid/v1", 0),
+            ],
+        )
+        await db.executemany(
+            """INSERT INTO user_api_keys (user_id, provider_id, api_key) VALUES (?, ?, ?)""",
+            [(uid, "dream-local", "fake-local-key"), (uid, "dream-remote", "fake-remote-key")],
+        )
+        await db.executemany(
+            """INSERT INTO models (id, provider_id, name, display_name, context_length, enabled)
+               VALUES (?, ?, ?, ?, ?, 1)""",
+            [
+                ("dream-local/chat", "dream-local", "chat", "Chat", 16384),
+                ("dream-local/small", "dream-local", "small", "Small", 4096),
+                ("dream-local/text-embedding-3-large", "dream-local", "text-embedding-3-large", "Embedding", 16384),
+                ("dream-remote/chat", "dream-remote", "chat", "Chat", 16384),
+            ],
+        )
+        await db.execute("INSERT OR REPLACE INTO meta (key, value) VALUES ('dream_provider_id', 'dream-remote')")
+        await db.commit()
+
+    result = await resolve_dream_candidates(uid, custom_model="dream-local/chat")
+    assert [candidate["model_id"] for candidate in result] == ["dream-local/chat"]
+
+    async with aiosqlite.connect(temp_db) as db:
+        await db.execute("UPDATE models SET enabled = 0 WHERE id = 'dream-local/chat'")
+        await db.commit()
+    with pytest.raises(DreamLLMError, match="elegível"):
+        await resolve_dream_candidates(uid, "dream-local", "dream-local/chat")
 
 
 @pytest.mark.asyncio

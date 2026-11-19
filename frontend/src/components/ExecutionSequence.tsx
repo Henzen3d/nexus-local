@@ -14,6 +14,11 @@ import {
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { ProcessStep } from '../types'
+import {
+  sanitizeStepDetail,
+  sanitizeStepTitle,
+  stripSensitiveSecrets,
+} from '../lib/sanitization'
 
 interface Props {
   steps: ProcessStep[]
@@ -52,14 +57,14 @@ function getStepKind(step: ProcessStep): StepKind {
 }
 
 function getNavigateInfo(step: ProcessStep) {
-  const rawUrl = (step.detail && /^https?:\/\//i.test(step.detail))
+  const rawUrl = stripSensitiveSecrets((step.detail && /^https?:\/\//i.test(step.detail))
     ? step.detail
     : (step.title && /^https?:\/\//i.test(step.title.replace(/^Lendo conteúdo de\s*/i, ''))
         ? step.title.replace(/^Lendo conteúdo de\s*/i, '')
-        : '')
+        : ''))
   const domain = rawUrl ? extractDomain(rawUrl) : ''
 
-  let displayTitle = step.title || ''
+  let displayTitle = sanitizeStepTitle(step.title || '')
   if (/^Lendo conteúdo de\s*https?:\/\//i.test(displayTitle) || displayTitle === rawUrl) {
     try {
       const parsed = new URL(rawUrl)
@@ -74,12 +79,12 @@ function getNavigateInfo(step: ProcessStep) {
 }
 
 function getSearchInfo(step: ProcessStep, fallbackAction: string) {
-  let query = (step.detail || '').trim()
-  let action = step.title || fallbackAction
+  let query = stripSensitiveSecrets((step.detail || '').trim())
+  let action = sanitizeStepTitle(step.title || fallbackAction)
 
   const match = action.match(/^Pesquisado(?:\s+na\s+web)?\s+por:\s*(.+)$/i)
   if (match) {
-    if (!query) query = match[1].trim()
+    if (!query) query = stripSensitiveSecrets(match[1].trim())
     action = 'Pesquisado na web'
   } else if (/^Pesquisando(?:\s+na\s+web)?/i.test(action)) {
     action = fallbackAction
@@ -96,12 +101,18 @@ export function ExecutionSequence({ steps, isWorking, startedAt, durationMs, thi
   const { t } = useTranslation()
   const regionId = useId()
   const toggleButtonRef = useRef<HTMLButtonElement | null>(null)
+  const regionRef = useRef<HTMLDivElement | null>(null)
   const [isOpen, setIsOpen] = useState(isWorking)
   const [isReasoningOpen, setIsReasoningOpen] = useState(() => Boolean(isWorking && thinkingContent))
   const [elapsedMs, setElapsedMs] = useState(() => (startedAt ? Date.now() - startedAt : 0))
 
   useEffect(() => {
     if (!isWorking) {
+      const region = regionRef.current
+      const focused = region?.ownerDocument?.activeElement
+      if (focused && region.contains(focused)) {
+        toggleButtonRef.current?.focus({ preventScroll: true })
+      }
       setIsOpen(false)
       return
     }
@@ -231,6 +242,7 @@ export function ExecutionSequence({ steps, isWorking, startedAt, durationMs, thi
       </button>
 
       <div
+        ref={regionRef}
         id={regionId}
         role="region"
         aria-label={t('chat.processLabel')}
@@ -243,6 +255,8 @@ export function ExecutionSequence({ steps, isWorking, startedAt, durationMs, thi
             {visibleSteps.map((step, idx) => {
               const kind = getStepKind(step)
               const isDesignatedThinking = Boolean(thinkingContent && step.id === designatedThinkingStepId)
+              const displayTitle = sanitizeStepTitle(step.title)
+              const displayDetail = sanitizeStepDetail(step.detail)
 
               return (
                 <div
@@ -350,8 +364,10 @@ export function ExecutionSequence({ steps, isWorking, startedAt, durationMs, thi
                       </div>
                     ) : (
                       <div className="execution-step-main">
-                        <div className="execution-step-text">{step.title}</div>
-                        {step.detail && <div className="execution-step-detail">{step.detail}</div>}
+                        <div className="execution-step-text-group">
+                          <div className="execution-step-text">{displayTitle}</div>
+                          {displayDetail && <div className="execution-step-detail">{displayDetail}</div>}
+                        </div>
                         {step.status === 'completed' && (
                           <Check size={12} className="execution-step-check" aria-hidden="true" />
                         )}

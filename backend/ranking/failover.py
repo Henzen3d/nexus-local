@@ -459,10 +459,16 @@ async def resolve_model_with_failover(
         )
 
     status_label = requested_eligibility.reason if not requested_eligibility else (skip_reason if force_skip else "unavailable")
-    logger.warning(
-        f"Modelo '{requested_model_id}' está {status_label}. "
-        f"Iniciando cascata de failover..."
-    )
+    if status_label == "already_attempted_in_cascade":
+        logger.debug(
+            f"Modelo '{requested_model_id}' já tentado nesta cascata ({status_label}). "
+            f"Continuando cascata de failover..."
+        )
+    else:
+        logger.warning(
+            f"Modelo '{requested_model_id}' está {status_label}. "
+            f"Iniciando cascata de failover..."
+        )
 
     excluded_canonicals = {canonical_model_id(m) for m in (exclude_model_ids or []) if m}
     if requested_model_id:

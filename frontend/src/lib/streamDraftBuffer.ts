@@ -37,8 +37,8 @@ export class StreamDraftBuffer {
 
   constructor(opts: StreamDraftBufferOptions) {
     this.onCommit = opts.onCommit
-    this.flushThresholdChars = opts.flushThresholdChars ?? DEFAULT_FLUSH_THRESHOLD_CHARS
-    this.maxBufferChars = opts.maxBufferChars ?? DEFAULT_MAX_BUFFER_CHARS
+    this.maxBufferChars = Math.max(1, opts.maxBufferChars ?? DEFAULT_MAX_BUFFER_CHARS)
+    this.flushThresholdChars = Math.min(this.maxBufferChars, Math.max(1, opts.flushThresholdChars ?? DEFAULT_FLUSH_THRESHOLD_CHARS))
     this.hiddenFlushMs = opts.hiddenFlushMs ?? DEFAULT_HIDDEN_FLUSH_MS
     this.scheduler = opts.scheduler ?? {}
   }
@@ -65,21 +65,16 @@ export class StreamDraftBuffer {
     if (turnId !== undefined && this.activeTurnId !== null && turnId !== this.activeTurnId) {
       return false
     }
-    // Enforce hard memory cap on queued buffer
-    const remainingCap = this.maxBufferChars - this.pendingChars
-    if (remainingCap <= 0) {
-      this.flushSync()
-    }
-    const bounded = token.length > this.maxBufferChars ? token.slice(0, this.maxBufferChars) : token
-    this.pending.push(bounded)
-    this.pendingChars += bounded.length
-
-    if (this.pendingChars >= this.flushThresholdChars) {
-      this.flushSync()
-      return true
+    // Bound queued text without discarding any part of a large frame.
+    for (let offset = 0; offset < token.length;) {
+      const count = Math.min(token.length - offset, this.maxBufferChars - this.pendingChars)
+      this.pending.push(token.slice(offset, offset + count))
+      this.pendingChars += count
+      offset += count
+      if (this.pendingChars >= this.flushThresholdChars) this.flushSync()
     }
 
-    this.scheduleFlush()
+    if (this.pendingChars > 0) this.scheduleFlush()
     return true
   }
 
@@ -127,22 +122,23 @@ export class StreamDraftBuffer {
       this.scheduler.cancelFrame ??
       (typeof cancelAnimationFrame === 'function' ? cancelAnimationFrame : undefined)
 
-    if (!isHidden && raf && caf) {
-      const frameId = raf(() => {
-        this.cancelScheduled = null
-        this.commitIfEpoch(scheduledEpoch)
-      })
-      this.cancelScheduled = () => caf(frameId)
-      return
-    }
-
     const st = this.scheduler.setTimer ?? setTimeout
     const ct = this.scheduler.clearTimer ?? clearTimeout
-    const delay = isHidden ? this.hiddenFlushMs : 16
-    const timerId = st(() => {
+    let active = true
+    const flush = () => {
+      if (!active) return
+      this.cancelScheduled?.()
       this.cancelScheduled = null
       this.commitIfEpoch(scheduledEpoch)
-    }, delay)
-    this.cancelScheduled = () => ct(timerId)
+    }
+    const frameId = !isHidden && raf && caf ? raf(flush) : null
+    // RAF can already be pending when the tab is hidden. A timer fallback
+    // ensures that this batch is still eligible to flush without another token.
+    const timerId = st(flush, isHidden || frameId !== null ? this.hiddenFlushMs : 16)
+    this.cancelScheduled = () => {
+      active = false
+      if (frameId !== null) caf?.(frameId)
+      ct(timerId)
+    }
   }
 }

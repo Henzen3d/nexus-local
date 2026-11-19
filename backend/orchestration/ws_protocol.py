@@ -17,6 +17,32 @@ from typing import Any, Literal, Optional
 from pydantic import BaseModel, ConfigDict, Field
 
 
+def parse_turn_id(value: Any) -> str | None:
+    if isinstance(value, str):
+        value = value.strip()
+        if 0 < len(value) <= 128:
+            return value
+    return None
+
+
+class TurnSocket:
+    """Attach the same correlation to progress and lifecycle frames for one turn."""
+
+    def __init__(self, socket: Any, turn_id: str, conversation_id: str | None):
+        self._socket = socket
+        self.turn_id = turn_id
+        self.conversation_id = conversation_id
+
+    async def send_json(self, event: dict[str, Any]) -> None:
+        correlated = {**event, "turn_id": self.turn_id}
+        if self.conversation_id is not None and "conversation_id" not in correlated:
+            correlated["conversation_id"] = self.conversation_id
+        await self._socket.send_json(correlated)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._socket, name)
+
+
 class ConversationCreatedEvent(BaseModel):
     model_config = ConfigDict(protected_namespaces=())
 

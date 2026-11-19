@@ -37,16 +37,85 @@ def _clean_text(text: str) -> str:
     return re.sub(r"\s+", " ", text or "").strip()
 
 
+def extract_tables(tree, max_tables: int = 6, max_rows: int = 40) -> list[dict]:
+    """Extrai tabelas estruturadas (cabeçalhos, linhas, unidades, dados de precificação/catálogo)."""
+    if not HAS_LXML or tree is None:
+        return []
+    tables_data: list[dict] = []
+    table_elements = tree.xpath("//table")
+    for tbl in table_elements[:max_tables]:
+        headers: list[str] = []
+        th_elements = tbl.xpath(".//thead//th | .//thead//td")
+        if not th_elements:
+            first_tr_th = tbl.xpath(".//tr[1]//th")
+            if first_tr_th:
+                th_elements = first_tr_th
+            else:
+                first_tr = tbl.xpath(".//tr[1]")
+                if first_tr:
+                    th_elements = first_tr[0].xpath(".//td")
+
+        for th in th_elements:
+            t = _clean_text(" ".join(th.xpath(".//text()")))
+            if t:
+                headers.append(t)
+
+        rows: list[list[str]] = []
+        data_trs = tbl.xpath(".//tbody//tr")
+        if not data_trs:
+            all_trs = tbl.xpath(".//tr")
+            data_trs = all_trs[1:] if th_elements and len(all_trs) > 1 else all_trs
+
+        for tr in data_trs[:max_rows]:
+            cells = []
+            for c in tr.xpath(".//td | .//th"):
+                cell_text = _clean_text(" ".join(c.xpath(".//text()")))
+                cells.append(cell_text)
+            if any(c for c in cells):
+                rows.append(cells)
+
+        if headers or rows:
+            tables_data.append({
+                "headers": headers,
+                "rows": rows,
+            })
+    return tables_data
+
+
+def format_table_markdown(table: dict) -> str:
+    """Converte representação estruturada de tabela para Markdown."""
+    headers = table.get("headers", [])
+    rows = table.get("rows", [])
+    if not headers and not rows:
+        return ""
+    col_count = max(len(headers), max((len(r) for r in rows), default=0))
+    if col_count == 0:
+        return ""
+    h_row = [headers[i] if i < len(headers) and headers[i] else f"Col {i+1}" for i in range(col_count)]
+    sep = ["---"] * col_count
+    lines = [
+        "| " + " | ".join(h_row) + " |",
+        "| " + " | ".join(sep) + " |",
+    ]
+    for r in rows:
+        cells = [r[i] if i < len(r) else "" for i in range(col_count)]
+        lines.append("| " + " | ".join(cells) + " |")
+    return "\n".join(lines)
+
+
 def extract_articles_and_content(html_text: str, base_url: str) -> dict:
     """Extrai títulos, links, datas e resumo de artigos de um documento HTML."""
     if not HAS_LXML:
-        return {"title": "", "articles": [], "text_sample": ""}
+        return {"title": "", "articles": [], "text_sample": "", "tables": []}
 
     try:
         tree = html.fromstring(html_text)
     except Exception as e:
         logger.debug(f"[reader] Falha ao fazer parse lxml: {e}")
-        return {"title": "", "articles": [], "text_sample": ""}
+        return {"title": "", "articles": [], "text_sample": "", "tables": []}
+
+    # Extrai tabelas antes de manipular o restante da árvore
+    tables_data = extract_tables(tree)
 
     # Remove elementos de ruído
     for tag in tree.xpath("//script | //style | //nav | //footer | //svg | //noscript"):
@@ -124,6 +193,7 @@ def extract_articles_and_content(html_text: str, base_url: str) -> dict:
         "published_date": published_date or None,
         "articles": articles_data,
         "text_sample": text_sample,
+        "tables": tables_data,
     }
 
 

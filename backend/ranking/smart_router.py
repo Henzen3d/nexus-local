@@ -1322,6 +1322,8 @@ async def route_dream_candidates(
     policy: str | RoutingPolicy = RoutingPolicy.BALANCED_SMART,
     min_context_length: int = 8192,
     max_candidates: int = 6,
+    local_only: bool = False,
+    preferred_provider_id: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """
     Seleciona e ordena candidatos elegíveis para o Dream Consolidator usando o ranking do
@@ -1330,6 +1332,7 @@ async def route_dream_candidates(
     """
     from backend.ranking.failover import _usable_key_clause
     from backend.ranking.availability import load_hide_unconfirmed_flag
+    from backend.ranking.eligibility import is_candidate_eligible_in_memory
 
     excluded_set = {str(x) for x in (excluded_ids or ()) if x}
     if isinstance(policy, RoutingPolicy):
@@ -1408,6 +1411,7 @@ async def route_dream_candidates(
         async with db.execute(query_fallback, tuple(key_params)) as cur:
             rows = await cur.fetchall()
 
+    req_ctx = max(4096, int(intent_result.min_context_length_required or min_context_length))
     models_data: List[Dict[str, Any]] = []
     for r in rows:
         mid = r[0]
@@ -1416,21 +1420,26 @@ async def route_dream_candidates(
         confirmed_free = int(r[5] or 0)
         prov_is_free = int(r[6] or 0)
         is_local = int(r[13] or 0)
+        if local_only and not is_local:
+            continue
         # Respeita filtro de modelos gratuitos não confirmados, exceto quando explicitamente preferido
         if hide_unconfirmed and prov_is_free and not confirmed_free and not is_local and mid != preferred_model_id:
             continue
         prof = profile_model(mid, r[2], r[1], r[11], int(r[10] or 0))
+        context_length = int(r[4] or 8192)
+        if context_length < req_ctx or not prof.is_chat_capable:
+            continue
         rank_q = float(r[8]) if r[8] is not None else None
         rank_n = float(r[7]) if r[7] is not None else None
         has_ranking = rank_q is not None and rank_q > 50.0
         quality = rank_q if has_ranking else prof.baseline_quality
         nexus = rank_n if (rank_n is not None and rank_n > 50.0) else quality
-        models_data.append({
+        candidate = {
             "id": mid,
             "provider_id": r[1],
             "name": r[2],
             "display_name": clean_model_display_name(r[3], r[1]),
-            "context_length": int(r[4] or 8192),
+            "context_length": context_length,
             "confirmed_free": confirmed_free,
             "prov_is_free": prov_is_free,
             "is_free": 1 if (confirmed_free == 1 or prov_is_free == 1 or is_local == 1) else 0,
@@ -1443,28 +1452,17 @@ async def route_dream_candidates(
             "reasoning_levels": _parse_levels(r[12]),
             "is_local": is_local,
             "tags": list(prof.tags()),
-        })
+        }
+        if is_candidate_eligible_in_memory(candidate).eligible:
+            models_data.append(candidate)
 
     if not models_data:
         return []
 
     ranked = rank_candidates(models_data, intent_result, policy_str)
-    if not ranked:
-        ranked = [{"model": m, "fit": float(m.get("nexuslocal_score", 50.0))} for m in models_data]
-
-    # Ajuste de adequação a tarefa estruturada JSON + janela de contexto suficiente
-    req_ctx = max(4096, int(intent_result.min_context_length_required or min_context_length))
-    scored: List[Tuple[float, Dict[str, Any]]] = []
-    for entry in ranked:
-        m = entry["model"]
-        fit = float(entry["fit"])
-        ctx = int(m.get("context_length") or 8192)
-        if ctx >= req_ctx:
-            fit += 5.0
-        else:
-            fit -= 15.0
-        scored.append((fit, m))
-    scored.sort(key=lambda item: item[0], reverse=True)
+    scored = [(float(entry["fit"]), entry["model"]) for entry in ranked]
+    if preferred_provider_id:
+        scored.sort(key=lambda entry: entry[1]["provider_id"] != preferred_provider_id)
 
     ordered: List[Dict[str, Any]] = []
     seen: set[str] = set()

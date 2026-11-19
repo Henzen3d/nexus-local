@@ -1,8 +1,29 @@
 import type {
+  ProcessStep,
   StreamEndFailureMessage,
   StreamEndSuccessMessage,
+  WebSearchSource,
   WSMessage,
 } from '../types'
+import {
+  sanitizeErrorText,
+  sanitizeProcessStep,
+  sanitizeProcessSteps,
+  sanitizeStepDetail,
+  sanitizeStepTitle,
+} from './sanitization.ts'
+
+const TURN_PROGRESS_TYPES = new Set<WSMessage['type']>([
+  'stream_start', 'stream_clear', 'token', 'ui_progress', 'search_start',
+  'process_step_start', 'process_step_update', 'process_step_end',
+  'auto_route_decision', 'triage_decision', 'failover_notice', 'history_trimmed',
+  'effort_dropped', 'image_pending', 'fusion_start', 'fusion_phase', 'fusion_status',
+  'fusion_judge_start', 'fusion_grounding', 'fusion_refined_prompt',
+])
+
+export function isTurnProgressFrame(type: WSMessage['type']): boolean {
+  return TURN_PROGRESS_TYPES.has(type)
+}
 
 const KNOWN_TYPES = new Set([
   'ready',
@@ -49,17 +70,50 @@ function optionalString(v: unknown): string | undefined {
   return typeof v === 'string' && v.length > 0 ? v : undefined
 }
 
+function objectRecord(v: unknown): v is Record<string, unknown> {
+  return !!v && typeof v === 'object' && !Array.isArray(v)
+}
+
+function stringList(v: unknown): v is string[] {
+  return Array.isArray(v) && v.every((item) => typeof item === 'string')
+}
+
+function optionalNumber(v: unknown): number | undefined {
+  return typeof v === 'number' && Number.isFinite(v) ? v : undefined
+}
+
+function optionalBoolean(v: unknown): boolean | undefined {
+  return typeof v === 'boolean' ? v : undefined
+}
+
+function processStepType(v: unknown): v is ProcessStep['type'] {
+  return v === 'think' || v === 'search' || v === 'navigate' || v === 'tool'
+}
+
+function processStep(v: unknown): v is ProcessStep {
+  return objectRecord(v) && nonEmptyString(v.id) && processStepType(v.type) &&
+    typeof v.title === 'string' &&
+    (v.status === 'running' || v.status === 'completed' || v.status === 'failed') &&
+    (v.subSteps == null || stringList(v.subSteps)) &&
+    (v.detail == null || typeof v.detail === 'string')
+}
+
+function searchSource(v: unknown): v is WebSearchSource {
+  return objectRecord(v) && nonEmptyString(v.url) && typeof v.title === 'string' &&
+    (v.snippet == null || typeof v.snippet === 'string') &&
+    (v.index == null || (typeof v.index === 'number' && Number.isSafeInteger(v.index) && v.index > 0)) &&
+    (v.was_read == null || typeof v.was_read === 'boolean')
+}
+
+function artifact(v: unknown): v is { id: string; type: string; title: string } {
+  return objectRecord(v) && nonEmptyString(v.id) && typeof v.type === 'string' && typeof v.title === 'string'
+}
+
 function sanitizePhaseLatencies(raw: unknown): Record<string, number> | undefined {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined
-  const out: Record<string, number> = {}
-  let hasAny = false
-  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
-    if (typeof v === 'number' && Number.isFinite(v)) {
-      out[k] = v
-      hasAny = true
-    }
-  }
-  return hasAny ? out : undefined
+  if (!objectRecord(raw)) return undefined
+  const entries = Object.entries(raw).filter((entry): entry is [string, number] =>
+    optionalNumber(entry[1]) !== undefined)
+  return entries.length ? Object.fromEntries(entries) : undefined
 }
 
 export function isStreamEndSuccess(
@@ -96,11 +150,8 @@ export function decodeChatFrame(raw: string): WSMessage | null {
     return null
   }
 
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    return null
-  }
-
-  const obj = parsed as Record<string, unknown>
+  if (!objectRecord(parsed)) return null
+  const obj = parsed
   if (!nonEmptyString(obj.type)) return null
   const type = obj.type
   if (!KNOWN_TYPES.has(type)) return null
@@ -129,7 +180,7 @@ export function decodeChatFrame(raw: string): WSMessage | null {
         turn_id: optionalString(obj.turn_id) ?? null,
         from_cache: typeof obj.from_cache === 'boolean' ? obj.from_cache : undefined,
         cache_type: typeof obj.cache_type === 'string' ? obj.cache_type : null,
-        cache_similarity: typeof obj.cache_similarity === 'number' ? obj.cache_similarity : null,
+        cache_similarity: optionalNumber(obj.cache_similarity) ?? null,
       }
 
     case 'stream_clear':
@@ -152,7 +203,7 @@ export function decodeChatFrame(raw: string): WSMessage | null {
       if (typeof obj.message !== 'string') return null
       return {
         type: 'error',
-        message: obj.message,
+        message: sanitizeErrorText(obj.message),
         turn_id: optionalString(obj.turn_id) ?? null,
         conversation_id: optionalString(obj.conversation_id) ?? null,
       }
@@ -169,18 +220,57 @@ export function decodeChatFrame(raw: string): WSMessage | null {
         rawOutcome === 'cancelled' ||
         rawFinish === 'error' ||
         rawFinish === 'timeout' ||
-        rawFinish === 'empty'
+        rawFinish === 'empty' ||
+        rawFinish === 'cancelled'
 
       if (!isExplicitFailure && hasValidIds && (!rawOutcome || rawOutcome === 'success')) {
-        const phase_latencies = sanitizePhaseLatencies(obj.phase_latencies)
+        const uiBlocks = objectRecord(obj.ui_blocks) && obj.ui_blocks.v === 1 &&
+          Array.isArray(obj.ui_blocks.blocks) && obj.ui_blocks.blocks.every((block) =>
+            objectRecord(block) && nonEmptyString(block.id) && nonEmptyString(block.type))
+          ? obj.ui_blocks as unknown as StreamEndSuccessMessage['ui_blocks']
+          : undefined
+        const uiErrors = Array.isArray(obj.ui_errors)
+          ? (obj.ui_errors.filter((item) =>
+              objectRecord(item) && nonEmptyString(item.code) && typeof item.hint === 'string',
+            ) as StreamEndSuccessMessage['ui_errors'])
+          : undefined
         return {
-          ...(obj as unknown as StreamEndSuccessMessage),
           type: 'stream_end',
           outcome: 'success',
           message_id: obj.message_id as string,
           conversation_id: obj.conversation_id as string,
           turn_id: optionalString(obj.turn_id) ?? null,
-          ...(phase_latencies ? { phase_latencies } : {}),
+          finish_reason: rawFinish,
+          from_cache: optionalBoolean(obj.from_cache),
+          cache_type: optionalString(obj.cache_type),
+          cache_similarity: optionalNumber(obj.cache_similarity),
+          artifact_id: optionalString(obj.artifact_id),
+          artifact_type: optionalString(obj.artifact_type),
+          artifact_title: optionalString(obj.artifact_title),
+          artifacts: Array.isArray(obj.artifacts) ? obj.artifacts.filter(artifact) : undefined,
+          relay_used: optionalBoolean(obj.relay_used),
+          relay_model: optionalString(obj.relay_model),
+          web_search_used: optionalBoolean(obj.web_search_used),
+          web_search_query: optionalString(obj.web_search_query),
+          web_search_sources: Array.isArray(obj.web_search_sources) ? obj.web_search_sources.filter(searchSource) : undefined,
+          process_steps: Array.isArray(obj.process_steps)
+            ? obj.process_steps.filter(processStep).map(sanitizeProcessStep)
+            : undefined,
+          process_duration_ms: optionalNumber(obj.process_duration_ms),
+          source_count: optionalNumber(obj.source_count),
+          was_fallback: optionalBoolean(obj.was_fallback),
+          final_model_id: optionalString(obj.final_model_id),
+          final_model_name: optionalString(obj.final_model_name),
+          final_provider_id: optionalString(obj.final_provider_id),
+          requested_model: optionalString(obj.requested_model),
+          served_by: optionalString(obj.served_by),
+          failover_tier: optionalString(obj.failover_tier),
+          spliced: optionalBoolean(obj.spliced),
+          attempt_count: optionalNumber(obj.attempt_count),
+          phase_latencies: sanitizePhaseLatencies(obj.phase_latencies),
+          ui_blocks: uiBlocks,
+          ui_errors: uiErrors,
+          ui_dropped: optionalNumber(obj.ui_dropped),
         }
       }
 
@@ -189,7 +279,7 @@ export function decodeChatFrame(raw: string): WSMessage | null {
           ? 'empty'
           : rawOutcome === 'timeout' || rawFinish === 'timeout'
             ? 'timeout'
-            : rawOutcome === 'cancelled'
+            : rawOutcome === 'cancelled' || rawFinish === 'cancelled'
               ? 'cancelled'
               : 'error'
 
@@ -205,7 +295,7 @@ export function decodeChatFrame(raw: string): WSMessage | null {
         finish_reason: rawFinish,
         conversation_id: optionalString(obj.conversation_id) ?? null,
         turn_id: optionalString(obj.turn_id) ?? null,
-        message: typeof obj.message === 'string' ? obj.message : undefined,
+        message: typeof obj.message === 'string' ? sanitizeErrorText(obj.message) : undefined,
       }
     }
 
@@ -219,6 +309,41 @@ export function decodeChatFrame(raw: string): WSMessage | null {
 
     case 'proactive_pending':
       if (!Array.isArray(obj.insights)) return null
+      return obj as unknown as WSMessage
+
+    case 'fusion_start':
+      if (!stringList(obj.models)) return null
+      return obj as unknown as WSMessage
+
+    case 'search_start':
+      if (typeof obj.query !== 'string') return null
+      return obj as unknown as WSMessage
+
+    case 'process_step_start':
+      if (!nonEmptyString(obj.id) || !processStepType(obj.step_type)) return null
+      return {
+        ...obj,
+        title: typeof obj.title === 'string' ? sanitizeStepTitle(obj.title) : obj.title,
+        detail: typeof obj.detail === 'string' ? sanitizeStepDetail(obj.detail) : obj.detail,
+      } as unknown as WSMessage
+
+    case 'process_step_update':
+      if (!nonEmptyString(obj.id) || (obj.sub_steps != null && !stringList(obj.sub_steps))) return null
+      return {
+        ...obj,
+        detail: typeof obj.detail === 'string' ? sanitizeStepDetail(obj.detail) : obj.detail,
+      } as unknown as WSMessage
+
+    case 'process_step_end':
+      if (!nonEmptyString(obj.id) || (obj.sub_steps != null && !stringList(obj.sub_steps))) return null
+      return {
+        ...obj,
+        detail: typeof obj.detail === 'string' ? sanitizeStepDetail(obj.detail) : obj.detail,
+      } as unknown as WSMessage
+
+    case 'ui_progress':
+      if (!objectRecord(obj.block) || obj.block.type !== 'progress' || !nonEmptyString(obj.block.id) ||
+          typeof obj.block.label !== 'string' || (obj.block.steps != null && !Array.isArray(obj.block.steps))) return null
       return obj as unknown as WSMessage
 
     default:

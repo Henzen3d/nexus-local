@@ -135,7 +135,7 @@ async def test_precedence_and_full_mode(tmp_db):
 
 
 @pytest.mark.asyncio
-async def test_rag_fallback_and_manifest_always_present(tmp_db):
+async def test_rag_fallback_and_manifest_always_present(tmp_db, monkeypatch):
     """
     Testa que arquivos que excedem o limite ativam o modo RAG,
     mas o Manifesto de Arquivos permanece SEMPRE presente no prompt.
@@ -175,6 +175,14 @@ async def test_rag_fallback_and_manifest_always_present(tmp_db):
         )
         await db.commit()
 
+    async def search_files(*args, **kwargs):
+        return [{"filename": "manual_gigante.pdf", "chunk_text": "Arquivo recuperado", "score": 0.95}]
+
+    async def search_chats(*args, **kwargs):
+        return [{"conversation_id": "prev", "chunk_text": "Conversa recuperada", "score": 0.95}]
+
+    monkeypatch.setattr(ca, "search_file_chunks", search_files)
+    monkeypatch.setattr(ca, "retrieve_related_chats", search_chats)
     # Orçamento pequeno para forçar comutação para RAG
     pctx = await ca.assemble_project_context(
         project_id=project_id,
@@ -188,6 +196,9 @@ async def test_rag_fallback_and_manifest_always_present(tmp_db):
     # Manifesto DEVE estar presente mesmo em RAG
     assert "Índice do Acervo de Arquivos" in pctx.system_content
     assert "manual_gigante.pdf" in pctx.system_content
+    assert pctx.file_chunks and pctx.chat_chunks
+    assert "Arquivo recuperado" in pctx.system_content
+    assert "Conversa recuperada" in pctx.system_content
 
 
 @pytest.mark.asyncio

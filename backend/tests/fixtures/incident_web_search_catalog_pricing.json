@@ -1,0 +1,75 @@
+{
+  "incident_date": "2026-11-19",
+  "original_query": "Quais são os últimos modelos LLM do Google e seus preços",
+  "planned_queries": [
+    "Google Gemini LLM official models catalog documentation",
+    "Google AI Studio Gemini API pricing token cost official",
+    "Google Cloud Vertex AI pricing Gemini token official"
+  ],
+  "search_results": [
+    {
+      "title": "Gemini API Pricing | Google AI for Developers",
+      "url": "https://ai.google.dev/gemini-api/docs/pricing",
+      "snippet": "Preços oficiais do Gemini 1.5 Pro e 1.5 Flash no Google AI Studio. Entrada por $0.075 / 1M tokens e saída por $0.30 / 1M tokens."
+    },
+    {
+      "title": "Vertex AI Pricing | Google Cloud",
+      "url": "https://cloud.google.com/vertex-ai/pricing",
+      "snippet": "Preços do Vertex AI no Google Cloud para a família Gemini. Preços por 1 milhão de tokens para input e output."
+    },
+    {
+      "title": "Artificial Analysis: Gemini 1.5 Pro vs GPT-4o Comparison",
+      "url": "https://artificialanalysis.ai/models/gemini-1-5-pro",
+      "snippet": "Comparador de desempenho, latência e preço de modelos de linguagem de terceiros."
+    }
+  ],
+  "scraped_pages": [
+    {
+      "url": "https://ai.google.dev/gemini-api/docs/pricing",
+      "title": "Gemini API Pricing | Google AI for Developers",
+      "text_sample": "Tabela de preços oficial do Gemini API no Google AI Studio. Gratuito com limites de taxa, e pré-pago por volume de tokens.",
+      "tables": [
+        {
+          "headers": ["Model", "Input Price (per 1M tokens)", "Output Price (per 1M tokens)", "Context Window"],
+          "rows": [
+            ["Gemini 1.5 Flash", "$0.075", "$0.30", "1M tokens"],
+            ["Gemini 1.5 Pro", "$3.50", "$10.50", "2M tokens"],
+            ["Gemini 1.5 Flash-8B", "$0.0375", "$0.15", "1M tokens"]
+          ]
+        }
+      ]
+    },
+    {
+      "url": "https://cloud.google.com/vertex-ai/pricing",
+      "title": "Vertex AI Pricing | Google Cloud",
+      "text_sample": "Documentação oficial de preços do Vertex AI no Google Cloud.",
+      "tables": [
+        {
+          "headers": ["Model (Vertex AI)", "Input Price (per 1M tokens)", "Output Price (per 1M tokens)", "Prompt Caching (per 1M tokens)"],
+          "rows": [
+            ["Gemini 1.5 Flash", "$0.075", "$0.30", "$0.01875"],
+            ["Gemini 1.5 Pro", "$3.50", "$10.50", "$0.875"]
+          ]
+        }
+      ]
+    }
+  ],
+  "vendor_comparison": {
+    "openai": {
+      "query": "Quais são os modelos e preços da OpenAI?",
+      "planned_queries": [
+        "OpenAI official models catalog documentation",
+        "OpenAI API pricing input output tokens official",
+        "OpenAI API pricing per million tokens models"
+      ]
+    },
+    "anthropic": {
+      "query": "Quais são os modelos e tabela de preços da Anthropic?",
+      "planned_queries": [
+        "Anthropic Claude models catalog official documentation",
+        "Anthropic Claude API pricing input output tokens official",
+        "Anthropic API pricing per million tokens"
+      ]
+    }
+  }
+}
