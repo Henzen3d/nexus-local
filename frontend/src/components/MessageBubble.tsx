@@ -609,16 +609,11 @@ export const MessageBubble = React.memo(function MessageBubble({ message }: Prop
                       type="button"
                       className="reasoning-exhausted-retry-btn"
                       onClick={() => {
-                        const store = useStore.getState()
-                        store.setReasoningEffortAuto('low')
-                        if (message.model_id) {
-                          store.setReasoningEffortForModel(message.model_id, 'low')
-                        }
-                        const prevUserMsg = store.lastUserMessage?.text
-                        if (prevUserMsg) {
+                        const requestId = useStore.getState().lastUserMessage?.request_id
+                        if (requestId) {
                           window.dispatchEvent(
                             new CustomEvent('nexus:retry-message', {
-                              detail: { text: prevUserMsg, effort: 'low' },
+                              detail: { requestId, effort: 'low' },
                             })
                           )
                         }

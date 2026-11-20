@@ -29,6 +29,25 @@ _RE_RAIN = re.compile(
     r"(?:vai\s+chover|vai\s+ter\s+chuva|chove|chovendo)\s+(?:em|in)\s+([a-zA-ZÀ-ÿ0-9\s\-]+?)(?:\?|\.|$)",
     re.IGNORECASE,
 )
+_WEATHER_CLAUSE_END = re.compile(
+    r"[,;]|\s+(?:e|and|y)\s+(?=(?:há|ha|tem|exist[ei]|qual|quais|verifique|confira|"
+    r"também|tambem|com[op]are|consulte|pesquise|alertas?|notícias?|are|check|any)\b)",
+    re.IGNORECASE,
+)
+_DIRECT_LOOKUP_PREFIX = re.compile(
+    r"^(?:(?:por favor|me diga|qual|quais|quanto|como|está|esta|é|são|a|o|as|os|"
+    r"previsão|do|is|the|what|how|¿cuál|cuál|es|el|la)\s+)*",
+    re.IGNORECASE,
+)
+_DIRECT_LOOKUP_SUFFIX = re.compile(
+    r"(?:(?:hoje|amanhã|amanha|agora|today|tomorrow|now|hoy|mañana|ahora|por favor)\s*)*",
+    re.IGNORECASE,
+)
+_WEB_COMPLEMENT = re.compile(
+    r"\b(?:alertas?|avisos?|notícias?|noticias?|fonte[s]?|oficia[il]s?|pesquise|"
+    r"verifique|confira|warnings?|news|sources?|official|avisos?|fuentes?)\b",
+    re.IGNORECASE,
+)
 _RE_DEGREES = re.compile(
     r"(?:quantos\s+graus|qual\s+(?:a\s+)?temperatura)\s+(?:faz|est[áa])\s+(?:em|in)\s+([a-zA-ZÀ-ÿ0-9\s\-]+?)(?:\?|\.|$)",
     re.IGNORECASE,
@@ -175,7 +194,9 @@ def detect_intents(message: str, lang: str = "pt") -> list[ToolIntent]:
     # 1. Weather
     m_w = _RE_WEATHER_CITY.search(text) or _RE_RAIN.search(text) or _RE_DEGREES.search(text)
     if m_w:
-        city = m_w.group(1).strip()
+        raw_city = m_w.group(1)
+        city = _WEATHER_CLAUSE_END.split(raw_city, maxsplit=1)[0].strip()
+        weather_match = text[m_w.start():m_w.start(1) + len(city)]
         # Filtra termos genéricos
         if len(city) >= 2 and city.lower() not in ("hoje", "amanhã", "agora", "aqui", "lá"):
             intents.append(ToolIntent(
@@ -183,7 +204,7 @@ def detect_intents(message: str, lang: str = "pt") -> list[ToolIntent]:
                 action="current",
                 params={"city": city, "days": 3},
                 confidence=0.9,
-                raw_match=m_w.group(0),
+                raw_match=weather_match,
             ))
 
     # 2. Currency
@@ -358,3 +379,33 @@ def detect_intents(message: str, lang: str = "pt") -> list[ToolIntent]:
     # Ordena por confiança decrescente
     intents.sort(key=lambda i: i.confidence, reverse=True)
     return intents
+
+
+def plan_tool_requests(message: str) -> tuple[list[ToolIntent], bool, str | None]:
+    """Identify structured lookups and a distinct part that benefits from web search."""
+    intents = [intent for intent in detect_intents(message) if intent.confidence >= 0.8][:2]
+    if not intents:
+        return [], False, None
+
+    structured = next((i for i in intents if i.family in ("weather", "currency", "brasil")), None)
+    if structured is None:
+        return intents, False, None
+    before, _, after = message.partition(structured.raw_match)
+    single_lookup = (
+        len(intents) == 1
+        and not _DIRECT_LOOKUP_PREFIX.sub("", before.strip("¿¡") + " ").strip(" ,.:!?")
+        and bool(_DIRECT_LOOKUP_SUFFIX.fullmatch(after.strip(" ,.:!?")))
+    )
+    if single_lookup:
+        return intents, True, None
+
+    remaining = after.strip(" ,.;?!")
+    remaining = re.sub(r"^(?:e|and|y)\s+", "", remaining, flags=re.IGNORECASE)
+    if not _WEB_COMPLEMENT.search(remaining):
+        return intents, False, None
+    if structured.family == "weather" and re.search(r"\b(?:alertas?|avisos?|warnings?)\b", remaining, re.IGNORECASE):
+        city = structured.params["city"]
+        explicit_place = re.search(r"\b(?:em|para|in|en)\s+(?!a região\b|a cidade\b)\w+", remaining, re.IGNORECASE)
+        if city.casefold() not in remaining.casefold() and not explicit_place:
+            remaining = f"{remaining} {city}"
+    return intents, False, remaining

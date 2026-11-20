@@ -105,6 +105,30 @@ export async function runChatSocketProbe() {
     assert.equal(state().messages.at(-1)?.content, 'última cauda', 'legacy terminal flushes the last scheduled batch')
 
     act(() => {
+      state().setReasoningEffortAuto('high')
+      useStore.setState({ selectedModelId: 'auto', selectedProviderId: 'auto' })
+      assert.equal(client.sendMessage('Leia o PDF', undefined, ['att-pdf'], undefined, true, 'source-msg'), true)
+      const { turn_id: originalTurn, ...original } = socket.sent.at(-1)!
+      assert.deepEqual(original.attachment_ids, ['att-pdf'])
+      assert.equal(original.reasoning_effort, 'high')
+      assert.equal(original.voice_mode, true)
+      assert.ok(original.request_id)
+
+      socket.receive({ type: 'error', message: 'Falha simulada', turn_id: originalTurn, conversation_id: 'A' })
+      const retry = state().toasts.at(-1)?.action
+      assert.ok(retry)
+      const userMessages = state().messages.filter((message) => message.role === 'user').length
+      retry.onClick()
+      const { turn_id: newTurn, ...replayed } = socket.sent.at(-1)!
+      assert.notEqual(newTurn, originalTurn)
+      assert.deepEqual(replayed, original)
+      assert.equal(state().messages.filter((message) => message.role === 'user').length, userMessages)
+      socket.receive({ type: 'token', content: 'Resposta do PDF', turn_id: newTurn })
+      socket.receive({ type: 'stream_end', outcome: 'success', conversation_id: 'A', message_id: 'retried', turn_id: newTurn })
+      useStore.setState({ selectedModelId: 'test-model', selectedProviderId: 'test-provider' })
+    })
+
+    act(() => {
       assert.equal(client.sendMessage('/imagem teste', undefined, undefined, undefined, false), true)
       const imageTurn = socket.sent.at(-1)?.turn_id
       socket.receive({ type: 'image_pending', conversation_id: 'A', message_id: 'image', task_id: '1', prompt: 'teste', turn_id: imageTurn })

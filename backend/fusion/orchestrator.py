@@ -5,6 +5,7 @@ import uuid
 from typing import List, Dict, Any, Optional
 from fastapi import WebSocket
 from backend.database import get_db, check_and_deactivate_model
+from backend.ranking.failover import FallbackRequirements
 from backend.logging_config import get_logger
 from backend.orchestration.artifacts import detect_artifacts, save_artifact
 from backend.providers.registry import get_provider, get_model_name
@@ -292,6 +293,8 @@ async def executar_fusion(
     web_search_sources: list[dict] | None = None,
     process_steps: list[dict] | None = None,
     turn_id: str | None = None,
+    fallback_requirements: FallbackRequirements | None = None,
+    assistant_message_id: str | None = None,
 ):
     from backend.orchestration.ws_protocol import (
         StreamStartEvent,
@@ -423,7 +426,9 @@ async def executar_fusion(
             try:
                 conn = await get_db()
                 try:
-                    resolved = await resolve_model_with_failover(original_model_id, conn, user_id=user_id)
+                    resolved = await resolve_model_with_failover(
+                        original_model_id, conn, user_id=user_id, requirements=fallback_requirements,
+                    )
                     final_model_id = resolved.model_id
                     final_provider_id = resolved.provider_id
 
@@ -722,7 +727,7 @@ async def executar_fusion(
         if CONFIDENCE_RE.search(full_response):
             full_response = CONFIDENCE_RE.sub("", full_response).strip()
 
-        assistant_msg_id = str(uuid.uuid4())
+        assistant_msg_id = assistant_message_id if assistant_message_id and not judge_partial_timeout else str(uuid.uuid4())
 
         # Prepara o objeto fusion_metadata com todo o histórico de raciocínio
         fusion_metadata = {
@@ -753,7 +758,7 @@ async def executar_fusion(
         try:
             await db.execute(
                 """INSERT INTO messages (id, conversation_id, role, content, model_id, fusion_metadata)
-                   VALUES (?, ?, 'assistant', ?, ?, ?)""",
+                   VALUES (?, ?, 'assistant', ?, ?, ?) ON CONFLICT(id) DO NOTHING""",
                 (assistant_msg_id, conversation_id, full_response, judge_model_id, fusion_metadata_json),
             )
             await db.execute(

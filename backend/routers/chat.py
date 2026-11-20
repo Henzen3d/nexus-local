@@ -9,7 +9,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from backend.attachments import move_attachments_to_conversation
 from backend.auth import resolve_token_user
 from backend.ws_origin import is_origin_allowed
-from backend.database import get_db
+from backend.database import get_db, get_router_policy
 from backend.fusion.orchestrator import executar_fusion
 from backend.logging_config import configure_logging, get_logger
 from backend.memory import extract_user_memory_background
@@ -24,6 +24,7 @@ from backend.orchestration.build_context import (
 from backend.projects.context_builder import estimate_tokens
 from backend.orchestration.handle_attachments import (
     check_model_vision_support,
+    history_contains_images,
     load_attachments,
     load_history,
     resolve_input_budget,
@@ -34,8 +35,10 @@ import os
 
 from backend.orchestration.persist_turn import (
     ConversationAccessError,
+    chat_request_message_id,
     detect_and_save_artifacts,
     ensure_conversation,
+    find_saved_user_request,
     run_post_turn_indexing,
     save_assistant_message,
     save_ui_blocks,
@@ -49,6 +52,7 @@ from backend.ui_blocks.telemetry import intelligent_ui_telemetry
 from backend.ui_blocks.extract import extract_ui
 from backend.ui_blocks.catalog import MODULE_NAMES, build_catalog, compose_catalog
 from backend.orchestration.resolve_request import resolve_and_stream, build_final_model_metadata
+from backend.ranking.failover import FallbackRequirements
 from backend.orchestration.ws_protocol import (
     ConversationCreatedEvent,
     TurnSocket,
@@ -79,6 +83,7 @@ logger = get_logger(__name__)
 router = APIRouter()
 
 _user_sockets: dict[str, set[WebSocket]] = {}
+_active_chat_requests: set[tuple[str, str]] = set()
 
 
 def register_socket(user_id: str, ws: WebSocket) -> None:
@@ -325,6 +330,16 @@ async def _process_turn(
     Mantém a conversa marcada como "turno ativo" (``TurnGuard``) para que o
     assistente proativo nunca entregue uma bolha no meio de uma resposta.
     """
+    request_id = parse_turn_id(req.get("request_id"))
+    request_key = (user["id"], request_id) if request_id else None
+    if request_key and request_key in _active_chat_requests:
+        await ws.send_json(build_stream_end_failure(
+            reason="request_in_progress", turn_id=parse_turn_id(req.get("turn_id")),
+            message="A tentativa anterior ainda está em andamento.",
+        ))
+        return
+    if request_key:
+        _active_chat_requests.add(request_key)
     turn = proactive_service.TurnGuard()
     try:
         await _run_turn(
@@ -334,6 +349,8 @@ async def _process_turn(
         )
     finally:
         turn.finish()
+        if request_key:
+            _active_chat_requests.discard(request_key)
 
 
 async def _run_turn(
@@ -356,6 +373,20 @@ async def _run_turn(
         await verify_conversation_owner(db, conversation_id, user_id)
     else:
         conversation_id = None  # normaliza "" / None
+
+    request_id = parse_turn_id(req.get("request_id"))
+    request_ids = {}
+    saved_conversation_id = None
+    if request_id:
+        request_ids = {
+            kind: chat_request_message_id(user_id, request_id, kind)
+            for kind in ("user", "conversation", "assistant", "image")
+        }
+        saved_conversation_id = await find_saved_user_request(
+            db, request_ids["user"], user_id, conversation_id, user_message,
+        )
+    new_conversation = {"new_id": saved_conversation_id or request_ids["conversation"]} if request_ids else {}
+    user_message_options = {"message_id": request_ids["user"]} if request_ids else {}
 
     turn_socket = TurnSocket(ws, turn_id, conversation_id) if turn_id else None
     if turn_socket is not None:
@@ -412,8 +443,7 @@ async def _run_turn(
                     )
                     return
             else:
-                from backend.image_gen.queue import count_daily_tasks, insert_image_task
-                from backend.image_gen.worker import notify_new_task
+                from backend.image_gen.queue import count_daily_tasks
 
                 daily_count = await count_daily_tasks(db, user_id)
                 if daily_count >= img_config.daily_cap_per_user:
@@ -442,6 +472,7 @@ async def _run_turn(
                         img_config.model_id or "cloudflare/flux-1-schnell",
                         img_config.provider_id or "cloudflare",
                         request_project_id,
+                        **new_conversation,
                     )
                     if turn_socket is not None:
                         turn_socket.conversation_id = conversation_id
@@ -461,35 +492,12 @@ async def _run_turn(
                         db, conversation_id, user_message,
                         img_config.model_id or "cloudflare/flux-1-schnell",
                         img_config.provider_id or "cloudflare",
+                        **user_message_options,
                     )
 
-                    placeholder_msg_id = await save_assistant_message(
-                        db,
-                        conversation_id,
-                        "Gerando imagem…",
-                        img_config.model_id or "cloudflare/flux-1-schnell",
-                        img_config.provider_id or "cloudflare",
+                    placeholder_msg_id, image_queued = await _queue_turn_image(
+                        ws, db, conversation_id, user_id, img_prompt, img_config, request_ids.get("image"),
                     )
-
-                    task_id = await insert_image_task(
-                        db,
-                        conversation_id=conversation_id,
-                        user_id=user_id,
-                        message_id=placeholder_msg_id,
-                        prompt=img_prompt,
-                        model_id=img_config.model_id,
-                    )
-                    notify_new_task()
-
-                    await ws.send_json({
-                        "type": "image_pending",
-                        "task_id": task_id,
-                        "message_id": placeholder_msg_id,
-                        "conversation_id": conversation_id,
-                        "msg_id": placeholder_msg_id,
-                        "conv_id": conversation_id,
-                        "prompt": img_prompt,
-                    })
 
                     # Despacha stream_end imediatamente para destravar o composer
                     await ws.send_json(
@@ -497,7 +505,7 @@ async def _run_turn(
                             message_id=placeholder_msg_id,
                             conversation_id=conversation_id,
                             turn_id=turn_id,
-                            finish_reason="image_pending",
+                            finish_reason="image_pending" if image_queued else "already_completed",
                         )
                     )
                     return
@@ -506,11 +514,15 @@ async def _run_turn(
 
     # ── Histórico recente compartilhado ─────────────────────────────
     raw_history = []
-    if conversation_id:
+    history_conversation_id = conversation_id or saved_conversation_id
+    if history_conversation_id:
         try:
             async with db.execute(
-                "SELECT role, content FROM messages WHERE conversation_id = ? ORDER BY created_at ASC",
-                (conversation_id,)
+                """SELECT role, content FROM messages WHERE conversation_id = ?
+                   AND (? IS NULL OR rowid < (SELECT rowid FROM messages WHERE id = ?))
+                   ORDER BY created_at ASC, rowid ASC""",
+                (history_conversation_id, saved_conversation_id,
+                 request_ids.get("user")),
             ) as cur:
                 raw_history = [{"role": r[0], "content": r[1]} for r in await cur.fetchall()]
         except Exception:
@@ -520,6 +532,7 @@ async def _run_turn(
     conversation_id, _proj_id, created_payload = await ensure_conversation(
         db, conversation_id, user_id, user_message,
         model_id, provider_id, request_project_id,
+        **new_conversation,
     )
     if turn_socket is not None:
         turn_socket.conversation_id = conversation_id
@@ -536,6 +549,19 @@ async def _run_turn(
         )
     if turn is not None:
         turn.start(conversation_id)
+
+    if saved_conversation_id:
+        async with db.execute(
+            "SELECT id FROM messages WHERE id = ? AND conversation_id = ? AND role = 'assistant'",
+            (request_ids["assistant"], conversation_id),
+        ) as cursor:
+            existing_answer = await cursor.fetchone()
+        if existing_answer:
+            await ws.send_json(build_stream_end_success(
+                message_id=existing_answer[0], conversation_id=conversation_id,
+                turn_id=turn_id, finish_reason="already_completed",
+            ))
+            return
 
     # ── Pré-Router & Triage Agent (Arquitetura de Triagem em Dois Estágios) ───
     from backend.orchestration.pre_router import (
@@ -575,7 +601,6 @@ async def _run_turn(
         from backend.ranking.smart_router import (
             classify_intent, select_best_model, is_trivial_greeting, decision_to_dict,
         )
-        from backend.database import get_router_policy
 
         prev_model_id = None
         prev_intent = None
@@ -606,20 +631,15 @@ async def _run_turn(
             previous_intent=prev_intent,
         )
 
-    # ── Dispara Busca Web em Paralelo (asyncio.create_task) ─────────────
-    # Executa a busca web e raspagem em segundo plano concorrentemente com
-    # a seleção de modelo, gravação no banco, carga de anexos e preparação do contexto.
-    # Usa conexão curta própria dentro de _resolve_web_search para não intercalar
-    # transações com a conexão do turno (T3.2).
+    # Coleta evidências em paralelo com a rota e a preparação dos anexos.
     turn_ref = {"conversation_id": conversation_id, "user_msg_id": None}
-    web_search_task = asyncio.create_task(
-        _resolve_web_search(
-            ws, None, req, user_message, None, user_id, conversation_id,
+    evidence_task = asyncio.create_task(
+        _resolve_turn_evidence(
+            ws, req, user_message, user_id, conversation_id,
             intent_res=intent_res,
             history=raw_history[-4:] if raw_history else [],
             intent_routing=intent_routing,
             turn_ref=turn_ref,
-            defer_telemetry=True,
         )
     )
 
@@ -639,6 +659,7 @@ async def _run_turn(
                 intent_res, policy, db,
                 previous_model_id=prev_model_id,
                 user_reasoning_effort=str(_auto_effort_raw).strip() if _auto_effort_raw else None,
+                user_id=user_id,
             )
             req_ctx.record_phase("intent_classification", t_intent_start)
             model_id = auto_route_decision.chosen_model_id
@@ -657,7 +678,7 @@ async def _run_turn(
         # ── Save user message ───────────────────────────────────────────
         t_save_user = time.perf_counter()
         user_msg_id = await save_user_message(
-            db, conversation_id, user_message, model_id, provider_id
+            db, conversation_id, user_message, model_id, provider_id, **user_message_options,
         )
         req_ctx.record_phase("db_save_user_msg", t_save_user)
         turn_ref["user_msg_id"] = user_msg_id
@@ -681,34 +702,9 @@ async def _run_turn(
 
         # ── Job de imagem em paralelo para pedido misto ─────────────────
         if image_job_created and img_prompt:
-            from backend.image_gen.queue import insert_image_task
-            from backend.image_gen.worker import notify_new_task
-
-            placeholder_msg_id = await save_assistant_message(
-                db,
-                conversation_id,
-                "Gerando imagem…",
-                img_config.model_id or "cloudflare/flux-1-schnell",
-                img_config.provider_id or "cloudflare",
+            await _queue_turn_image(
+                ws, db, conversation_id, user_id, img_prompt, img_config, request_ids.get("image"),
             )
-            task_id = await insert_image_task(
-                db,
-                conversation_id=conversation_id,
-                user_id=user_id,
-                message_id=placeholder_msg_id,
-                prompt=img_prompt,
-                model_id=img_config.model_id,
-            )
-            notify_new_task()
-            await ws.send_json({
-                "type": "image_pending",
-                "task_id": task_id,
-                "message_id": placeholder_msg_id,
-                "conversation_id": conversation_id,
-                "msg_id": placeholder_msg_id,
-                "conv_id": conversation_id,
-                "prompt": img_prompt,
-            })
 
         # ── Attachments ─────────────────────────────────────────────────
         if attachment_ids:
@@ -719,33 +715,13 @@ async def _run_turn(
         attachments_by_msg, extracted_text_by_id = await load_attachments(db, conversation_id)
         model_supports_vision = await check_model_vision_support(db, model_id)
 
-        # ── Aguarda Busca Web Paralela Concluir ──────────────────────────
+        # ── Aguarda pesquisa e ferramentas ─────────────────────────────
         t_web_wait = time.perf_counter()
-        try:
-            web_search_used, web_search_query, web_search_sources, search_results, search_config, process_steps = (
-                await asyncio.wait_for(web_search_task, timeout=14.0)
-            )
-        except asyncio.TimeoutError:
-            await _cancel_pending_task(web_search_task)
-            logger.warning(
-                "[chat] Timeout na busca web paralela (timeout_s=14.0)",
-                extra={"user_id": user_id, "conversation_id": conversation_id},
-            )
-            web_search_used, web_search_query, web_search_sources, search_results, search_config, process_steps = (
-                False, "", [], [], None, []
-            )
-        except Exception as e_web:
-            logger.error(
-                "[chat] Falha na busca web paralela (%s)",
-                type(e_web).__name__,
-                extra={"user_id": user_id, "conversation_id": conversation_id},
-            )
-            web_search_used, web_search_query, web_search_sources, search_results, search_config, process_steps = (
-                False, "", [], [], None, []
-            )
+        web_evidence, tool_results, tool_attempted, tool_answered_request = await evidence_task
+        web_search_used, web_search_query, web_search_sources, search_results, search_config, process_steps = web_evidence
         req_ctx.record_phase("web_search_wait", t_web_wait)
     finally:
-        await _cancel_pending_task(web_search_task)
+        await _cancel_pending_task(evidence_task)
 
     # Fase explícita de telemetria de busca web em conexão curta própria (T3.2)
     if web_search_used and isinstance(search_config, dict) and search_config.get("_telemetry"):
@@ -773,6 +749,7 @@ async def _run_turn(
         web_search_used, search_results, web_search_query,
         search_config, format_search_results, user_id,
         user_query=user_message, model_id=model_id, provider_id=provider_id,
+        **({"stop_at_user_message": True} if saved_conversation_id else {}),
     )
     req_ctx.record_phase("db_load_history", t_load_hist)
 
@@ -817,7 +794,7 @@ async def _run_turn(
         system_instruction += (
             "\n\nPESQUISA NA WEB (PRECEDÊNCIA EPISTÊMICA E AUTORIDADE FACTUAL):\n"
             "- A pesquisa online em tempo real já foi executada e os resultados constam entre <dados_web> e </dados_web>.\n"
-            "- PRECEDÊNCIA ABSOLUTA: Os fatos contidos em <dados_web> representam o presente e têm autoridade máxima sobre a memória interna ou corte de treinamento do modelo. Em qualquer divergência, os dados da web prevalecem.\n"
+            "- Use fontes atuais e pertinentes para as afirmações que elas sustentam. Se houver lacunas ou divergências relevantes entre fontes, indique o que ficou incerto.\n"
             "- EXTRAÇÃO ATIVA: Extraia ativamente todos os fatos, nomes de candidatos, cargos, acontecimentos e datas que constam em títulos, subtítulos e trechos extraídos pelo Deep Reader.\n"
             "- ANTI-ALUCINAÇÃO DE SIMULAÇÃO: É categoricamente proibido afirmar ou sugerir que fatos ou notícias da web são 'simulações de teste de sites de notícias', 'testes de estagiário' ou 'conteúdo hipotético'. Trate todos os eventos documentados como fatos reais da realidade presente.\n"
             "- Responda diretamente com base nesses dados, agindo como um assistente conectado em tempo real, SEM afirmar que não possui acesso à internet.\n"
@@ -842,55 +819,21 @@ async def _run_turn(
         if modular_addition:
             system_instruction += modular_addition
 
-    # ── Ferramentas & APIs Gratuitas (Free APIs & Intent Detection) ──
-    try:
-        tool_auto_enabled = True
-        try:
-            async with db.execute("SELECT value FROM meta WHERE key = 'tool_auto_detection'") as cur:
-                m_row = await cur.fetchone()
-                if m_row and m_row[0]:
-                    tool_auto_enabled = m_row[0].lower() in ("true", "1")
-        except Exception:
-            pass
+    if tool_results:
+        from backend.tools.context_injector import build_tools_context_block
 
-        if tool_auto_enabled and not web_search_used:
-            from backend.tools.intent import detect_intents
-            from backend.tools.dispatcher import dispatch_tool
-            from backend.tools.context_injector import build_tools_context_block
-
-            detected_intents = detect_intents(user_message)
-            high_conf_intents = [i for i in detected_intents if i.confidence >= 0.8]
-
-            tool_results = []
-            for item in high_conf_intents[:2]:
-                try:
-                    await ws.send_json({
-                        "type": "tool_executing",
-                        "family": item.family,
-                        "action": item.action,
-                    })
-                except Exception:
-                    pass
-
-                t_res = await dispatch_tool(item.family, item.params, user_id=user_id, db=db)
-                if t_res.success:
-                    tool_results.append(t_res)
-                    try:
-                        await ws.send_json({
-                            "type": "tool_executed",
-                            "family": item.family,
-                            "provider": t_res.provider,
-                            "cached": t_res.cached,
-                        })
-                    except Exception:
-                        pass
-
-            if tool_results:
-                tool_block = build_tools_context_block(tool_results)
-                if tool_block:
-                    system_instruction += "\n\n" + tool_block
-    except Exception as e_tools:
-        logger.error("Erro na detecção/execução de ferramentas em chat:", exc_info=e_tools)
+        system_instruction += build_tools_context_block(tool_results)
+        if web_search_used:
+            system_instruction += (
+                "\nCombine as fontes por parte da pergunta. Use as APIs estruturadas para os dados "
+                "que elas medem e as páginas oficiais para avisos, documentação e informações complementares. "
+                "Identifique a fonte de cada dado e preserve a numeração das citações da web.\n"
+            )
+    elif tool_attempted and not web_search_used:
+        system_instruction += (
+            "\nA consulta à ferramenta não retornou dados utilizáveis. Indique essa limitação "
+            "ao responder a partes do pedido que exigem dados atuais.\n"
+        )
 
     # ── Intelligent UI: configuração efetiva do turno (painel admin > .env) ─
     # Lida uma vez e usada tanto na oferta do catálogo quanto na extração do
@@ -970,13 +913,25 @@ async def _run_turn(
 
     history = [{"role": "system", "content": system_instruction}] + history
 
+    last_content = next((message.get("content") for message in reversed(history) if message.get("role") == "user"), "")
+    if isinstance(last_content, list):
+        last_content = " ".join(part.get("text", "") for part in last_content if part.get("type") == "text")
+    fallback_requirements = FallbackRequirements(
+        policy=auto_route_decision.policy if auto_route_decision else await get_router_policy(db),
+        min_context_length=max(
+            getattr(intent_res, "min_context_length_required", 0),
+            estimate_tokens(system_instruction) + estimate_tokens(last_content or "") + 256,
+        ),
+        requires_vision=history_contains_images(history),
+    )
+
     # ── Fusion mode: delegate ───────────────────────────────────────
     if fusion_mode:
         await executar_fusion(
             user_message, history, ws, conversation_id,
             user_id,
             force_grounding=req.get("web_search", False),
-            web_search_already_done=bool(web_search_used),
+            web_search_already_done=bool(web_search_used or tool_answered_request),
             client_timezone_offset=req.get("client_timezone_offset"),
             user_msg_id=user_msg_id,
             web_search_used=bool(web_search_used),
@@ -984,6 +939,8 @@ async def _run_turn(
             web_search_sources=web_search_sources,
             process_steps=process_steps,
             turn_id=turn_id,
+            fallback_requirements=fallback_requirements,
+            assistant_message_id=request_ids.get("assistant"),
         )
         return
 
@@ -1013,6 +970,8 @@ async def _run_turn(
         reasoning_effort=reasoning_effort,
         request_context=req_ctx,
         turn_id=turn_id,
+        fallback_requirements=fallback_requirements,
+        cache_response=not tool_attempted,
     )
     if result is None:
         from backend.metrics import task_benchmark_manager
@@ -1088,6 +1047,7 @@ async def _run_turn(
     assistant_msg_id = await save_assistant_message(
         db, conversation_id, full_response, model_id, provider_id,
         relay_used, relay_model_id,
+        **({"message_id": request_ids["assistant"]} if request_ids else {}),
     )
     req_ctx.record_phase("db_save_assistant_msg", t_save_asst)
 
@@ -1201,6 +1161,35 @@ async def _run_turn(
         logger.debug("[Proactive] agendamento falhou: %s", exc)
 
 
+async def _queue_turn_image(ws, db, conversation_id, user_id, prompt, config, image_id):
+    from backend.image_gen.queue import insert_image_task
+    from backend.image_gen.worker import notify_new_task
+
+    task_id = f"img_{uuid.UUID(image_id).hex}" if image_id else None
+    if task_id:
+        async with db.execute(
+            "SELECT 1 FROM image_gen_tasks WHERE id = ? AND user_id = ? AND conversation_id = ?",
+            (task_id, user_id, conversation_id),
+        ) as cur:
+            if await cur.fetchone():
+                return image_id, False
+    message_id = await save_assistant_message(
+        db, conversation_id, "Gerando imagem…", config.model_id or "cloudflare/flux-1-schnell",
+        config.provider_id or "cloudflare", **({"message_id": image_id} if image_id else {}),
+    )
+    task_id = await insert_image_task(
+        db, conversation_id=conversation_id, user_id=user_id, message_id=message_id,
+        prompt=prompt, model_id=config.model_id, **({"task_id": task_id} if task_id else {}),
+    )
+    notify_new_task()
+    await ws.send_json({
+        "type": "image_pending", "task_id": task_id, "message_id": message_id,
+        "conversation_id": conversation_id, "msg_id": message_id, "conv_id": conversation_id,
+        "prompt": prompt,
+    })
+    return message_id, True
+
+
 async def _cancel_pending_task(task: asyncio.Task | None) -> None:
     """Recolhe a tarefa, inclusive quando ela já terminou com erro."""
     if task is None:
@@ -1250,6 +1239,101 @@ async def _record_web_search_telemetry(
         await log_db.close()
 
 
+async def _resolve_turn_evidence(
+    ws, req, user_message, user_id, conversation_id,
+    *, intent_res, history, intent_routing, turn_ref,
+):
+    from backend.tools.dispatcher import dispatch_tool, is_tools_globally_enabled
+    from backend.tools.intent import plan_tool_requests
+
+    deadline = time.monotonic() + 14.0
+    intents, tool_only, search_focus = plan_tool_requests(user_message)
+    if intents:
+        try:
+            settings_db = await get_db()
+            try:
+                async with settings_db.execute("SELECT value FROM meta WHERE key = 'tool_auto_detection'") as cur:
+                    row = await cur.fetchone()
+                if (row and row[0] and row[0].lower() not in ("true", "1")) or not await is_tools_globally_enabled(settings_db):
+                    intents = []
+            finally:
+                await settings_db.close()
+        except Exception as exc:
+            logger.warning("Falha ao ler configuração de ferramentas (%s).", type(exc).__name__)
+            intents = []
+
+    async def search(*, tool_fallback=False, focus=None):
+        kwargs = {"tool_fallback": tool_fallback, "search_focus": focus} if tool_fallback or focus else {}
+        try:
+            async with asyncio.timeout(max(0.01, deadline - time.monotonic())):
+                return await _resolve_web_search(
+                    ws, None, req, user_message, None, user_id, conversation_id,
+                    intent_res=intent_res, history=history, intent_routing=intent_routing,
+                    turn_ref=turn_ref, defer_telemetry=True, **kwargs,
+                )
+        except Exception as exc:
+            logger.warning("Busca web não concluída (%s).", type(exc).__name__)
+            return False, "", [], [], None, []
+
+    async def run_tools(items):
+        results = []
+        if not items:
+            return results
+        try:
+            async with asyncio.timeout(max(0.01, min(5.0, deadline - time.monotonic()))):
+                tools_db = await get_db()
+                try:
+                    for item in items:
+                        try:
+                            await ws.send_json({"type": "tool_executing", "family": item.family, "action": item.action})
+                        except Exception:
+                            pass
+                        try:
+                            result = await dispatch_tool(
+                                item.family, item.params, user_id=user_id, db=tools_db, conversation_id=conversation_id,
+                            )
+                        except Exception as exc:
+                            logger.warning("Ferramenta %s indisponível (%s).", item.family, type(exc).__name__)
+                            continue
+                        if result.success and result.data:
+                            results.append(result)
+                            try:
+                                await ws.send_json({
+                                    "type": "tool_executed", "family": item.family,
+                                    "provider": result.provider, "cached": result.cached,
+                                })
+                            except Exception:
+                                pass
+                finally:
+                    await tools_db.close()
+        except Exception as exc:
+            logger.warning("Consulta a ferramentas não concluída (%s).", type(exc).__name__)
+        return results
+
+    if not intents:
+        return await search(), [], False, False
+    if tool_only and not req.get("web_search", False):
+        results = await run_tools(intents)
+        web = (False, "", [], [], None, []) if results else await search(tool_fallback=True)
+        return web, results, True, bool(results)
+
+    # Search-like tools can replace a failed web search. Structured sources
+    # answer independent parts and can run while the web search is in progress.
+    web_alternatives = [item for item in intents if item.family in ("news", "knowledge")]
+    primary_tools = [item for item in intents if item not in web_alternatives]
+    if search_focus:
+        results = await run_tools(primary_tools)
+        if len(results) == len(primary_tools):
+            web = await search(focus=search_focus)
+        else:
+            web = await search(tool_fallback=True)
+    else:
+        web, results = await asyncio.gather(search(), run_tools(primary_tools))
+    if web_alternatives and not web[0]:
+        results.extend(await run_tools(web_alternatives))
+    return web, results, bool(primary_tools or (web_alternatives and not web[0])), False
+
+
 async def _resolve_web_search(
     ws, db, req, user_message, user_msg_id, user_id, conversation_id,
     intent_res: Any | None = None,
@@ -1257,6 +1341,8 @@ async def _resolve_web_search(
     intent_routing: Any | None = None,
     turn_ref: dict | None = None,
     defer_telemetry: bool = False,
+    tool_fallback: bool = False,
+    search_focus: str | None = None,
 ) -> tuple[bool, str, list, list, dict | None, list]:
     """Resolve e executa web search se aplicável.
 
@@ -1285,6 +1371,9 @@ async def _resolve_web_search(
             if web_search_requested:
                 should_do_search = True
                 trigger_type = "manual"
+            elif tool_fallback or search_focus:
+                should_do_search = True
+                trigger_type = "tool_fallback" if tool_fallback else "tool_complement"
             elif not is_trivial:
                 if intent_routing and getattr(intent_routing, "needs_web_search", False):
                     should_do_search = True
@@ -1301,8 +1390,9 @@ async def _resolve_web_search(
                         trigger_type = "heuristic"
 
         if should_do_search:
-            pre_queries = getattr(intent_routing, "search_queries", None) if intent_routing else None
-            web_search_query = pre_queries[0] if pre_queries and len(pre_queries) > 0 else user_message
+            search_message = search_focus or user_message
+            pre_queries = getattr(intent_routing, "search_queries", None) if intent_routing and not search_focus else None
+            web_search_query = pre_queries[0] if pre_queries else search_message
             await ws.send_json({"type": "search_start", "query": web_search_query})
 
             async def send_ws_event(evt: dict):
@@ -1331,12 +1421,12 @@ async def _resolve_web_search(
                 from backend.web_search.agent import select_search_budget
 
                 search_budget = select_search_budget(
-                    user_message,
+                    search_message,
                     intent_routing=intent_routing,
                     web_search_requested=bool(web_search_requested),
                 )
                 agent_result = await execute_agentic_search(
-                    user_message, search_db, search_config,
+                    search_message, search_db, search_config,
                     on_event=send_ws_event,
                     history=history,
                     pre_planned_queries=pre_queries,
@@ -1344,9 +1434,9 @@ async def _resolve_web_search(
                 )
                 search_results = agent_result.get("search_results", [])
                 scraped_pages = agent_result.get("scraped_pages", [])
-                executed_queries = agent_result.get("executed_queries", [user_message])
+                executed_queries = agent_result.get("executed_queries", [search_message])
                 search_metrics = agent_result.get("metrics") or {}
-                primary_query = executed_queries[0] if executed_queries else user_message
+                primary_query = executed_queries[0] if executed_queries else search_message
 
                 if search_config is not None:
                     search_config["_metrics"] = search_metrics

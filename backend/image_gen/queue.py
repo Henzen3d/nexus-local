@@ -21,7 +21,7 @@ async def insert_image_task(
       - insert_image_task(db, conversation_id=..., user_id=..., message_id=..., prompt=..., model_id=...)
       - insert_image_task(conversation_id, user_id, message_id, prompt, provider_id=..., model_id=..., db=None)
     """
-    task_id = f"img_{uuid.uuid4().hex}"
+    task_id = kwargs.get("task_id") or f"img_{uuid.uuid4().hex}"
     db = kwargs.get("db")
 
     if args and isinstance(args[0], aiosqlite.Connection):
@@ -43,7 +43,7 @@ async def insert_image_task(
     try:
         await conn.execute(
             """INSERT INTO image_gen_tasks (id, conversation_id, user_id, message_id, prompt, status, model_id)
-               VALUES (?, ?, ?, ?, ?, 'pending', ?)""",
+               VALUES (?, ?, ?, ?, ?, 'pending', ?) ON CONFLICT(id) DO NOTHING""",
             (task_id, conversation_id, user_id, message_id, prompt, model_id),
         )
         await conn.commit()

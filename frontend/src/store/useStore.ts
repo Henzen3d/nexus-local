@@ -1,5 +1,6 @@
 import type { UiError } from '../lib/nexusUi'
 import { create } from 'zustand'
+import type { ChatRequest } from '../types'
 import type { Artifact, Conversation, ConversationDetail, Message, Model, CacheStats, CacheSettings, FusionStatusEntry, Attachment, LibraryItem, WebSearchSource, AutoRouteDecisionInfo, UiEnvelope, ProgressBlock, IntelligentUiConfig, ProcessStep, ProactiveInsight, ProactiveAckAction, ProactiveChannelHint, ProactiveExpandMode, ProactiveSettings, ToastItem, CompanionMessage } from '../types'
 import { api } from '../api/client'
 import i18n, { detectInitialLocale } from '../i18n'
@@ -364,8 +365,8 @@ interface AppState {
   hideToast: (id?: string) => void
   isOnline: boolean
   setIsOnline: (online: boolean) => void
-  lastUserMessage: { text: string; conversationId: string | null; modelId: string | null; providerId: string | null; fusionMode: boolean; webSearchActive: boolean; projectId: string | null } | null
-  setLastUserMessage: (msg: { text: string; conversationId: string | null; modelId: string | null; providerId: string | null; fusionMode: boolean; webSearchActive: boolean; projectId: string | null } | null) => void
+  lastUserMessage: ChatRequest | null
+  setLastUserMessage: (request: ChatRequest | null) => void
 
   // ── Assistente proativo (F2) ─────────────────────────────────────────────
   /** Status transitório ("pesquisando…") da conversa em pesquisa. */
@@ -641,7 +642,7 @@ export const useStore = create<AppState>((set, get) => {
   lastCacheHit: null,
   toasts: [],
   isOnline: typeof window !== 'undefined' ? navigator.onLine : true,
-  lastUserMessage: null as { text: string; conversationId: string | null; modelId: string | null; providerId: string | null; fusionMode: boolean; webSearchActive: boolean; projectId: string | null } | null,
+  lastUserMessage: null,
   proactiveStatus: null,
   conversationsWithInsight: {},
   pendingInlineInsights: [],
@@ -1379,7 +1380,7 @@ export const useStore = create<AppState>((set, get) => {
             updated_at: new Date().toISOString(),
             project_id,
           },
-          ...s.conversations,
+          ...s.conversations.filter((conversation) => conversation.id !== id),
         ],
       }
     })

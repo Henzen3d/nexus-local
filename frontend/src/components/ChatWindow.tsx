@@ -272,7 +272,7 @@ export function ChatWindow() {
     setView: s.setView,
     setActiveProjectId: s.setActiveProjectId,
   })))
-  const { sendMessage, stopStream } = useChatContext()
+  const { sendMessage, stopStream, retryMessage } = useChatContext()
   const isMobile = useIsMobile()
   const messagesAreaRef = useRef<HTMLDivElement>(null)
   const bottomSentinelRef = useRef<HTMLDivElement>(null)
@@ -334,17 +334,8 @@ export function ChatWindow() {
       if (text?.trim()) sendMessage(text.trim())
     }
     const retryHandler = (e: Event) => {
-      const detail = (e as CustomEvent<{ text?: string; effort?: string }>).detail
-      if (detail?.text?.trim()) {
-        if (detail.effort) {
-          useStore.getState().setReasoningEffortAuto(detail.effort)
-          const selId = useStore.getState().selectedModelId
-          if (selId) {
-            useStore.getState().setReasoningEffortForModel(selId, detail.effort)
-          }
-        }
-        sendMessage(detail.text.trim())
-      }
+      const detail = (e as CustomEvent<{ requestId?: string; effort?: string }>).detail
+      if (detail?.requestId) retryMessage(detail.effort, detail.requestId)
     }
     window.addEventListener('nexus:send-project-message', handler)
     window.addEventListener('nexus:retry-message', retryHandler)
@@ -352,7 +343,7 @@ export function ChatWindow() {
       window.removeEventListener('nexus:send-project-message', handler)
       window.removeEventListener('nexus:retry-message', retryHandler)
     }
-  }, [sendMessage])
+  }, [sendMessage, retryMessage])
 
   // Analisa o histórico dinamicamente para obter a relevância das categorias
   const { scores, matchedTailored } = useMemo(() => {

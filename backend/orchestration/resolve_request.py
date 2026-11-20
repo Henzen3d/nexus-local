@@ -35,6 +35,7 @@ from backend.orchestration.ws_protocol import (
 if TYPE_CHECKING:
     from fastapi import WebSocket
     from backend.cache.manager import CacheHit
+    from backend.ranking.failover import FallbackRequirements
 
 logger = get_logger(__name__)
 
@@ -338,6 +339,7 @@ async def stream_from_llm(
     reasoning_effort: str | None = None,
     request_context: Any | None = None,
     turn_id: str | None = None,
+    fallback_requirements: FallbackRequirements | None = None,
 ) -> tuple[str, str, str] | None:
     """Executa o streaming LLM com failover cascade.
 
@@ -419,6 +421,7 @@ async def stream_from_llm(
                 failover_enabled=True,
                 exclude_model_ids=list(attempted_model_ids),
                 user_id=user_id,
+                **({"requirements": fallback_requirements} if fallback_requirements else {}),
             )
         except NoAvailableModelError:
             await fail_turn(
@@ -1527,6 +1530,8 @@ async def resolve_and_stream(
     reasoning_effort: str | None = None,
     request_context: Any | None = None,
     turn_id: str | None = None,
+    fallback_requirements: FallbackRequirements | None = None,
+    cache_response: bool = True,
 ) -> tuple[str, "CacheHit | None", str, str] | None:
     """Fluxo completo: tenta cache, depois LLM com failover.
 
@@ -1534,7 +1539,7 @@ async def resolve_and_stream(
     resolved_provider_id) ou None em caso de falha irrecuperável.
     """
     cache_hit = await check_cache(
-        model_id, history, context_fingerprint, bypass_cache, user_id,
+        model_id, history, context_fingerprint, bypass_cache or not cache_response, user_id,
         request_context=request_context
     )
 
@@ -1548,6 +1553,7 @@ async def resolve_and_stream(
         reasoning_effort=reasoning_effort,
         request_context=request_context,
         turn_id=turn_id,
+        **({"fallback_requirements": fallback_requirements} if fallback_requirements else {}),
     )
     if result is None:
         return None
@@ -1558,7 +1564,7 @@ async def resolve_and_stream(
     failover_meta = getattr(result, "failover_meta", {}) if hasattr(result, "failover_meta") else (result[3] if len(result) > 3 else {})
 
     # Save to cache in background (semantic key includes memory fingerprint)
-    if full_response:
+    if full_response and cache_response:
         try:
             from backend.cache.manager import cache_manager
             asyncio.create_task(

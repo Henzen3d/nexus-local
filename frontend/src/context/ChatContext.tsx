@@ -12,6 +12,7 @@ interface ChatContextValue {
     uiCorrectionMessageId?: string,
   ) => boolean
   stopStream: () => void
+  retryMessage: (reasoningEffort?: string, expectedRequestId?: string) => boolean
 }
 
 const ChatContext = createContext<ChatContextValue | null>(null)
@@ -21,9 +22,9 @@ const ChatContext = createContext<ChatContextValue | null>(null)
  * Isso evita que componentes como ArtifactPanel criem conexões WebSocket extras.
  */
 export function ChatProvider({ children }: { children: ReactNode }) {
-  const { sendMessage, stopStream } = useChat()
+  const { sendMessage, stopStream, retryMessage } = useChat()
   return (
-    <ChatContext.Provider value={{ sendMessage, stopStream }}>
+    <ChatContext.Provider value={{ sendMessage, stopStream, retryMessage }}>
       {children}
     </ChatContext.Provider>
   )

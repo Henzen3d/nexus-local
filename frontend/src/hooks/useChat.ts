@@ -5,7 +5,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { getTalk } from '../lib/talkLoop'
 import { usePresence } from './usePresence'
 import { decodeChatFrame, isStreamEndSuccess, isTurnProgressFrame } from '../lib/chatProtocol'
-import type { WSMessage, Attachment } from '../types'
+import type { WSMessage, Attachment, ChatRequest } from '../types'
 
 const AUTH_CLOSE_CODE = 4001
 const MAX_RETRY_MS = 30_000
@@ -15,6 +15,7 @@ const HEARTBEAT_MS = 25_000
 
 let turnCounter = 0
 function nextTurnId(): string {
+  if (globalThis.crypto?.randomUUID) return `turn-${globalThis.crypto.randomUUID()}`
   turnCounter += 1
   return `turn-${Date.now()}-${turnCounter}`
 }
@@ -83,6 +84,38 @@ export function useChat() {
     }, 90000)
   }, [clearWatchdog, clearTurnBinding])
 
+  const sendTurn = useCallback((request: ChatRequest) => {
+    const socket = wsRef.current
+    if (isGeneratingRef.current || !socket || socket.readyState !== WebSocket.OPEN) return false
+
+    const turnId = nextTurnId()
+    const store = useStore.getState()
+    store.beginStreamTurn(turnId, request.conversation_id)
+    activeTurnIdRef.current = turnId
+    activeTurnSocketRef.current = socket
+    activeTurnConvIdRef.current = request.conversation_id
+    isGeneratingRef.current = true
+    resetWatchdog()
+    try {
+      socket.send(JSON.stringify({ ...request, turn_id: turnId }))
+      store.setLastUserMessage(request)
+      return true
+    } catch {
+      clearWatchdog()
+      isGeneratingRef.current = false
+      clearTurnBinding()
+      store.discardStreamDraft()
+      return false
+    }
+  }, [resetWatchdog, clearWatchdog, clearTurnBinding])
+
+  const retryMessage = useCallback((reasoningEffort?: string, expectedRequestId?: string) => {
+    const { lastUserMessage, activeConversationId } = useStore.getState()
+    if (!lastUserMessage || activeConversationId !== lastUserMessage.conversation_id) return false
+    if (expectedRequestId && lastUserMessage.request_id !== expectedRequestId) return false
+    return sendTurn(reasoningEffort ? { ...lastUserMessage, reasoning_effort: reasoningEffort } : lastUserMessage)
+  }, [sendTurn])
+
   const {
     selectedModelId,
     selectedProviderId,
@@ -148,6 +181,16 @@ export function useChat() {
       }, HEARTBEAT_MS)
     }
 
+    const retryOptionsFor = (requestId?: string) => requestId ? {
+      durationMs: 15000,
+      action: {
+        label: i18n.t('chat.retry', { defaultValue: 'Tentar novamente' }),
+        onClick: () => {
+          if (retryMessage(undefined, requestId)) useStore.getState().hideToast()
+        },
+      },
+    } : undefined
+
     const handleMessage = (ws: WebSocket, e: MessageEvent) => {
       if (disposed || socket !== ws) return
 
@@ -211,6 +254,7 @@ export function useChat() {
       const boundConvId = activeTurnConvIdRef.current
       const ownsDraft = s.activeStreamTurnId !== null && s.activeStreamTurnId === activeTurnIdRef.current
       const isViewingTurnConversation = ownsDraft && s.activeConversationId === boundConvId
+      const retryRequestId = isViewingTurnConversation ? s.lastUserMessage?.request_id : undefined
       if (isTurnProgress && boundConvId && 'conversation_id' in msg &&
           msg.conversation_id && msg.conversation_id !== boundConvId) return
       if (isTurnProgress && !isViewingTurnConversation) {
@@ -224,6 +268,9 @@ export function useChat() {
         case 'conversation_created':
           if (activeTurnConvIdRef.current === null) {
             activeTurnConvIdRef.current = msg.conversation_id
+            if (s.lastUserMessage?.conversation_id === null) {
+              s.setLastUserMessage({ ...s.lastUserMessage, conversation_id: msg.conversation_id })
+            }
           }
           if (isViewingTurnConversation) {
             s.setConversationCreated(msg.conversation_id, msg.title)
@@ -270,7 +317,7 @@ export function useChat() {
               void s.loadConversation(persistedPartial).catch(() => {})
             }
             if (isViewingTurnConversation && msg.message) {
-              s.showToast(msg.message, 'error')
+              s.showToast(msg.message, 'error', retryOptionsFor(retryRequestId))
               if (!persistedPartial) s.addErrorMessage(msg.message)
             }
             break
@@ -284,10 +331,10 @@ export function useChat() {
             s.loadConversations()
             break
           }
-          if (msg.finish_reason === 'image_pending') {
+          if (msg.finish_reason === 'image_pending' || msg.finish_reason === 'already_completed') {
             // image_pending already inserted the placeholder with this ID.
             s.discardStreamDraft()
-            if (!s.messages.some((message) => message.id === msg.message_id)) {
+            if (msg.finish_reason === 'already_completed' || !s.messages.some((message) => message.id === msg.message_id)) {
               void s.loadConversation(msg.conversation_id).catch(() => {})
             }
             s.loadConversations()
@@ -479,43 +526,10 @@ export function useChat() {
           clearTurnBinding()
           console.error('[WS error]', msg.message)
           s.discardStreamDraft()
-          // Toast com ação de retry
-          const retryAction = s.lastUserMessage
-            ? {
-                label: i18n.t('chat.retry', { defaultValue: 'Tentar novamente' }),
-                onClick: () => {
-                  s.hideToast()
-                  // Re-envia a última mensagem via WebSocket com novo turn_id limpo
-                  if (!isGeneratingRef.current && wsRef.current?.readyState === WebSocket.OPEN) {
-                    const retryTurnId = nextTurnId()
-                    const retryConvId = s.lastUserMessage!.conversationId
-                    useStore.getState().discardStreamDraft()
-                    useStore.getState().beginStreamTurn(retryTurnId, retryConvId)
-                    activeTurnIdRef.current = retryTurnId
-                    activeTurnSocketRef.current = wsRef.current
-                    activeTurnConvIdRef.current = retryConvId
-                    isGeneratingRef.current = true
-                    resetWatchdog()
-                    wsRef.current.send(JSON.stringify({
-                      turn_id: retryTurnId,
-                      conversation_id: retryConvId,
-                      message: s.lastUserMessage!.text,
-                      model_id: s.lastUserMessage!.modelId,
-                      provider_id: s.lastUserMessage!.providerId,
-                      fusion: s.lastUserMessage!.fusionMode,
-                      web_search: s.lastUserMessage!.webSearchActive,
-                      project_id: s.lastUserMessage!.projectId || undefined,
-                      use_memory: true,
-                      client_timezone_offset: new Date().getTimezoneOffset(),
-                    }))
-                  }
-                },
-              }
-            : undefined
           s.showToast(
             msg.message,
             'error',
-            retryAction ? { action: retryAction, durationMs: 15000 } : undefined
+            retryOptionsFor(retryRequestId)
           )
           if (isViewingTurnConversation) s.addErrorMessage(msg.message)
           break
@@ -653,7 +667,7 @@ export function useChat() {
       socket = null
       if (wsRef.current) wsRef.current = null
     }
-  }, [token, resendPresence, clearWatchdog, clearTurnBinding, resetWatchdog])
+  }, [token, resendPresence, clearWatchdog, clearTurnBinding, resetWatchdog, retryMessage])
 
   const stopStream = useCallback(() => {
     clearWatchdog()
@@ -724,16 +738,6 @@ export function useChat() {
         return false
       }
 
-      // Garante estado limpo antes de iniciar novo turno e amarra buffer ao turn_id e socket
-      const turnId = nextTurnId()
-      const conversationId = useStore.getState().activeConversationId
-      useStore.getState().beginStreamTurn(turnId, conversationId)
-      activeTurnIdRef.current = turnId
-      activeTurnSocketRef.current = socket
-      activeTurnConvIdRef.current = conversationId
-      isGeneratingRef.current = true
-      resetWatchdog()
-
       const safeAttachmentIds = (attachmentIds ?? []).filter(
         (id): id is string => typeof id === 'string' && id.length > 0
       )
@@ -741,10 +745,9 @@ export function useChat() {
       const activeEffort = useStore.getState().getActiveReasoningEffort()
       const isVoiceMode = voiceMode !== undefined ? voiceMode : getTalk().mode === 'loop'
 
-      try {
-        socket.send(JSON.stringify({
-          turn_id: turnId,
-          conversation_id: conversationId,
+      if (!sendTurn({
+          request_id: nextTurnId(),
+          conversation_id: useStore.getState().activeConversationId,
           message: text,
           ui_correction_message_id: uiCorrectionMessageId,
           model_id: selectedModelId,
@@ -760,24 +763,8 @@ export function useChat() {
           project_id: activeProjectId || undefined,
           project_context_debug: !!(import.meta.env.DEV),
           client_timezone_offset: new Date().getTimezoneOffset(),
-        }))
-      } catch {
-        clearWatchdog()
-        isGeneratingRef.current = false
-        clearTurnBinding()
-        useStore.getState().discardStreamDraft()
-        return false
-      }
+      })) return false
       addUserMessage(displayText ?? text, attachments)
-      useStore.getState().setLastUserMessage({
-        text,
-        conversationId,
-        modelId: selectedModelId,
-        providerId: selectedProviderId,
-        fusionMode,
-        webSearchActive,
-        projectId: activeProjectId || null,
-      })
       return true
     },
     [
@@ -787,11 +774,9 @@ export function useChat() {
       addUserMessage,
       webSearchActive,
       activeProjectId,
-      resetWatchdog,
-      clearWatchdog,
-      clearTurnBinding,
+      sendTurn,
     ]
   )
 
-  return { sendMessage, stopStream }
+  return { sendMessage, stopStream, retryMessage }
 }

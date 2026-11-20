@@ -20,7 +20,7 @@ from typing import Any, Optional
 import aiosqlite
 
 from .quota import get_quota_status
-from backend.ranking.availability import USABLE_KEY_CONDITION_SQL
+from backend.ranking.availability import USABLE_KEY_CONDITION_SQL, is_free_model, load_hide_unconfirmed_flag
 
 logger = logging.getLogger("nexuslocal.ranking.failover")
 
@@ -58,6 +58,42 @@ class ResolvedModel:
     original_model_id: str
     failover_reason: Optional[str] = None  # 'rate_limit' | 'error' | None
     family_id: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class FallbackRequirements:
+    policy: str
+    min_context_length: int
+    requires_vision: bool = False
+
+
+async def _fallback_model_pools(
+    db: aiosqlite.Connection, requirements: FallbackRequirements,
+) -> tuple[set[str], ...]:
+    from backend.ranking.model_profile import profile_model
+
+    hide_unconfirmed = await load_hide_unconfirmed_flag(db)
+    free: set[str] = set()
+    paid: set[str] = set()
+    async with db.execute("""
+        SELECT m.id, p.id, m.name, m.context_length, m.supports_vision,
+               m.confirmed_free, p.is_free, p.is_local
+        FROM models m JOIN providers p ON p.id = m.provider_id
+    """) as cur:
+        rows = await cur.fetchall()
+    for mid, pid, name, context, vision, confirmed, provider_free, local in rows:
+        if hide_unconfirmed and provider_free and not confirmed:
+            continue
+        if (context or 8192) < requirements.min_context_length:
+            continue
+        profile = profile_model(mid, name or "", pid, supports_vision=vision)
+        if not profile.is_chat_capable or (requirements.requires_vision and not profile.is_vision):
+            continue
+        bucket = free if is_free_model(pid, confirmed, provider_free, local) else paid
+        bucket.add(mid)
+    if requirements.policy == "economical_free":
+        return free, paid
+    return (free | paid,)
 
 
 async def _get_provider_id(model_id: str, db: aiosqlite.Connection) -> str:
@@ -224,6 +260,7 @@ async def _get_next_best_ranked_model(
     exclude_model_ids: list[str],
     exclude_family_ids: list[str],
     user_id: Optional[str] = None,
+    candidate_model_ids: Optional[set[str]] = None,
 ) -> Optional[tuple[str, str, str]]:
     """
     Retorna (model_id, provider_id, display_name) do melhor modelo disponível
@@ -299,6 +336,8 @@ async def _get_next_best_ranked_model(
 
     for row in rows:
         mid, pid, dname, _ = row
+        if candidate_model_ids is not None and mid not in candidate_model_ids:
+            continue
         # Gate duro de elegibilidade (filtra breaker OPEN, quarentenas, cooldowns canônicos, saturação de quota)
         elig = await check_candidate_eligibility(
             model_id=mid,
@@ -337,6 +376,7 @@ async def resolve_model_with_failover(
     force_skip: bool = False,
     exclude_model_ids: Optional[list[str]] = None,
     user_id: Optional[str] = None,
+    requirements: FallbackRequirements | None = None,
 ) -> ResolvedModel:
     """
     Resolve o modelo final a ser usado, com cascata de failover de 2 tiers.
@@ -440,6 +480,7 @@ async def resolve_model_with_failover(
                 force_skip=True,
                 exclude_model_ids=exclude_model_ids,
                 user_id=user_id,
+                requirements=requirements,
             )
 
         # Caminho feliz — sem failover
@@ -470,12 +511,37 @@ async def resolve_model_with_failover(
             f"Iniciando cascata de failover..."
         )
 
+    pools = await _fallback_model_pools(db, requirements) if requirements else (None,)
+    family_result = await _get_family_for_model(requested_model_id, db, user_id=user_id)
+    for pool in pools:
+        if pool is not None and not pool:
+            continue
+        fallback = await _resolve_fallback_in_pool(
+            requested_model_id, db, failover_reason, exclude_model_ids,
+            user_id, family_result, pool,
+        )
+        if fallback:
+            return fallback
+
+    raise NoAvailableModelError(
+        f"Todos os modelos configurados estão indisponíveis. "
+        f"Não foi possível realizar failover a partir de '{requested_model_id}'."
+    )
+
+
+async def _resolve_fallback_in_pool(
+    requested_model_id: str, db: aiosqlite.Connection, failover_reason: str,
+    exclude_model_ids: list[str] | None, user_id: str | None,
+    family_result: tuple[str, list[tuple[str, str, int]]] | None,
+    candidate_model_ids: set[str] | None,
+) -> ResolvedModel | None:
+    from backend.ranking.eligibility import check_candidate_eligibility
+
     excluded_canonicals = {canonical_model_id(m) for m in (exclude_model_ids or []) if m}
     if requested_model_id:
         excluded_canonicals.add(canonical_model_id(requested_model_id))
 
     # ── Tier 1 — Irmãos da mesma família ─────────────────────────────────────
-    family_result = await _get_family_for_model(requested_model_id, db, user_id=user_id)
     family_id: Optional[str] = None
     candidate_same_canonical = None
 
@@ -487,6 +553,8 @@ async def resolve_model_with_failover(
         )
 
         for member_model_id, member_provider_id, fallback_order in members:
+            if candidate_model_ids is not None and member_model_id not in candidate_model_ids:
+                continue
             # Pula o modelo original ou modelos já excluídos
             if member_model_id == requested_model_id or (exclude_model_ids and member_model_id in exclude_model_ids):
                 continue
@@ -556,6 +624,7 @@ async def resolve_model_with_failover(
         exclude_model_ids=all_excluded,
         exclude_family_ids=[family_id] if family_id else [],
         user_id=user_id,
+        candidate_model_ids=candidate_model_ids,
     )
 
     if next_best:
@@ -580,8 +649,4 @@ async def resolve_model_with_failover(
         )
         return candidate_same_canonical
 
-    # ── Nenhum modelo disponível ──────────────────────────────────────────────
-    raise NoAvailableModelError(
-        f"Todos os modelos configurados estão indisponíveis. "
-        f"Não foi possível realizar failover a partir de '{requested_model_id}'."
-    )
+    return None

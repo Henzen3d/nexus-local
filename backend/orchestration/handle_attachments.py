@@ -225,6 +225,8 @@ async def load_history(
     user_query: str = "",
     model_id: str | None = None,
     provider_id: str | None = None,
+    *,
+    stop_at_user_message: bool = False,
 ) -> tuple[list[dict], int, str | None]:
     """Monta o histórico de mensagens com attachments, docs e imagens.
 
@@ -237,8 +239,9 @@ async def load_history(
     async with db.execute(
         """SELECT id, role, content FROM messages
            WHERE conversation_id = ?
+             AND (? = 0 OR rowid <= (SELECT rowid FROM messages WHERE id = ?))
            ORDER BY created_at ASC, rowid ASC""",
-        (conversation_id,),
+        (conversation_id, int(stop_at_user_message), user_msg_id),
     ) as cur:
         messages_rows = [
             {"id": r[0], "role": r[1], "content": r[2]}

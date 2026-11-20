@@ -1,4 +1,22 @@
 import type { UiError } from './lib/nexusUi'
+
+export interface ChatRequest {
+  request_id: string
+  conversation_id: string | null
+  message: string
+  model_id: string
+  provider_id: string
+  attachment_ids?: string[]
+  ui_correction_message_id?: string
+  reasoning_effort?: string
+  voice_mode?: boolean
+  fusion: boolean
+  web_search: boolean
+  use_memory: boolean
+  project_id?: string
+  project_context_debug: boolean
+  client_timezone_offset: number
+}
 export interface Attachment {
   id: string
   filename: string

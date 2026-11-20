@@ -16,7 +16,7 @@ from backend.orchestration.artifacts import detect_artifacts, save_artifact
 
 logger = get_logger(__name__)
 
-# IDs de conversa são sempre UUID v4 gerados pelo servidor. Validar o formato
+# IDs de conversa são UUIDs gerados pelo servidor. Validar o formato
 # antes de usar o valor em queries e, principalmente, em caminhos do filesystem
 # (storage/attachments/{conversation_id}) elimina qualquer vetor de traversal.
 _CONVERSATION_ID_RE = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
@@ -56,6 +56,8 @@ async def ensure_conversation(
     model_id: str,
     provider_id: str,
     request_project_id: str | None,
+    *,
+    new_id: str | None = None,
 ) -> tuple[str, str | None, dict | None]:
     """
     Garante que uma conversa existe no banco. Se *conversation_id* for None,
@@ -70,7 +72,7 @@ async def ensure_conversation(
         await verify_conversation_owner(db, conversation_id, user_id)
         return conversation_id, None, None
 
-    new_id = str(uuid.uuid4())
+    new_id = new_id or str(uuid.uuid4())
     title = user_message[:60] + ("…" if len(user_message) > 60 else "")
 
     bind_project_id = None
@@ -82,12 +84,16 @@ async def ensure_conversation(
             if await cur.fetchone():
                 bind_project_id = request_project_id
 
-    await db.execute(
+    cursor = await db.execute(
         """INSERT INTO conversations (id, user_id, title, model_id, provider_id, project_id)
-           VALUES (?, ?, ?, ?, ?, ?)""",
+           VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING""",
         (new_id, user_id, title, model_id, provider_id, bind_project_id),
     )
-    if bind_project_id:
+    if cursor.rowcount == 0:
+        await verify_conversation_owner(db, new_id, user_id)
+        async with db.execute("SELECT title, project_id FROM conversations WHERE id = ?", (new_id,)) as existing:
+            title, bind_project_id = await existing.fetchone()
+    elif bind_project_id:
         await db.execute(
             "UPDATE projects SET updated_at = datetime('now') WHERE id = ?",
             (bind_project_id,),
@@ -103,16 +109,49 @@ async def ensure_conversation(
     return new_id, bind_project_id, payload
 
 
+def chat_request_message_id(user_id: str, request_id: str, kind: str) -> str:
+    """Resolve IDs estáveis sem expor um ID fornecido pelo cliente como chave de banco."""
+    identity = json.dumps([user_id, request_id, kind], separators=(",", ":"))
+    return str(uuid.uuid5(uuid.NAMESPACE_URL, "nexuslocal:chat-request:" + identity))
+
+
+async def find_saved_user_request(
+    db, message_id: str, user_id: str, conversation_id: str | None, message: str,
+) -> str | None:
+    async with db.execute(
+        """SELECT m.conversation_id, m.content, c.user_id
+           FROM messages m JOIN conversations c ON c.id = m.conversation_id
+           WHERE m.id = ? AND m.role = 'user'""",
+        (message_id,),
+    ) as cursor:
+        row = await cursor.fetchone()
+    if row is None:
+        return None
+    saved_conversation_id, saved_content, owner = row
+    if owner != user_id or saved_content != message or (conversation_id and saved_conversation_id != conversation_id):
+        raise ConversationAccessError("Não foi possível reutilizar esta solicitação.")
+    return saved_conversation_id
+
+
 async def save_user_message(
-    db, conversation_id: str, user_message: str, model_id: str, provider_id: str
+    db, conversation_id: str, user_message: str, model_id: str, provider_id: str,
+    *, message_id: str | None = None,
 ) -> str:
     """Persiste a mensagem do usuário e retorna seu ID."""
-    user_msg_id = str(uuid.uuid4())
-    await db.execute(
+    user_msg_id = message_id or str(uuid.uuid4())
+    cursor = await db.execute(
         """INSERT INTO messages (id, conversation_id, role, content, model_id, provider)
-           VALUES (?, ?, 'user', ?, ?, ?)""",
+           VALUES (?, ?, 'user', ?, ?, ?) ON CONFLICT(id) DO NOTHING""",
         (user_msg_id, conversation_id, user_message, model_id, provider_id),
     )
+    if cursor.rowcount == 0:
+        async with db.execute(
+            "SELECT conversation_id, role, content FROM messages WHERE id = ?", (user_msg_id,),
+        ) as existing:
+            row = await existing.fetchone()
+        if row is None or tuple(row) != (conversation_id, "user", user_message):
+            await db.rollback()
+            raise ConversationAccessError("Não foi possível reutilizar esta solicitação.")
     await db.commit()
     return user_msg_id
 
@@ -126,12 +165,14 @@ async def save_assistant_message(
     relay_used: int = 0,
     relay_model_id: str | None = None,
     kind: str = "normal",
+    *,
+    message_id: str | None = None,
 ) -> str:
     """Persiste a mensagem do assistente e atualiza ``updated_at`` da conversa."""
-    assistant_msg_id = str(uuid.uuid4())
+    assistant_msg_id = message_id or str(uuid.uuid4())
     await db.execute(
         """INSERT INTO messages (id, conversation_id, role, content, model_id, provider, relay_used, relay_model, kind)
-           VALUES (?, ?, 'assistant', ?, ?, ?, ?, ?, ?)""",
+           VALUES (?, ?, 'assistant', ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING""",
         (assistant_msg_id, conversation_id, full_response, model_id, provider_id, relay_used, relay_model_id, kind),
     )
     await db.execute(

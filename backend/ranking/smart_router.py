@@ -910,20 +910,36 @@ def _parse_levels(raw: Any) -> List[str]:
         return []
 
 
-async def load_routing_catalog(db: aiosqlite.Connection) -> List[Dict[str, Any]]:
+async def load_routing_catalog(db: aiosqlite.Connection, user_id: str | None = None) -> List[Dict[str, Any]]:
     """
     Carrega o catálogo roteável (modelos habilitados de provedores habilitados) com
     ranking, cota e capacidades. Usa o JEV Fast Model Cache (TTL 30s); estados voláteis
     (provedor habilitado / cota) são sempre consultados em tempo real.
     """
-    from backend.ranking.availability import is_free_model
+    from backend.ranking.availability import USABLE_KEY_CONDITION_SQL, is_free_model, load_hide_unconfirmed_flag
 
     global _MODEL_CACHE, _MODEL_CACHE_TIME
     now = time.monotonic()
-    if _MODEL_CACHE is not None and (now - _MODEL_CACHE_TIME) < _MODEL_CACHE_TTL:
+    if not user_id and _MODEL_CACHE is not None and (now - _MODEL_CACHE_TIME) < _MODEL_CACHE_TTL:
         models_data = [dict(m) for m in _MODEL_CACHE]
     else:
-        query = """
+        joins = ""
+        filters = "m.enabled = 1 AND p.enabled = 1"
+        params = ()
+        hide_unconfirmed = False
+        if user_id:
+            joins = """
+                LEFT JOIN user_api_keys k ON k.provider_id = p.id AND k.user_id = ?
+                LEFT JOIN user_provider_settings ups ON ups.provider_id = p.id AND ups.user_id = ?
+                LEFT JOIN user_model_settings ums ON ums.model_id = m.id AND ums.user_id = ?
+            """
+            filters = (
+                "COALESCE(ums.enabled, m.enabled) = 1 AND COALESCE(ups.enabled, p.enabled) = 1 "
+                f"AND {USABLE_KEY_CONDITION_SQL}"
+            )
+            params = (user_id, user_id, user_id)
+            hide_unconfirmed = await load_hide_unconfirmed_flag(db)
+        query = f"""
             SELECT m.id, m.provider_id, m.name, m.display_name, m.context_length,
                    COALESCE(m.confirmed_free, 0) as confirmed_free,
                    COALESCE(p.is_free, 0) as prov_is_free,
@@ -938,9 +954,10 @@ async def load_routing_catalog(db: aiosqlite.Connection) -> List[Dict[str, Any]]
             JOIN providers p ON p.id = m.provider_id
             LEFT JOIN model_rankings mr ON mr.model_id = m.id
             LEFT JOIN model_quota_status mqs ON mqs.model_id = m.id
-            WHERE m.enabled = 1 AND p.enabled = 1
+            {joins}
+            WHERE {filters}
         """
-        async with db.execute(query) as cur:
+        async with db.execute(query, params) as cur:
             rows = await cur.fetchall()
 
         if not rows:
@@ -948,6 +965,8 @@ async def load_routing_catalog(db: aiosqlite.Connection) -> List[Dict[str, Any]]
 
         models_data = []
         for r in rows:
+            if hide_unconfirmed and r[6] and not r[5]:
+                continue
             prof = profile_model(r[0], r[2], r[1], r[11], int(r[10] or 0))
             rank_q = float(r[8]) if r[8] is not None else None
             rank_n = float(r[7]) if r[7] is not None else None
@@ -973,6 +992,8 @@ async def load_routing_catalog(db: aiosqlite.Connection) -> List[Dict[str, Any]]
                 "is_local": r[13],
                 "tags": list(prof.tags()),
             })
+        if user_id:
+            return models_data
         _MODEL_CACHE = models_data
         _MODEL_CACHE_TIME = now
 
@@ -1125,6 +1146,8 @@ def rank_candidates(
                 str(c["model"]["id"]),
             )
         )
+    if policy_str == RoutingPolicy.ECONOMICAL_FREE.value:
+        ranked.sort(key=lambda candidate: not candidate["model"]["is_free"])
     return ranked
 
 
@@ -1154,6 +1177,7 @@ async def select_best_model(
     db: aiosqlite.Connection,
     previous_model_id: Optional[str] = None,
     user_reasoning_effort: Optional[str] = None,
+    user_id: str | None = None,
 ) -> AutoRouteDecision:
     """
     Executa a seleção do modelo candidato combinando:
@@ -1177,7 +1201,7 @@ async def select_best_model(
         policy_str = RoutingPolicy.BALANCED_SMART.value
 
     # 1. Catálogo roteável (cache + estados voláteis)
-    models_data = await load_routing_catalog(db)
+    models_data = await load_routing_catalog(db, user_id=user_id) if user_id else await load_routing_catalog(db)
     if not models_data:
         raise ValueError("Nenhum modelo habilitado encontrado no sistema.")
 
@@ -1196,7 +1220,10 @@ async def select_best_model(
     # follow-ups do mesmo tema toleram mais; mudanças de intenção/complexidade trocam de modelo.
     if previous_model_id:
         prev = next((c for c in ranked if c["model"]["id"] == previous_model_id), None)
-        if prev is not None:
+        if prev is not None and (
+            policy_str != RoutingPolicy.ECONOMICAL_FREE.value
+            or bool(prev["model"]["is_free"]) == bool(best["model"]["is_free"])
+        ):
             gap = best["fit"] - prev["fit"]
             if intent_result.inherited_from_history:
                 tolerance = 8.0
