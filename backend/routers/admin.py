@@ -416,8 +416,10 @@ async def list_all_models(current_user: dict = Depends(get_current_user)):
             confirmed_free = bool(r[14])
             is_free_provider = bool(r[15])
             
-            # Se for um provedor free e hide_unconfirmed estiver ativo, filtra os não confirmados
-            if hide_unconfirmed and is_free_provider and not confirmed_free:
+            # Se for um provedor free e hide_unconfirmed estiver ativo, filtra os não confirmados.
+            # OpenRouter é exceção: o catálogo traz pricing oficial (fix 112a6f5), então
+            # modelos pagos habilitados não devem ser escondidos mesmo sem confirmed_free.
+            if hide_unconfirmed and is_free_provider and not confirmed_free and r[3] != "openrouter":
                 continue
 
             reasoning_levels_val = parse_reasoning_levels(r[18]) if len(r) > 18 else None
