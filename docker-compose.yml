@@ -14,6 +14,13 @@ services:
     volumes:
       # Espelha o arquivo do banco de dados do Linux para dentro do container
       - ./backend/nexuslocal.db:/app/backend/nexuslocal.db
+      # Os arquivos de WAL/SHM devem ser compartilhados junto: com bind-mount
+      # só do .db, o SQLite (journal_mode=WAL) cria os -wal/-shm na overlayfs
+      # do container e perde os dados a cada recreação (incidente 2026-11-20:
+      # 376 modelos de OpenRouter ficaram presos na overlay e sumiram do host).
+      # O Docker cria os arquivos automaticamente se não existirem no host.
+      - ./backend/nexuslocal.db-wal:/app/backend/nexuslocal.db-wal
+      - ./backend/nexuslocal.db-shm:/app/backend/nexuslocal.db-shm
       - ./backend/storage:/app/backend/storage
       - ./logs:/app/logs
       - fastembed_cache:/root/.cache/fastembed
