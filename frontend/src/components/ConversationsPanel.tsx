@@ -1,12 +1,16 @@
 import { useState, useEffect, useRef } from 'react'
 import { MessageSquare, Plus, Search, Trash2, Star, CheckSquare, Square, X, Sliders, ListChecks, Pencil, Menu, Sparkles } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { useStore } from '../store/useStore'
 import { useHaptic } from '../hooks/useHaptic'
+import { useLocalDate } from '../hooks/useLocalDate'
+import { differenceInLocalDays, parseUtc } from '../lib/dates'
 import type { Conversation } from '../types'
 
 export function ConversationsPanel() {
   const { t, i18n } = useTranslation()
+  const now = useLocalDate()
   const haptic = useHaptic()
   const conversations = useStore((s) => s.conversations)
   const loadConversations = useStore((s) => s.loadConversations)
@@ -333,7 +337,7 @@ export function ConversationsPanel() {
             <div className="conversations-rows-wrapper">
               {conversations.map((c) => {
                 const isSelected = selectedIds.includes(c.id)
-                const timeString = getRelativeTime(c.updated_at)
+                const timeString = getRelativeTime(c.updated_at, now, t, i18n.language)
                 const capitalizedTime = timeString.charAt(0).toUpperCase() + timeString.slice(1)
                 return (
                   <div
@@ -502,23 +506,18 @@ export function ConversationsPanel() {
   )
 }
 
-function getRelativeTime(dateString: string) {
-  const d = new Date(dateString)
-  const now = new Date()
-  const diffMs = now.getTime() - d.getTime()
-  const diffMins = Math.floor(diffMs / 60000)
-  const diffHours = Math.floor(diffMs / 3600000)
-  const diffDays = Math.floor(diffMs / 86400000)
+function getRelativeTime(dateString: string, now: Date, t: TFunction, locale: string) {
+  const time = parseUtc(dateString)
+  if (time === null) return ''
+  const date = new Date(time)
+  const daysAgo = differenceInLocalDays(date, now)
+  if (daysAgo === 1) return t('time.yesterday')
+  if (daysAgo >= 7) return date.toLocaleDateString(locale, { day: 'numeric', month: 'short' })
+  if (daysAgo > 1) return t('time.daysAgo', { count: daysAgo })
 
-  if (diffMins < 60) {
-    return diffMins <= 1 ? 'agora há pouco' : `há ${diffMins} min`
-  } else if (diffHours < 24) {
-    return `há ${diffHours} hora${diffHours > 1 ? 's' : ''}`
-  } else if (diffDays === 1) {
-    return 'ontem'
-  } else if (diffDays < 7) {
-    return `há ${diffDays} dias`
-  } else {
-    return d.toLocaleDateString('pt-BR', { day: 'numeric', month: 'short' })
-  }
+  const diffMs = now.getTime() - time
+  const diffMins = Math.floor(diffMs / 60000)
+  if (diffMins <= 1) return t('time.justNow')
+  if (diffMins < 60) return t('time.minutesAgo', { count: diffMins })
+  return t('time.hoursAgo', { count: Math.floor(diffMins / 60) })
 }

@@ -6,7 +6,6 @@ import {
   isFresh,
   mergePending,
   newIds,
-  parseUtc,
   pruneExpired,
   relativeAge,
   toastPreview,
@@ -32,14 +31,6 @@ function insight(id: string, extra: Partial<ProactiveInsight> = {}): ProactiveIn
     ...extra,
   }
 }
-
-test('timestamps UTC sem sufixo são lidos como UTC', () => {
-  assert.equal(parseUtc('2026-10-14 12:00:00'), NOW)
-  assert.equal(parseUtc('2026-10-14T12:00:00Z'), NOW)
-  assert.equal(parseUtc('2026-10-14T09:00:00-03:00'), NOW)
-  assert.equal(parseUtc(null), null)
-  assert.equal(parseUtc('lixo'), null)
-})
 
 test('insight vencido nunca entra na fila', () => {
   assert.equal(isExpired(insight('a', { expires_at: '2026-10-14 11:59:59' }), NOW), true)

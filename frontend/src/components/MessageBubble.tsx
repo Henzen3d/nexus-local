@@ -26,6 +26,7 @@ import { SourceShelf } from './SourceShelf'
 import { GeneratedImage } from './ImageLightbox'
 import { stripDuplicateTrailingSources } from '../lib/sourceCards'
 import { sanitizeErrorText, stripSensitiveSecrets } from '../lib/sanitization'
+import { parseUtc } from '../lib/dates'
 
 const REMARK_PLUGINS = [remarkGfm]
 const STALE_STREAM_STYLE: React.CSSProperties = { opacity: 0.92 }
@@ -328,30 +329,6 @@ function ModelBadge({
   )
 }
 
-const formatTime = (isoString?: string) => {
-  if (!isoString) return ''
-  try {
-    const normalized = isoString.includes('T') ? isoString : isoString.replace(' ', 'T') + (isoString.endsWith('Z') ? '' : 'Z')
-    const d = new Date(normalized)
-    if (isNaN(d.getTime())) return ''
-    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-  } catch {
-    return ''
-  }
-}
-
-const formatDateFull = (isoString?: string) => {
-  if (!isoString) return ''
-  try {
-    const normalized = isoString.includes('T') ? isoString : isoString.replace(' ', 'T') + (isoString.endsWith('Z') ? '' : 'Z')
-    const d = new Date(normalized)
-    if (isNaN(d.getTime())) return ''
-    return d.toLocaleString([], { dateStyle: 'long', timeStyle: 'short' })
-  } catch {
-    return ''
-  }
-}
-
 function WebSearchSources({ sources, query }: { sources: { title: string; url: string }[]; query?: string }) {
   const { t } = useTranslation()
   const [isOpen, setIsOpen] = useState(false)
@@ -539,6 +516,8 @@ export const MessageBubble = React.memo(function MessageBubble({ message }: Prop
       { searching: t('chat.processSearching'), reading: t('chat.processReading', { defaultValue: 'Lendo página' }) },
     )
   }, [hasExecutionSequence, message.process_steps, message.web_search_used, message.web_search_query, message.web_search_sources, t])
+  const createdAt = parseUtc(message.created_at)
+  const messageDate = createdAt === null ? null : new Date(createdAt)
 
   return (
     <div className={`message ${message.role}`}>
@@ -782,12 +761,12 @@ export const MessageBubble = React.memo(function MessageBubble({ message }: Prop
 
         {/* Metadados: horário · modelo · ações — discretos e agrupados */}
         <div className="message-meta">
-          {message.created_at && (
+          {messageDate && (
             <span
               className="timestamp custom-tooltip-trigger"
-              data-tooltip={formatDateFull(message.created_at)}
+              data-tooltip={messageDate.toLocaleString([], { dateStyle: 'long', timeStyle: 'short' })}
             >
-              {formatTime(message.created_at)}
+              {messageDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
             </span>
           )}
           {uiLevel !== 'simple' && message.model_display_name && (

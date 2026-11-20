@@ -28,6 +28,8 @@ import { api } from '../api/client'
 import { ModelSelector } from './ModelSelector'
 import { SimpleModeSelector } from './SimpleModeSelector'
 import { PlusActionMenu } from './PlusActionMenu'
+import { useLocalDate } from '../hooks/useLocalDate'
+import { differenceInLocalDays, parseUtc } from '../lib/dates'
 import type { Project, ProjectChat, ProjectFile, ProjectCapacity } from '../types'
 
 type SortKey = 'updated' | 'name' | 'created'
@@ -43,24 +45,6 @@ function relativeTime(iso: string, locale: string): string {
     if (hours < 24) return `há ${hours}h`
     const days = Math.floor(hours / 24)
     if (days < 30) return `há ${days}d`
-    return d.toLocaleDateString(locale, { day: 'numeric', month: 'short' })
-  } catch {
-    return ''
-  }
-}
-
-function formatShortDate(iso: string | null | undefined, locale: string): string {
-  if (!iso) return ''
-  try {
-    const d = new Date(iso)
-    const now = new Date()
-    const isToday = d.toDateString() === now.toDateString()
-    if (isToday) return 'Hoje'
-    
-    const yesterday = new Date(now)
-    yesterday.setDate(yesterday.getDate() - 1)
-    if (d.toDateString() === yesterday.toDateString()) return 'Ontem'
-
     return d.toLocaleDateString(locale, { day: 'numeric', month: 'short' })
   } catch {
     return ''
@@ -405,6 +389,16 @@ function ProjectDetailPage({
   onBack: () => void
 }) {
   const { t, i18n } = useTranslation()
+  const now = useLocalDate()
+  const formatChatDate = (timestamp: string) => {
+    const time = parseUtc(timestamp)
+    if (time === null) return ''
+    const date = new Date(time)
+    const daysAgo = differenceInLocalDays(date, now)
+    if (daysAgo <= 0) return t('time.today')
+    if (daysAgo === 1) return t('time.yesterday').replace(/^./, (char: string) => char.toUpperCase())
+    return date.toLocaleDateString(i18n.language, { day: 'numeric', month: 'short' })
+  }
   const setSidebarOpen = useStore((s) => s.setSidebarOpen)
   const sidebarOpen = useStore((s) => s.sidebarOpen)
   const showToast = useStore((s) => s.showToast)
@@ -1069,7 +1063,7 @@ function ProjectDetailPage({
                   <button type="button" className="claude-chat-single-row" onClick={() => openChat(c.id)}>
                     <span className="claude-chat-title">{c.title}</span>
                     <span className="claude-chat-date">
-                      {formatShortDate(c.updated_at, i18n.language) || relativeTime(c.updated_at, i18n.language)}
+                      {formatChatDate(c.updated_at)}
                     </span>
                   </button>
                 </li>

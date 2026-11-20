@@ -6,18 +6,11 @@
  * antigo quando entra o 4º). Módulo puro (sem store/DOM) para `node:test`.
  */
 import type { ProactiveInsight } from '../types'
+import { parseUtc } from './dates.ts'
 
 export const MAX_PENDING = 3
 /** Insight pronto há menos de 10 min ⇒ título "Tenho uma novidade" em vez de "Enquanto você esteve fora…" */
 export const FRESH_WINDOW_MS = 10 * 60_000
-
-/** Timestamps do backend são UTC sem sufixo (`datetime('now')`). */
-export function parseUtc(ts: string | null | undefined): number | null {
-  if (!ts) return null
-  const normalized = /(Z|[+-]\d{2}:?\d{2})$/.test(ts) ? ts : ts.replace(' ', 'T') + 'Z'
-  const ms = Date.parse(normalized)
-  return Number.isNaN(ms) ? null : ms
-}
 
 export function isExpired(insight: Pick<ProactiveInsight, 'expires_at'>, now: number): boolean {
   const exp = parseUtc(insight.expires_at)

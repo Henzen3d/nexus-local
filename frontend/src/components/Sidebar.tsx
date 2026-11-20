@@ -8,12 +8,14 @@ import {
 import { useTranslation } from 'react-i18next'
 import { useStore } from '../store/useStore'
 import { api } from '../api/client'
-import type { Artifact, Project } from '../types'
+import type { Artifact, Conversation, Project } from '../types'
 import { InstallPWAButton } from './InstallPWAButton'
 import { Button } from './ui/Button'
 import { NexusLogoIcon } from './NexusLogoIcon'
 import { useHaptic } from '../hooks/useHaptic'
 import { MOBILE_BREAKPOINT, useIsMobile } from '../hooks/useIsMobile'
+import { useLocalDate } from '../hooks/useLocalDate'
+import { getConversationDateGroup, parseUtc } from '../lib/dates'
 
 type AnchorRect = { top: number; left: number; right: number; bottom: number; width: number; height: number }
 
@@ -24,6 +26,7 @@ function toAnchor(el: DOMRect | HTMLElement): AnchorRect {
 
 export function Sidebar() {
   const { t } = useTranslation()
+  const now = useLocalDate()
   const {
     conversations,
     activeConversationId,
@@ -359,9 +362,9 @@ export function Sidebar() {
 
   const favorites = visibleConversations
     .filter((c) => c.is_favorite)
-    .sort((a, b) => new Date(b.favorited_at || 0).getTime() - new Date(a.favorited_at || 0).getTime())
+    .sort((a, b) => (parseUtc(b.favorited_at) ?? 0) - (parseUtc(a.favorited_at) ?? 0))
   
-  const grouped = groupByDate(visibleConversations, {
+  const grouped = groupByDate(visibleConversations, now, {
     today: t('time.today'),
     yesterday: t('time.yesterday').replace(/^./, (c: string) => c.toUpperCase()),
     last7Days: t('time.last7Days'),
@@ -1003,14 +1006,10 @@ export function Sidebar() {
 }
 
 function groupByDate(
-  convs: { id: string; title: string; updated_at: string; message_count: number; created_at: string }[],
-  labels: { today: string; yesterday: string; last7Days: string; older: string }
+  convs: Conversation[],
+  now: Date,
+  labels: Record<ReturnType<typeof getConversationDateGroup>, string>,
 ) {
-  const now = new Date()
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-  const yesterday = new Date(today.getTime() - 86400000)
-  const week = new Date(today.getTime() - 7 * 86400000)
-
   const groups: Record<string, typeof convs> = {
     [labels.today]: [],
     [labels.yesterday]: [],
@@ -1019,11 +1018,7 @@ function groupByDate(
   }
 
   for (const c of convs) {
-    const d = new Date(c.updated_at)
-    if (d >= today) groups[labels.today].push(c)
-    else if (d >= yesterday) groups[labels.yesterday].push(c)
-    else if (d >= week) groups[labels.last7Days].push(c)
-    else groups[labels.older].push(c)
+    groups[labels[getConversationDateGroup(c.updated_at, now)]].push(c)
   }
 
   return Object.fromEntries(Object.entries(groups).filter(([, v]) => v.length > 0))
