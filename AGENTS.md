@@ -26,10 +26,11 @@ Este arquivo é a base de conhecimento de regras de comportamento e restrições
 1. **Ambiente Baseado em Docker:** O host roda estritamente sob **Docker / Docker Compose** (`docker-compose.yml`). **NÃO utiliza PM2 nem systemd** para gerenciar o NexusLocal.
 2. **Aviso de Portas (Porta 8000 é do Portainer):** A porta `8000` no host pertence ao painel web do **Portainer**! O backend do FastAPI roda dentro da rede Docker isolada (`nexus_net`), escutando internamente na porta 8000 do container `nexus_backend`, com o frontend Nginx e o túnel Cloudflare (`cloudflared`) servindo o tráfego. Nunca tente acessar `http://localhost:8000` no host esperando a API do NexusLocal.
 3. **Pipeline Oficial de Deploy no Host:**
-   1. **Backup & Integridade Primeiro:** Antes de qualquer `git pull`, validar e criar snapshot:
+   1. **Backup, Integridade & Arquivos WAL/SHM:** Antes de qualquer `git pull`, validar a integridade, criar snapshot e garantir que os arquivos WAL/SHM existam como arquivos (evitando que o Docker crie diretórios ao montar volumes):
       ```bash
       sqlite3 backend/nexuslocal.db "PRAGMA integrity_check;"
       cp backend/nexuslocal.db "backend/nexuslocal_backup_$(date +%Y%m%d_%H%M%S).db"
+      touch backend/nexuslocal.db-wal backend/nexuslocal.db-shm
       ```
    2. **Git Pull:** `git pull origin main`.
    3. **Rebuild dos Containers:** Reconstruir os containers sem cache para compilar o novo frontend e backend:
@@ -47,6 +48,15 @@ Este arquivo é a base de conhecimento de regras de comportamento e restrições
       docker exec nexus_backend python -c "import urllib.request; print(urllib.request.urlopen('http://localhost:8000/health').read().decode())"
       docker compose logs --tail=40 backend
       ```
+
+### D. Protocolo Obrigatório Pós-Commit/Push: Prompt Automático para o Hermes Agent
+1. **Ausência de CI/CD de Deploy Automático:** Como o deploy em produção no host não é disparado automaticamente via webhook de CI, o redeploy é executado pelo Hermes Agent no host Linux.
+2. **Geração Obrigatória do Prompt de Deploy:** Todo agente colaborador (Antigravity, Claude, etc.) que concluir um commit e push para `origin/main` deve **obrigatoriamente gerar na sua resposta final** um bloco de prompt formatado e pronto para o usuário encaminhar ao Hermes Agent.
+3. **Estrutura Padrão do Prompt de Deploy:**
+   - SHA do commit publicado e resumo da entrega.
+   - Instruções do Pipeline Oficial (integridade do SQLite, backup, `touch` dos arquivos de WAL/SHM, `git pull origin main`, rebuild `--no-cache`, recriação dos containers, health check e logs).
+   - Solicitação de teste de fumaça (smoke test) quando aplicável.
+4. **Credenciais para Testes em Produção (Vault):** O Hermes Agent pode manter a credencial de teste admin no cofre (`hermes vault add` ou Desktop → Settings → Passwords & Logins) para testes de fumaça via WebSocket/REST sem necessidade de gerar JWT manual via operador.
 
 ---
 
