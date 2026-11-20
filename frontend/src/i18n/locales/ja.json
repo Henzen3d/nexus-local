@@ -401,6 +401,8 @@
     "paidOnly": "有料モデルのみ",
     "offersFree": "無料モデルあり",
     "syncModels": "モデルを同期",
+    "activateFreeModels": "無料モデルを有効にする",
+    "freeModelsActivated": "無料モデルを有効にしました",
     "getApiKey": "+ APIキーを取得",
     "openApiKeyPage": "プロバイダーのAPIキーページを開く",
     "syncAll": "すべて同期",

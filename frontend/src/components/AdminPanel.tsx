@@ -240,9 +240,10 @@ function AdminPanelMobile() {
     setSyncing((s) => ({ ...s, [id]: true }))
     try {
       await api.syncProviderModels(id)
-      await load()
+      await Promise.all([load(), loadModels()])
     } catch (err) {
       console.error(err)
+      showToast(t('settings.syncError'), 'error')
     } finally {
       setSyncing((s) => ({ ...s, [id]: false }))
     }
@@ -251,10 +252,12 @@ function AdminPanelMobile() {
   const handleSyncAll = async () => {
     setSyncingAll(true)
     try {
-      await api.syncAllProvidersModels()
-      await load()
+      const result = await api.syncAllProvidersModels()
+      await Promise.all([load(), loadModels()])
+      if (!result.ok) showToast(t('settings.syncError'), 'error')
     } catch (err) {
       console.error(err)
+      showToast(t('settings.syncError'), 'error')
     } finally {
       setSyncingAll(false)
     }
@@ -1996,9 +1999,10 @@ function AdminPanelDesktop() {
     setSyncing((s) => ({ ...s, [id]: true }))
     try {
       await api.syncProviderModels(id)
-      await load()
+      await Promise.all([load(), loadModels()])
     } catch (err) {
       console.error(err)
+      showToast(t('settings.syncError'), 'error')
     } finally {
       setSyncing((s) => ({ ...s, [id]: false }))
     }
@@ -2007,10 +2011,12 @@ function AdminPanelDesktop() {
   const handleSyncAll = async () => {
     setSyncingAll(true)
     try {
-      await api.syncAllProvidersModels()
-      await load()
+      const result = await api.syncAllProvidersModels()
+      await Promise.all([load(), loadModels()])
+      if (!result.ok) showToast(t('settings.syncError'), 'error')
     } catch (err) {
       console.error(err)
+      showToast(t('settings.syncError'), 'error')
     } finally {
       setSyncingAll(false)
     }
@@ -2023,7 +2029,7 @@ function AdminPanelDesktop() {
       await loadModels()
       showToast(
         enabled
-          ? t('settings.allModelsActivated', { defaultValue: 'Todos os modelos foram ativados' })
+          ? t(providerId === 'openrouter' ? 'settings.freeModelsActivated' : 'settings.allModelsActivated')
           : t('settings.allModelsDeactivated', { defaultValue: 'Todos os modelos foram desativados' }),
         'success'
       )
@@ -2045,11 +2051,13 @@ function AdminPanelDesktop() {
     const isExpanded = expandedProviders[prov.id] || false
     const apiKeyUrl = getProviderApiKeyUrl(prov.id)
 
+    const isFreeModel = (model: Provider['models'][number]) => prov.id === 'openrouter'
+      ? model.confirmed_free
+      : prov.is_free || model.id.includes(':free') || model.id.includes('/free') || model.display_name.toLowerCase().includes('free')
+
     const filteredModels = prov.models.filter((m) => {
       const matchesSearch = m.display_name.toLowerCase().includes(q) || m.id.toLowerCase().includes(q)
-      const isModelFree = prov.is_free || m.id.includes(':free') || m.id.includes('/free') || m.display_name.toLowerCase().includes('free')
-      const matchesFree = !freeOnly || isModelFree
-      return matchesSearch && matchesFree
+      return matchesSearch && (!freeOnly || isFreeModel(m))
     })
 
     return (
@@ -2243,7 +2251,7 @@ function AdminPanelDesktop() {
                     color: 'var(--ink)'
                   }}
                 />
-                {!prov.is_free && prov.models.some((m) => m.id.includes(':free') || m.id.includes('/free')) && (
+                {(!prov.is_free || prov.id === 'openrouter') && prov.models.some(isFreeModel) && (
                   <button
                     onClick={() => setFreeFilters((prev) => ({ ...prev, [prov.id]: !freeOnly }))}
                     style={{
@@ -2279,7 +2287,7 @@ function AdminPanelDesktop() {
                     cursor: 'pointer'
                   }}
                 >
-                  Ativar Todos
+                  {prov.id === 'openrouter' ? t('settings.activateFreeModels') : 'Ativar Todos'}
                 </button>
                 <button
                   onClick={() => handleToggleAll(prov.id, false)}
@@ -2306,7 +2314,7 @@ function AdminPanelDesktop() {
                 </span>
               ) : (
                 filteredModels.map((m) => {
-                  const isModelFree = prov.is_free || m.id.includes(':free') || m.id.includes('/free') || m.display_name.toLowerCase().includes('free')
+                  const isModelFree = isFreeModel(m)
                   return (
                     <div key={m.id} className={`model-chip ${m.enabled ? 'enabled' : 'disabled'} ${isModelFree ? 'free-model' : ''}`}>
                       <span className="model-chip-name">{m.display_name}</span>

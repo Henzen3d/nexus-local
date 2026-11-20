@@ -1,3 +1,5 @@
+from decimal import Decimal, InvalidOperation
+
 import httpx
 from typing import List, Dict, Any, Optional
 
@@ -11,6 +13,17 @@ def vision_from_architecture(architecture) -> bool:
     if isinstance(mods, str):
         mods = [mods]
     return any(str(m).lower() == "image" for m in mods)
+
+
+def _openrouter_model_is_free(model_id: str, pricing: Any) -> bool:
+    if model_id.endswith(":free") or model_id == "openrouter/free":
+        return True
+    if not isinstance(pricing, dict) or not {"prompt", "completion"} <= pricing.keys():
+        return False
+    try:
+        return all(Decimal(str(price)).is_zero() for price in pricing.values())
+    except InvalidOperation:
+        return False
 
 
 def parse_context_length(ctx) -> int:
@@ -67,13 +80,23 @@ class ModelFetcher:
             results = []
             for m in data.get("data", []):
                 name = m.get("id")
-                ctx = m.get("context_length")
-                if name and ctx and name.endswith(":free"):
-                    results.append({
-                        "model_name": name,
-                        "context_length": int(ctx),
-                        "supports_vision": vision_from_architecture(m.get("architecture")),
-                    })
+                if not name:
+                    continue
+                endpoints = m.get("endpoints")
+                if endpoints is not None and "/api/v1/chat/completions" not in endpoints:
+                    continue
+                top_provider = m.get("top_provider") or {}
+                context = m.get("context_length") or top_provider.get("context_length")
+                context_length = parse_context_length(context)
+                results.append({
+                    "model_name": name,
+                    "display_name": m.get("name"),
+                    "context_length": context_length if context_length > 0 else 8192,
+                    "supports_vision": vision_from_architecture(m.get("architecture")),
+                    "confirmed_free": _openrouter_model_is_free(name, m.get("pricing")),
+                })
+            if not results:
+                raise ValueError("O OpenRouter retornou um catálogo de chat vazio.")
             return results
 
     @staticmethod

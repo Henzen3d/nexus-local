@@ -33,6 +33,11 @@ REASON_MISSING_KEY = "missing_key"
 REASON_UNCONFIRMED_FREE = "unconfirmed_free"
 
 
+def is_free_model(provider_id: str, confirmed_free: int, provider_is_free: int, is_local: int) -> bool:
+    """OpenRouter's free tier flag describes the provider, not its individual models."""
+    return bool(confirmed_free or is_local or (provider_is_free and provider_id != "openrouter"))
+
+
 async def load_hide_unconfirmed_flag(db: aiosqlite.Connection) -> bool:
     """Lê ``free_registry_hide_unconfirmed`` da tabela meta (padrão: True)."""
     try:

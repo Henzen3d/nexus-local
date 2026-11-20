@@ -401,6 +401,8 @@
     "paidOnly": "유료 모델만",
     "offersFree": "무료 모델 제공",
     "syncModels": "모델 동기화",
+    "activateFreeModels": "무료 모델 활성화",
+    "freeModelsActivated": "무료 모델이 활성화되었습니다",
     "getApiKey": "+ API 키 받기",
     "openApiKeyPage": "제공자 API 키 페이지 열기",
     "syncAll": "모두 동기화",

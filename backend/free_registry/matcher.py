@@ -36,7 +36,9 @@ async def match_registry_to_models(db) -> dict:
     registry_entries = [dict(zip(registry_cols, r)) for r in registry_rows]
     
     # 2. Busca todos os modelos locais do BD e provedores com tier gratuito ativo
-    async with db.execute("SELECT id, name, provider_id FROM models") as cursor:
+    async with db.execute(
+        "SELECT id, name, provider_id FROM models WHERE provider_id != 'openrouter' OR confirmed_free = 1"
+    ) as cursor:
         local_rows = await cursor.fetchall()
 
     async with db.execute("SELECT id FROM providers WHERE is_free = 1") as cursor:
@@ -113,11 +115,12 @@ async def match_registry_to_models(db) -> dict:
         if matched_model:
             local_model_id = matched_model["id"]
             
-            # Marca como confirmed_free no banco E habilita automaticamente
-            await db.execute(
-                "UPDATE models SET confirmed_free = 1, enabled = 1 WHERE id = ?",
-                (local_model_id,)
-            )
+            # OpenRouter already supplies pricing. The registry only contributes quota data.
+            if provider_id != "openrouter":
+                await db.execute(
+                    "UPDATE models SET confirmed_free = 1, enabled = 1 WHERE id = ?",
+                    (local_model_id,)
+                )
             
             # Salva no model_quota_status
             await db.execute("""

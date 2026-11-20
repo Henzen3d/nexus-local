@@ -916,6 +916,8 @@ async def load_routing_catalog(db: aiosqlite.Connection) -> List[Dict[str, Any]]
     ranking, cota e capacidades. Usa o JEV Fast Model Cache (TTL 30s); estados voláteis
     (provedor habilitado / cota) são sempre consultados em tempo real.
     """
+    from backend.ranking.availability import is_free_model
+
     global _MODEL_CACHE, _MODEL_CACHE_TIME
     now = time.monotonic()
     if _MODEL_CACHE is not None and (now - _MODEL_CACHE_TIME) < _MODEL_CACHE_TTL:
@@ -960,7 +962,7 @@ async def load_routing_catalog(db: aiosqlite.Connection) -> List[Dict[str, Any]]
                 "context_length": r[4] or 8192,
                 "confirmed_free": r[5],
                 "prov_is_free": r[6],
-                "is_free": 1 if (r[5] == 1 or r[6] == 1 or r[13] == 1) else 0,
+                "is_free": int(is_free_model(r[1], r[5], r[6], r[13])),
                 "nexuslocal_score": nexus,
                 "quality_score": quality,
                 "has_ranking": has_ranking,
@@ -1331,7 +1333,7 @@ async def route_dream_candidates(
     habilitados, cotas e exclusões), sem contaminar o catálogo global ``_MODEL_CACHE``.
     """
     from backend.ranking.failover import _usable_key_clause
-    from backend.ranking.availability import load_hide_unconfirmed_flag
+    from backend.ranking.availability import is_free_model, load_hide_unconfirmed_flag
     from backend.ranking.eligibility import is_candidate_eligible_in_memory
 
     excluded_set = {str(x) for x in (excluded_ids or ()) if x}
@@ -1442,7 +1444,7 @@ async def route_dream_candidates(
             "context_length": context_length,
             "confirmed_free": confirmed_free,
             "prov_is_free": prov_is_free,
-            "is_free": 1 if (confirmed_free == 1 or prov_is_free == 1 or is_local == 1) else 0,
+            "is_free": int(is_free_model(r[1], confirmed_free, prov_is_free, is_local)),
             "nexuslocal_score": nexus,
             "quality_score": quality,
             "has_ranking": has_ranking,

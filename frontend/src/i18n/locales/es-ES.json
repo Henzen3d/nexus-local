@@ -435,6 +435,8 @@
     "paidOnly": "Solo modelos de pago",
     "offersFree": "Ofrece modelos free",
     "syncModels": "Sincronizar modelos",
+    "activateFreeModels": "Activar modelos gratuitos",
+    "freeModelsActivated": "Modelos gratuitos activados",
     "getApiKey": "+ Obtener API Key",
     "openApiKeyPage": "Abrir página de API Key del proveedor",
     "syncAll": "Sincronizar todos",

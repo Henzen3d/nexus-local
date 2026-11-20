@@ -446,6 +446,8 @@
     "paidOnly": "Paid models only",
     "offersFree": "Offers free models",
     "syncModels": "Sync Models",
+    "activateFreeModels": "Enable free models",
+    "freeModelsActivated": "Free models enabled",
     "getApiKey": "+ Get API key",
     "openApiKeyPage": "Open the provider's API key page",
     "syncAll": "Sync all",

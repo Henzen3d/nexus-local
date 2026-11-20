@@ -401,6 +401,8 @@
     "paidOnly": "Nur kostenpflichtige Modelle",
     "offersFree": "Bietet Free-Modelle",
     "syncModels": "Modelle synchronisieren",
+    "activateFreeModels": "Kostenlose Modelle aktivieren",
+    "freeModelsActivated": "Kostenlose Modelle aktiviert",
     "getApiKey": "+ API-Schlüssel holen",
     "openApiKeyPage": "API-Schlüssel-Seite des Anbieters öffnen",
     "syncAll": "Alle synchronisieren",

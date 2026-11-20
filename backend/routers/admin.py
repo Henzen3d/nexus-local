@@ -160,7 +160,7 @@ async def sync_provider_models(provider_id: str, db, custom_api_key: str = None,
         async with db.execute("SELECT 1 FROM model_overrides WHERE model_id = ?", (db_model_id,)) as cur:
             is_overridden = await cur.fetchone() is not None
 
-        if is_overridden:
+        if is_overridden and provider_id != "openrouter":
             skipped_count += 1
             continue
 
@@ -169,7 +169,7 @@ async def sync_provider_models(provider_id: str, db, custom_api_key: str = None,
             existing = await cur.fetchone()
 
         is_auto_free = 1 if (
-            (provider_id == "openrouter" and model_name.endswith(":free"))
+            (provider_id == "openrouter" and item.get("confirmed_free", model_name.endswith(":free")))
             or provider_id in ("llm7", "agnes", "freetheai", "orcarouter")
             or (provider_id == "bynara" and model_name in ("agnes-2.5-flash", "laguna-s-2.1", "nemotron-3-ultra-free", "nemotron-3.5-lightning-free"))
         ) else 0
@@ -179,24 +179,28 @@ async def sync_provider_models(provider_id: str, db, custom_api_key: str = None,
 
         if existing:
             old_ctx, old_source, old_enabled, old_confirmed_free, old_supports_vision = existing
-            should_update_ctx = (old_ctx != context_length or old_source != 'api')
+            should_update_ctx = not is_overridden and (old_ctx != context_length or old_source != 'api')
             should_confirm_free = (is_auto_free == 1 and not old_confirmed_free)
-            should_update_vision = bool(old_supports_vision) != bool(new_sv)
-            if should_update_ctx or should_confirm_free or should_update_vision:
+            no_longer_free = provider_id == "openrouter" and old_confirmed_free and not is_auto_free
+            should_update_vision = not is_overridden and bool(old_supports_vision) != bool(new_sv)
+            if should_update_ctx or should_confirm_free or no_longer_free or should_update_vision:
                 new_ctx = context_length if should_update_ctx else old_ctx
                 new_source = 'api' if should_update_ctx else old_source
-                new_cf = 1 if (is_auto_free == 1 or old_confirmed_free) else 0
-                new_enabled = 1 if (should_confirm_free and old_enabled != 0) else old_enabled
+                new_cf = int(not no_longer_free and bool(is_auto_free or old_confirmed_free))
                 await db.execute(
                     "UPDATE models SET context_length = ?, context_source = ?, confirmed_free = ?, enabled = ?, supports_vision = ? WHERE id = ?",
-                    (new_ctx, new_source, new_cf, new_enabled, new_sv, db_model_id)
+                    (new_ctx, new_source, new_cf, 0 if no_longer_free else old_enabled,
+                     new_sv if should_update_vision else old_supports_vision, db_model_id),
                 )
+                if no_longer_free:
+                    await db.execute("UPDATE user_model_settings SET enabled = 0 WHERE model_id = ?", (db_model_id,))
+                    await db.execute("UPDATE model_quota_status SET confirmed_free = 0 WHERE model_id = ?", (db_model_id,))
                 updated_count += 1
             else:
                 skipped_count += 1
         else:
             # Insert new model!
-            display_name = derive_display_name(model_name)
+            display_name = item.get("display_name") or derive_display_name(model_name)
             await db.execute(
                 """INSERT INTO models (id, provider_id, name, display_name, context_length, context_source, enabled, confirmed_free, supports_vision, reasoning_control, reasoning_levels, reasoning_default, reasoning_control_source)
                    VALUES (?, ?, ?, ?, ?, 'api', ?, ?, ?, 'none', NULL, NULL, 'unset')""",
@@ -595,15 +599,19 @@ async def toggle_all_provider_models(provider_id: str, body: ModelToggle, curren
     db = await get_db()
     try:
         enabled_val = 1 if body.enabled else 0
+        # OpenRouter has a mixed catalog. Paid models require an individual opt-in.
+        eligible = "provider_id = ?"
+        if body.enabled and provider_id == "openrouter":
+            eligible += " AND confirmed_free = 1"
         await db.execute(
-            """INSERT INTO user_model_settings (user_id, model_id, enabled)
-               SELECT ?, id, ? FROM models WHERE provider_id = ?
+            f"""INSERT INTO user_model_settings (user_id, model_id, enabled)
+               SELECT ?, id, ? FROM models WHERE {eligible}
                ON CONFLICT(user_id, model_id) DO UPDATE SET enabled = excluded.enabled""",
             (current_user["id"], enabled_val, provider_id),
         )
         if current_user.get("role") == "admin":
             await db.execute(
-                "UPDATE models SET enabled = ? WHERE provider_id = ?",
+                f"UPDATE models SET enabled = ? WHERE {eligible}",
                 (enabled_val, provider_id),
             )
         await db.commit()
@@ -629,6 +637,7 @@ async def sync_all_providers(current_user: dict = Depends(get_current_user)):
         ) as cur:
             providers = await cur.fetchall()
             
+        failed_providers = []
         for p in providers:
             pid = p[0]
             # Tenta ler a chave do usuário para esse provider
@@ -640,8 +649,10 @@ async def sync_all_providers(current_user: dict = Depends(get_current_user)):
             
             api_key = key_row[0] if key_row else None
             if api_key:
-                await sync_provider_models(pid, db, custom_api_key=api_key)
-        return {"ok": True}
+                result = await sync_provider_models(pid, db, custom_api_key=api_key)
+                if result["errors"]:
+                    failed_providers.append(pid)
+        return {"ok": not failed_providers, "failed_providers": failed_providers}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     finally:
@@ -659,12 +670,14 @@ async def sync_provider(provider_id: str, current_user: dict = Depends(get_curre
             row = await cur.fetchone()
         
         api_key = row[0] if row else None
-        await sync_provider_models(provider_id, db, custom_api_key=api_key)
-        return {"ok": True}
+        result = await sync_provider_models(provider_id, db, custom_api_key=api_key)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         await db.close()
+    if result["errors"]:
+        raise HTTPException(status_code=502, detail="Não foi possível sincronizar o catálogo do provedor.")
+    return {"ok": True, **result}
 
 
 @router.post("/providers/{provider_id}/sync-models")

@@ -154,7 +154,7 @@ export const api = {
   syncProviderModels: (id: string) =>
     fetchJSON(`/admin/providers/${id}/sync`, { method: 'POST' }),
   syncAllProvidersModels: () =>
-    fetchJSON('/admin/providers/sync', { method: 'POST' }),
+    fetchJSON<{ ok: boolean; failed_providers?: string[] }>('/admin/providers/sync', { method: 'POST' }),
   toggleAllModels: (providerId: string, enabled: boolean) =>
     fetchJSON(`/admin/providers/${providerId}/models/toggle`, {
       method: 'POST',

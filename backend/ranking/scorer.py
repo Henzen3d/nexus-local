@@ -298,6 +298,7 @@ async def build_ranking_overview(
         USABLE_KEY_CONDITION_SQL,
         load_hide_unconfirmed_flag,
         unavailability_reason,
+        is_free_model,
     )
     from backend.ranking.model_profile import profile_model
     from backend.ranking.sources import SOURCE_HEURISTIC, SOURCE_LEGACY_RANDOM
@@ -386,7 +387,7 @@ async def build_ranking_overview(
                 display_name=display_name or name or model_id,
                 provider_id=provider_id,
                 provider_name=provider_name or provider_id,
-                is_free=bool(int(confirmed_free or 0) or int(prov_is_free or 0) or int(prov_is_local or 0)),
+                is_free=is_free_model(provider_id, confirmed_free, prov_is_free, prov_is_local),
                 is_local=bool(int(prov_is_local or 0)),
                 available=reason is None,
                 unavailable_reason=reason,
