@@ -14,16 +14,19 @@ import time
 from typing import Any, List
 
 from backend.logging_config import get_logger
-from backend.memory import build_memory_block, build_memory_fingerprint
+from backend.memory import build_memory_block_with_meta, build_memory_fingerprint
 from backend.database import (
+    DB_PATH,
     get_user_profile,
     get_relevant_memory,
     get_memory_context_metadata,
 )
 
+import aiosqlite
 import re
 
 logger = get_logger(__name__)
+_UNSET = object()
 
 
 def clean_model_display_name(display_name: str | None, provider: str | None = None) -> str:
@@ -208,6 +211,48 @@ def build_composed_system_prompt(
 
 
 
+async def resolve_canonical_project_id(
+    db,
+    conversation_id: str | None,
+    request_project_id: str | None,
+    user_id: str,
+) -> str | None:
+    """Resolve o project_id canônico ativo e pertencente ao usuário antes da recuperação."""
+    active_project_id: str | None = None
+    try:
+        if conversation_id:
+            async with db.execute(
+                """SELECT p.id
+                   FROM conversations c
+                   INNER JOIN projects p ON p.id = c.project_id
+                   WHERE c.id = ? AND c.user_id = ? AND p.user_id = ? AND p.archived = 0""",
+                (conversation_id, user_id, user_id),
+            ) as cur:
+                prow = await cur.fetchone()
+                active_project_id = prow[0] if prow and prow[0] else None
+
+        if not active_project_id and request_project_id:
+            async with db.execute(
+                "SELECT id FROM projects WHERE id = ? AND user_id = ? AND archived = 0",
+                (request_project_id, user_id),
+            ) as cur:
+                if await cur.fetchone():
+                    if conversation_id:
+                        await db.execute(
+                            "UPDATE conversations SET project_id = ? WHERE id = ? AND user_id = ?",
+                            (request_project_id, conversation_id, user_id),
+                        )
+                        await db.commit()
+                    active_project_id = request_project_id
+    except Exception as e:
+        logger.warning(
+            "failed to resolve project_id (%s)",
+            type(e).__name__,
+            extra={"conversation_id": conversation_id},
+        )
+    return active_project_id
+
+
 async def build_memory_context(
     user: dict | None,
     conversation_id: str,
@@ -218,16 +263,26 @@ async def build_memory_context(
     request_context: Any | None = None,
     *,
     may_use_external_fallback: bool = False,
+    active_project_id: Any = _UNSET,
 ) -> tuple[str, str]:
-    """Carrega perfil + memórias e retorna (memory_text, fingerprint).
-
-    Substitui os itens 9 do AUDIT-REPORT (linhas 611-665 do chat.py original).
-    Reutiliza embeddings em RAM se request_context for fornecido (JEV Fast).
-    """
+    """Carrega perfil + memórias isoladas pelo projeto ativo e retorna (memory_text, fingerprint)."""
     if not user or "id" not in user or not use_memory:
         return "", "nomem"
 
     user_id = user["id"]
+
+    resolved_project_id: str | None = None
+    if active_project_id is _UNSET:
+        if conversation_id:
+            try:
+                async with aiosqlite.connect(DB_PATH, timeout=5.0) as scope_db:
+                    resolved_project_id = await resolve_canonical_project_id(
+                        scope_db, conversation_id, None, user_id
+                    )
+            except Exception:
+                resolved_project_id = None
+    else:
+        resolved_project_id = active_project_id
 
     try:
         profile = await get_user_profile(user_id)
@@ -253,17 +308,29 @@ async def build_memory_context(
                     )
             except Exception as rep_err:
                 logger.warning(
-                    "memory repair (injection-time) failed",
-                    exc_info=rep_err,
+                    "memory repair (injection-time) failed (%s)",
+                    type(rep_err).__name__,
                     extra={"conversation_id": conversation_id, "user_id": user_id},
                 )
 
             async def _fetch_relevant_memory():
                 t0 = time.perf_counter()
                 try:
-                    return await get_relevant_memory(
-                        user_id, user_message or "", limit=30, request_context=request_context
-                    )
+                    try:
+                        return await get_relevant_memory(
+                            user_id,
+                            user_message or "",
+                            limit=30,
+                            request_context=request_context,
+                            project_id=resolved_project_id,
+                        )
+                    except TypeError:
+                        return await get_relevant_memory(
+                            user_id,
+                            user_message or "",
+                            limit=30,
+                            request_context=request_context,
+                        )
                 finally:
                     if request_context and hasattr(request_context, "record_phase"):
                         request_context.record_phase("memory_relevance", t0)
@@ -271,7 +338,14 @@ async def build_memory_context(
             async def _fetch_memory_metadata():
                 t0 = time.perf_counter()
                 try:
-                    return await get_memory_context_metadata(user_id, conversation_id)
+                    try:
+                        return await get_memory_context_metadata(
+                            user_id,
+                            conversation_id,
+                            project_id=resolved_project_id,
+                        )
+                    except TypeError:
+                        return await get_memory_context_metadata(user_id, conversation_id)
                 finally:
                     if request_context and hasattr(request_context, "record_phase"):
                         request_context.record_phase("db_memory_metadata", t0)
@@ -315,19 +389,25 @@ async def build_memory_context(
             global_sum = project_sum = None
 
         summaries = [s for s in (global_sum, project_sum) if s]
-        mem_text = build_memory_block(
+        mem_text, used_facts = build_memory_block_with_meta(
             mem_rows,
             profile=profile,
             global_summary=global_sum,
             project_summary=project_sum,
         )
+        if request_context and hasattr(request_context, "set_memo"):
+            request_context.set_memo("memory_used", used_facts)
+            request_context.set_memo("memory_none_relevant", bool(mem_enabled and not used_facts))
+            request_context.set_memo("memory_scope_project_id", resolved_project_id)
         fingerprint = build_memory_fingerprint(mem_rows, profile=profile, summaries=summaries)
+        if resolved_project_id:
+            fingerprint = f"{fingerprint}:p:{resolved_project_id}"
         return mem_text, fingerprint
 
     except Exception as mem_err:
         logger.error(
-            "failed to load memories/profile for context injection",
-            exc_info=mem_err,
+            "failed to load memories/profile for context injection (%s)",
+            type(mem_err).__name__,
             extra={"conversation_id": conversation_id, "user_id": user_id},
         )
         return "", ""
@@ -348,45 +428,16 @@ async def resolve_project_context(
     user_mem_text: str,
     request_context: Any | None = None,
     now: Any | None = None,
+    *,
+    resolved_project_id: Any = _UNSET,
 ) -> tuple[str | None, str]:
-    """Resolve o project_id ativo e, se houver, constrói o context RAG.
-
-    Retorna (active_project_id, system_instruction).
-
-    Substitui o item 10 do AUDIT-REPORT (linhas 677-806 do chat.py original).
-    """
-    active_project_id = None
-
-    try:
-        # Valida associação existente via JOIN garantindo mesmo dono e projeto ativo (T3.2).
-        async with db.execute(
-            """SELECT p.id
-               FROM conversations c
-               INNER JOIN projects p ON p.id = c.project_id
-               WHERE c.id = ? AND c.user_id = ? AND p.user_id = ? AND p.archived = 0""",
-            (conversation_id, user["id"], user["id"]),
-        ) as cur:
-            prow = await cur.fetchone()
-            active_project_id = prow[0] if prow and prow[0] else None
-
-        if not active_project_id and request_project_id:
-            async with db.execute(
-                "SELECT id FROM projects WHERE id = ? AND user_id = ? AND archived = 0",
-                (request_project_id, user["id"]),
-            ) as cur:
-                if await cur.fetchone():
-                    await db.execute(
-                        "UPDATE conversations SET project_id = ? WHERE id = ? AND user_id = ?",
-                        (request_project_id, conversation_id, user["id"]),
-                    )
-                    await db.commit()
-                    active_project_id = request_project_id
-    except Exception as e:
-        logger.warning(
-            "failed to resolve project_id",
-            exc_info=e,
-            extra={"conversation_id": conversation_id},
+    """Resolve o project_id ativo e, se houver, constrói o context RAG."""
+    if resolved_project_id is _UNSET:
+        active_project_id = await resolve_canonical_project_id(
+            db, conversation_id, request_project_id, user["id"]
         )
+    else:
+        active_project_id = resolved_project_id
 
     # Resolução de nomes do modelo e provedor para transparência de identidade
     model_disp = model_id

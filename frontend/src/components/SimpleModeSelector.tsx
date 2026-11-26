@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { Zap, Brain, ChevronDown, Check } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useStore } from '../store/useStore'
+import { hasEligibleRoute } from '../lib/modelSelection'
 import './SimpleModeSelector.css'
 
 interface SimpleModeSelectorProps {
@@ -11,9 +12,15 @@ interface SimpleModeSelectorProps {
 
 export function SimpleModeSelector({ compact = false, className = '' }: SimpleModeSelectorProps) {
   const { t } = useTranslation()
-  const { simpleSpeed, setSimpleSpeed, isStreaming } = useStore()
+  const { simpleSpeed, setSimpleSpeed, isStreaming, models, modelsStatus, loadModels } = useStore()
   const [open, setOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (modelsStatus === 'idle') {
+      void loadModels()
+    }
+  }, [modelsStatus, loadModels])
 
   useEffect(() => {
     if (!open) return
@@ -39,6 +46,10 @@ export function SimpleModeSelector({ compact = false, className = '' }: SimpleMo
     ? t('chat.simpleFast', { defaultValue: 'Rápido' })
     : t('chat.simpleThink', { defaultValue: 'Pensativo' })
   const CurrentIcon = isFast ? Zap : Brain
+  const routeUnavailable =
+    modelsStatus === 'empty' ||
+    modelsStatus === 'error' ||
+    (modelsStatus === 'ready' && !hasEligibleRoute(models))
 
   const handleSelect = (speed: 'fast' | 'think') => {
     setSimpleSpeed(speed)
@@ -49,12 +60,13 @@ export function SimpleModeSelector({ compact = false, className = '' }: SimpleMo
     <div className={`simple-mode-container ${className}`} ref={menuRef}>
       <button
         type="button"
-        className={`simple-mode-trigger ${compact ? 'compact' : ''} ${open ? 'open' : ''}`}
+        className={`simple-mode-trigger ${compact ? 'compact' : ''} ${open ? 'open' : ''} ${routeUnavailable ? 'unavailable' : ''}`}
         onClick={() => setOpen((prev) => !prev)}
         disabled={isStreaming}
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label={t('chat.modeSelect', { defaultValue: `Modo do modelo: ${currentLabel}` })}
+        aria-label={t('chat.modeSelect', { label: currentLabel, defaultValue: 'Modo do modelo: {{label}}' })}
+        title={routeUnavailable ? t('chat.noRouteShort', { defaultValue: 'Sem rota de modelo configurada' }) : undefined}
       >
         <span className="simple-mode-trigger-icon" aria-hidden="true">
           <CurrentIcon size={compact ? 13 : 14} />

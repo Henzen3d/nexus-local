@@ -125,6 +125,7 @@ function useEdgeSwipeOpenSidebar() {
 }
 
 export default function App() {
+  const { t } = useTranslation()
   const previousView = useStore((s) => s.previousView || 'chat')
   const isMobile = useIsMobile()
   const sidebarOpen = useStore((s) => s.sidebarOpen)
@@ -161,6 +162,8 @@ export default function App() {
   useEffect(() => {
     if (token) {
       hydrateProfileFromServer()
+      void useStore.getState().loadModels()
+      void useStore.getState().reconcilePendingTurn()
       loadTtsPrefs().catch(() => {})
       // Intelligent UI: flag e hosts de imagem vêm do servidor (painel > .env)
       useStore.getState().loadIntelligentUiConfig()
@@ -215,6 +218,23 @@ export default function App() {
     document.documentElement.setAttribute('data-chat-font', chatFont)
   }, [chatFont])
 
+  useEffect(() => {
+    if (!token) return
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === '/') {
+        e.preventDefault()
+        if (useStore.getState().view !== 'chat') {
+          useStore.getState().setView('chat')
+        }
+        window.setTimeout(() => {
+          document.getElementById('composer-input')?.focus()
+        }, 0)
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [token])
+
   useOnlineStatus()
 
   if (!token) {
@@ -233,6 +253,19 @@ export default function App() {
 
   return (
     <ChatProvider>
+      <a
+        href="#composer-input"
+        className="skip-to-composer"
+        onClick={(e) => {
+          e.preventDefault()
+          if (view !== 'chat') setView('chat')
+          window.setTimeout(() => {
+            document.getElementById('composer-input')?.focus()
+          }, 0)
+        }}
+      >
+        {t('chat.skipToComposer', { defaultValue: 'Ir para o campo de mensagem (Ctrl+/)' })}
+      </a>
       <OfflineBanner />
       {/* Overlay outside grid so it never steals a column */}
       <div

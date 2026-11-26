@@ -376,6 +376,10 @@ async def stream_from_llm(
         reason: str = "provider_error",
         outcome: Literal["error", "empty", "timeout", "cancelled"] = "error",
     ) -> None:
+        if request_context and hasattr(request_context, "set_memo"):
+            request_context.set_memo("turn_failure_reason", reason)
+            request_context.set_memo("turn_failure_message", message)
+            request_context.set_memo("turn_disconnect_status", "failed")
         await send_and_persist_error(
             ws, db, conversation_id, message, cascade_history, model, provider,
             turn_id=turn_id, reason=reason, outcome=outcome,
@@ -680,13 +684,36 @@ async def stream_from_llm(
                 local_response = ""
                 token_buffer: list[str] = []
                 last_flush_mono = stream_start_mono
+                last_partial_persist_mono = stream_start_mono
+
+                def _record_partial_memo() -> None:
+                    if request_context and hasattr(request_context, "set_memo") and local_committed and local_response:
+                        request_context.set_memo("latest_partial_response", local_response)
 
                 async def flush_tokens():
-                    nonlocal last_flush_mono, tokens_flushed_to_client, client_ttft_recorded
+                    nonlocal last_flush_mono, last_partial_persist_mono, tokens_flushed_to_client, client_ttft_recorded
                     nonlocal local_first_frame_sent_mono, turn_first_send_ms, turn_precommit_hold_ms
                     nonlocal turn_failover_recovery_ms
                     if token_buffer:
                         batch_text = "".join(token_buffer)
+                        _record_partial_memo()
+                        now_mono = time.monotonic()
+                        if (
+                            request_context
+                            and hasattr(request_context, "get_memo")
+                            and (now_mono - last_partial_persist_mono) >= 1.2
+                        ):
+                            last_partial_persist_mono = now_mono
+                            req_id_memo = request_context.get_memo("request_id")
+                            uid_memo = request_context.get_memo("user_id")
+                            if req_id_memo and uid_memo:
+                                try:
+                                    from backend.database import save_chat_turn_partial
+                                    asyncio.create_task(
+                                        save_chat_turn_partial(uid_memo, req_id_memo, local_response)
+                                    )
+                                except Exception:
+                                    pass
                         await ws.send_json(
                             dump_ws_event(
                                 StreamTokenEvent(
@@ -696,9 +723,8 @@ async def stream_from_llm(
                                 )
                             )
                         )
-                        now_mono = time.monotonic()
                         token_buffer.clear()
-                        last_flush_mono = now_mono
+                        last_flush_mono = time.monotonic()
                         tokens_flushed_to_client = True
                         if local_first_frame_sent_mono is None:
                             local_first_frame_sent_mono = now_mono
@@ -900,6 +926,7 @@ async def stream_from_llm(
                         except BaseException:
                             pass
                     await _cancel_and_drain_pending()
+                    _record_partial_memo()
                     if not local_committed:
                         precommit_buffer.clear()
                         token_buffer.clear()
@@ -1177,12 +1204,16 @@ async def stream_from_llm(
                 "Streaming cancelado pelo cliente/sistema no modelo '%s' (provedor '%s'). Limpando recursos e propagando cancelamento sem failover.",
                 current_model_id, current_provider_id,
             )
+            if request_context and hasattr(request_context, "set_memo"):
+                request_context.set_memo("turn_disconnect_status", "stopped")
             raise
         except (WebSocketDisconnect, ConnectionResetError, BrokenPipeError) as ws_err:
             logger.info(
                 "Conexão do cliente perdida durante streaming no modelo '%s' (provedor '%s'): %s. Encerrando sem penalizar modelo nem failover.",
                 current_model_id, current_provider_id, ws_err,
             )
+            if request_context and hasattr(request_context, "set_memo"):
+                request_context.set_memo("turn_disconnect_status", "incomplete")
             return None
         except RateLimitError as e:
             next_failover_reason = getattr(e, "failover_reason", None) or "rate_limit"

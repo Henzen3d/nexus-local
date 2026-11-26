@@ -14,7 +14,8 @@ import {
 } from './sanitization.ts'
 
 const TURN_PROGRESS_TYPES = new Set<WSMessage['type']>([
-  'stream_start', 'stream_clear', 'token', 'ui_progress', 'search_start',
+  'request_ack', 'stream_start', 'stream_clear', 'token', 'ui_progress', 'search_start',
+  'tool_executing', 'tool_executed', 'tool_failed',
   'process_step_start', 'process_step_update', 'process_step_end',
   'auto_route_decision', 'triage_decision', 'failover_notice', 'history_trimmed',
   'effort_dropped', 'image_pending', 'fusion_start', 'fusion_phase', 'fusion_status',
@@ -29,7 +30,11 @@ const KNOWN_TYPES = new Set([
   'ready',
   'ping',
   'pong',
+  'request_ack',
   'conversation_created',
+  'tool_executing',
+  'tool_executed',
+  'tool_failed',
   'stream_start',
   'stream_clear',
   'token',
@@ -162,6 +167,51 @@ export function decodeChatFrame(raw: string): WSMessage | null {
     case 'pong':
       return { type }
 
+    case 'request_ack':
+      if (!nonEmptyString(obj.conversation_id) || !nonEmptyString(obj.user_message_id)) return null
+      return {
+        type: 'request_ack',
+        request_id: optionalString(obj.request_id) ?? null,
+        conversation_id: obj.conversation_id,
+        user_message_id: obj.user_message_id,
+        turn_id: optionalString(obj.turn_id) ?? null,
+        project_id: typeof obj.project_id === 'string' ? obj.project_id : null,
+        status: optionalString(obj.status),
+      }
+
+    case 'tool_executing':
+      if (!nonEmptyString(obj.family)) return null
+      return {
+        type: 'tool_executing',
+        family: obj.family,
+        action: optionalString(obj.action),
+        turn_id: optionalString(obj.turn_id) ?? null,
+        conversation_id: optionalString(obj.conversation_id) ?? null,
+      }
+
+    case 'tool_executed':
+      if (!nonEmptyString(obj.family)) return null
+      return {
+        type: 'tool_executed',
+        family: obj.family,
+        provider: optionalString(obj.provider),
+        cached: optionalBoolean(obj.cached),
+        fallback: optionalBoolean(obj.fallback),
+        source_count: optionalNumber(obj.source_count),
+        turn_id: optionalString(obj.turn_id) ?? null,
+        conversation_id: optionalString(obj.conversation_id) ?? null,
+      }
+
+    case 'tool_failed':
+      if (!nonEmptyString(obj.family)) return null
+      return {
+        type: 'tool_failed',
+        family: obj.family,
+        error: typeof obj.error === 'string' ? obj.error : 'tool_error',
+        turn_id: optionalString(obj.turn_id) ?? null,
+        conversation_id: optionalString(obj.conversation_id) ?? null,
+      }
+
     case 'conversation_created':
       if (!nonEmptyString(obj.conversation_id)) return null
       return {
@@ -250,6 +300,12 @@ export function decodeChatFrame(raw: string): WSMessage | null {
           artifacts: Array.isArray(obj.artifacts) ? obj.artifacts.filter(artifact) : undefined,
           relay_used: optionalBoolean(obj.relay_used),
           relay_model: optionalString(obj.relay_model),
+          relay_status: optionalString(obj.relay_status),
+          memory_used: Array.isArray(obj.memory_used)
+            ? (obj.memory_used.filter((item) => objectRecord(item) && nonEmptyString(item.fact)) as StreamEndSuccessMessage['memory_used'])
+            : undefined,
+          memory_none_relevant: optionalBoolean(obj.memory_none_relevant),
+          turn_status: optionalString(obj.turn_status),
           web_search_used: optionalBoolean(obj.web_search_used),
           web_search_query: optionalString(obj.web_search_query),
           web_search_sources: Array.isArray(obj.web_search_sources) ? obj.web_search_sources.filter(searchSource) : undefined,
@@ -296,6 +352,9 @@ export function decodeChatFrame(raw: string): WSMessage | null {
         conversation_id: optionalString(obj.conversation_id) ?? null,
         turn_id: optionalString(obj.turn_id) ?? null,
         message: typeof obj.message === 'string' ? sanitizeErrorText(obj.message) : undefined,
+        request_id: optionalString(obj.request_id) ?? null,
+        turn_status: optionalString(obj.turn_status) ?? null,
+        partial_content: typeof obj.partial_content === 'string' ? obj.partial_content : null,
       }
     }
 

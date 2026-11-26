@@ -1385,8 +1385,11 @@ def validate_envelope(
                     if not valid:
                         f["value"] = "—"
 
-    # Se houver um clarification válido e um follow_up no mesmo envelope, exibir só o quadro.
+    # Regra de card único de continuidade: `clarification` > `options` > `follow_up`.
+    # Nunca empilha dois quadros interativos de continuidade na mesma resposta.
     if any(b["type"] == "clarification" for b in clean_blocks):
+        clean_blocks = [b for b in clean_blocks if b["type"] not in ("follow_up", "options")]
+    elif any(b["type"] == "options" for b in clean_blocks):
         clean_blocks = [b for b in clean_blocks if b["type"] != "follow_up"]
 
     # `follow_up` é sempre o último bloco (plano 12 §2.3): se veio antes, vai para o fim.

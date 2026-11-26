@@ -360,7 +360,7 @@ export function ConversationsPanel() {
                       if (isSelectMode) {
                         toggleSelect(c.id)
                       } else {
-                        loadConversation(c.id)
+                        loadConversation(c.id, c.matched_message_id)
                         if (window.innerWidth <= 768) setSidebarOpen(false)
                       }
                     }}
@@ -380,6 +380,11 @@ export function ConversationsPanel() {
                         <span className="row-conversation-title" title={c.title}>
                           {c.title}
                         </span>
+                        {c.project_name && (
+                          <span className="row-project-badge" title={c.project_name}>
+                            {c.project_name}
+                          </span>
+                        )}
                         {c.is_favorite && (
                           <Star size={11} className="fill-amber-500 text-amber-500" />
                         )}
@@ -393,6 +398,11 @@ export function ConversationsPanel() {
                           </span>
                         ) : null}
                       </div>
+                      {search.trim() && c.matched_snippet && (
+                        <span className="row-search-snippet" title={c.matched_snippet}>
+                          {c.matched_snippet}
+                        </span>
+                      )}
                       <span className="row-conversation-meta">
                         {capitalizedTime}
                       </span>

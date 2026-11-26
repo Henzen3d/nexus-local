@@ -76,15 +76,20 @@ export const api = {
     method: 'POST', body: JSON.stringify({ message_id: messageId }),
   }),
   // Conversations
-  getConversations: (search?: string, filter?: string, page = 1, limit = 100) => {
+  getConversations: (search?: string, filter?: string, page = 1, limit = 100, projectId?: string) => {
     const params = new URLSearchParams()
     if (search) params.append('search', search)
     if (filter) params.append('filter', filter)
+    if (projectId) params.append('project_id', projectId)
     params.append('page', page.toString())
     params.append('limit', limit.toString())
     return fetchJSON<Conversation[]>(`/conversations?${params.toString()}`)
   },
-  getConversation: (id: string) => fetchJSON<ConversationDetail>(`/conversations/${id}`),
+  getConversation: (id: string) => fetchJSON<import('../types').ConversationDetail>(`/conversations/${id}`),
+  getTurnStatus: (requestId: string) =>
+    fetchJSON<import('../types').TurnStatusResponse>(
+      `/conversations/turn-status?request_id=${encodeURIComponent(requestId)}`
+    ),
   favoriteConversation: (id: string) =>
     fetchJSON<{ ok: boolean; is_favorite: boolean }>(`/conversations/${id}/favorite`, {
       method: 'PATCH',
@@ -152,7 +157,10 @@ export const api = {
       method: 'POST',
     }),
   syncProviderModels: (id: string) =>
-    fetchJSON(`/admin/providers/${id}/sync`, { method: 'POST' }),
+    fetchJSON<{ ok: boolean; updated?: number; skipped?: number; sync_report?: import('../types').SyncReport }>(
+      `/admin/providers/${id}/sync`,
+      { method: 'POST' }
+    ),
   syncAllProvidersModels: () =>
     fetchJSON<{ ok: boolean; failed_providers?: string[] }>('/admin/providers/sync', { method: 'POST' }),
   toggleAllModels: (providerId: string, enabled: boolean) =>
@@ -449,6 +457,11 @@ export const api = {
   updateMemoryFact: (id: string, data: { fact: string; category?: string }) =>
     fetchJSON<{ status: string; fact: any }>(`/memory/facts/${id}`, {
       method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+  updateMemoryFactScope: (id: string, data: { scope: 'global' | 'project'; project_id?: string | null }) =>
+    fetchJSON<{ status: string; fact: any }>(`/memory/facts/${id}/scope`, {
+      method: 'PATCH',
       body: JSON.stringify(data),
     }),
   exportMemoryBundle: () => fetchJSON<any>('/memory/export-bundle'),

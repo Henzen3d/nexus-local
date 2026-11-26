@@ -15,11 +15,15 @@ test('useChat handlers intermediários nunca encerram o turno (isGeneratingRef p
   )
 
   const intermediateCases = [
+    'request_ack',
     'stream_start',
     'stream_clear',
     'token',
     'ui_progress',
     'search_start',
+    'tool_executing',
+    'tool_executed',
+    'tool_failed',
     'process_step_start',
     'process_step_update',
     'process_step_end',
@@ -71,6 +75,26 @@ test('Os 4 encerramentos permitidos centralizam descarte do rascunho e finalizam
   // 4. stopStream
   const stopStreamMatch = source.match(/const stopStream = useCallback\(\(\) => {[\s\S]*?isGeneratingRef\.current = false[\s\S]*?flushStreamDraft\(\)/)
   assert.ok(stopStreamMatch, 'stopStream explícito deve dar flush síncrono e encerrar isGeneratingRef')
+})
+
+test('decodeChatFrame aceita frames request_ack e tool_* verificáveis', () => {
+  const ack = decodeChatFrame(JSON.stringify({
+    type: 'request_ack',
+    request_id: 'req-1',
+    conversation_id: 'conv-1',
+    user_message_id: 'msg-1',
+    status: 'streaming',
+  }))
+  assert.ok(ack && ack.type === 'request_ack')
+
+  const execing = decodeChatFrame(JSON.stringify({ type: 'tool_executing', family: 'weather', action: 'current' }))
+  assert.ok(execing && execing.type === 'tool_executing')
+
+  const execed = decodeChatFrame(JSON.stringify({ type: 'tool_executed', family: 'weather', provider: 'open-meteo', cached: true, fallback: false }))
+  assert.ok(execed && execed.type === 'tool_executed' && execed.cached === true)
+
+  const failed = decodeChatFrame(JSON.stringify({ type: 'tool_failed', family: 'weather', error: 'timeout' }))
+  assert.ok(failed && failed.type === 'tool_failed' && failed.family === 'weather')
 })
 
 test('clearStreamDraft zera streamingContent e streamingUiBlocks sem criar mensagem prematura', () => {

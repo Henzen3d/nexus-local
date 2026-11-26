@@ -71,12 +71,19 @@ async def sync_provider_models(provider_id: str, db, custom_api_key: str = None,
 
     # 1. Fetch models from provider
     models_fetched = []
+    fetch_stats: dict = {}
     error_msg = None
     try:
         if provider_id == "groq":
-            models_fetched = await ModelFetcher.fetch_groq(api_key)
+            try:
+                models_fetched = await ModelFetcher.fetch_groq(api_key, stats_out=fetch_stats)
+            except TypeError:
+                models_fetched = await ModelFetcher.fetch_groq(api_key)
         elif provider_id == "openrouter":
-            models_fetched = await ModelFetcher.fetch_openrouter(api_key)
+            try:
+                models_fetched = await ModelFetcher.fetch_openrouter(api_key, stats_out=fetch_stats)
+            except TypeError:
+                models_fetched = await ModelFetcher.fetch_openrouter(api_key)
         elif provider_id == "gemini":
             models_fetched = await ModelFetcher.fetch_gemini(api_key)
         elif provider_id == "cerebras":
@@ -114,7 +121,10 @@ async def sync_provider_models(provider_id: str, db, custom_api_key: str = None,
 
     # 3. Update database models
     updated_count = 0
+    inserted_count = 0
     skipped_count = 0
+    overridden_skipped = 0
+    no_longer_free_count = 0
     synced_ids = []
 
     # Load context registry for fallback values
@@ -162,6 +172,7 @@ async def sync_provider_models(provider_id: str, db, custom_api_key: str = None,
 
         if is_overridden and provider_id != "openrouter":
             skipped_count += 1
+            overridden_skipped += 1
             continue
 
         # Get existing model details to see if context changed
@@ -195,6 +206,7 @@ async def sync_provider_models(provider_id: str, db, custom_api_key: str = None,
                 if no_longer_free:
                     await db.execute("UPDATE user_model_settings SET enabled = 0 WHERE model_id = ?", (db_model_id,))
                     await db.execute("UPDATE model_quota_status SET confirmed_free = 0 WHERE model_id = ?", (db_model_id,))
+                    no_longer_free_count += 1
                 updated_count += 1
             else:
                 skipped_count += 1
@@ -207,6 +219,7 @@ async def sync_provider_models(provider_id: str, db, custom_api_key: str = None,
                 (db_model_id, provider_id, model_name, display_name, context_length, is_auto_free, is_auto_free, 1 if fetched_supports_vision else 0)
             )
             updated_count += 1
+            inserted_count += 1
 
     # Executa o matching do registry para auto-habilitar modelos recém-sincronizados que sejam confirmados como free
     from backend.free_registry.matcher import match_registry_to_models
@@ -214,16 +227,44 @@ async def sync_provider_models(provider_id: str, db, custom_api_key: str = None,
 
     # Disables models that are NOT returned by the API (excluding overridden ones)
     # This runs AFTER match_registry to guarantee dead models (e.g. 404 models) stay disabled.
+    removed_from_remote_count = 0
     if synced_ids:
         placeholders = ",".join("?" for _ in synced_ids)
-        await db.execute(
+        cur_rm = await db.execute(
             f"""UPDATE models 
                SET enabled = 0 
                WHERE provider_id = ? 
+                 AND enabled != 0
                  AND id NOT IN ({placeholders}) 
                  AND id NOT IN (SELECT model_id FROM model_overrides)""",
             [provider_id] + synced_ids,
         )
+        removed_from_remote_count = max(0, int(cur_rm.rowcount or 0))
+
+    async with db.execute(
+        "SELECT COUNT(*) FROM models WHERE provider_id = ? AND enabled = 1",
+        (provider_id,),
+    ) as cnt_cur:
+        cnt_row = await cnt_cur.fetchone()
+        active_enabled_count = int(cnt_row[0] or 0) if cnt_row else 0
+
+    sync_report = {
+        "provider_id": provider_id,
+        "remote_total": int(fetch_stats.get("remote_total", len(models_fetched))),
+        "chat_eligible_count": len(models_fetched),
+        "imported_or_updated": updated_count,
+        "inserted": inserted_count,
+        "skipped_unchanged": skipped_count,
+        "active_enabled_count": active_enabled_count,
+        "excluded": {
+            "non_chat_endpoint": int(fetch_stats.get("excluded_non_chat", 0)),
+            "inactive": int(fetch_stats.get("excluded_inactive", 0)),
+            "paid_or_not_free": int(fetch_stats.get("paid_count", 0)) if provider_id == "openrouter" else 0,
+            "no_longer_free": no_longer_free_count,
+            "removed_from_remote": removed_from_remote_count,
+            "overridden_skipped": overridden_skipped,
+        },
+    }
 
     # Record sync log success
     await db.execute(
@@ -231,12 +272,19 @@ async def sync_provider_models(provider_id: str, db, custom_api_key: str = None,
            VALUES (?, ?, datetime('now'), ?, ?)""",
         (log_id, provider_id, updated_count, status_str)
     )
-    # Update last sync time in meta table
+    # Update last sync time & structured report in meta table
     import datetime as _dt
     await db.execute(
         "INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)",
         (f"last_sync_{provider_id}", _dt.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"))
     )
+    try:
+        await db.execute(
+            "INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)",
+            (f"last_sync_report_{provider_id}", json.dumps(sync_report, ensure_ascii=False)),
+        )
+    except Exception:
+        pass
 
     # Semeia model_rankings para modelos novos com qualidade DETERMINÍSTICA
     # (curadoria local ou heurística de família — a mesma base do roteador).
@@ -260,7 +308,7 @@ async def sync_provider_models(provider_id: str, db, custom_api_key: str = None,
         invalidate_model_cache()
     except Exception:
         pass
-    return {"updated": updated_count, "skipped": skipped_count, "errors": []}
+    return {"updated": updated_count, "skipped": skipped_count, "errors": [], "sync_report": sync_report}
 
 
 
@@ -294,6 +342,23 @@ async def list_providers(current_user: dict = Depends(get_current_user)):
             (current_user["id"], current_user["id"]),
         ) as cur:
             providers = await cur.fetchall()
+
+        sync_meta_at: dict[str, str] = {}
+        sync_meta_reports: dict[str, dict] = {}
+        try:
+            async with db.execute("SELECT key, value FROM meta WHERE key LIKE 'last_sync_%'") as cur:
+                for m_key, m_val in await cur.fetchall():
+                    if m_key.startswith("last_sync_report_") and m_val:
+                        pid_k = m_key[len("last_sync_report_"):]
+                        try:
+                            sync_meta_reports[pid_k] = json.loads(m_val)
+                        except Exception:
+                            pass
+                    elif m_key.startswith("last_sync_") and m_val:
+                        pid_k = m_key[len("last_sync_"):]
+                        sync_meta_at[pid_k] = m_val
+        except Exception:
+            pass
 
         result = []
         for p in providers:
@@ -347,6 +412,8 @@ async def list_providers(current_user: dict = Depends(get_current_user)):
                 "enabled": bool(p[4]),
                 "is_free": bool(p[5]),
                 "masked_key": masked_key,
+                "last_sync_at": sync_meta_at.get(pid),
+                "last_sync_report": sync_meta_reports.get(pid),
                 "models": [
                     {
                         "id": m[0],
@@ -411,6 +478,23 @@ async def list_all_models(current_user: dict = Depends(get_current_user)):
         async with db.execute(query, (current_user["id"], current_user["id"], current_user["id"])) as cur:
             rows = await cur.fetchall()
             
+        sync_meta_at: dict[str, str] = {}
+        sync_meta_reports: dict[str, dict] = {}
+        try:
+            async with db.execute("SELECT key, value FROM meta WHERE key LIKE 'last_sync_%'") as cur:
+                for m_key, m_val in await cur.fetchall():
+                    if m_key.startswith("last_sync_report_") and m_val:
+                        pid_k = m_key[len("last_sync_report_"):]
+                        try:
+                            sync_meta_reports[pid_k] = json.loads(m_val)
+                        except Exception:
+                            pass
+                    elif m_key.startswith("last_sync_") and m_val:
+                        pid_k = m_key[len("last_sync_"):]
+                        sync_meta_at[pid_k] = m_val
+        except Exception:
+            pass
+
         result = []
         for r in rows:
             confirmed_free = bool(r[14])

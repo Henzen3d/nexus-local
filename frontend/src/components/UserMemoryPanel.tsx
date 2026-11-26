@@ -25,6 +25,7 @@ import {
   Sparkles,
   Pencil,
   Moon,
+  Globe,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import {
@@ -45,6 +46,10 @@ interface MemoryFact {
   category: 'professional' | 'personal' | 'project' | 'preference' | 'identity' | 'tech'
   fact: string
   fact_key?: string | null
+  scope?: 'global' | 'project' | 'unknown'
+  project_id?: string | null
+  project_name?: string | null
+  project_archived?: number | boolean | null
   source_conv_id?: string
   confidence: number
   is_pinned?: number
@@ -398,6 +403,17 @@ export function UserMemoryPanel() {
     } catch (err) {
       console.error(err)
       alert(t('memory.pinError'))
+    }
+  }
+
+  const handlePromoteToGlobal = async (m: MemoryFact) => {
+    try {
+      const { fact: updated } = await api.updateMemoryFactScope(m.id, { scope: 'global', project_id: null })
+      setMemories((facts) => facts.map((fact) => (fact.id === m.id ? { ...fact, ...updated } : fact)))
+      await reloadAll()
+    } catch (err) {
+      console.error(err)
+      alert(t('memory.promoteToGlobalError', { defaultValue: 'Erro ao promover fato para global.' }))
     }
   }
 
@@ -1559,6 +1575,35 @@ export function UserMemoryPanel() {
                               {t('memory.dreamHistoryBadge', { status: m.status })}
                             </span>
                           )}
+                          <span
+                            style={{
+                              fontSize: '9px',
+                              fontWeight: 600,
+                              color:
+                                m.scope === 'project'
+                                  ? 'var(--selection, #2c84db)'
+                                  : m.scope === 'unknown'
+                                    ? '#eab308'
+                                    : 'var(--muted)',
+                              background:
+                                m.scope === 'project'
+                                  ? 'rgba(44, 132, 219, 0.12)'
+                                  : m.scope === 'unknown'
+                                    ? 'rgba(234, 179, 8, 0.12)'
+                                    : 'var(--surface-soft)',
+                              borderRadius: '4px',
+                              padding: '0 5px',
+                            }}
+                          >
+                            {m.scope === 'project'
+                              ? t('memory.scopeProject', {
+                                  name: m.project_name || m.project_id || 'Projeto',
+                                  defaultValue: `Projeto: ${m.project_name || m.project_id || ''}`,
+                                })
+                              : m.scope === 'unknown'
+                                ? t('memory.scopeUnknown', { defaultValue: 'Origem incerta' })
+                                : t('memory.scopeGlobal', { defaultValue: 'Global' })}
+                          </span>
                         </div>
 
                         {/* Fact text */}
@@ -1593,8 +1638,29 @@ export function UserMemoryPanel() {
                         </div>
                       </div>
 
-                      {/* Action buttons (Pin, Edit, Delete) */}
+                      {/* Action buttons (Pin, Promote, Edit, Delete) */}
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flexShrink: 0 }}>
+                        {m.scope && m.scope !== 'global' && (
+                          <button
+                            type="button"
+                            onClick={() => handlePromoteToGlobal(m)}
+                            title={t('memory.promoteToGlobal', { defaultValue: 'Promover para global' })}
+                            aria-label={t('memory.promoteToGlobal', { defaultValue: 'Promover para global' })}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              padding: '6px',
+                              borderRadius: '6px',
+                              border: 'none',
+                              background: 'transparent',
+                              color: 'var(--selection, #2c84db)',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            <Globe size={14} />
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={() => handleTogglePin(m)}

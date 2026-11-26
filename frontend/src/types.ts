@@ -74,6 +74,47 @@ export interface ProcessStep {
   status: 'running' | 'completed' | 'failed'
 }
 
+export interface MemoryUsedItem {
+  id: string
+  category?: string
+  fact: string
+  fact_key?: string | null
+  scope?: 'global' | 'project' | 'unknown'
+  project_id?: string | null
+  source_conv_id?: string | null
+  version?: number
+}
+
+export interface PendingTurnInfo {
+  request_id: string
+  conversation_id?: string | null
+  project_id?: string | null
+  user_message_id?: string | null
+  assistant_message_id?: string | null
+  user_message?: string | null
+  status: 'accepted' | 'streaming' | 'stopped' | 'incomplete' | 'failed' | 'completed' | string
+  partial_content?: string | null
+  model_id?: string | null
+  provider_id?: string | null
+  error_message?: string | null
+  updated_at?: string | null
+}
+
+export interface TurnStatusResponse {
+  found: boolean
+  request_id: string
+  status: 'unknown' | 'accepted' | 'streaming' | 'stopped' | 'incomplete' | 'failed' | 'completed' | string
+  conversation_id?: string | null
+  project_id?: string | null
+  user_message_id?: string | null
+  assistant_message_id?: string | null
+  partial_content?: string
+  model_id?: string | null
+  provider_id?: string | null
+  error_message?: string | null
+  updated_at?: string | null
+}
+
 export interface Message {
   id: string
   role: 'user' | 'assistant' | 'system' | 'fusion_status' | 'error'
@@ -93,6 +134,10 @@ export interface Message {
   attachments?: Attachment[]
   relay_used?: boolean
   relay_model?: string | null
+  relay_status?: string | null
+  memory_used?: MemoryUsedItem[] | null
+  memory_none_relevant?: boolean
+  turn_status?: string | null
   web_search_used?: boolean
   web_search_query?: string
   web_search_sources?: WebSearchSource[]
@@ -838,8 +883,12 @@ export interface Conversation {
   project_tag?: string | null
   /** Projects module FK (nullable = chat avulso) */
   project_id?: string | null
+  project_name?: string | null
   /** F3.3: conversa iniciada pelo assistente proativo ("Me conta aqui") */
   origin_insight_id?: string | null
+  /** Resultado de busca no conteúdo das mensagens */
+  matched_message_id?: string | null
+  matched_snippet?: string | null
 }
 
 export interface Project {
@@ -927,6 +976,7 @@ export interface MemorySummary {
 
 export interface ConversationDetail extends Conversation {
   messages: Message[]
+  pending_turn?: PendingTurnInfo | null
 }
 
 export interface Artifact {
@@ -982,6 +1032,24 @@ export interface ProviderModel {
 }
 
 
+export interface SyncReport {
+  provider_id: string
+  remote_total: number
+  chat_eligible_count: number
+  imported_or_updated: number
+  inserted: number
+  skipped_unchanged: number
+  active_enabled_count: number
+  excluded?: {
+    non_chat_endpoint?: number
+    inactive?: number
+    paid_or_not_free?: number
+    no_longer_free?: number
+    removed_from_remote?: number
+    overridden_skipped?: number
+  }
+}
+
 export interface Provider {
   id: string
   name: string
@@ -1000,6 +1068,8 @@ export interface Provider {
   models: ProviderModel[]
   masked_key?: string
   account_id?: string | null
+  last_sync_at?: string | null
+  last_sync_report?: SyncReport | null
 }
 
 export interface WebSearchConfig {
@@ -1045,6 +1115,10 @@ export interface StreamEndSuccessMessage {
   artifacts?: { id: string; type: string; title: string }[]
   relay_used?: boolean
   relay_model?: string | null
+  relay_status?: string | null
+  memory_used?: MemoryUsedItem[]
+  memory_none_relevant?: boolean
+  turn_status?: string | null
   web_search_used?: boolean
   web_search_query?: string
   web_search_sources?: WebSearchSource[]
@@ -1074,13 +1148,20 @@ export interface StreamEndFailureMessage {
   conversation_id?: string | null
   turn_id?: string | null
   message?: string
+  request_id?: string | null
+  turn_status?: string | null
+  partial_content?: string | null
 }
 
 export type WSMessage =
   | { type: 'ready' }
   | { type: 'ping' }
   | { type: 'pong' }
+  | { type: 'request_ack'; request_id?: string | null; conversation_id: string; user_message_id: string; turn_id?: string | null; project_id?: string | null; status?: string }
   | { type: 'conversation_created'; conversation_id: string; title: string; project_id?: string | null; turn_id?: string | null }
+  | { type: 'tool_executing'; family: string; action?: string; turn_id?: string | null; conversation_id?: string | null }
+  | { type: 'tool_executed'; family: string; provider?: string; cached?: boolean; fallback?: boolean; source_count?: number; turn_id?: string | null; conversation_id?: string | null }
+  | { type: 'tool_failed'; family: string; error: string; turn_id?: string | null; conversation_id?: string | null }
   | { type: 'stream_start'; conversation_id: string; turn_id?: string | null; from_cache?: boolean; cache_type?: string | null; cache_similarity?: number | null }
   | { type: 'stream_clear'; turn_id?: string | null; conversation_id?: string | null }
   | { type: 'token'; content: string; turn_id?: string | null; conversation_id?: string | null }

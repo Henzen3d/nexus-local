@@ -31,7 +31,8 @@
     "free": "Grátis",
     "score": "Pontuação",
     "version": "Versão {{version}}",
-    "views": "{{count}} visualizações"
+    "views": "{{count}} visualizações",
+    "retry": "Recarregar"
   },
   "time": {
     "justNow": "agora há pouco",
@@ -248,7 +249,41 @@
     "simpleFastDesc": "Obtenha respostas rápidas",
     "simpleThink": "Pensativo",
     "simpleThinkDesc": "Lide com tarefas complexas",
-    "modeSelect": "Modo do modelo: {{label}}"
+    "modeSelect": "Modo do modelo: {{label}}",
+    "checkTurnStatus": "Atualizar status",
+    "configureKeysBtn": "Minhas chaves",
+    "configureProvidersBtn": "Configurar provedores",
+    "failoverServedBy": "Failover · {{served}}",
+    "imageNotAnalyzedNotice": "Imagem anexada não pôde ser lida visualmente (visão nativa e Vision Relay indisponíveis).",
+    "noRouteAvailableToast": "Nenhuma rota de modelo disponível. Configure um provedor ou chave para enviar.",
+    "noRouteShort": "Sem rota de modelo configurada",
+    "retry": "Tentar novamente",
+    "routeEmptyAdmin": "Nenhuma rota de modelo disponível. Configure um provedor ou chave de API.",
+    "routeEmptyUser": "Nenhuma rota disponível no momento. Adicione sua chave pessoal ou aguarde.",
+    "routeErrorInline": "Não foi possível carregar os modelos disponíveis.",
+    "routeExhaustedInline": "Todas as rotas configuradas atingiram a cota atual.",
+    "routeLoadErrorToast": "Não foi possível carregar o catálogo de modelos. Tente novamente.",
+    "routeLoading": "Carregando rotas de IA…",
+    "skipToComposer": "Ir para o campo de mensagem (Ctrl+/)",
+    "supportsVision": "Leitura visual nativa de imagens",
+    "toolFailedDetail": "Não foi possível consultar esta ferramenta",
+    "toolFamily": {
+      "weather": "Previsão do tempo",
+      "currency": "Cotação e moedas",
+      "brasil": "Dados públicos (Brasil)",
+      "knowledge": "Wikipédia / Conhecimento",
+      "news": "Notícias recentes",
+      "translation": "Tradução",
+      "geo": "Geolocalização",
+      "fun": "Entretenimento",
+      "code_exec": "Execução de código",
+      "diagrams": "Diagramas"
+    },
+    "turnInProgressTitle": "Resposta em andamento no servidor",
+    "turnIncompleteTitle": "Turno não concluído",
+    "turnStoppedTitle": "Resposta interrompida",
+    "visionNativeHint": "Leitura visual nativa neste modelo",
+    "visionRelayHint": "Sem visão nativa — usará Vision Relay se disponível"
   },
   "sidebar": {
     "newChat": "Nova conversa",
@@ -342,7 +377,8 @@
     "noOutput": "(Sem saída gerada)",
     "waitingResponse": "Aguardando...",
     "editPlaceholder": "Descreva o que deseja alterar...",
-    "applyEdit": "Aplicar"
+    "applyEdit": "Aplicar",
+    "selectModelFirst": "Configure um provedor ou chave de API antes de anexar"
   },
   "pwa": {
     "installTitle": "Instalar NexusLocal no dispositivo",
@@ -549,7 +585,9 @@
     "cacheSemanticTab": "Semântico",
     "cacheNoEntries": "Nenhuma entrada ainda",
     "cacheHitsSuffix": "{{count}} hits",
-    "cacheTokensSuffix": "~{{count}} tokens"
+    "cacheTokensSuffix": "~{{count}} tokens",
+    "syncDeltaLine": "Ativos: {{active}} · Chat elegíveis: {{eligible}}/{{remote}}",
+    "syncSummaryToast": "Catálogo atualizado: {{active}} ativos de {{remote}} remotos ({{excluded}} filtrados/desativados)."
   },
   "tools": {
     "title": "Ferramentas & APIs Gratuitas",
@@ -1057,7 +1095,21 @@
     "dreamBreakerResetBtn": "Redefinir proteção",
     "dreamBreakerResetting": "Redefinindo...",
     "dreamBreakerResetSuccess": "Proteção redefinida. A consolidação automática foi liberada.",
-    "dreamBreakerResetError": "Não foi possível redefinir a proteção agora."
+    "dreamBreakerResetError": "Não foi possível redefinir a proteção agora.",
+    "deleteFactError": "Não foi possível remover a memória.",
+    "factDeletedToast": "Memória removida.",
+    "manageAll": "Gerenciar todas as memórias",
+    "noneRelevantHint": "Nenhuma memória guardada era pertinente para este turno.",
+    "noneRelevantShort": "Sem memória relevante",
+    "promoteToGlobal": "Promover para global",
+    "promoteToGlobalError": "Não foi possível promover a memória.",
+    "promotedSuccess": "Memória promovida para global.",
+    "scopeGlobal": "Global",
+    "scopeProject": "Projeto: {{name}}",
+    "scopeProjectShort": "Projeto",
+    "scopeUnknown": "Origem incerta",
+    "usedSummary": "Memória usada ({{count}})",
+    "viewOriginConv": "Ver origem"
   },
   "autoRouter": {
     "title": "Roteamento Inteligente",

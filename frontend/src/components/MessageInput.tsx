@@ -1,7 +1,9 @@
 import { useState, useRef, useEffect, useSyncExternalStore } from 'react'
-import { Square, Mic, AudioLines, AlertCircle } from 'lucide-react'
+import { Square, Mic, AudioLines, AlertCircle, Settings, RefreshCw, Loader2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useStore } from '../store/useStore'
+import { hasEligibleRoute } from '../lib/modelSelection'
+import { clearComposerDraft, loadComposerDraft, saveComposerDraft } from '../lib/draftPersistence'
 import { ModelSelector } from './ModelSelector'
 import { SimpleModeSelector } from './SimpleModeSelector'
 import { PlusActionMenu } from './PlusActionMenu'
@@ -38,6 +40,7 @@ export function MessageInput({ onSend, onStop, isEmpty = false }: Props) {
   const [enhanceError, setEnhanceError] = useState<string | null>(null)
   const [attachments, setAttachments] = useState<Attachment[]>([])
   const [isMultiline, setIsMultiline] = useState(false)
+  const [resolvingRoute, setResolvingRoute] = useState(false)
 
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -47,13 +50,78 @@ export function MessageInput({ onSend, onStop, isEmpty = false }: Props) {
   const {
     isStreaming,
     selectedModelId,
+    models,
+    modelsStatus,
+    loadModels,
+    openSettings,
+    user,
     showToast,
     activeConversationId,
+    activeProjectId,
     composerPrefill,
     setComposerPrefill,
     noteTyping,
     uiLevel,
   } = useStore()
+
+  // Persistência e restauração de rascunho por (userId, conversationId, projectId)
+  const draftStateRef = useRef({
+    userId: user?.id ?? null,
+    convId: activeConversationId ?? null,
+    projId: activeProjectId ?? null,
+    text: '',
+    attachments: [] as Attachment[],
+  })
+
+  useEffect(() => {
+    const uid = user?.id ?? null
+    const restored = loadComposerDraft(uid, activeConversationId, activeProjectId)
+    if (restored) {
+      setText(restored.text)
+      setAttachments(restored.attachments)
+    } else if (!useStore.getState().composerPrefill) {
+      setText('')
+      setAttachments([])
+    }
+    draftStateRef.current = {
+      userId: uid,
+      convId: activeConversationId ?? null,
+      projId: activeProjectId ?? null,
+      text: restored?.text ?? '',
+      attachments: restored?.attachments ?? [],
+    }
+  }, [user?.id, activeConversationId, activeProjectId])
+
+  useEffect(() => {
+    draftStateRef.current = {
+      userId: user?.id ?? null,
+      convId: activeConversationId ?? null,
+      projId: activeProjectId ?? null,
+      text,
+      attachments,
+    }
+    const timer = setTimeout(() => {
+      saveComposerDraft(user?.id, activeConversationId, activeProjectId, { text, attachments })
+    }, 150)
+    return () => clearTimeout(timer)
+  }, [text, attachments, user?.id, activeConversationId, activeProjectId])
+
+  useEffect(() => {
+    const flushNow = () => {
+      const cur = draftStateRef.current
+      saveComposerDraft(cur.userId, cur.convId, cur.projId, {
+        text: cur.text,
+        attachments: cur.attachments,
+      })
+    }
+    window.addEventListener('beforeunload', flushNow)
+    window.addEventListener('pagehide', flushNow)
+    return () => {
+      window.removeEventListener('beforeunload', flushNow)
+      window.removeEventListener('pagehide', flushNow)
+      flushNow()
+    }
+  }, [])
 
   // Pré-preenchimento vindo do assistente proativo ("Quero saber mais")
   useEffect(() => {
@@ -79,7 +147,20 @@ export function MessageInput({ onSend, onStop, isEmpty = false }: Props) {
   const isListening = talk.phase === 'listening'
   const hasContent = text.trim().length > 0 || attachments.length > 0
   const enhancerReady = enhancerEnabled && enhancerConfigured
-  const canSend = hasContent && !!selectedModelId && !isStreaming
+  const catalogExhausted = modelsStatus === 'ready' && !hasEligibleRoute(models)
+  const noRouteState: 'loading' | 'error' | 'empty' | 'exhausted' | null =
+    modelsStatus === 'error'
+      ? 'error'
+      : modelsStatus === 'empty'
+      ? 'empty'
+      : catalogExhausted
+      ? 'exhausted'
+      : (modelsStatus === 'loading' || resolvingRoute) && !selectedModelId
+      ? 'loading'
+      : !selectedModelId && modelsStatus === 'ready'
+      ? 'exhausted'
+      : null
+  const canSend = hasContent && !isStreaming && !enhancing && !resolvingRoute
 
   useEffect(() => {
     const prev = seenConv.current
@@ -197,12 +278,33 @@ export function MessageInput({ onSend, onStop, isEmpty = false }: Props) {
     setIsMultiline(ta.scrollHeight > 200 || (ta.scrollHeight > (isCompact ? 36 : 48) && text.includes('\n')))
   }, [text, isCompact])
 
-  const handleSend = () => {
-    if (isStreaming || enhancing) return
+  const ensureRouteReady = async (): Promise<string | null> => {
+    const cur = useStore.getState()
+    if (cur.selectedModelId) return cur.selectedModelId
+    if (cur.modelsStatus === 'idle' || cur.modelsStatus === 'loading' || cur.modelsStatus === 'error') {
+      setResolvingRoute(true)
+      try {
+        await loadModels()
+      } finally {
+        setResolvingRoute(false)
+      }
+      return useStore.getState().selectedModelId
+    }
+    return null
+  }
+
+  const handleSend = async () => {
+    if (isStreaming || enhancing || resolvingRoute) return
     const trimmed = text.trim()
     if (!trimmed && attachments.length === 0) return
-    if (!selectedModelId) {
-      showToast(t('chat.selectModelPlaceholder'), 'error')
+    const resolvedModelId = await ensureRouteReady()
+    if (!resolvedModelId) {
+      const latestStatus = useStore.getState().modelsStatus
+      const msg =
+        latestStatus === 'error'
+          ? t('chat.routeLoadErrorToast', { defaultValue: 'Não foi possível carregar o catálogo de modelos. Tente novamente.' })
+          : t('chat.noRouteAvailableToast', { defaultValue: 'Nenhuma rota de modelo disponível. Configure um provedor ou chave para enviar.' })
+      showToast(msg, 'error')
       return
     }
 
@@ -218,6 +320,9 @@ export function MessageInput({ onSend, onStop, isEmpty = false }: Props) {
       attachments.length > 0 ? attachments : undefined
     )
     if (sent === false) return
+    clearComposerDraft(user?.id, activeConversationId, activeProjectId)
+    draftStateRef.current.text = ''
+    draftStateRef.current.attachments = []
     setText('')
     setAttachments([])
   }
@@ -244,25 +349,25 @@ export function MessageInput({ onSend, onStop, isEmpty = false }: Props) {
     }
   }
 
-  const handleOpenFilePicker = () => {
-    if (!selectedModelId) {
-      showToast(t('artifacts.selectModelFirst', { defaultValue: 'Selecione um modelo antes de anexar arquivos' }), 'info')
+  const handleOpenFilePicker = async () => {
+    if (!(await ensureRouteReady())) {
+      showToast(t('artifacts.selectModelFirst', { defaultValue: 'Configure um provedor ou chave de API antes de anexar arquivos' }), 'info')
       return
     }
     fileInputRef.current?.click()
   }
 
-  const handleOpenPhotoPicker = () => {
-    if (!selectedModelId) {
-      showToast(t('artifacts.selectModelFirst', { defaultValue: 'Selecione um modelo antes de anexar fotos' }), 'info')
+  const handleOpenPhotoPicker = async () => {
+    if (!(await ensureRouteReady())) {
+      showToast(t('artifacts.selectModelFirst', { defaultValue: 'Configure um provedor ou chave de API antes de anexar fotos' }), 'info')
       return
     }
     photoInputRef.current?.click()
   }
 
-  const handleOpenCameraPicker = () => {
-    if (!selectedModelId) {
-      showToast(t('artifacts.selectModelFirst', { defaultValue: 'Selecione um modelo antes de usar a câmera' }), 'info')
+  const handleOpenCameraPicker = async () => {
+    if (!(await ensureRouteReady())) {
+      showToast(t('artifacts.selectModelFirst', { defaultValue: 'Configure um provedor ou chave de API antes de usar a câmera' }), 'info')
       return
     }
     cameraInputRef.current?.click()
@@ -274,7 +379,8 @@ export function MessageInput({ onSend, onStop, isEmpty = false }: Props) {
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
-    if (!files || files.length === 0 || !selectedModelId) return
+    const activeModelId = files && files.length > 0 ? await ensureRouteReady() : null
+    if (!files || files.length === 0 || !activeModelId) return
     const MAX_SIZE = 20 * 1024 * 1024 // 20MB
     try {
       for (let i = 0; i < files.length; i++) {
@@ -282,7 +388,7 @@ export function MessageInput({ onSend, onStop, isEmpty = false }: Props) {
         if (file.size > MAX_SIZE) {
           throw new Error(t('artifacts.fileTooLarge', { name: file.name, defaultValue: `Arquivo ${file.name} excede o limite de 20MB.` }))
         }
-        const res = await api.uploadAttachment(file, selectedModelId)
+        const res = await api.uploadAttachment(file, activeModelId)
         setAttachments((prev) => [...prev, res])
       }
     } catch (err: unknown) {
@@ -436,19 +542,80 @@ export function MessageInput({ onSend, onStop, isEmpty = false }: Props) {
       />
 
       <div className={`input-card ${isCompact ? 'compact-mode' : 'empty-mode'} ${enhanceFlash ? 'enhance-flash' : ''}`}>
+        {noRouteState && (noRouteState !== 'loading' || hasContent || resolvingRoute) && (
+          <div className={`route-status-banner route-status-${noRouteState}`} role="status" aria-live="polite">
+            <div className="route-status-text">
+              {noRouteState === 'loading' ? (
+                <Loader2 size={14} className="spin" aria-hidden="true" />
+              ) : (
+                <AlertCircle size={14} aria-hidden="true" />
+              )}
+              <span>
+                {noRouteState === 'loading'
+                  ? t('chat.routeLoading', { defaultValue: 'Carregando rotas de IA…' })
+                  : noRouteState === 'error'
+                  ? t('chat.routeErrorInline', { defaultValue: 'Não foi possível carregar os modelos disponíveis.' })
+                  : noRouteState === 'exhausted'
+                  ? t('chat.routeExhaustedInline', { defaultValue: 'Todas as rotas configuradas atingiram a cota atual.' })
+                  : user?.role === 'admin'
+                  ? t('chat.routeEmptyAdmin', { defaultValue: 'Nenhuma rota de modelo disponível. Configure um provedor ou chave de API.' })
+                  : t('chat.routeEmptyUser', { defaultValue: 'Nenhuma rota disponível no momento. Adicione sua chave pessoal ou aguarde.' })}
+              </span>
+            </div>
+            {noRouteState !== 'loading' && (
+              <div className="route-status-actions">
+                <button
+                  type="button"
+                  className="route-status-btn"
+                  onClick={() => openSettings('providers')}
+                >
+                  <Settings size={12} aria-hidden="true" />
+                  <span>
+                    {user?.role === 'admin'
+                      ? t('chat.configureProvidersBtn', { defaultValue: 'Configurar provedores' })
+                      : t('chat.configureKeysBtn', { defaultValue: 'Minhas chaves' })}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className="route-status-btn secondary"
+                  onClick={() => void loadModels()}
+                >
+                  <RefreshCw size={12} aria-hidden="true" />
+                  <span>{t('common.retry', { defaultValue: 'Recarregar' })}</span>
+                </button>
+              </div>
+            )}
+          </div>
+        )}
         {/* Camada 1: Preview de Anexos no topo */}
         {attachments.length > 0 && (
-          <div className="input-attachments-preview">
-            {attachments.map((att) => (
-              <AttachmentChip
-                key={att.id}
-                attachment={att}
-                onRemove={() => {
-                  setAttachments((prev) => prev.filter((x) => x.id !== att.id))
-                }}
-              />
-            ))}
-          </div>
+          <>
+            <div className="input-attachments-preview">
+              {attachments.map((att) => (
+                <AttachmentChip
+                  key={att.id}
+                  attachment={att}
+                  onRemove={() => {
+                    setAttachments((prev) => prev.filter((x) => x.id !== att.id))
+                  }}
+                />
+              ))}
+            </div>
+            {attachments.some((a) => a.file_type === 'image') && selectedModelId && selectedModelId !== 'auto' && (() => {
+              const selModel = models.find((m) => m.id === selectedModelId)
+              if (!selModel) return null
+              return (
+                <div className="attachment-vision-hint">
+                  <span>
+                    {selModel.supports_vision
+                      ? t('chat.visionNativeHint', { defaultValue: 'Leitura visual nativa neste modelo' })
+                      : t('chat.visionRelayHint', { defaultValue: 'Sem visão nativa — usará Vision Relay se disponível' })}
+                  </span>
+                </div>
+              )
+            })()}
+          </>
         )}
 
         {/* Camada 2: Linha / Área Unificada do Composer */}
@@ -469,6 +636,7 @@ export function MessageInput({ onSend, onStop, isEmpty = false }: Props) {
             </div>
 
             <textarea
+              id="composer-input"
               ref={textareaRef}
               className="composer-textarea composer-textarea-inline"
               value={text}
@@ -496,6 +664,7 @@ export function MessageInput({ onSend, onStop, isEmpty = false }: Props) {
         ) : (
           <div className="composer-multiline-container">
             <textarea
+              id="composer-input"
               ref={textareaRef}
               className={`composer-textarea ${isMultiline ? 'is-multiline' : ''}`}
               value={text}

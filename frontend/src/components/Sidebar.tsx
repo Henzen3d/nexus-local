@@ -287,9 +287,19 @@ export function Sidebar() {
     }
   }
 
+  const didMountSearchRef = useRef(false)
   useEffect(() => {
-    loadConversations()
-  }, [loadConversations])
+    const q = sidebarSearch.trim()
+    if (!didMountSearchRef.current) {
+      didMountSearchRef.current = true
+      void loadConversations()
+      return
+    }
+    const timer = window.setTimeout(() => {
+      void loadConversations(q || undefined)
+    }, q ? 220 : 0)
+    return () => window.clearTimeout(timer)
+  }, [sidebarSearch, loadConversations])
 
   useEffect(() => {
     const handleClose = () => setActiveMenuId(null)
@@ -357,7 +367,12 @@ export function Sidebar() {
 
   const searchQuery = sidebarSearch.trim().toLowerCase()
   const visibleConversations = searchQuery
-    ? conversations.filter((c) => (c.title || '').toLowerCase().includes(searchQuery))
+    ? conversations.filter(
+        (c) =>
+          (c.title || '').toLowerCase().includes(searchQuery) ||
+          (c.matched_snippet || '').toLowerCase().includes(searchQuery) ||
+          Boolean(c.matched_message_id),
+      )
     : conversations
 
   const favorites = visibleConversations
@@ -409,11 +424,21 @@ export function Sidebar() {
                   isItemLongPressActive.current = false
                   return
                 }
-                loadConversation(c.id)
+                loadConversation(c.id, searchQuery ? c.matched_message_id : null)
                 if (window.innerWidth <= MOBILE_BREAKPOINT) setSidebarOpen(false)
               }}
             >
-              <span>{c.title}</span>
+              <span className="conv-title-stack">
+                <span className="conv-title-main">{c.title}</span>
+                {((searchQuery && c.matched_snippet) || c.project_name) && (
+                  <span className="conv-row-sub">
+                    {c.project_name && <span className="conv-project-chip">{c.project_name}</span>}
+                    {searchQuery && c.matched_snippet && (
+                      <span className="conv-search-snippet">{c.matched_snippet}</span>
+                    )}
+                  </span>
+                )}
+              </span>
             </button>
             <div className="conv-actions-dropdown-container">
               <button

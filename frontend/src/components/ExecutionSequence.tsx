@@ -324,6 +324,9 @@ export function ExecutionSequence({ steps, isWorking, startedAt, durationMs, thi
                         {step.status === 'completed' && (
                           <Check size={12} className="execution-step-check" aria-hidden="true" />
                         )}
+                        {step.status === 'failed' && (
+                          <span className="execution-step-failed-tag">{t('chat.processFailed')}</span>
+                        )}
                       </div>
                     ) : kind === 'think' ? (
                       <div className="execution-step-think-block">
@@ -370,6 +373,9 @@ export function ExecutionSequence({ steps, isWorking, startedAt, durationMs, thi
                         </div>
                         {step.status === 'completed' && (
                           <Check size={12} className="execution-step-check" aria-hidden="true" />
+                        )}
+                        {step.status === 'failed' && (
+                          <span className="execution-step-failed-tag">{t('chat.processFailed')}</span>
                         )}
                       </div>
                     )}

@@ -1,6 +1,6 @@
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { User, Bot, Copy, Check, Zap, Sparkles, FileText, Globe, Image, FileCode, Download, Atom, ChevronRight, Brain, AlertCircle, RefreshCw, Volume2, Square, Loader2, Play } from 'lucide-react'
+import { User, Bot, Copy, Check, Zap, Sparkles, FileText, Globe, Image, FileCode, Download, Atom, ChevronRight, Brain, AlertCircle, RefreshCw, Volume2, Square, Loader2, Play, Trash2 } from 'lucide-react'
 import React, { useState, useRef, useEffect, useDeferredValue, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import i18n from '../i18n'
@@ -329,6 +329,142 @@ function ModelBadge({
   )
 }
 
+function MemoryUsedAccordion({
+  messageId,
+  items,
+}: {
+  messageId: string
+  items: NonNullable<Message['memory_used']>
+}) {
+  const { t } = useTranslation()
+  const [open, setOpen] = useState(false)
+  const [localItems, setLocalItems] = useState(items)
+  const [busyId, setBusyId] = useState<string | null>(null)
+  const loadConversation = useStore((s) => s.loadConversation)
+  const openSettings = useStore((s) => s.openSettings)
+  const showToast = useStore((s) => s.showToast)
+
+  useEffect(() => {
+    setLocalItems(items)
+  }, [items])
+
+  if (!localItems.length) return null
+
+  const handlePromote = async (factId: string) => {
+    setBusyId(factId)
+    try {
+      await api.updateMemoryFactScope(factId, { scope: 'global' })
+      setLocalItems((prev) =>
+        prev.map((f) => (f.id === factId ? { ...f, scope: 'global', project_id: null, version: (f.version || 1) + 1 } : f))
+      )
+      showToast(t('memory.promotedSuccess', { defaultValue: 'Memória promovida para global.' }), 'success')
+    } catch {
+      showToast(t('memory.promoteToGlobalError', { defaultValue: 'Não foi possível promover a memória.' }), 'error')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const handleDelete = async (factId: string) => {
+    setBusyId(factId)
+    try {
+      await api.deleteMemoryFact(factId)
+      setLocalItems((prev) => prev.filter((f) => f.id !== factId))
+      showToast(t('memory.factDeletedToast', { defaultValue: 'Memória removida.' }), 'info')
+    } catch {
+      showToast(t('memory.deleteFactError', { defaultValue: 'Não foi possível remover a memória.' }), 'error')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  return (
+    <div className="memory-used-block" data-message-id={messageId}>
+      <button
+        type="button"
+        className="memory-used-toggle"
+        onClick={() => setOpen((prev) => !prev)}
+        aria-expanded={open}
+      >
+        <Brain size={12} aria-hidden="true" />
+        <span>
+          {t('memory.usedSummary', {
+            count: localItems.length,
+            defaultValue: `Memória usada (${localItems.length})`,
+          })}
+        </span>
+        <ChevronRight size={12} className={`execution-chevron-mini${open ? ' is-open' : ''}`} aria-hidden="true" />
+      </button>
+
+      {open && (
+        <div className="memory-used-panel">
+          <ul className="memory-used-list">
+            {localItems.map((item) => {
+              const scopeLabel =
+                item.scope === 'project'
+                  ? t('memory.scopeProjectShort', { defaultValue: 'Projeto' })
+                  : item.scope === 'unknown'
+                  ? t('memory.scopeUnknown', { defaultValue: 'Origem incerta' })
+                  : t('memory.scopeGlobal', { defaultValue: 'Global' })
+              return (
+                <li key={item.id || item.fact} className="memory-used-item">
+                  <div className="memory-used-item-text">{item.fact}</div>
+                  <div className="memory-used-item-meta">
+                    <span className={`memory-scope-pill scope-${item.scope || 'global'}`}>{scopeLabel}</span>
+                    {item.version != null && (
+                      <span className="memory-version-pill">v{item.version}</span>
+                    )}
+                    {item.source_conv_id && (
+                      <button
+                        type="button"
+                        className="memory-used-link"
+                        onClick={() => void loadConversation(item.source_conv_id!)}
+                      >
+                        {t('memory.viewOriginConv', { defaultValue: 'Ver origem' })}
+                      </button>
+                    )}
+                    {item.id && item.scope !== 'global' && (
+                      <button
+                        type="button"
+                        className="memory-used-link"
+                        disabled={busyId === item.id}
+                        onClick={() => void handlePromote(item.id)}
+                      >
+                        <Globe size={11} aria-hidden="true" />
+                        <span>{t('memory.promoteToGlobal', { defaultValue: 'Promover para global' })}</span>
+                      </button>
+                    )}
+                    {item.id && (
+                      <button
+                        type="button"
+                        className="memory-used-link danger"
+                        disabled={busyId === item.id}
+                        onClick={() => void handleDelete(item.id)}
+                        aria-label={t('common.delete', { defaultValue: 'Remover' })}
+                      >
+                        <Trash2 size={11} aria-hidden="true" />
+                      </button>
+                    )}
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+          <div className="memory-used-footer">
+            <button
+              type="button"
+              className="memory-used-manage-btn"
+              onClick={() => openSettings('memory')}
+            >
+              {t('memory.manageAll', { defaultValue: 'Gerenciar todas as memórias' })}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function WebSearchSources({ sources, query }: { sources: { title: string; url: string }[]; query?: string }) {
   const { t } = useTranslation()
   const [isOpen, setIsOpen] = useState(false)
@@ -425,6 +561,7 @@ export const MessageBubble = React.memo(function MessageBubble({ message }: Prop
   const ttsPlay = useTtsPlay()
   const lastCacheHit = useStore((s) => s.lastCacheHit)
   const uiLevel = useStore((s) => s.uiLevel)
+  const isSearchTarget = useStore((s) => s.highlightMessageId === message.id)
   const setActiveArtifact = useStore((s) => s.setActiveArtifact)
   const setArtifactPanelOpen = useStore((s) => s.setArtifactPanelOpen)
   const loadArtifactHistory = useStore((s) => s.loadArtifactHistory)
@@ -437,7 +574,7 @@ export const MessageBubble = React.memo(function MessageBubble({ message }: Prop
 
   if (message.role === 'error') {
     return (
-      <div className="message error">
+      <div id={`msg-${message.id}`} className={`message error${isSearchTarget ? ' is-search-target' : ''}`}>
         <ErrorAvatar />
         <div className="message-body error-body">
           <div className="error-title">{t('chat.generationError', { defaultValue: 'Erro na geração da resposta' })}</div>
@@ -520,7 +657,7 @@ export const MessageBubble = React.memo(function MessageBubble({ message }: Prop
   const messageDate = createdAt === null ? null : new Date(createdAt)
 
   return (
-    <div className={`message ${message.role}`}>
+    <div id={`msg-${message.id}`} className={`message ${message.role}${isSearchTarget ? ' is-search-target' : ''}`}>
       {message.role === 'user' ? <UserAvatar /> : <AssistantAvatar />}
       <div className="message-body-wrapper">
         <div className="message-body">
@@ -536,29 +673,56 @@ export const MessageBubble = React.memo(function MessageBubble({ message }: Prop
               )}
 
               {uiLevel !== 'simple' && message.was_fallback && (
-                <span className="failover-badge" style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '4px',
-                  padding: '2px 6px',
-                  borderRadius: '4px',
-                  fontSize: '11px',
-                  fontWeight: 600,
-                  color: 'var(--primary)',
-                  backgroundColor: 'rgba(204, 120, 92, 0.12)',
-                  border: '1px solid rgba(204, 120, 92, 0.3)',
-                  marginLeft: '6px',
-                }}>
-                  <RefreshCw size={11} /> {t('chat.failover', 'Failover')}
+                <span
+                  className="failover-badge custom-tooltip-trigger"
+                  data-tooltip={
+                    message.requested_model
+                      ? t('chat.failoverTooltipDetailed', {
+                          requested: message.requested_model,
+                          served: message.model_display_name || message.served_by || message.model_id || '',
+                          defaultValue: `Solicitado: ${message.requested_model} · Atendido por ${message.model_display_name || message.served_by || message.model_id}`,
+                        })
+                      : t('chat.failoverTooltip', { defaultValue: 'Atendido via modelo reserva (failover)' })
+                  }
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    padding: '2px 6px',
+                    borderRadius: '4px',
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    color: 'var(--primary)',
+                    backgroundColor: 'rgba(204, 120, 92, 0.12)',
+                    border: '1px solid rgba(204, 120, 92, 0.3)',
+                    marginLeft: '6px',
+                  }}
+                >
+                  <RefreshCw size={11} />{' '}
+                  {message.model_display_name
+                    ? t('chat.failoverServedBy', {
+                        served: message.model_display_name,
+                        defaultValue: `Failover · ${message.model_display_name}`,
+                      })
+                    : t('chat.failover', 'Failover')}
                 </span>
               )}
 
-              {message.relay_used && message.relay_model && (
+              {message.relay_status === 'placeholder_only' ? (
+                <div className="message-relay-notice is-degraded">
+                  <AlertCircle size={12} aria-hidden="true" />
+                  <span>
+                    {t('chat.imageNotAnalyzedNotice', {
+                      defaultValue: 'Imagem anexada não pôde ser lida visualmente (visão nativa e Vision Relay indisponíveis).',
+                    })}
+                  </span>
+                </div>
+              ) : (message.relay_used && message.relay_model) ? (
                 <div className="message-relay-notice">
                   <RefreshCw size={11} className="text-primary" />
                   <span>{t('chat.imageViaRelay', { model: message.relay_model })}</span>
                 </div>
-              )}
+              ) : null}
 
               {mergedProcessSteps ? (
                 <MemoizedExecutionSequence
@@ -609,6 +773,10 @@ export const MessageBubble = React.memo(function MessageBubble({ message }: Prop
 
               {message.role === 'assistant' && message.web_search_sources && message.web_search_sources.length > 0 && (
                 <SourceShelf sources={message.web_search_sources} />
+              )}
+
+              {message.role === 'assistant' && message.memory_used && message.memory_used.length > 0 && (
+                <MemoryUsedAccordion messageId={message.id} items={message.memory_used} />
               )}
 
               {/* Intelligent UI: renderizador de blocos visuais e micro-ferramentas */}
@@ -780,6 +948,18 @@ export const MessageBubble = React.memo(function MessageBubble({ message }: Prop
                 wasFallback={message.was_fallback}
                 uiLevel={uiLevel}
               />
+            </>
+          )}
+
+          {uiLevel !== 'simple' && message.memory_none_relevant && (!message.memory_used || message.memory_used.length === 0) && (
+            <>
+              <span className="meta-sep">·</span>
+              <span
+                className="memory-none-pill custom-tooltip-trigger"
+                data-tooltip={t('memory.noneRelevantHint', { defaultValue: 'Nenhuma memória guardada era pertinente para este turno.' })}
+              >
+                {t('memory.noneRelevantShort', { defaultValue: 'Sem memória relevante' })}
+              </span>
             </>
           )}
 

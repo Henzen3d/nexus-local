@@ -904,3 +904,51 @@ test('clarification: valida quadro de perguntas, opções, allow_other e coexist
   assert.notEqual(inferred, null)
   assert.equal(inferred?.blocks[0]?.type, 'clarification')
 })
+
+test('regra de card único de continuidade: clarification > options > follow_up (inclusive no merge)', () => {
+  const validOpt = {
+    id: 'opt1',
+    type: 'options',
+    question: 'Escolha o formato',
+    options: [{ value: 'pdf', label: 'PDF' }, { value: 'md', label: 'Markdown' }],
+    action: { name: 'send_message', template: 'Formato: {choice}' },
+  }
+  const optionsAndFollowUp = parseUiEnvelope({
+    v: 1,
+    blocks: [
+      validOpt,
+      { id: 'fu1', type: 'follow_up', items: ['Sugestão extra 1', 'Sugestão extra 2'] },
+    ],
+  })
+  assert.notEqual(optionsAndFollowUp, null)
+  assert.deepEqual(optionsAndFollowUp?.blocks.map((b) => b.type), ['options'])
+
+  const clarifyOptionsFollowUp = parseUiEnvelope({
+    v: 1,
+    blocks: [
+      {
+        id: 'cl1',
+        type: 'clarification',
+        questions: [
+          { id: 'q1', label: 'Qual objetivo?', options: [{ id: 'o1', label: 'Venda' }, { id: 'o2', label: 'Educação' }] },
+        ],
+      },
+      validOpt,
+      { id: 'fu1', type: 'follow_up', items: ['Sugestão extra'] },
+    ],
+  })
+  assert.notEqual(clarifyOptionsFollowUp, null)
+  assert.deepEqual(clarifyOptionsFollowUp?.blocks.map((b) => b.type), ['clarification'])
+
+  const merged = mergeUiEnvelopes(
+    {
+      v: 1,
+      blocks: [validOpt as any],
+    },
+    {
+      v: 1,
+      blocks: [{ id: 'fu2', type: 'follow_up', items: ['Outro próximo passo'] }],
+    },
+  )
+  assert.deepEqual(merged?.blocks.map((b) => b.type), ['options'])
+})

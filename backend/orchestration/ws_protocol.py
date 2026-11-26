@@ -43,6 +43,18 @@ class TurnSocket:
         return getattr(self._socket, name)
 
 
+class RequestAckEvent(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
+    type: Literal["request_ack"] = "request_ack"
+    request_id: Optional[str] = None
+    conversation_id: str = Field(..., min_length=1)
+    user_message_id: str = Field(..., min_length=1)
+    turn_id: Optional[str] = None
+    project_id: Optional[str] = None
+    status: str = "streaming"
+
+
 class ConversationCreatedEvent(BaseModel):
     model_config = ConfigDict(protected_namespaces=())
 
@@ -51,6 +63,39 @@ class ConversationCreatedEvent(BaseModel):
     title: str = ""
     project_id: Optional[str] = None
     turn_id: Optional[str] = None
+
+
+class ToolExecutingEvent(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
+    type: Literal["tool_executing"] = "tool_executing"
+    family: str
+    action: Optional[str] = None
+    turn_id: Optional[str] = None
+    conversation_id: Optional[str] = None
+
+
+class ToolExecutedEvent(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
+    type: Literal["tool_executed"] = "tool_executed"
+    family: str
+    provider: Optional[str] = None
+    cached: Optional[bool] = None
+    fallback: Optional[bool] = None
+    source_count: Optional[int] = None
+    turn_id: Optional[str] = None
+    conversation_id: Optional[str] = None
+
+
+class ToolFailedEvent(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
+    type: Literal["tool_failed"] = "tool_failed"
+    family: str
+    error: str = "tool_error"
+    turn_id: Optional[str] = None
+    conversation_id: Optional[str] = None
 
 
 class StreamStartEvent(BaseModel):
@@ -104,6 +149,11 @@ class StreamEndSuccess(BaseModel):
 
     relay_used: Optional[bool] = None
     relay_model: Optional[str] = None
+    relay_status: Optional[str] = None
+
+    memory_used: Optional[list[dict[str, Any]]] = None
+    memory_none_relevant: Optional[bool] = None
+    turn_status: Optional[str] = None
 
     web_search_used: Optional[bool] = None
     web_search_query: Optional[str] = None
@@ -142,6 +192,9 @@ class StreamEndFailure(BaseModel):
     turn_id: Optional[str] = None
     finish_reason: Optional[str] = None
     message: Optional[str] = None
+    request_id: Optional[str] = None
+    turn_status: Optional[str] = None
+    partial_content: Optional[str] = None
 
 
 def dump_ws_event(event: BaseModel) -> dict[str, Any]:

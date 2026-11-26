@@ -23,6 +23,7 @@ from backend.database import (
     create_memory_snapshot,
     rollback_memory_snapshot,
     update_memory_fact,
+    update_memory_fact_scope,
     list_dream_logs,
     list_memory_snapshots,
     get_dream_breaker_status,
@@ -113,6 +114,11 @@ class DreamBreakerStatusOut(BaseModel):
 class FactUpdateIn(BaseModel):
     fact: str
     category: Optional[str] = None
+
+
+class FactScopeUpdateIn(BaseModel):
+    scope: Literal["global", "project"]
+    project_id: Optional[str] = None
 
 
 class DreamRunIn(BaseModel):
@@ -262,22 +268,33 @@ async def refresh_summaries(user: dict = Depends(get_current_user)):
 
 
 @router.get("/preview")
-async def preview_memory_block(user: dict = Depends(get_current_user)):
+async def preview_memory_block(
+    project_id: Optional[str] = None,
+    user: dict = Depends(get_current_user),
+):
     """Returns the exact markdown block that would be injected in the next system prompt."""
     if not user:
         raise HTTPException(status_code=401, detail="Não autorizado")
     profile = await get_user_profile(user["id"])
     mem_rows = []
     global_sum = None
+    project_sum = None
     if profile.get("memory_enabled", 1):
-        mem_rows = await get_user_memory(user["id"], active_only=True)
+        all_active = await get_user_memory(user["id"], active_only=True)
+        mem_rows = [
+            f for f in all_active
+            if (f.get("scope") == "global")
+            or (project_id and f.get("scope") == "project" and f.get("project_id") == project_id)
+        ]
         global_sum = await get_memory_summary(user["id"], "global", "")
-    summaries = [global_sum] if global_sum else []
+        if project_id:
+            project_sum = await get_memory_summary(user["id"], "project", project_id)
+    summaries = [s for s in (global_sum, project_sum) if s]
     block = build_memory_block(
         mem_rows,
         profile=profile,
         global_summary=global_sum,
-        project_summary=None,
+        project_summary=project_sum,
     )
     return {
         "fact_count": len(mem_rows),
@@ -286,6 +303,7 @@ async def preview_memory_block(user: dict = Depends(get_current_user)):
         "fingerprint": build_memory_fingerprint(mem_rows, profile=profile, summaries=summaries),
         "profile": profile,
         "global_summary": global_sum,
+        "project_summary": project_sum,
     }
 
 
@@ -822,6 +840,26 @@ async def edit_fact(fact_id: str, body: FactUpdateIn, user: dict = Depends(get_c
     except Exception as e:
         logger.error("[Memory Fact Edit] erro ao atualizar fato %s:", fact_id, exc_info=e)
         raise HTTPException(status_code=500, detail="Erro interno ao atualizar fato.")
+
+
+@router.patch("/facts/{fact_id}/scope")
+async def edit_fact_scope(fact_id: str, body: FactScopeUpdateIn, user: dict = Depends(get_current_user)):
+    """Promove um fato para global ou vincula explicitamente a um projeto do usuário."""
+    if not user:
+        raise HTTPException(status_code=401, detail="Não autorizado")
+    try:
+        updated = await update_memory_fact_scope(
+            user["id"],
+            fact_id,
+            body.scope,
+            project_id=body.project_id,
+        )
+        return {"status": "ok", "fact": updated}
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error("[Memory Fact Scope] erro ao alterar escopo de %s (%s)", fact_id, type(e).__name__)
+        raise HTTPException(status_code=500, detail="Erro interno ao alterar escopo do fato.")
 
 
 @router.post("/dream-preview")

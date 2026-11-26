@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
-import { PanelLeftOpen, Code2, BookOpen, Pencil, Lightbulb, X, ChevronRight, ChevronDown, MoreVertical, Folder, LoaderCircle } from 'lucide-react'
+import { PanelLeftOpen, Code2, BookOpen, Pencil, Lightbulb, X, ChevronRight, ChevronDown, MoreVertical, Folder, LoaderCircle, RefreshCw, AlertCircle } from 'lucide-react'
 import { BuyCoffeeIcon } from './BuyCoffeeIcon'
 import { useTranslation } from 'react-i18next'
 import { useStore } from '../store/useStore'
@@ -253,6 +253,11 @@ export function ChatWindow() {
     setProjectName,
     setView,
     setActiveProjectId,
+    pendingTurn,
+    reconcilePendingTurn,
+    clearPendingTurnState,
+    highlightMessageId,
+    setHighlightMessageId,
   } = useStore(useShallow((s) => ({
     messages: s.messages,
     conversations: s.conversations,
@@ -271,6 +276,11 @@ export function ChatWindow() {
     setProjectName: s.setProjectName,
     setView: s.setView,
     setActiveProjectId: s.setActiveProjectId,
+    pendingTurn: s.pendingTurn,
+    reconcilePendingTurn: s.reconcilePendingTurn,
+    clearPendingTurnState: s.clearPendingTurnState,
+    highlightMessageId: s.highlightMessageId,
+    setHighlightMessageId: s.setHighlightMessageId,
   })))
   const { sendMessage, stopStream, retryMessage } = useChatContext()
   const isMobile = useIsMobile()
@@ -407,12 +417,26 @@ export function ChatWindow() {
     return t('chat.chipBrainstorm')
   }, [openChip, t])
 
+  // Salta automaticamente até a mensagem encontrada pela busca e limpa o destaque após o pulso visual
+  useEffect(() => {
+    if (!highlightMessageId) return
+    const target = document.getElementById(`msg-${highlightMessageId}`)
+    if (!target) return
+    target.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    const timer = window.setTimeout(() => {
+      setHighlightMessageId(null)
+    }, 3200)
+    return () => window.clearTimeout(timer)
+  }, [highlightMessageId, messages, setHighlightMessageId])
+
   useEffect(() => {
     const container = messagesAreaRef.current
     if (!container) return
 
     const messageCountChanged = messages.length !== prevMessagesLength.current
     prevMessagesLength.current = messages.length
+
+    if (highlightMessageId) return
 
     if (messageCountChanged) {
       container.scrollTop = container.scrollHeight
@@ -430,7 +454,7 @@ export function ChatWindow() {
         block: 'end',
       })
     }
-  }, [messages, isStreaming])
+  }, [messages, isStreaming, highlightMessageId])
 
   const [showScrollBottom, setShowScrollBottom] = useState(false)
 
@@ -708,6 +732,82 @@ export function ChatWindow() {
             {isStreaming && <StreamingTail sentinelRef={bottomSentinelRef} messagesAreaRef={messagesAreaRef} />}
           </>
         )}
+        {(() => {
+          const activePendingTurn =
+            pendingTurn &&
+            !isStreaming &&
+            !isGenerating &&
+            (pendingTurn.conversationId === activeConversationId || (!activeConversationId && !pendingTurn.conversationId))
+              ? pendingTurn
+              : null
+          if (!activePendingTurn) return null
+          const isInProgress = activePendingTurn.status === 'streaming' || activePendingTurn.status === 'sending'
+          const promptAlreadyShown = Boolean(
+            activePendingTurn.userDisplayText &&
+              messages.some(
+                (m) =>
+                  m.role === 'user' &&
+                  (m.id === activePendingTurn.userMessageId || m.content === activePendingTurn.userDisplayText)
+              )
+          )
+          return (
+            <div className="incomplete-turn-card" role="status" aria-live="polite">
+              <div className="incomplete-turn-header">
+                <div className="incomplete-turn-title">
+                  {isInProgress ? (
+                    <LoaderCircle size={15} className="spin" aria-hidden="true" />
+                  ) : (
+                    <AlertCircle size={15} aria-hidden="true" />
+                  )}
+                  <span>
+                    {isInProgress
+                      ? t('chat.turnInProgressTitle', { defaultValue: 'Resposta em andamento no servidor' })
+                      : activePendingTurn.status === 'stopped'
+                      ? t('chat.turnStoppedTitle', { defaultValue: 'Resposta interrompida' })
+                      : t('chat.turnIncompleteTitle', { defaultValue: 'Turno não concluído' })}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className="incomplete-turn-dismiss"
+                  onClick={clearPendingTurnState}
+                  aria-label={t('common.close', { defaultValue: 'Fechar' })}
+                >
+                  <X size={14} />
+                </button>
+              </div>
+              {!promptAlreadyShown && activePendingTurn.userDisplayText && (
+                <div className="incomplete-turn-prompt">{activePendingTurn.userDisplayText}</div>
+              )}
+              {activePendingTurn.partialContent && (
+                <div className="incomplete-turn-partial">{activePendingTurn.partialContent}</div>
+              )}
+              {activePendingTurn.errorMessage && (
+                <div className="incomplete-turn-error">{activePendingTurn.errorMessage}</div>
+              )}
+              <div className="incomplete-turn-actions">
+                {isInProgress && (
+                  <button
+                    type="button"
+                    className="route-status-btn secondary"
+                    onClick={() => void reconcilePendingTurn()}
+                  >
+                    <RefreshCw size={12} aria-hidden="true" />
+                    <span>{t('chat.checkTurnStatus', { defaultValue: 'Atualizar status' })}</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="route-status-btn"
+                  onClick={() => retryMessage(undefined, activePendingTurn.request.request_id)}
+                >
+                  <RefreshCw size={12} aria-hidden="true" />
+                  <span>{t('chat.retry', { defaultValue: 'Tentar novamente' })}</span>
+                </button>
+              </div>
+            </div>
+          )
+        })()}
         <div ref={bottomSentinelRef} style={{ height: 0, flexShrink: 0 }} aria-hidden="true" />
       </div>
 

@@ -53,13 +53,25 @@ function AdminPanelMobile() {
     closeSettings, setView, loadModels, user, theme, setTheme, chatFont, setChatFont,
     hapticFeedback, setHapticFeedback, displayName, fullName, occupation,
     customInstructions, setProfile, logout, locale, setLocale,
-    uiLevel, setUiLevel, selectModel, showToast,
+    uiLevel, setUiLevel, selectModel, showToast, settingsInitialTab,
   } = useStore()
   const tts = useTtsPrefs()
 
   // Stack navigation state
   const [screenStack, setScreenStack] = useState<string[]>(['list'])
   const [activeBottomSheet, setActiveBottomSheet] = useState<'theme' | 'font' | 'language' | 'uiLevel' | null>(null)
+
+  useEffect(() => {
+    if (settingsInitialTab === 'providers') {
+      setScreenStack(['list', 'capacidades'])
+      useStore.setState({ settingsInitialTab: null })
+    } else if (settingsInitialTab === 'router' || settingsInitialTab === 'rankings' || settingsInitialTab === 'memory' || settingsInitialTab === 'proactive') {
+      setScreenStack(['list', settingsInitialTab])
+      useStore.setState({ settingsInitialTab: null })
+    } else if (settingsInitialTab) {
+      useStore.setState({ settingsInitialTab: null })
+    }
+  }, [settingsInitialTab])
   const handleLocaleChange = (code: string) => {
     setLocale(code)
     i18n.changeLanguage(code)
@@ -239,8 +251,27 @@ function AdminPanelMobile() {
   const handleSync = async (id: string) => {
     setSyncing((s) => ({ ...s, [id]: true }))
     try {
-      await api.syncProviderModels(id)
+      const res = await api.syncProviderModels(id)
       await Promise.all([load(), loadModels()])
+      const rep = res?.sync_report
+      if (rep) {
+        const exc = rep.excluded || {}
+        const excludedTotal =
+          (exc.non_chat_endpoint || 0) +
+          (exc.paid_or_not_free || 0) +
+          (exc.inactive || 0) +
+          (exc.no_longer_free || 0) +
+          (exc.removed_from_remote || 0)
+        showToast(
+          t('settings.syncSummaryToast', {
+            active: rep.active_enabled_count,
+            remote: rep.remote_total,
+            excluded: excludedTotal,
+            defaultValue: `Catálogo atualizado: ${rep.active_enabled_count} ativos de ${rep.remote_total} remotos (${excludedTotal} filtrados/desativados).`,
+          }),
+          'success'
+        )
+      }
     } catch (err) {
       console.error(err)
       showToast(t('settings.syncError'), 'error')
@@ -1782,7 +1813,7 @@ function AdminPanelMobile() {
 
 function AdminPanelDesktop() {
   const { t, i18n } = useTranslation()
-  const { closeSettings, setView, loadModels, user, theme, setTheme, chatFont, setChatFont, modelSortMode, setModelSortMode, displayName, fullName, occupation, customInstructions, setProfile, locale, setLocale, showToast } = useStore()
+  const { closeSettings, setView, loadModels, user, theme, setTheme, chatFont, setChatFont, modelSortMode, setModelSortMode, displayName, fullName, occupation, customInstructions, setProfile, locale, setLocale, showToast, settingsInitialTab } = useStore()
   const handleLocaleChange = (code: string) => {
     setLocale(code)
     i18n.changeLanguage(code)
@@ -1798,6 +1829,13 @@ function AdminPanelDesktop() {
   const [expandedProviders, setExpandedProviders] = useState<Record<string, boolean>>({})
   const [tab, setTab] = useState<Tab>('general')
   const settingsScrollRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (settingsInitialTab) {
+      setTab(settingsInitialTab)
+      useStore.setState({ settingsInitialTab: null })
+    }
+  }, [settingsInitialTab])
   const [editingModelId, setEditingModelId] = useState<string | null>(null)
   const [tempCtx, setTempCtx] = useState('')
   const [usersList, setUsersList] = useState<any[]>([])
@@ -1998,8 +2036,27 @@ function AdminPanelDesktop() {
   const handleSync = async (id: string) => {
     setSyncing((s) => ({ ...s, [id]: true }))
     try {
-      await api.syncProviderModels(id)
+      const res = await api.syncProviderModels(id)
       await Promise.all([load(), loadModels()])
+      const rep = res?.sync_report
+      if (rep) {
+        const exc = rep.excluded || {}
+        const excludedTotal =
+          (exc.non_chat_endpoint || 0) +
+          (exc.paid_or_not_free || 0) +
+          (exc.inactive || 0) +
+          (exc.no_longer_free || 0) +
+          (exc.removed_from_remote || 0)
+        showToast(
+          t('settings.syncSummaryToast', {
+            active: rep.active_enabled_count,
+            remote: rep.remote_total,
+            excluded: excludedTotal,
+            defaultValue: `Catálogo atualizado: ${rep.active_enabled_count} ativos de ${rep.remote_total} remotos (${excludedTotal} filtrados/desativados).`,
+          }),
+          'success'
+        )
+      }
     } catch (err) {
       console.error(err)
       showToast(t('settings.syncError'), 'error')
@@ -2096,6 +2153,16 @@ function AdminPanelDesktop() {
               )}
             </div>
             <span className="provider-url">{prov.base_url}</span>
+            {prov.last_sync_report && (
+              <span className="provider-sync-summary">
+                {t('settings.syncDeltaLine', {
+                  active: prov.last_sync_report.active_enabled_count,
+                  eligible: prov.last_sync_report.chat_eligible_count,
+                  remote: prov.last_sync_report.remote_total,
+                  defaultValue: `Ativos: ${prov.last_sync_report.active_enabled_count} · Chat elegíveis: ${prov.last_sync_report.chat_eligible_count}/${prov.last_sync_report.remote_total}`,
+                })}
+              </span>
+            )}
           </div>
           <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
             {prov.has_key ? (

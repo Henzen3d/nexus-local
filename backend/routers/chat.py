@@ -9,7 +9,13 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from backend.attachments import move_attachments_to_conversation
 from backend.auth import resolve_token_user
 from backend.ws_origin import is_origin_allowed
-from backend.database import get_db, get_router_policy
+from backend.database import (
+    get_db,
+    get_router_policy,
+    get_chat_turn_state,
+    upsert_chat_turn_state,
+    save_chat_turn_partial,
+)
 from backend.fusion.orchestrator import executar_fusion
 from backend.logging_config import configure_logging, get_logger
 from backend.memory import extract_user_memory_background
@@ -19,6 +25,7 @@ from backend.proactive import service as proactive_service
 from backend.orchestration.build_context import (
     BASE_SYSTEM_PROMPT,
     build_memory_context,
+    resolve_canonical_project_id,
     resolve_project_context,
 )
 from backend.projects.context_builder import estimate_tokens
@@ -55,6 +62,10 @@ from backend.orchestration.resolve_request import resolve_and_stream, build_fina
 from backend.ranking.failover import FallbackRequirements
 from backend.orchestration.ws_protocol import (
     ConversationCreatedEvent,
+    RequestAckEvent,
+    ToolExecutedEvent,
+    ToolExecutingEvent,
+    ToolFailedEvent,
     TurnSocket,
     build_stream_end_failure,
     build_stream_end_success,
@@ -84,6 +95,7 @@ router = APIRouter()
 
 _user_sockets: dict[str, set[WebSocket]] = {}
 _active_chat_requests: set[tuple[str, str]] = set()
+_stop_requested_turns: set[tuple[str, str]] = set()
 
 
 def register_socket(user_id: str, ws: WebSocket) -> None:
@@ -209,6 +221,15 @@ async def websocket_chat(ws: WebSocket):
                     view=req.get("view"),
                 )
                 _presence_transition(user_id, ws, transition)
+                continue
+            if msg_type == "stop_turn":
+                req_stop = parse_turn_id(req.get("request_id"))
+                turn_stop = parse_turn_id(req.get("turn_id"))
+                if req_stop:
+                    _stop_requested_turns.add((user_id, req_stop))
+                    await save_chat_turn_partial(user_id, req_stop, None, status="stopped")
+                if turn_stop:
+                    _stop_requested_turns.add((user_id, turn_stop))
                 continue
 
             conversation_id = req.get("conversation_id")
@@ -351,6 +372,10 @@ async def _process_turn(
         turn.finish()
         if request_key:
             _active_chat_requests.discard(request_key)
+            _stop_requested_turns.discard(request_key)
+        turn_id_clean = parse_turn_id(req.get("turn_id"))
+        if turn_id_clean:
+            _stop_requested_turns.discard((user["id"], turn_id_clean))
 
 
 async def _run_turn(
@@ -377,6 +402,7 @@ async def _run_turn(
     request_id = parse_turn_id(req.get("request_id"))
     request_ids = {}
     saved_conversation_id = None
+    existing_turn_state = None
     if request_id:
         request_ids = {
             kind: chat_request_message_id(user_id, request_id, kind)
@@ -385,6 +411,7 @@ async def _run_turn(
         saved_conversation_id = await find_saved_user_request(
             db, request_ids["user"], user_id, conversation_id, user_message,
         )
+        existing_turn_state = await get_chat_turn_state(db, user_id, request_id)
     new_conversation = {"new_id": saved_conversation_id or request_ids["conversation"]} if request_ids else {}
     user_message_options = {"message_id": request_ids["user"]} if request_ids else {}
 
@@ -394,6 +421,9 @@ async def _run_turn(
 
     from backend.context import RequestContext
     req_ctx = RequestContext(user_id=user_id, conversation_id=conversation_id)
+    if request_id:
+        req_ctx.set_memo("request_id", request_id)
+    req_ctx.set_memo("user_id", user_id)
 
     # ── Temporal Grounding (Fuso do Cliente / Sistema) ──────────────
     import datetime
@@ -498,6 +528,19 @@ async def _run_turn(
                     placeholder_msg_id, image_queued = await _queue_turn_image(
                         ws, db, conversation_id, user_id, img_prompt, img_config, request_ids.get("image"),
                     )
+                    if request_id:
+                        await upsert_chat_turn_state(
+                            db,
+                            user_id=user_id,
+                            request_id=request_id,
+                            conversation_id=conversation_id,
+                            project_id=request_project_id,
+                            user_message_id=request_ids.get("user"),
+                            assistant_message_id=placeholder_msg_id,
+                            status="completed",
+                            model_id=img_config.model_id or "cloudflare/flux-1-schnell",
+                            provider_id=img_config.provider_id or "cloudflare",
+                        )
 
                     # Despacha stream_end imediatamente para destravar o composer
                     await ws.send_json(
@@ -557,6 +600,16 @@ async def _run_turn(
         ) as cursor:
             existing_answer = await cursor.fetchone()
         if existing_answer:
+            await upsert_chat_turn_state(
+                db,
+                user_id=user_id,
+                request_id=request_id,
+                conversation_id=conversation_id,
+                project_id=request_project_id,
+                user_message_id=request_ids.get("user"),
+                assistant_message_id=existing_answer[0],
+                status="completed",
+            )
             await ws.send_json(build_stream_end_success(
                 message_id=existing_answer[0], conversation_id=conversation_id,
                 turn_id=turn_id, finish_reason="already_completed",
@@ -640,6 +693,8 @@ async def _run_turn(
             history=raw_history[-4:] if raw_history else [],
             intent_routing=intent_routing,
             turn_ref=turn_ref,
+            existing_tool_effects=existing_turn_state.get("tool_effects") if existing_turn_state else None,
+            request_context=req_ctx,
         )
     )
 
@@ -712,6 +767,31 @@ async def _run_turn(
                 attachment_ids, conversation_id, user_msg_id, db, user_id=user_id
             )
 
+        if request_id:
+            await upsert_chat_turn_state(
+                db,
+                user_id=user_id,
+                request_id=request_id,
+                conversation_id=conversation_id,
+                project_id=request_project_id,
+                user_message_id=user_msg_id,
+                status="streaming",
+                model_id=model_id,
+                provider_id=provider_id,
+            )
+            await ws.send_json(
+                dump_ws_event(
+                    RequestAckEvent(
+                        request_id=request_id,
+                        conversation_id=conversation_id,
+                        user_message_id=user_msg_id,
+                        turn_id=turn_id,
+                        project_id=request_project_id,
+                        status="streaming",
+                    )
+                )
+            )
+
         attachments_by_msg, extracted_text_by_id = await load_attachments(db, conversation_id)
         model_supports_vision = await check_model_vision_support(db, model_id)
 
@@ -720,6 +800,40 @@ async def _run_turn(
         web_evidence, tool_results, tool_attempted, tool_answered_request = await evidence_task
         web_search_used, web_search_query, web_search_sources, search_results, search_config, process_steps = web_evidence
         req_ctx.record_phase("web_search_wait", t_web_wait)
+        if request_id and tool_results:
+            serialized_effects = [
+                {
+                    "family": getattr(r, "family", ""),
+                    "provider_id": getattr(r, "provider_id", ""),
+                    "data": getattr(r, "data", None),
+                    "cached": bool(getattr(r, "cached", False)),
+                    "latency_ms": float(getattr(r, "latency_ms", 0.0) or 0.0),
+                    "metadata": dict(getattr(r, "metadata", {}) or {}),
+                }
+                for r in tool_results
+                if getattr(r, "success", False)
+            ]
+            if serialized_effects:
+                await upsert_chat_turn_state(
+                    db,
+                    user_id=user_id,
+                    request_id=request_id,
+                    status="streaming",
+                    tool_effects=serialized_effects,
+                )
+    except (WebSocketDisconnect, asyncio.CancelledError):
+        if request_id:
+            was_stopped = (
+                (user_id, request_id) in _stop_requested_turns
+                or (turn_id and (user_id, turn_id) in _stop_requested_turns)
+            )
+            await save_chat_turn_partial(
+                user_id,
+                request_id,
+                req_ctx.get_memo("latest_partial_response"),
+                status="stopped" if was_stopped else "incomplete",
+            )
+        raise
     finally:
         await _cancel_pending_task(evidence_task)
 
@@ -743,42 +857,78 @@ async def _run_turn(
             )
 
     t_load_hist = time.perf_counter()
-    history, relay_used, relay_model_id = await load_history(
-        db, conversation_id, user_msg_id, attachments_by_msg,
-        extracted_text_by_id, model_supports_vision,
-        web_search_used, search_results, web_search_query,
-        search_config, format_search_results, user_id,
-        user_query=user_message, model_id=model_id, provider_id=provider_id,
-        **({"stop_at_user_message": True} if saved_conversation_id else {}),
-    )
+    try:
+        history, relay_used, relay_model_id = await load_history(
+            db, conversation_id, user_msg_id, attachments_by_msg,
+            extracted_text_by_id, model_supports_vision,
+            web_search_used, search_results, web_search_query,
+            search_config, format_search_results, user_id,
+            user_query=user_message, model_id=model_id, provider_id=provider_id,
+            request_context=req_ctx,
+            **({"stop_at_user_message": True} if saved_conversation_id else {}),
+        )
+    except TypeError:
+        history, relay_used, relay_model_id = await load_history(
+            db, conversation_id, user_msg_id, attachments_by_msg,
+            extracted_text_by_id, model_supports_vision,
+            web_search_used, search_results, web_search_query,
+            search_config, format_search_results, user_id,
+            user_query=user_message, model_id=model_id, provider_id=provider_id,
+            **({"stop_at_user_message": True} if saved_conversation_id else {}),
+        )
+    relay_status = req_ctx.get_memo("relay_status")
     req_ctx.record_phase("db_load_history", t_load_hist)
 
-    # ── Build context (memory + project RAG) ────────────────────────
+    # ── Build context (projeto canônico ANTES da memória + RAG) ─────
+    import hashlib
     t_rag_start = time.perf_counter()
-    t_memory_start = time.perf_counter()
-    user_mem_text, context_fingerprint = await build_memory_context(
-        user, conversation_id, user_message, use_memory, provider_id, model_id,
-        request_context=req_ctx,
-        may_use_external_fallback=True,
+    t_project_resolve = time.perf_counter()
+    canonical_project_id = await resolve_canonical_project_id(
+        db, conversation_id, request_project_id, user["id"]
     )
+    req_ctx.record_phase("project_resolve", t_project_resolve)
+
+    t_memory_start = time.perf_counter()
+    try:
+        user_mem_text, context_fingerprint = await build_memory_context(
+            user, conversation_id, user_message, use_memory, provider_id, model_id,
+            request_context=req_ctx,
+            may_use_external_fallback=True,
+            active_project_id=canonical_project_id,
+        )
+    except TypeError:
+        user_mem_text, context_fingerprint = await build_memory_context(
+            user, conversation_id, user_message, use_memory, provider_id, model_id,
+            request_context=req_ctx,
+            may_use_external_fallback=True,
+        )
     req_ctx.record_phase("memory_context", t_memory_start)
 
     t_project_start = time.perf_counter()
-    active_project_id, system_instruction = await resolve_project_context(
-        db, ws, conversation_id, request_project_id, user, model_id,
-        provider_id, user_message, history, project_context_debug,
-        BASE_SYSTEM_PROMPT, user_mem_text,
-        request_context=req_ctx,
-        now=turn_now,
-    )
+    try:
+        active_project_id, system_instruction = await resolve_project_context(
+            db, ws, conversation_id, request_project_id, user, model_id,
+            provider_id, user_message, history, project_context_debug,
+            BASE_SYSTEM_PROMPT, user_mem_text,
+            request_context=req_ctx,
+            now=turn_now,
+            resolved_project_id=canonical_project_id,
+        )
+    except TypeError:
+        active_project_id, system_instruction = await resolve_project_context(
+            db, ws, conversation_id, request_project_id, user, model_id,
+            provider_id, user_message, history, project_context_debug,
+            BASE_SYSTEM_PROMPT, user_mem_text,
+            request_context=req_ctx,
+            now=turn_now,
+        )
     req_ctx.record_phase("project_context", t_project_start)
     req_ctx.record_phase("rag_memory", t_rag_start)
 
-    # B03/Q4: Namespace semantic cache by project, attachments, and web search context
-    # para evitar que perguntas em projetos distintos ou com anexos reaproveitem cache indevido
-    context_parts = [context_fingerprint or "default"]
-    if active_project_id:
-        context_parts.append(f"proj:{active_project_id}")
+    # B03/Q4: Namespace semantic cache by project, system prompt digest, attachments, and web search
+    # para evitar que perguntas em projetos distintos, pós-edição ou troca de destino reaproveitem cache
+    sys_digest = hashlib.sha256((system_instruction or "").encode("utf-8")).hexdigest()[:12]
+    context_parts = [context_fingerprint or "default", f"proj:{active_project_id or 'none'}", f"sys:{sys_digest}"]
     if attachment_ids:
         context_parts.append(f"att:{','.join(sorted(attachment_ids))}")
     if web_search_used:
@@ -789,6 +939,13 @@ async def _run_turn(
 
     if image_job_created:
         system_instruction += "\n\nO usuário pediu uma imagem raster que está sendo gerada separadamente. Não escreva código SVG nem gere tags de imagem neste turno."
+
+    if relay_status == "placeholder_only":
+        system_instruction += (
+            "\n\nAVISO VERIFICADO DE ANEXO DE IMAGEM: Não foi possível analisar visualmente a(s) imagem(ns) anexada(s) "
+            "neste turno porque nem o modelo nem o Vision Relay puderam inspecionar os pixels. "
+            "NUNCA invente, descreva por palpite ou suponha o conteúdo da imagem; informe com transparência ao usuário que não foi possível visualizar a imagem e sugira um modelo com suporte a visão."
+        )
 
     if web_search_used:
         system_instruction += (
@@ -819,6 +976,7 @@ async def _run_turn(
         if modular_addition:
             system_instruction += modular_addition
 
+    failed_tools = req_ctx.get_memo("failed_tools", [])
     if tool_results:
         from backend.tools.context_injector import build_tools_context_block
 
@@ -829,7 +987,15 @@ async def _run_turn(
                 "que elas medem e as páginas oficiais para avisos, documentação e informações complementares. "
                 "Identifique a fonte de cada dado e preserve a numeração das citações da web.\n"
             )
-    elif tool_attempted and not web_search_used:
+    if failed_tools:
+        failed_names = ", ".join(str(f.get("family") or "tool") for f in failed_tools)
+        system_instruction += (
+            f"\nAVISO VERIFICADO DE FALHA EM FERRAMENTA ({failed_names}): "
+            "Uma ou mais etapas de ferramenta externa falharam ou não confirmaram dados suficientes. "
+            "NUNCA finja que a ferramenta funcionou e NÃO invente medições, temperaturas ou cotações ausentes; "
+            "informe a limitação objetivamente e baseie o restante da resposta apenas nas fontes confirmadas.\n"
+        )
+    elif tool_attempted and not tool_results and not web_search_used:
         system_instruction += (
             "\nA consulta à ferramenta não retornou dados utilizáveis. Indique essa limitação "
             "ao responder a partes do pedido que exigem dados atuais.\n"
@@ -961,19 +1127,52 @@ async def _run_turn(
     requested_model_id = model_id
     requested_provider_id = provider_id
 
-    result = await resolve_and_stream(
-        ws, db, conversation_id, user_id, model_id, provider_id,
-        history, context_fingerprint, bypass_cache,
-        temperature=auto_route_decision.temperature if auto_route_decision else None,
-        max_tokens=effective_max_tokens,
-        auto_route_decision=auto_route_decision,
-        reasoning_effort=reasoning_effort,
-        request_context=req_ctx,
-        turn_id=turn_id,
-        fallback_requirements=fallback_requirements,
-        cache_response=not tool_attempted,
-    )
+    try:
+        result = await resolve_and_stream(
+            ws, db, conversation_id, user_id, model_id, provider_id,
+            history, context_fingerprint, bypass_cache,
+            temperature=auto_route_decision.temperature if auto_route_decision else None,
+            max_tokens=effective_max_tokens,
+            auto_route_decision=auto_route_decision,
+            reasoning_effort=reasoning_effort,
+            request_context=req_ctx,
+            turn_id=turn_id,
+            fallback_requirements=fallback_requirements,
+            cache_response=not tool_attempted,
+        )
+    except (WebSocketDisconnect, asyncio.CancelledError):
+        if request_id:
+            was_stopped = (
+                (user_id, request_id) in _stop_requested_turns
+                or (turn_id and (user_id, turn_id) in _stop_requested_turns)
+            )
+            await save_chat_turn_partial(
+                user_id,
+                request_id,
+                req_ctx.get_memo("latest_partial_response"),
+                status="stopped" if was_stopped else "incomplete",
+            )
+        raise
     if result is None:
+        if request_id:
+            was_stopped = (
+                (user_id, request_id) in _stop_requested_turns
+                or (turn_id and (user_id, turn_id) in _stop_requested_turns)
+            )
+            fail_status = "stopped" if was_stopped else req_ctx.get_memo("turn_disconnect_status", "failed")
+            await upsert_chat_turn_state(
+                db,
+                user_id=user_id,
+                request_id=request_id,
+                conversation_id=conversation_id,
+                project_id=active_project_id,
+                user_message_id=user_msg_id,
+                status=fail_status,
+                partial_content=req_ctx.get_memo("latest_partial_response") or "",
+                model_id=model_id,
+                provider_id=provider_id,
+                error_message=req_ctx.get_memo("turn_failure_message"),
+            )
         from backend.metrics import task_benchmark_manager
         await task_benchmark_manager.record_task_async(
             task_type="chat",
@@ -1043,12 +1242,31 @@ async def _run_turn(
         )
         return
 
+    memory_used_list = list(req_ctx.get_memo("memory_used") or [])
+    memory_none_relevant = bool(req_ctx.get_memo("memory_none_relevant", False))
     t_save_asst = time.perf_counter()
     assistant_msg_id = await save_assistant_message(
         db, conversation_id, full_response, model_id, provider_id,
         relay_used, relay_model_id,
         **({"message_id": request_ids["assistant"]} if request_ids else {}),
+        memory_used_json=json.dumps(memory_used_list, ensure_ascii=False) if memory_used_list else None,
+        relay_status=relay_status,
+        turn_status="completed",
     )
+    if request_id:
+        await upsert_chat_turn_state(
+            db,
+            user_id=user_id,
+            request_id=request_id,
+            conversation_id=conversation_id,
+            project_id=active_project_id,
+            user_message_id=user_msg_id,
+            assistant_message_id=assistant_msg_id,
+            status="completed",
+            partial_content=full_response,
+            model_id=model_id,
+            provider_id=provider_id,
+        )
     req_ctx.record_phase("db_save_assistant_msg", t_save_asst)
 
     if ui_envelope:
@@ -1108,6 +1326,10 @@ async def _run_turn(
         "artifacts": artifacts_list,
         "relay_used": bool(relay_used),
         "relay_model": relay_model_id,
+        "relay_status": relay_status,
+        "memory_used": memory_used_list or None,
+        "memory_none_relevant": memory_none_relevant,
+        "turn_status": "completed",
         "web_search_used": bool(web_search_used),
         "web_search_query": web_search_query,
         "web_search_sources": web_search_sources,
@@ -1239,16 +1461,58 @@ async def _record_web_search_telemetry(
         await log_db.close()
 
 
+_TOOL_FAMILY_TITLES_PT = {
+    "weather": "Consultando clima",
+    "currency": "Consultando câmbio",
+    "brasil": "Consultando dados oficiais",
+    "news": "Consultando notícias",
+    "knowledge": "Consultando base de conhecimento",
+    "translation": "Traduzindo conteúdo",
+    "geo": "Consultando localização",
+    "fun": "Consultando utilidade",
+}
+
+
 async def _resolve_turn_evidence(
     ws, req, user_message, user_id, conversation_id,
     *, intent_res, history, intent_routing, turn_ref,
+    existing_tool_effects: list[dict] | None = None,
+    request_context: Any | None = None,
 ):
+    from backend.tools.base import ToolResult
     from backend.tools.dispatcher import dispatch_tool, is_tools_globally_enabled
-    from backend.tools.intent import plan_tool_requests
+    from backend.tools.intent import (
+        ToolIntent,
+        detect_dependent_weather_after_web,
+        extract_validated_location_from_search,
+        plan_tool_requests,
+    )
+
+    tool_steps: list[dict[str, Any]] = []
+    failed_tools: list[dict[str, Any]] = []
+    if request_context and hasattr(request_context, "set_memo"):
+        request_context.set_memo("failed_tools", failed_tools)
+
+    reused_by_family: dict[str, ToolResult] = {}
+    if existing_tool_effects and isinstance(existing_tool_effects, list):
+        for eff in existing_tool_effects:
+            if not isinstance(eff, dict) or not eff.get("family"):
+                continue
+            fam = str(eff.get("family"))
+            reused_by_family[fam] = ToolResult(
+                success=True,
+                data=eff.get("data"),
+                provider_id=str(eff.get("provider_id") or "reconciled"),
+                family=fam,
+                cached=True,
+                latency_ms=float(eff.get("latency_ms") or 0.0),
+                metadata={**dict(eff.get("metadata") or {}), "reconciled": True},
+            )
 
     deadline = time.monotonic() + 14.0
     intents, tool_only, search_focus = plan_tool_requests(user_message)
-    if intents:
+    dependent_weather = detect_dependent_weather_after_web(user_message)
+    if intents or dependent_weather:
         try:
             settings_db = await get_db()
             try:
@@ -1256,11 +1520,13 @@ async def _resolve_turn_evidence(
                     row = await cur.fetchone()
                 if (row and row[0] and row[0].lower() not in ("true", "1")) or not await is_tools_globally_enabled(settings_db):
                     intents = []
+                    dependent_weather = False
             finally:
                 await settings_db.close()
         except Exception as exc:
             logger.warning("Falha ao ler configuração de ferramentas (%s).", type(exc).__name__)
             intents = []
+            dependent_weather = False
 
     async def search(*, tool_fallback=False, focus=None):
         kwargs = {"tool_fallback": tool_fallback, "search_focus": focus} if tool_fallback or focus else {}
@@ -1275,17 +1541,61 @@ async def _resolve_turn_evidence(
             logger.warning("Busca web não concluída (%s).", type(exc).__name__)
             return False, "", [], [], None, []
 
+    def _merge_steps(web_tuple: tuple) -> tuple:
+        if not tool_steps:
+            return web_tuple
+        w_used, w_query, w_sources, w_results, w_cfg, w_steps = web_tuple
+        merged = list(w_steps or []) + list(tool_steps)
+        return (w_used, w_query, w_sources, w_results, w_cfg, merged)
+
     async def run_tools(items):
         results = []
         if not items:
             return results
+        pending_items = []
+        for idx, item in enumerate(items):
+            if item.family in reused_by_family:
+                reused_res = reused_by_family[item.family]
+                results.append(reused_res)
+                step_title = _TOOL_FAMILY_TITLES_PT.get(item.family, f"Ferramenta: {item.family}")
+                tool_steps.append({
+                    "id": f"tool-{item.family}",
+                    "type": "tool",
+                    "title": step_title,
+                    "detail": f"{reused_res.provider_id} (reconciled)",
+                    "status": "completed",
+                })
+            else:
+                pending_items.append((idx, item))
+        if not pending_items:
+            return results
+
         try:
             async with asyncio.timeout(max(0.01, min(5.0, deadline - time.monotonic()))):
                 tools_db = await get_db()
                 try:
-                    for item in items:
+                    for _idx, item in pending_items:
+                        step_id = f"tool-{item.family}"
+                        step_title = _TOOL_FAMILY_TITLES_PT.get(item.family, f"Ferramenta: {item.family}")
+                        param_hint = item.params.get("city") or item.params.get("query") or item.action
+                        hint_str = str(param_hint) if param_hint else None
                         try:
-                            await ws.send_json({"type": "tool_executing", "family": item.family, "action": item.action})
+                            await ws.send_json(
+                                dump_ws_event(
+                                    ToolExecutingEvent(
+                                        family=item.family,
+                                        action=item.action,
+                                        conversation_id=conversation_id,
+                                    )
+                                )
+                            )
+                            await ws.send_json({
+                                "type": "process_step_start",
+                                "id": step_id,
+                                "step_type": "tool",
+                                "title": step_title,
+                                "detail": hint_str,
+                            })
                         except Exception:
                             pass
                         try:
@@ -1294,13 +1604,83 @@ async def _resolve_turn_evidence(
                             )
                         except Exception as exc:
                             logger.warning("Ferramenta %s indisponível (%s).", item.family, type(exc).__name__)
+                            err_name = type(exc).__name__
+                            failed_tools.append({"family": item.family, "reason": err_name})
+                            tool_steps.append({
+                                "id": step_id,
+                                "type": "tool",
+                                "title": step_title,
+                                "detail": "indisponível",
+                                "status": "failed",
+                            })
+                            try:
+                                await ws.send_json(
+                                    dump_ws_event(ToolFailedEvent(family=item.family, error=err_name, conversation_id=conversation_id))
+                                )
+                                await ws.send_json({
+                                    "type": "process_step_end",
+                                    "id": step_id,
+                                    "status": "failed",
+                                    "detail": "indisponível",
+                                })
+                            except Exception:
+                                pass
                             continue
                         if result.success and result.data:
                             results.append(result)
+                            is_fallback = bool((result.metadata or {}).get("fallback"))
+                            badges = [result.provider_id]
+                            if result.cached:
+                                badges.append("cache")
+                            if is_fallback:
+                                badges.append("fallback")
+                            detail_label = f"{hint_str + ' · ' if hint_str else ''}{' · '.join(badges)}"
+                            tool_steps.append({
+                                "id": step_id,
+                                "type": "tool",
+                                "title": step_title,
+                                "detail": detail_label,
+                                "status": "completed",
+                            })
                             try:
+                                await ws.send_json(
+                                    dump_ws_event(
+                                        ToolExecutedEvent(
+                                            family=item.family,
+                                            provider=result.provider_id,
+                                            cached=bool(result.cached),
+                                            fallback=is_fallback,
+                                            conversation_id=conversation_id,
+                                        )
+                                    )
+                                )
                                 await ws.send_json({
-                                    "type": "tool_executed", "family": item.family,
-                                    "provider": result.provider, "cached": result.cached,
+                                    "type": "process_step_end",
+                                    "id": step_id,
+                                    "status": "completed",
+                                    "detail": detail_label,
+                                })
+                            except Exception:
+                                pass
+                        else:
+                            err_msg = str(result.error or "no_data")[:120]
+                            failed_tools.append({"family": item.family, "reason": err_msg})
+                            tool_steps.append({
+                                "id": step_id,
+                                "type": "tool",
+                                "title": step_title,
+                                "detail": "falhou",
+                                "status": "failed",
+                            })
+                            try:
+                                await ws.send_json(
+                                    dump_ws_event(ToolFailedEvent(family=item.family, error=err_msg, conversation_id=conversation_id))
+                                )
+                                await ws.send_json({
+                                    "type": "process_step_end",
+                                    "id": step_id,
+                                    "status": "failed",
+                                    "detail": "falhou",
                                 })
                             except Exception:
                                 pass
@@ -1308,14 +1688,70 @@ async def _resolve_turn_evidence(
                     await tools_db.close()
         except Exception as exc:
             logger.warning("Consulta a ferramentas não concluída (%s).", type(exc).__name__)
+            for _idx, item in pending_items:
+                if not any(st.get("id") == f"tool-{item.family}" for st in tool_steps):
+                    failed_tools.append({"family": item.family, "reason": type(exc).__name__})
+                    tool_steps.append({
+                        "id": f"tool-{item.family}",
+                        "type": "tool",
+                        "title": _TOOL_FAMILY_TITLES_PT.get(item.family, f"Ferramenta: {item.family}"),
+                        "detail": "tempo excedido",
+                        "status": "failed",
+                    })
+                    try:
+                        await ws.send_json(
+                            dump_ws_event(ToolFailedEvent(family=item.family, error=type(exc).__name__, conversation_id=conversation_id))
+                        )
+                        await ws.send_json({"type": "process_step_end", "id": f"tool-{item.family}", "status": "failed"})
+                    except Exception:
+                        pass
         return results
+
+    # Fluxo dependente em 2 estágios: busca na web (Etapa 1) -> extrai local -> clima (Etapa 2)
+    if dependent_weather:
+        web = await search()
+        web_search_results = web[3] or []
+        web_sources = web[2] or []
+        results = await run_tools([i for i in intents if i.family != "weather"]) if intents else []
+        location = extract_validated_location_from_search(web_search_results, web_sources, user_message)
+        if location:
+            chained_weather = ToolIntent(
+                family="weather",
+                action="current",
+                params={"city": location, "days": 3},
+                confidence=0.95,
+                raw_match=location,
+            )
+            results.extend(await run_tools([chained_weather]))
+        else:
+            failed_tools.append({"family": "weather", "reason": "location_not_confirmed"})
+            tool_steps.append({
+                "id": "tool-weather",
+                "type": "tool",
+                "title": _TOOL_FAMILY_TITLES_PT["weather"],
+                "detail": "local não confirmado na busca",
+                "status": "failed",
+            })
+            try:
+                await ws.send_json(
+                    dump_ws_event(ToolFailedEvent(family="weather", error="location_not_confirmed", conversation_id=conversation_id))
+                )
+                await ws.send_json({
+                    "type": "process_step_end",
+                    "id": "tool-weather",
+                    "status": "failed",
+                    "detail": "local não confirmado na busca",
+                })
+            except Exception:
+                pass
+        return _merge_steps(web), results, True, False
 
     if not intents:
         return await search(), [], False, False
     if tool_only and not req.get("web_search", False):
         results = await run_tools(intents)
         web = (False, "", [], [], None, []) if results else await search(tool_fallback=True)
-        return web, results, True, bool(results)
+        return _merge_steps(web), results, True, bool(results)
 
     # Search-like tools can replace a failed web search. Structured sources
     # answer independent parts and can run while the web search is in progress.
@@ -1331,7 +1767,7 @@ async def _resolve_turn_evidence(
         web, results = await asyncio.gather(search(), run_tools(primary_tools))
     if web_alternatives and not web[0]:
         results.extend(await run_tools(web_alternatives))
-    return web, results, bool(primary_tools or (web_alternatives and not web[0])), False
+    return _merge_steps(web), results, bool(primary_tools or (web_alternatives and not web[0])), False
 
 
 async def _resolve_web_search(

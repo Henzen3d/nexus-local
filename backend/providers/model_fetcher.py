@@ -44,29 +44,45 @@ def parse_context_length(ctx) -> int:
 
 class ModelFetcher:
     @staticmethod
-    async def fetch_groq(api_key: str) -> List[Dict[str, Any]]:
+    async def fetch_groq(api_key: str, *, stats_out: dict | None = None) -> List[Dict[str, Any]]:
         async with httpx.AsyncClient(timeout=15.0) as client:
             headers = {"Authorization": f"Bearer {api_key}"}
             response = await client.get("https://api.groq.com/openai/v1/models", headers=headers)
             if response.status_code != 200:
                 raise Exception(f"HTTP {response.status_code}: {response.text}")
             data = response.json()
+            raw_list = data.get("data", [])
             results = []
+            excluded_inactive = 0
+            excluded_non_chat = 0
+            excluded_missing_ctx = 0
             non_chat_prefixes = ("whisper", "canopylabs/orpheus", "meta-llama/llama-prompt-guard")
-            for m in data.get("data", []):
+            for m in raw_list:
                 name = m.get("id")
                 active = m.get("active", True)
                 if not active:
+                    excluded_inactive += 1
                     continue
                 if name and any(name.startswith(p) for p in non_chat_prefixes):
+                    excluded_non_chat += 1
                     continue
                 ctx = m.get("context_window")
                 if name and ctx:
                     results.append({"model_name": name, "context_length": parse_context_length(ctx), "supports_vision": False})
+                else:
+                    excluded_missing_ctx += 1
+            if stats_out is not None:
+                stats_out.update({
+                    "remote_total": len(raw_list),
+                    "chat_eligible_count": len(results),
+                    "excluded_inactive": excluded_inactive,
+                    "excluded_non_chat": excluded_non_chat,
+                    "excluded_missing_ctx": excluded_missing_ctx,
+                })
             return results
 
     @staticmethod
-    async def fetch_openrouter(api_key: str) -> List[Dict[str, Any]]:
+    async def fetch_openrouter(api_key: str, *, stats_out: dict | None = None) -> List[Dict[str, Any]]:
         async with httpx.AsyncClient(timeout=15.0) as client:
             headers = {
                 "Authorization": f"Bearer {api_key}",
@@ -77,23 +93,41 @@ class ModelFetcher:
             if response.status_code != 200:
                 raise Exception(f"HTTP {response.status_code}: {response.text}")
             data = response.json()
+            raw_list = data.get("data", [])
             results = []
-            for m in data.get("data", []):
+            excluded_non_chat = 0
+            free_count = 0
+            paid_count = 0
+            for m in raw_list:
                 name = m.get("id")
                 if not name:
                     continue
                 endpoints = m.get("endpoints")
                 if endpoints is not None and "/api/v1/chat/completions" not in endpoints:
+                    excluded_non_chat += 1
                     continue
                 top_provider = m.get("top_provider") or {}
                 context = m.get("context_length") or top_provider.get("context_length")
                 context_length = parse_context_length(context)
+                confirmed_free = _openrouter_model_is_free(name, m.get("pricing"))
+                if confirmed_free:
+                    free_count += 1
+                else:
+                    paid_count += 1
                 results.append({
                     "model_name": name,
                     "display_name": m.get("name"),
                     "context_length": context_length if context_length > 0 else 8192,
                     "supports_vision": vision_from_architecture(m.get("architecture")),
-                    "confirmed_free": _openrouter_model_is_free(name, m.get("pricing")),
+                    "confirmed_free": confirmed_free,
+                })
+            if stats_out is not None:
+                stats_out.update({
+                    "remote_total": len(raw_list),
+                    "chat_eligible_count": len(results),
+                    "excluded_non_chat": excluded_non_chat,
+                    "free_count": free_count,
+                    "paid_count": paid_count,
                 })
             if not results:
                 raise ValueError("O OpenRouter retornou um catálogo de chat vazio.")

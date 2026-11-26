@@ -167,14 +167,39 @@ async def save_assistant_message(
     kind: str = "normal",
     *,
     message_id: str | None = None,
+    memory_used_json: str | None = None,
+    relay_status: str | None = None,
+    turn_status: str | None = "completed",
 ) -> str:
     """Persiste a mensagem do assistente e atualiza ``updated_at`` da conversa."""
     assistant_msg_id = message_id or str(uuid.uuid4())
-    await db.execute(
-        """INSERT INTO messages (id, conversation_id, role, content, model_id, provider, relay_used, relay_model, kind)
-           VALUES (?, ?, 'assistant', ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING""",
-        (assistant_msg_id, conversation_id, full_response, model_id, provider_id, relay_used, relay_model_id, kind),
-    )
+    try:
+        await db.execute(
+            """INSERT INTO messages (
+                   id, conversation_id, role, content, model_id, provider,
+                   relay_used, relay_model, kind, memory_used_json, relay_status, turn_status
+               )
+               VALUES (?, ?, 'assistant', ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING""",
+            (
+                assistant_msg_id,
+                conversation_id,
+                full_response,
+                model_id,
+                provider_id,
+                relay_used,
+                relay_model_id,
+                kind,
+                memory_used_json,
+                relay_status,
+                turn_status,
+            ),
+        )
+    except Exception:
+        await db.execute(
+            """INSERT INTO messages (id, conversation_id, role, content, model_id, provider, relay_used, relay_model, kind)
+               VALUES (?, ?, 'assistant', ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING""",
+            (assistant_msg_id, conversation_id, full_response, model_id, provider_id, relay_used, relay_model_id, kind),
+        )
     await db.execute(
         "UPDATE conversations SET updated_at = datetime('now'), model_id = ?, provider_id = ? WHERE id = ?",
         (model_id, provider_id, conversation_id),

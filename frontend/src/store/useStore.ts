@@ -1,10 +1,22 @@
 import type { UiError } from '../lib/nexusUi'
 import { create } from 'zustand'
 import type { ChatRequest } from '../types'
-import type { Artifact, Conversation, ConversationDetail, Message, Model, CacheStats, CacheSettings, FusionStatusEntry, Attachment, LibraryItem, WebSearchSource, AutoRouteDecisionInfo, UiEnvelope, ProgressBlock, IntelligentUiConfig, ProcessStep, ProactiveInsight, ProactiveAckAction, ProactiveChannelHint, ProactiveExpandMode, ProactiveSettings, ToastItem, CompanionMessage } from '../types'
+import type { Artifact, Conversation, ConversationDetail, Message, Model, CacheStats, CacheSettings, FusionStatusEntry, Attachment, LibraryItem, WebSearchSource, AutoRouteDecisionInfo, UiEnvelope, ProgressBlock, IntelligentUiConfig, ProcessStep, ProactiveInsight, ProactiveAckAction, ProactiveChannelHint, ProactiveExpandMode, ProactiveSettings, ToastItem, CompanionMessage, MemoryUsedItem } from '../types'
 import { api } from '../api/client'
 import i18n, { detectInitialLocale } from '../i18n'
-import { effectivePreferredModel } from '../lib/modelSelection'
+import {
+  clearAllUserDrafts,
+  loadPendingTurn,
+  reconcilePendingTurnWithServer,
+  savePendingTurn,
+  type PendingTurnSnapshot,
+} from '../lib/draftPersistence'
+import {
+  effectivePreferredModel,
+  resolveInitialModelSelection,
+  hasEligibleRoute,
+  type CatalogStatus,
+} from '../lib/modelSelection'
 import { MAX_BLOCKS, mergeUiEnvelopes } from '../lib/nexusUi'
 import { bubbleContent, mergePending, newIds, pruneExpired, toastPreview } from '../lib/proactivePending'
 import { StreamDraftBuffer } from '../lib/streamDraftBuffer'
@@ -151,6 +163,21 @@ function persistModelSelection(modelId: string, providerId: string) {
   }
 }
 
+export type AdminTab =
+  | 'general'
+  | 'providers'
+  | 'router'
+  | 'rankings'
+  | 'cache'
+  | 'tools'
+  | 'users'
+  | 'dashboard'
+  | 'memory'
+  | 'proactive'
+  | 'logs'
+
+let _modelsInflightPromise: Promise<void> | null = null
+
 /** Resolve model+provider válidos a partir da lista carregada e preferências salvas. */
 function resolveModelSelection(
   models: Model[],
@@ -192,6 +219,8 @@ interface AppState {
   conversations: Conversation[]
   activeConversationId: string | null
   activeConversation: ConversationDetail | null
+  highlightMessageId: string | null
+  setHighlightMessageId: (id: string | null) => void
   sidebarOpen: boolean
 
   // Auth
@@ -277,8 +306,8 @@ interface AppState {
   _pendingArtifactId: string | null
 
   // Actions
-  loadConversations: (search?: string, filter?: string, page?: number, limit?: number) => Promise<void>
-  loadConversation: (id: string) => Promise<void>
+  loadConversations: (search?: string, filter?: string, page?: number, limit?: number, projectId?: string) => Promise<void>
+  loadConversation: (id: string, highlightMessageId?: string | null) => Promise<void>
   startNewConversation: () => void
   loadActiveConversationArtifacts: () => Promise<void>
   favoriteConversation: (id: string) => Promise<void>
@@ -292,7 +321,7 @@ interface AppState {
   startProcessStep: (step: ProcessStep) => void
   updateProcessStep: (id: string, update: Partial<Pick<ProcessStep, 'detail' | 'subSteps' | 'status'>>) => void
   uiCorrectionRequested: Record<string, boolean>
-  finalizeStream: (messageId: string, artifactMeta?: { id: string; type: string; title: string }, artifacts?: { id: string; type: string; title: string }[], relayUsed?: boolean, relayModel?: string | null, webSearchUsed?: boolean, webSearchQuery?: string, webSearchSources?: WebSearchSource[], wasFallback?: boolean, uiBlocks?: UiEnvelope | null, processDurationMs?: number, serverSteps?: ProcessStep[], uiErrors?: UiError[], uiDropped?: number, finalModelId?: string | null, finalModelName?: string | null, finalProviderId?: string | null, requestedModel?: string | null, servedBy?: string | null, failoverTier?: string | null, spliced?: boolean, outcome?: string, attemptCount?: number) => void
+  finalizeStream: (messageId: string, artifactMeta?: { id: string; type: string; title: string }, artifacts?: { id: string; type: string; title: string }[], relayUsed?: boolean, relayModel?: string | null, webSearchUsed?: boolean, webSearchQuery?: string, webSearchSources?: WebSearchSource[], wasFallback?: boolean, uiBlocks?: UiEnvelope | null, processDurationMs?: number, serverSteps?: ProcessStep[], uiErrors?: UiError[], uiDropped?: number, finalModelId?: string | null, finalModelName?: string | null, finalProviderId?: string | null, requestedModel?: string | null, servedBy?: string | null, failoverTier?: string | null, spliced?: boolean, outcome?: string, attemptCount?: number, memoryUsed?: MemoryUsedItem[], memoryNoneRelevant?: boolean, relayStatus?: string | null) => void
   handleUiProgress: (block: ProgressBlock) => void
   lastAutoRouteDecision: AutoRouteDecisionInfo | null
   setAutoRouteDecision: (decision: AutoRouteDecisionInfo | null) => void
@@ -308,7 +337,11 @@ interface AppState {
   selectProvider: (providerId: string) => void
   setSidebarOpen: (v: boolean) => void
   setView: (v: 'chat' | 'admin' | 'conversations' | 'artifacts' | 'projects' | 'library' | 'proactive' | 'agents') => void
+  settingsInitialTab: AdminTab | null
+  openSettings: (tab?: AdminTab) => void
   closeSettings: () => void
+  modelsStatus: CatalogStatus
+  modelsError: string | null
   setConversationProjectTag: (id: string, projectTag: string | null) => Promise<void>
   /** Assign conversation to a first-class Project workspace (project_id FK) */
   setConversationProjectId: (id: string, projectId: string | null) => Promise<void>
@@ -367,6 +400,10 @@ interface AppState {
   setIsOnline: (online: boolean) => void
   lastUserMessage: ChatRequest | null
   setLastUserMessage: (request: ChatRequest | null) => void
+  pendingTurn: PendingTurnSnapshot | null
+  setPendingTurn: (snapshot: PendingTurnSnapshot | null) => void
+  clearPendingTurnState: () => void
+  reconcilePendingTurn: () => Promise<void>
 
   // ── Assistente proativo (F2) ─────────────────────────────────────────────
   /** Status transitório ("pesquisando…") da conversa em pesquisa. */
@@ -597,6 +634,7 @@ export const useStore = create<AppState>((set, get) => {
   },
   logout: () => {
     loadConversationSeq += 1
+    clearAllUserDrafts(get().user?.id)
     const cleanDraft = resetStreamDraftState()
     localStorage.removeItem('nexuslocal_token')
     localStorage.removeItem('nexuslocal_user')
@@ -612,7 +650,10 @@ export const useStore = create<AppState>((set, get) => {
       conversations: [],
       activeConversationId: null,
       activeConversation: null,
+      highlightMessageId: null,
       messages: [],
+      pendingTurn: null,
+      lastUserMessage: null,
       uiCorrectionRequested: {},
       activeArtifact: null,
       artifactPanelOpen: false,
@@ -622,12 +663,20 @@ export const useStore = create<AppState>((set, get) => {
       customInstructions: '',
       reasoningEffortByModel: {},
       reasoningEffortAuto: 'medium',
+      models: [],
+      modelsStatus: 'idle',
+      modelsError: null,
+      selectedModelId: null,
+      selectedProviderId: null,
+      settingsInitialTab: null,
     })
   },
 
   conversations: [],
   activeConversationId: null,
   activeConversation: null,
+  highlightMessageId: null,
+  setHighlightMessageId: (id) => set({ highlightMessageId: id }),
   sidebarOpen: typeof window !== 'undefined' ? window.innerWidth > 768 : true,
   messages: [],
   streamingContent: '',
@@ -643,6 +692,15 @@ export const useStore = create<AppState>((set, get) => {
   toasts: [],
   isOnline: typeof window !== 'undefined' ? navigator.onLine : true,
   lastUserMessage: null,
+  pendingTurn: typeof window !== 'undefined' ? (() => {
+    try {
+      const u = localStorage.getItem('nexuslocal_user')
+      const parsed = u ? JSON.parse(u) : null
+      return parsed?.id ? loadPendingTurn(parsed.id) : null
+    } catch {
+      return null
+    }
+  })() : null,
   proactiveStatus: null,
   conversationsWithInsight: {},
   pendingInlineInsights: [],
@@ -652,12 +710,15 @@ export const useStore = create<AppState>((set, get) => {
   intelligentUiConfig: null,
   streamingUiBlocks: null,
   models: [],
+  modelsStatus: 'idle',
+  modelsError: null,
   selectedModelId: typeof window !== 'undefined' ? readPersistedModelSelection().modelId : null,
   selectedProviderId: typeof window !== 'undefined' ? readPersistedModelSelection().providerId : null,
   reasoningEffortByModel: typeof window !== 'undefined' ? readReasoningEffortByModel() : {},
   reasoningEffortAuto: typeof window !== 'undefined' ? readReasoningEffortAuto() : 'medium',
   view: 'chat',
   previousView: 'chat',
+  settingsInitialTab: null,
   theme: (typeof window !== 'undefined' ? localStorage.getItem('nexuslocal_theme') as 'light' | 'dark' | 'system' : null) || 'system',
   chatFont: (typeof window !== 'undefined' ? localStorage.getItem('nexuslocal_chat_font') as 'sans' | 'serif' | 'mono' : null) || 'sans',
   locale: typeof window !== 'undefined' ? detectInitialLocale() : 'en-US',
@@ -727,26 +788,81 @@ export const useStore = create<AppState>((set, get) => {
   activeProjectId: null,
   projectNameById: {},
 
-  loadConversations: async (search?: string, filter?: string, page?: number, limit?: number) => {
-    const conversations = await api.getConversations(search, filter, page, limit)
-    set({ conversations })
+  loadConversations: async (search?: string, filter?: string, page?: number, limit?: number, projectId?: string) => {
+    const conversations = await api.getConversations(search, filter, page, limit, projectId)
+    set((s) => {
+      const nextNames = { ...s.projectNameById }
+      let changed = false
+      for (const c of conversations) {
+        if (c.project_id && c.project_name && nextNames[c.project_id] !== c.project_name) {
+          nextNames[c.project_id] = c.project_name
+          changed = true
+        }
+      }
+      return changed ? { conversations, projectNameById: nextNames } : { conversations }
+    })
   },
 
-  loadConversation: async (id: string) => {
+  loadConversation: async (id: string, highlightMessageId?: string | null) => {
     const seq = ++loadConversationSeq
     const conv = await api.getConversation(id)
     // Ignora respostas fora de ordem se outra conversa foi solicitada depois
     if (seq !== loadConversationSeq) return
     const cleanDraft = resetStreamDraftState()
+    const uid = get().user?.id
+    const serverPending = conv.pending_turn
     set((s) => {
       // Abrir a conversa limpa o badge ✦ de insight não visto
       const { [id]: _seen, ...restBadges } = s.conversationsWithInsight
       void _seen
+      const nextProjectNames =
+        conv.project_id && conv.project_name
+          ? { ...s.projectNameById, [conv.project_id]: conv.project_name }
+          : s.projectNameById
+      let nextPending = s.pendingTurn
+      if (serverPending && serverPending.status !== 'completed' && serverPending.request_id) {
+        const sameReq = s.pendingTurn?.request.request_id === serverPending.request_id
+        const partialFromServer = serverPending.partial_content || ''
+        const existingPartial = sameReq ? (s.pendingTurn?.partialContent || '') : ''
+        const bestPartial = partialFromServer.length >= existingPartial.length ? partialFromServer : existingPartial
+        nextPending = {
+          request: sameReq && s.pendingTurn ? s.pendingTurn.request : {
+            request_id: serverPending.request_id,
+            conversation_id: id,
+            message: serverPending.user_message || '',
+            model_id: serverPending.model_id || s.selectedModelId || 'auto',
+            provider_id: serverPending.provider_id || s.selectedProviderId || 'auto',
+            fusion: false,
+            web_search: false,
+            use_memory: true,
+            project_id: serverPending.project_id || conv.project_id || undefined,
+            project_context_debug: false,
+            client_timezone_offset: new Date().getTimezoneOffset(),
+          },
+          userDisplayText: serverPending.user_message || s.pendingTurn?.userDisplayText,
+          conversationId: id,
+          projectId: serverPending.project_id || conv.project_id || null,
+          userMessageId: serverPending.user_message_id ?? null,
+          status: (serverPending.status === 'stopped' || serverPending.status === 'failed' || serverPending.status === 'incomplete' || serverPending.status === 'streaming')
+            ? serverPending.status
+            : 'streaming',
+          partialContent: bestPartial,
+          errorMessage: serverPending.error_message ?? null,
+          updatedAt: Date.now(),
+        }
+        if (uid) savePendingTurn(uid, nextPending)
+      } else if (s.pendingTurn?.conversationId === id && serverPending === null && s.pendingTurn.status !== 'sending') {
+        nextPending = null
+        if (uid) savePendingTurn(uid, null)
+      }
       return {
         ...cleanDraft,
         activeConversationId: id,
         activeConversation: conv,
+        highlightMessageId: highlightMessageId ?? null,
+        projectNameById: nextProjectNames,
         messages: (conv.messages || []).map(sanitizeMessage),
+        pendingTurn: nextPending,
         activeArtifact: null,
         artifactPanelOpen: false,
         artifactHistory: [],
@@ -771,6 +887,7 @@ export const useStore = create<AppState>((set, get) => {
       ...cleanDraft,
       activeConversationId: null,
       activeConversation: null,
+      highlightMessageId: null,
       messages: [],
       activeArtifact: null,
       artifactPanelOpen: false,
@@ -831,6 +948,57 @@ export const useStore = create<AppState>((set, get) => {
 
   setIsOnline: (online) => set({ isOnline: online }),
   setLastUserMessage: (msg) => set({ lastUserMessage: msg }),
+  setPendingTurn: (snapshot) => {
+    savePendingTurn(get().user?.id, snapshot)
+    set({ pendingTurn: snapshot })
+  },
+  clearPendingTurnState: () => {
+    savePendingTurn(get().user?.id, null)
+    set({ pendingTurn: null })
+  },
+  reconcilePendingTurn: async () => {
+    const uid = get().user?.id
+    if (!uid) return
+    const snap = get().pendingTurn || loadPendingTurn(uid)
+    if (!snap || !snap.request?.request_id) return
+    if (get().isStreaming || get().isGenerating) return
+    try {
+      const serverStatus = await api.getTurnStatus(snap.request.request_id)
+      const outcome = reconcilePendingTurnWithServer(snap, serverStatus)
+      if (outcome.action === 'completed_reload') {
+        savePendingTurn(uid, null)
+        set({ pendingTurn: null, lastUserMessage: null })
+        if (outcome.conversationId) {
+          await get().loadConversation(outcome.conversationId)
+          void get().loadConversations()
+        }
+        return
+      }
+      const nextSnap: PendingTurnSnapshot = {
+        ...snap,
+        conversationId: outcome.conversationId,
+        userMessageId: serverStatus.user_message_id ?? snap.userMessageId ?? null,
+        status: outcome.status,
+        partialContent: outcome.partialContent,
+        errorMessage: outcome.errorMessage ?? null,
+        request: {
+          ...snap.request,
+          conversation_id: outcome.conversationId,
+        },
+        updatedAt: Date.now(),
+      }
+      savePendingTurn(uid, nextSnap)
+      set({
+        pendingTurn: nextSnap,
+        lastUserMessage: nextSnap.request,
+      })
+      if (outcome.conversationId && !get().activeConversationId) {
+        await get().loadConversation(outcome.conversationId)
+      }
+    } catch {
+      /* backend indisponível no boot — preserva snapshot local intacto */
+    }
+  },
 
   // ── Assistente proativo (F2) ─────────────────────────────────────────────
   setComposerPrefill: (text) => set({ composerPrefill: text }),
@@ -1490,7 +1658,10 @@ export const useStore = create<AppState>((set, get) => {
     failoverTier?: string | null,
     spliced?: boolean,
     outcome?: string,
-    attemptCount?: number
+    attemptCount?: number,
+    memoryUsed?: MemoryUsedItem[],
+    memoryNoneRelevant?: boolean,
+    relayStatus?: string | null
   ) => {
     flushPendingStreamTokens()
     const { streamingContent, selectedModelId, models, lastAutoRouteDecision, processSteps, processStartedAt, streamingUiBlocks } = get()
@@ -1577,6 +1748,10 @@ export const useStore = create<AppState>((set, get) => {
       provider: effectiveProvider,
       relay_used: relayUsed,
       relay_model: relayModel,
+      relay_status: relayStatus ?? undefined,
+      memory_used: memoryUsed ?? undefined,
+      memory_none_relevant: memoryNoneRelevant ?? undefined,
+      turn_status: 'completed',
       web_search_used: webSearchUsed,
       web_search_query: webSearchQuery,
       web_search_sources: webSearchSources,
@@ -1601,6 +1776,7 @@ export const useStore = create<AppState>((set, get) => {
       artifacts: artifacts || (artifactMeta ? [artifactMeta] : []),
     }
     streamBuffer.resetTurn()
+    savePendingTurn(get().user?.id, null)
     set((s) => ({
       messages: s.messages.some((message) => message.id === messageId) ? s.messages : [...s.messages, msg],
       streamingContent: '',
@@ -1613,6 +1789,7 @@ export const useStore = create<AppState>((set, get) => {
       lastAutoRouteDecision: null,
       activeStreamTurnId: null,
       activeStreamConversationId: null,
+      pendingTurn: null,
     }))
   },
 
@@ -1647,15 +1824,24 @@ export const useStore = create<AppState>((set, get) => {
     localStorage.setItem('nexuslocal_ui_level', level)
     set({ uiLevel: level })
     if (level === 'simple') {
-      get().selectModel('auto', 'auto')
-      const sp = get().simpleSpeed || 'fast'
+      const s = get()
+      if (hasEligibleRoute(s.models) || s.modelsStatus === 'idle' || s.modelsStatus === 'loading') {
+        get().selectModel('auto', 'auto')
+      }
+      const sp = s.simpleSpeed || 'fast'
       get().setReasoningEffortAuto(sp === 'fast' ? 'low' : 'high')
+      if (s.modelsStatus === 'idle') {
+        void get().loadModels()
+      }
     }
   },
   setSimpleSpeed: (speed) => {
     localStorage.setItem('nexuslocal_simple_speed', speed)
     set({ simpleSpeed: speed })
-    get().selectModel('auto', 'auto')
+    const s = get()
+    if (hasEligibleRoute(s.models) || s.modelsStatus === 'idle' || s.modelsStatus === 'loading') {
+      get().selectModel('auto', 'auto')
+    }
     get().setReasoningEffortAuto(speed === 'fast' ? 'low' : 'high')
   },
 
@@ -1673,22 +1859,51 @@ export const useStore = create<AppState>((set, get) => {
   setIntelligentUiConfig: (cfg) => set({ intelligentUiConfig: cfg }),
 
   loadModels: async () => {
-    const models = await api.getModels()
-    const s = get()
-    // Preferência: seleção em memória → localStorage → primeiro disponível
-    const resolved = resolveModelSelection(
-      models,
-      s.selectedModelId,
-      s.selectedProviderId
-    )
-    set({
-      models,
-      selectedModelId: resolved.modelId,
-      selectedProviderId: resolved.providerId,
-    })
-    if (resolved.modelId && resolved.providerId) {
-      persistModelSelection(resolved.modelId, resolved.providerId)
+    if (_modelsInflightPromise) {
+      return _modelsInflightPromise
     }
+    const run = async () => {
+      set({ modelsStatus: 'loading', modelsError: null })
+      try {
+        const models = await api.getModels()
+        const s = get()
+        const catalogStatus: CatalogStatus = models.length > 0 ? 'ready' : 'empty'
+        const resolved = resolveInitialModelSelection({
+          models,
+          catalogStatus,
+          uiLevel: s.uiLevel,
+          preferredModelId: s.selectedModelId,
+          preferredProviderId: s.selectedProviderId,
+          lastByProvider: readLastModelByProvider(),
+          autoOptIn: isAutoOptIn(),
+        })
+        set({
+          models,
+          modelsStatus: catalogStatus,
+          modelsError: null,
+          selectedModelId: resolved.modelId,
+          selectedProviderId: resolved.providerId,
+        })
+        if (resolved.modelId && resolved.providerId) {
+          persistModelSelection(resolved.modelId, resolved.providerId)
+        }
+      } catch (err: unknown) {
+        const detail =
+          (err && typeof err === 'object' && 'detail' in err && typeof (err as any).detail === 'string' && (err as any).detail) ||
+          (err instanceof Error ? err.message : null) ||
+          'catalog_error'
+        const hasLoadedModels = get().models.length > 0
+        set({
+          modelsStatus: 'error',
+          modelsError: detail,
+          ...(hasLoadedModels ? {} : { selectedModelId: null, selectedProviderId: null }),
+        })
+      } finally {
+        _modelsInflightPromise = null
+      }
+    }
+    _modelsInflightPromise = run()
+    return _modelsInflightPromise
   },
 
   selectModel: (modelId: string, providerId: string) => {
@@ -1766,9 +1981,17 @@ export const useStore = create<AppState>((set, get) => {
       set({ view: v })
     }
   },
+  openSettings: (tab) => {
+    const current = get().view
+    set({
+      previousView: current !== 'admin' ? current : get().previousView,
+      view: 'admin',
+      settingsInitialTab: tab || 'general',
+    })
+  },
   closeSettings: () => {
     const prev = get().previousView || 'chat'
-    set({ view: prev })
+    set({ view: prev, settingsInitialTab: null })
   },
   setLibraryFilter: (filter) => {
     set({ libraryFilter: filter })

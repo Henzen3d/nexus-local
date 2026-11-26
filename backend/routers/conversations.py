@@ -1,9 +1,14 @@
 import json
+import re
 import time
 from typing import Optional
 import aiosqlite
-from fastapi import APIRouter, HTTPException, Depends
-from backend.database import get_db
+from fastapi import APIRouter, HTTPException, Depends, Query
+from backend.database import (
+    get_db,
+    get_chat_turn_state,
+    get_latest_incomplete_turn_for_conversation,
+)
 from backend.logging_config import get_logger
 from backend.models import ConversationUpdate
 from backend.auth import get_current_user
@@ -14,10 +19,27 @@ logger = get_logger(__name__)
 router = APIRouter(prefix="/api/conversations", tags=["conversations"])
 
 
+def _build_match_snippet(content: str, query: str, radius: int = 45) -> str:
+    """Extrai um trecho curto e seguro ao redor da primeira ocorrência encontrada na mensagem."""
+    normalized = re.sub(r"\s+", " ", (content or "")).strip()
+    if not normalized:
+        return ""
+    q = (query or "").strip().lower()
+    idx = normalized.lower().find(q) if q else -1
+    if idx < 0:
+        return normalized[: radius * 2] + ("…" if len(normalized) > radius * 2 else "")
+    start = max(0, idx - radius)
+    end = min(len(normalized), idx + len(q) + radius)
+    prefix = "…" if start > 0 else ""
+    suffix = "…" if end < len(normalized) else ""
+    return f"{prefix}{normalized[start:end]}{suffix}"
+
+
 @router.get("")
 async def list_conversations(
     search: Optional[str] = None,
     filter: Optional[str] = None,
+    project_id: Optional[str] = None,
     page: int = 1,
     limit: int = 100,
     current_user: dict = Depends(get_current_user)
@@ -25,43 +47,67 @@ async def list_conversations(
     t0 = time.perf_counter()
     db = await get_db()
     try:
-        # Pagina primeiro sobre `conversations` (usando índices por user_id + updated_at/favorited_at)
-        # e só conta mensagens para as conversas retornadas na página (T3.1).
-        query = """
+        term = (search or "").strip()
+
+        async def _run_list_query(with_projects_join: bool):
+            project_select = ", p.name" if with_projects_join else ", NULL"
+            project_join = (
+                "\n            LEFT JOIN projects p ON p.id = c.project_id AND p.user_id = c.user_id"
+                if with_projects_join
+                else ""
+            )
+            # Pagina primeiro sobre `conversations` (usando índices por user_id + updated_at/favorited_at)
+            # e só conta mensagens para as conversas retornadas na página (T3.1).
+            query = f"""
             SELECT c.id, c.title, c.model_id, c.provider_id,
                    c.created_at, c.updated_at,
                    c.is_favorite, c.favorited_at,
                    c.project_tag,
                    c.project_id,
-                   c.origin_insight_id
-            FROM conversations c
+                   c.origin_insight_id{project_select}
+            FROM conversations c{project_join}
             WHERE c.user_id = ?
         """
-        params: list = [current_user["id"]]
+            params: list = [current_user["id"]]
 
-        if search:
-            query += " AND c.title LIKE ?"
-            params.append(f"%{search}%")
+            if term:
+                like_term = f"%{term}%"
+                query += (
+                    " AND (c.title LIKE ? OR EXISTS ("
+                    "SELECT 1 FROM messages m WHERE m.conversation_id = c.id AND m.content LIKE ?"
+                    "))"
+                )
+                params.extend([like_term, like_term])
 
-        if filter == "favorites":
-            query += " AND c.is_favorite = 1"
+            if project_id:
+                query += " AND c.project_id = ?"
+                params.append(project_id)
 
-        if filter == "favorites":
-            query += " ORDER BY c.favorited_at DESC, c.id ASC"
-        else:
-            query += " ORDER BY c.updated_at DESC, c.id ASC"
+            if filter == "favorites":
+                query += " AND c.is_favorite = 1"
 
-        if limit > 0:
-            safe_page = max(1, int(page))
-            offset = (safe_page - 1) * limit
-            query += " LIMIT ? OFFSET ?"
-            params.append(limit)
-            params.append(offset)
+            if filter == "favorites":
+                query += " ORDER BY c.favorited_at DESC, c.id ASC"
+            else:
+                query += " ORDER BY c.updated_at DESC, c.id ASC"
 
-        async with db.execute(query, params) as cur:
-            rows = await cur.fetchall()
+            if limit > 0:
+                safe_page = max(1, int(page))
+                offset = (safe_page - 1) * limit
+                query += " LIMIT ? OFFSET ?"
+                params.append(limit)
+                params.append(offset)
+
+            async with db.execute(query, params) as cur:
+                return await cur.fetchall()
+
+        try:
+            rows = await _run_list_query(with_projects_join=True)
+        except Exception:
+            rows = await _run_list_query(with_projects_join=False)
 
         msg_counts: dict[str, int] = {}
+        matched_messages: dict[str, tuple[str, str]] = {}
         if rows:
             conv_ids = [r[0] for r in rows]
             for start in range(0, len(conv_ids), 500):
@@ -74,11 +120,25 @@ async def list_conversations(
                     for cid, cnt in await cnt_cur.fetchall():
                         msg_counts[cid] = int(cnt or 0)
 
+                if term:
+                    like_term = f"%{term}%"
+                    async with db.execute(
+                        f"""SELECT id, conversation_id, content
+                            FROM messages
+                            WHERE conversation_id IN ({placeholders})
+                              AND content LIKE ?
+                            ORDER BY created_at DESC""",
+                        [*chunk, like_term],
+                    ) as match_cur:
+                        for mid, cid, content in await match_cur.fetchall():
+                            if cid not in matched_messages:
+                                matched_messages[cid] = (mid, _build_match_snippet(content or "", term))
+
         elapsed_ms = (time.perf_counter() - t0) * 1000.0
         logger.debug(
             "[conversations.list] filter=%s has_search=%s page=%d limit=%d returned=%d elapsed_ms=%.2f",
             "favorites" if filter == "favorites" else "all",
-            bool(search),
+            bool(term),
             page,
             limit,
             len(rows),
@@ -96,9 +156,53 @@ async def list_conversations(
                 "project_id": r[9] if len(r) > 9 else None,
                 # F3.3.4: conversa iniciada pelo assistente proativo ("Me conta aqui")
                 "origin_insight_id": r[10] if len(r) > 10 else None,
+                "project_name": r[11] if len(r) > 11 else None,
+                "matched_message_id": matched_messages[r[0]][0] if r[0] in matched_messages else None,
+                "matched_snippet": matched_messages[r[0]][1] if r[0] in matched_messages else None,
             }
             for r in rows
         ]
+    finally:
+        await db.close()
+
+
+@router.get("/turn-status")
+async def get_turn_status(
+    request_id: str = Query(..., min_length=1),
+    current_user: dict = Depends(get_current_user),
+):
+    """Consulta o status durável de um turno identificado por request_id para reconciliação pós-reload."""
+    db = await get_db()
+    try:
+        state = await get_chat_turn_state(db, current_user["id"], request_id)
+        if not state:
+            return {"found": False, "request_id": request_id, "status": "unknown"}
+
+        status_val = state.get("status") or "accepted"
+        asst_id = state.get("assistant_message_id")
+        conv_id = state.get("conversation_id")
+        if status_val != "completed" and asst_id and conv_id:
+            async with db.execute(
+                "SELECT id FROM messages WHERE id = ? AND conversation_id = ? AND role = 'assistant'",
+                (asst_id, conv_id),
+            ) as cur:
+                if await cur.fetchone():
+                    status_val = "completed"
+
+        return {
+            "found": True,
+            "request_id": state["request_id"],
+            "status": status_val,
+            "conversation_id": conv_id,
+            "project_id": state.get("project_id"),
+            "user_message_id": state.get("user_message_id"),
+            "assistant_message_id": asst_id,
+            "partial_content": state.get("partial_content") or "",
+            "model_id": state.get("model_id"),
+            "provider_id": state.get("provider_id"),
+            "error_message": state.get("error_message"),
+            "updated_at": state.get("updated_at"),
+        }
     finally:
         await db.close()
 
@@ -120,18 +224,33 @@ async def get_conversation(conversation_id: str, current_user: dict = Depends(ge
         if conv[5] != current_user["id"]:
             raise HTTPException(status_code=403, detail="Acesso não autorizado a esta conversa.")
 
-        async with db.execute(
-            """SELECT m.id, m.role, m.content, m.model_id, m.created_at, mod.display_name, p.name, m.provider, m.relay_used, m.relay_model,
-                      m.web_search_used, m.web_search_query, m.web_search_sources, m.process_steps,
-                      COALESCE(m.kind, 'normal'), m.proactive_insight_id, m.fusion_metadata, m.process_duration_ms
-               FROM messages m
-               LEFT JOIN models mod ON m.model_id = mod.id
-               LEFT JOIN providers p ON mod.provider_id = p.id
-               WHERE m.conversation_id = ?
-               ORDER BY m.created_at ASC""",
-            (conversation_id,),
-        ) as cur:
-            messages = await cur.fetchall()
+        try:
+            async with db.execute(
+                """SELECT m.id, m.role, m.content, m.model_id, m.created_at, mod.display_name, p.name, m.provider, m.relay_used, m.relay_model,
+                          m.web_search_used, m.web_search_query, m.web_search_sources, m.process_steps,
+                          COALESCE(m.kind, 'normal'), m.proactive_insight_id, m.fusion_metadata, m.process_duration_ms,
+                          m.memory_used_json, m.relay_status, m.turn_status
+                   FROM messages m
+                   LEFT JOIN models mod ON m.model_id = mod.id
+                   LEFT JOIN providers p ON mod.provider_id = p.id
+                   WHERE m.conversation_id = ?
+                   ORDER BY m.created_at ASC""",
+                (conversation_id,),
+            ) as cur:
+                messages = await cur.fetchall()
+        except Exception:
+            async with db.execute(
+                """SELECT m.id, m.role, m.content, m.model_id, m.created_at, mod.display_name, p.name, m.provider, m.relay_used, m.relay_model,
+                          m.web_search_used, m.web_search_query, m.web_search_sources, m.process_steps,
+                          COALESCE(m.kind, 'normal'), m.proactive_insight_id, m.fusion_metadata, m.process_duration_ms
+                   FROM messages m
+                   LEFT JOIN models mod ON m.model_id = mod.id
+                   LEFT JOIN providers p ON mod.provider_id = p.id
+                   WHERE m.conversation_id = ?
+                   ORDER BY m.created_at ASC""",
+                (conversation_id,),
+            ) as cur:
+                messages = await cur.fetchall()
 
         # Insights proativos das bolhas desta conversa (F2.6.3 / F3.3.2) — só do dono.
         # Inclui a 1ª mensagem de um chat iniciado por "Me conta aqui" (insight de outra conversa).
@@ -249,6 +368,7 @@ async def get_conversation(conversation_id: str, current_user: dict = Depends(ge
                     if isinstance(src, dict) and "index" not in src:
                         src["index"] = idx
 
+            mem_used_val = _loads(m[18]) if len(m) > 18 else None
             item = {
                 "id": m[0],
                 "role": msg_role,
@@ -262,6 +382,9 @@ async def get_conversation(conversation_id: str, current_user: dict = Depends(ge
                 "provider": m[6] or m[7] or (m[3].split('/')[0] if m[3] and '/' in m[3] else None),
                 "relay_used": bool(m[8]),
                 "relay_model": m[9],
+                "relay_status": m[19] if len(m) > 19 else None,
+                "turn_status": m[20] if len(m) > 20 else None,
+                "memory_used": mem_used_val if isinstance(mem_used_val, list) else None,
                 "artifacts": msg_artifacts.get(m[0], []),
                 "attachments": msg_attachments.get(m[0], []),
                 "ui_blocks": msg_ui_blocks.get(m[0]),
@@ -311,14 +434,33 @@ async def get_conversation(conversation_id: str, current_user: dict = Depends(ge
             (time.perf_counter() - t0) * 1000.0,
         )
 
+        pending_turn = await get_latest_incomplete_turn_for_conversation(
+            db, current_user["id"], conversation_id
+        )
+
+        project_name = None
+        if len(conv) > 9 and conv[9]:
+            try:
+                async with db.execute(
+                    "SELECT name FROM projects WHERE id = ? AND user_id = ?",
+                    (conv[9], current_user["id"]),
+                ) as p_cur:
+                    p_row = await p_cur.fetchone()
+                    if p_row:
+                        project_name = p_row[0]
+            except Exception:
+                project_name = None
+
         return {
             "id": conv[0], "title": conv[1], "model_id": conv[2],
             "provider_id": conv[3], "created_at": conv[4],
             "is_favorite": bool(conv[6]), "favorited_at": conv[7],
             "project_tag": conv[8] if len(conv) > 8 else None,
             "project_id": conv[9] if len(conv) > 9 else None,
+            "project_name": project_name,
             "origin_insight_id": conv[10] if len(conv) > 10 else None,
             "messages": built,
+            "pending_turn": pending_turn,
         }
     finally:
         await db.close()

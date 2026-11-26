@@ -16,6 +16,7 @@ Uso:
 from __future__ import annotations
 
 import logging
+import re
 import sys
 from pathlib import Path
 from typing import Optional
@@ -24,6 +25,43 @@ _LOGGER_NAME = "nexuslocal"
 _CONFIGURED = False
 _DEFAULT_FMT = "%(asctime)s [%(levelname)s] %(name)s [%(filename)s:%(lineno)d]: %(message)s"
 _DEFAULT_DATEFMT = "%Y-%m-%d %H:%M:%S"
+
+_SENSITIVE_LOG_PATTERNS = [
+    re.compile(r"(Bearer\s+)[A-Za-z0-9\-._~+/]+=*", re.IGNORECASE),
+    re.compile(r"\b(sk-(?:or-v1-|proj-)?[A-Za-z0-9_-]{12,})"),
+    re.compile(r"\b(gsk_[A-Za-z0-9]{12,})"),
+    re.compile(r"\b(AIza[0-9A-Za-z\-_]{20,})"),
+    re.compile(r"((?:api_key|apikey|access_token|secret|password)\s*[=:]\s*)([^\s,;'\"]+)", re.IGNORECASE),
+]
+
+
+def redact_sensitive_text(text: str) -> str:
+    """Mascara chaves de API, tokens Bearer e credenciais antes da emissão em logs."""
+    if not text:
+        return text
+    out = str(text)
+    out = _SENSITIVE_LOG_PATTERNS[0].sub(r"\1***REDACTED***", out)
+    out = _SENSITIVE_LOG_PATTERNS[1].sub("***REDACTED***", out)
+    out = _SENSITIVE_LOG_PATTERNS[2].sub("***REDACTED***", out)
+    out = _SENSITIVE_LOG_PATTERNS[3].sub("***REDACTED***", out)
+    out = _SENSITIVE_LOG_PATTERNS[4].sub(r"\1***REDACTED***", out)
+    return out
+
+
+class _SecretRedactionFilter(logging.Filter):
+    """Redige credenciais ou segredos acidentais de record.msg e record.args."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        try:
+            rendered = record.getMessage()
+            redacted = redact_sensitive_text(rendered)
+            if redacted != rendered:
+                record.msg = redacted
+                record.args = None
+        except Exception:
+            if isinstance(record.msg, str):
+                record.msg = redact_sensitive_text(record.msg)
+        return True
 
 
 class _ContextDefaults(logging.Filter):
@@ -107,6 +145,7 @@ def configure_logging(
     # Handler para stdout/stderr (docker logs)
     stream_handler = logging.StreamHandler(stream)
     stream_handler.addFilter(_ContextDefaults())
+    stream_handler.addFilter(_SecretRedactionFilter())
     stream_handler.setFormatter(formatter)
     root_logger.addHandler(stream_handler)
 
@@ -117,6 +156,7 @@ def configure_logging(
             log_path.parent.mkdir(parents=True, exist_ok=True)
             file_handler = logging.FileHandler(log_path, encoding='utf-8')
             file_handler.addFilter(_ContextDefaults())
+            file_handler.addFilter(_SecretRedactionFilter())
             file_handler.setFormatter(formatter)
             root_logger.addHandler(file_handler)
         except Exception as e:

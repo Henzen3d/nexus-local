@@ -10,6 +10,7 @@ import {
   Cpu,
   Search,
   Brain,
+  Eye,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useStore } from '../store/useStore'
@@ -417,6 +418,14 @@ export function ModelSelector({ compact = false, className = '' }: ModelSelector
                 <div className="cockpit-model-meta">
                   <span className="cockpit-model-provider">{m.provider_name || m.provider_id}</span>
                   {ctxText && <span className="cockpit-model-ctx">{ctxText}</span>}
+                  {m.supports_vision && (
+                    <span
+                      className="cockpit-model-vision"
+                      title={t('chat.supportsVision', { defaultValue: 'Leitura visual nativa de imagens' })}
+                    >
+                      <Eye size={11} aria-hidden="true" />
+                    </span>
+                  )}
                   {isExhausted && (
                     <span
                       className="cockpit-model-exhausted"
@@ -599,6 +608,14 @@ export function ModelSelector({ compact = false, className = '' }: ModelSelector
                     <span className="cockpit-model-provider">{m.provider_name || m.provider_id}</span>
                   )}
                   {ctxText && <span className="cockpit-model-ctx">{ctxText}</span>}
+                  {m.supports_vision && (
+                    <span
+                      className="cockpit-model-vision"
+                      title={t('chat.supportsVision', { defaultValue: 'Leitura visual nativa de imagens' })}
+                    >
+                      <Eye size={11} aria-hidden="true" />
+                    </span>
+                  )}
                   {isExhausted && (
                     <span
                       className="cockpit-model-exhausted"

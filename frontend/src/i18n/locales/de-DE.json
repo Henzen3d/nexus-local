@@ -31,7 +31,8 @@
     "free": "Free",
     "score": "Score",
     "version": "Version {{version}}",
-    "views": "{{count}} Aufrufe"
+    "views": "{{count}} Aufrufe",
+    "retry": "Neu laden"
   },
   "time": {
     "justNow": "gerade eben",
@@ -248,7 +249,41 @@
     "simpleFastDesc": "Get fast answers",
     "simpleThink": "Thinking",
     "simpleThinkDesc": "Handle complex tasks",
-    "modeSelect": "Model mode: {{label}}"
+    "modeSelect": "Model mode: {{label}}",
+    "checkTurnStatus": "Status aktualisieren",
+    "configureKeysBtn": "Meine Schlüssel",
+    "configureProvidersBtn": "Anbieter konfigurieren",
+    "failoverServedBy": "Failover · {{served}}",
+    "imageNotAnalyzedNotice": "Das angehängte Bild konnte nicht visuell gelesen werden (native Vision und Vision Relay nicht verfügbar).",
+    "noRouteAvailableToast": "Keine Modellroute verfügbar. Richten Sie zum Senden einen Anbieter oder Schlüssel ein.",
+    "noRouteShort": "Keine Modellroute konfiguriert",
+    "retry": "Erneut versuchen",
+    "routeEmptyAdmin": "Keine Modellroute verfügbar. Konfigurieren Sie einen Anbieter oder API-Schlüssel.",
+    "routeEmptyUser": "Derzeit sind keine Routen verfügbar. Fügen Sie Ihren persönlichen Schlüssel hinzu oder warten Sie.",
+    "routeErrorInline": "Verfügbare Modelle konnten nicht geladen werden.",
+    "routeExhaustedInline": "Alle konfigurierten Routen haben ihr aktuelles Kontingent erreicht.",
+    "routeLoadErrorToast": "Der Modellkatalog konnte nicht geladen werden. Bitte erneut versuchen.",
+    "routeLoading": "KI-Routen werden geladen…",
+    "skipToComposer": "Zum Eingabefeld springen (Strg+/)",
+    "supportsVision": "Native visuelle Bilderkennung",
+    "toolFailedDetail": "Dieses Tool konnte nicht abgefragt werden",
+    "toolFamily": {
+      "weather": "Wettervorhersage",
+      "currency": "Wechselkurse",
+      "brasil": "Öffentliche Daten (Brasilien)",
+      "knowledge": "Wikipedia / Wissen",
+      "news": "Aktuelle Nachrichten",
+      "translation": "Übersetzung",
+      "geo": "Geolokalisierung",
+      "fun": "Unterhaltung",
+      "code_exec": "Codeausführung",
+      "diagrams": "Diagramme"
+    },
+    "turnInProgressTitle": "Antwort läuft auf dem Server",
+    "turnIncompleteTitle": "Zug unvollständig",
+    "turnStoppedTitle": "Antwort gestoppt",
+    "visionNativeHint": "Native Bilderkennung bei diesem Modell",
+    "visionRelayHint": "Keine native Vision — nutzt Vision Relay, falls verfügbar"
   },
   "sidebar": {
     "newChat": "Neue Unterhaltung",
@@ -316,7 +351,8 @@
     "noOutput": "(Keine Ausgabe erzeugt)",
     "waitingResponse": "Warten...",
     "editPlaceholder": "Beschreiben Sie die gewünschten Änderungen...",
-    "applyEdit": "Anwenden"
+    "applyEdit": "Anwenden",
+    "selectModelFirst": "Richten Sie vor dem Anhängen einen Anbieter oder API-Schlüssel ein"
   },
   "pwa": {
     "installTitle": "NexusLocal als App installieren",
@@ -523,7 +559,9 @@
     "voiceStop": "Stop reading",
     "registerUser": "Register user",
     "registerUserTitle": "New family account",
-    "registerUserSaving": "Creating..."
+    "registerUserSaving": "Creating...",
+    "syncDeltaLine": "Aktiv: {{active}} · Chat-geeignet: {{eligible}}/{{remote}}",
+    "syncSummaryToast": "Katalog aktualisiert: {{active}} von {{remote}} Remote-Modellen aktiv ({{excluded}} gefiltert/deaktiviert)."
   },
   "tools": {
     "saveConfig": "Konfiguration speichern",
@@ -1148,7 +1186,21 @@
     "dreamJournalFilterSuccess": "Success",
     "dreamJournalFilterRolledBack": "Rolled back",
     "dreamJournalFilterFailed": "Failed",
-    "dreamJournalShowingCount": "Showing {{shown}} of {{total}} consolidations"
+    "dreamJournalShowingCount": "Showing {{shown}} of {{total}} consolidations",
+    "deleteFactError": "Erinnerung konnte nicht entfernt werden.",
+    "factDeletedToast": "Erinnerung entfernt.",
+    "manageAll": "Alle Erinnerungen verwalten",
+    "noneRelevantHint": "Keine gespeicherte Erinnerung war für diesen Zug relevant.",
+    "noneRelevantShort": "Keine relevante Erinnerung",
+    "promoteToGlobal": "Zu Global hochstufen",
+    "promoteToGlobalError": "Erinnerung konnte nicht hochgestuft werden.",
+    "promotedSuccess": "Erinnerung zu Global hochgestuft.",
+    "scopeGlobal": "Global",
+    "scopeProject": "Projekt: {{name}}",
+    "scopeProjectShort": "Projekt",
+    "scopeUnknown": "Unsichere Herkunft",
+    "usedSummary": "Verwendete Erinnerung ({{count}})",
+    "viewOriginConv": "Quelle ansehen"
   },
   "proactive": {
     "bubbleBadge": "Proaktiver Assistent",

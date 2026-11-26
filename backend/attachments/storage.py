@@ -80,20 +80,25 @@ async def move_attachments_to_conversation(
     for att_id in attachment_ids:
         if not _ATTACHMENT_ID_RE.match(str(att_id or "")):
             continue
-        # Fetch attachment info — apenas anexos "unsent" do próprio usuário
+        # Fetch attachment info — aceita anexos "unsent" ou já vinculados à MESMA mensagem/conversa (retry idempotente)
         async with db.execute(
-            """SELECT filename, storage_path, thumbnail_path FROM attachments
-               WHERE id = ? AND message_id IS NULL
+            """SELECT filename, storage_path, thumbnail_path, message_id FROM attachments
+               WHERE id = ?
                  AND (? IS NULL OR user_id IS NULL OR user_id = ?)""",
             (att_id, user_id, user_id)
         ) as cur:
             row = await cur.fetchone()
         
         if not row:
-            logger.warning("Anexo %s ignorado: inexistente, já enviado ou de outro usuário", att_id)
+            logger.warning("Anexo %s ignorado: inexistente ou de outro usuário", att_id)
             continue
 
-        filename, rel_storage, rel_thumb = row
+        filename, rel_storage, rel_thumb, existing_msg_id = row
+        if existing_msg_id is not None:
+            if existing_msg_id == message_id and str(rel_storage or "").startswith(f"{conversation_id}/"):
+                continue
+            logger.warning("Anexo %s ignorado: já vinculado a outra mensagem/turno", att_id)
+            continue
         safe_filename = os.path.basename(filename)
 
         # Build paths

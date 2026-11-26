@@ -20,6 +20,8 @@ function nextTurnId(): string {
   return `turn-${Date.now()}-${turnCounter}`
 }
 
+let lastPartialPersistAt = 0
+
 function buildWsUrl(token: string | null | undefined): string {
   const tokenQuery = token ? `?token=${encodeURIComponent(token)}` : ''
   const wsUrl = import.meta.env.VITE_WS_URL as string | undefined
@@ -99,6 +101,15 @@ export function useChat() {
     try {
       socket.send(JSON.stringify({ ...request, turn_id: turnId }))
       store.setLastUserMessage(request)
+      store.setPendingTurn({
+        request,
+        userDisplayText: request.message,
+        conversationId: request.conversation_id ?? null,
+        projectId: request.project_id ?? null,
+        status: 'sending',
+        partialContent: '',
+        updatedAt: Date.now(),
+      })
       return true
     } catch {
       clearWatchdog()
@@ -110,10 +121,18 @@ export function useChat() {
   }, [resetWatchdog, clearWatchdog, clearTurnBinding])
 
   const retryMessage = useCallback((reasoningEffort?: string, expectedRequestId?: string) => {
-    const { lastUserMessage, activeConversationId } = useStore.getState()
-    if (!lastUserMessage || activeConversationId !== lastUserMessage.conversation_id) return false
-    if (expectedRequestId && lastUserMessage.request_id !== expectedRequestId) return false
-    return sendTurn(reasoningEffort ? { ...lastUserMessage, reasoning_effort: reasoningEffort } : lastUserMessage)
+    const { lastUserMessage, pendingTurn, activeConversationId } = useStore.getState()
+    const targetReq =
+      lastUserMessage && activeConversationId === lastUserMessage.conversation_id
+        ? lastUserMessage
+        : pendingTurn &&
+          (!pendingTurn.conversationId || pendingTurn.conversationId === activeConversationId) &&
+          (!expectedRequestId || pendingTurn.request.request_id === expectedRequestId)
+        ? pendingTurn.request
+        : null
+    if (!targetReq) return false
+    if (expectedRequestId && targetReq.request_id !== expectedRequestId) return false
+    return sendTurn(reasoningEffort ? { ...targetReq, reasoning_effort: reasoningEffort } : targetReq)
   }, [sendTurn])
 
   const {
@@ -202,8 +221,9 @@ export function useChat() {
 
       // Heartbeat / handshake — não mexe no estado do chat
       if (msg.type === 'ready') {
-        // Socket novo: o backend perdeu o estado anterior → reenvia presença (F3.4.2)
+        // Socket novo: o backend perdeu o estado anterior → reenvia presença (F3.4.2) e reconcilia turno pendente
         resendPresence()
+        void useStore.getState().reconcilePendingTurn()
         return
       }
       if (msg.type === 'pong') {
@@ -265,6 +285,25 @@ export function useChat() {
       }
 
       switch (msg.type) {
+        case 'request_ack': {
+          if (activeTurnConvIdRef.current === null) {
+            activeTurnConvIdRef.current = msg.conversation_id
+          }
+          if (s.lastUserMessage && s.lastUserMessage.request_id === msg.request_id && s.lastUserMessage.conversation_id === null) {
+            s.setLastUserMessage({ ...s.lastUserMessage, conversation_id: msg.conversation_id })
+          }
+          if (s.pendingTurn && (!msg.request_id || s.pendingTurn.request.request_id === msg.request_id)) {
+            s.setPendingTurn({
+              ...s.pendingTurn,
+              conversationId: msg.conversation_id,
+              userMessageId: msg.user_message_id,
+              status: 'streaming',
+              request: { ...s.pendingTurn.request, conversation_id: msg.conversation_id },
+              updatedAt: Date.now(),
+            })
+          }
+          break
+        }
         case 'conversation_created':
           if (activeTurnConvIdRef.current === null) {
             activeTurnConvIdRef.current = msg.conversation_id
@@ -302,6 +341,16 @@ export function useChat() {
               s.setIsGenerating(false)
             }
             s.appendToken(msg.content, msg.turn_id ?? activeTurnIdRef.current)
+            const nowMs = Date.now()
+            if (s.pendingTurn && nowMs - lastPartialPersistAt >= 750) {
+              lastPartialPersistAt = nowMs
+              s.setPendingTurn({
+                ...s.pendingTurn,
+                status: 'streaming',
+                partialContent: `${s.streamingContent || s.pendingTurn.partialContent || ''}${msg.content}`,
+                updatedAt: nowMs,
+              })
+            }
           }
           break
         case 'stream_end':
@@ -309,8 +358,19 @@ export function useChat() {
           isGeneratingRef.current = false
           clearTurnBinding()
           if (!isStreamEndSuccess(msg)) {
+            const capturedPartial = msg.partial_content ?? s.streamingContent ?? s.pendingTurn?.partialContent ?? ''
             // Terminal de falha/vazio/timeout: destrava compositor e descarta rascunho sem criar bolha sem ID
             s.discardStreamDraft()
+            if (s.pendingTurn) {
+              s.setPendingTurn({
+                ...s.pendingTurn,
+                conversationId: msg.conversation_id ?? s.pendingTurn.conversationId,
+                status: msg.outcome === 'cancelled' || msg.turn_status === 'stopped' ? 'stopped' : 'failed',
+                partialContent: capturedPartial,
+                errorMessage: msg.message ?? s.pendingTurn.errorMessage ?? null,
+                updatedAt: Date.now(),
+              })
+            }
             s.loadConversations()
             const persistedPartial = msg.reason === 'judge_partial_timeout' && msg.conversation_id
             if (persistedPartial && s.activeConversationId === msg.conversation_id) {
@@ -324,6 +384,7 @@ export function useChat() {
           }
           if (!isViewingTurnConversation || (s.activeConversationId && msg.conversation_id !== s.activeConversationId)) {
             s.discardStreamDraft()
+            s.setPendingTurn(null)
             if (s.activeConversationId === msg.conversation_id) {
               // The user returned before completion and only saw persisted turns.
               void s.loadConversation(msg.conversation_id).catch(() => {})
@@ -334,6 +395,7 @@ export function useChat() {
           if (msg.finish_reason === 'image_pending' || msg.finish_reason === 'already_completed') {
             // image_pending already inserted the placeholder with this ID.
             s.discardStreamDraft()
+            s.setPendingTurn(null)
             if (msg.finish_reason === 'already_completed' || !s.messages.some((message) => message.id === msg.message_id)) {
               void s.loadConversation(msg.conversation_id).catch(() => {})
             }
@@ -367,7 +429,10 @@ export function useChat() {
             msg.failover_tier,
             msg.spliced,
             msg.outcome,
-            msg.attempt_count
+            msg.attempt_count,
+            msg.memory_used,
+            msg.memory_none_relevant,
+            msg.relay_status
           )
           s.hideToast('failover-notice')
           s.loadConversations()
@@ -430,6 +495,43 @@ export function useChat() {
               status: 'running',
             })
           }
+          break
+        case 'tool_executing': {
+          if (s.isGenerating) {
+            s.setIsGenerating(false)
+          }
+          const famTitle = i18n.t(`chat.toolFamily.${msg.family}`, {
+            defaultValue: msg.family,
+          })
+          if (!s.processSteps.some((st) => st.id === `tool-${msg.family}`)) {
+            s.startProcessStep({
+              id: `tool-${msg.family}`,
+              type: 'tool',
+              title: famTitle,
+              detail: msg.action,
+              status: 'running',
+            })
+          }
+          break
+        }
+        case 'tool_executed': {
+          const metaParts: string[] = []
+          if (msg.provider) metaParts.push(msg.provider)
+          if (msg.cached) metaParts.push('cache')
+          if (msg.fallback) metaParts.push('fallback')
+          s.updateProcessStep(`tool-${msg.family}`, {
+            status: 'completed',
+            ...(metaParts.length > 0 ? { detail: metaParts.join(' · ') } : {}),
+          })
+          break
+        }
+        case 'tool_failed':
+          s.updateProcessStep(`tool-${msg.family}`, {
+            status: 'failed',
+            detail: i18n.t('chat.toolFailedDetail', {
+              defaultValue: 'Não foi possível consultar esta ferramenta',
+            }),
+          })
           break
         case 'process_step_start':
           if (s.isGenerating) {
@@ -599,8 +701,17 @@ export function useChat() {
         // Nunca deixar a UI presa em "Fusion ativo" / streaming / isGenerating (mesmo antes do stream_start)
         const st = useStore.getState()
         const hadActiveTurn = st.fusionActive || st.isStreaming || st.isGenerating
+        const dropPartial = st.streamingContent || st.pendingTurn?.partialContent || ''
         st.discardStreamDraft()
         if (hadActiveTurn) {
+          if (st.pendingTurn) {
+            st.setPendingTurn({
+              ...st.pendingTurn,
+              status: 'incomplete',
+              partialContent: dropPartial,
+              updatedAt: Date.now(),
+            })
+          }
           st.showToast(
             i18n.t('chat.wsDroppedDuringStream', {
               defaultValue: 'Conexão interrompida durante a resposta. Tente novamente.',
@@ -680,15 +791,29 @@ export function useChat() {
     // uma resposta parcial para preservar.
     s.flushStreamDraft()
     const current = useStore.getState()
+    const stopTurnId = activeTurnIdRef.current
+    const stopReqId = current.lastUserMessage?.request_id || current.pendingTurn?.request.request_id
 
-    // Interrompe imediatamente a geração no backend fechando o socket ativo;
+    // Interrompe imediatamente a geração no backend avisando parada e fechando o socket ativo;
     // o handler de onclose reconecta automaticamente com estado limpo.
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       try {
+        if (stopTurnId || stopReqId) {
+          wsRef.current.send(JSON.stringify({ type: 'stop_turn', turn_id: stopTurnId, request_id: stopReqId }))
+        }
         wsRef.current.close()
       } catch {
         /* ignore */
       }
+    }
+
+    if (current.pendingTurn) {
+      current.setPendingTurn({
+        ...current.pendingTurn,
+        status: 'stopped',
+        partialContent: current.streamingContent || current.pendingTurn.partialContent || '',
+        updatedAt: Date.now(),
+      })
     }
 
     if (current.streamingContent.trim()) {

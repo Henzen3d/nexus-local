@@ -360,6 +360,24 @@ class CacheManager:
             await db.execute("DELETE FROM cache_semantic")
             await db.commit()
 
+    async def invalidate_user_cache(self, user_id: str) -> None:
+        """Remove cache entries belonging to ``user_id`` (or unscoped legacy exact rows)."""
+        if not user_id:
+            return
+        try:
+            async with self._db() as db:
+                await db.execute("DELETE FROM cache_semantic WHERE user_id = ?", (user_id,))
+                try:
+                    await db.execute(
+                        "DELETE FROM cache_exact WHERE user_id = ? OR user_id IS NULL",
+                        (user_id,),
+                    )
+                except Exception:
+                    await db.execute("DELETE FROM cache_exact")
+                await db.commit()
+        except Exception as e:
+            logger.debug("[CacheManager] invalidate_user_cache skipped: %s", type(e).__name__)
+
     @staticmethod
     def _utc_cutoff(hours: int) -> str:
         """Retorna timestamp UTC no formato 'YYYY-MM-DD HH:MM:SS' idêntico ao datetime('now') do SQLite."""
@@ -432,11 +450,18 @@ class CacheManager:
                 existing = await cur.fetchone()
             if existing:
                 return
-            await db.execute(
-                """INSERT INTO cache_exact (id, hash, model_id, response, token_est)
-                   VALUES (?, ?, ?, ?, ?)""",
-                (str(uuid.uuid4()), h, model_id, response, token_est),
-            )
+            try:
+                await db.execute(
+                    """INSERT INTO cache_exact (id, hash, model_id, response, token_est, user_id)
+                       VALUES (?, ?, ?, ?, ?, ?)""",
+                    (str(uuid.uuid4()), h, model_id, response, token_est, user_id),
+                )
+            except Exception:
+                await db.execute(
+                    """INSERT INTO cache_exact (id, hash, model_id, response, token_est)
+                       VALUES (?, ?, ?, ?, ?)""",
+                    (str(uuid.uuid4()), h, model_id, response, token_est),
+                )
             await db.commit()
 
     # ── Private: semantic ─────────────────────────────────────────────────────

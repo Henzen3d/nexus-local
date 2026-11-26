@@ -57,6 +57,9 @@ _EXTRACTOR_SYSTEM = (
     "dados sensíveis sem necessidade, ou informações sem certeza clara.\n\n"
     "Categorias válidas: professional | personal | project | preference | identity | tech\n"
     "(fatos de família usam category=personal e fact_key family.*)\n\n"
+    "ESCOPO (campo obrigatório \"scope\": \"global\" | \"project\"):\n"
+    "- \"project\": fatos específicos deste projeto/cliente (ex.: códigos, selos, regras locais, \"apenas no projeto X\", category=project ou fact_key project.*).\n"
+    "- \"global\": apenas identidade do titular, família ou preferências gerais de formato/estilo válidas em qualquer conversa.\n\n"
     "fact_key estável em snake_case:\n"
     "- identity.first_name, identity.full_name, identity.age (só se for DO usuário)\n"
     "- family.child_name, family.child_age, family.child_school, family.child_profile\n"
@@ -72,14 +75,14 @@ _EXTRACTOR_SYSTEM = (
     "Retorne APENAS um JSON array puro (sem markdown, sem comentários):\n"
     "[\n"
     "  {\"fact_key\": \"identity.first_name\", \"category\": \"identity\", "
-    "\"fact\": \"Osmar\", \"confidence\": 0.95, \"action\": \"upsert\"},\n"
+    "\"fact\": \"Osmar\", \"scope\": \"global\", \"confidence\": 0.95, \"action\": \"upsert\"},\n"
     "  {\"fact_key\": \"family.spouse_name\", \"category\": \"personal\", "
-    "\"fact\": \"Esposa Vera Lúcia\", \"confidence\": 0.95, \"action\": \"upsert\"},\n"
+    "\"fact\": \"Esposa Vera Lúcia\", \"scope\": \"global\", \"confidence\": 0.95, \"action\": \"upsert\"},\n"
     "  {\"fact_key\": \"family.child_profile\", \"category\": \"personal\", "
     "\"fact\": \"Filho Nicolas Héron: 10 anos, Escola Zulma, 4ª série\", "
-    "\"confidence\": 0.9, \"action\": \"upsert\"},\n"
+    "\"scope\": \"global\", \"confidence\": 0.9, \"action\": \"upsert\"},\n"
     "  {\"fact_key\": \"identity.age\", \"category\": \"identity\", "
-    "\"fact\": \"\", \"confidence\": 0.0, \"action\": \"forget\"}\n"
+    "\"fact\": \"\", \"scope\": \"global\", \"confidence\": 0.0, \"action\": \"forget\"}\n"
     "]\n"
     "Se não houver fatos novos ou alterações, retorne []."
 )
@@ -369,9 +372,17 @@ def _enrich_family_fact(fact_key: str | None, fact: str) -> str:
     return f"{label} {core}"
 
 
-def _sanitize_extracted_item(item: dict) -> dict | None:
+_RE_PROJECT_LOCAL_SCOPE = re.compile(
+    r"\b(apenas\s+n[eo]\s+projeto|s[oó]\s+n[eo]\s+projeto|s[oó]\s+nes[st][ea]\s+projeto|nes[st][ea]\s+projeto|"
+    r"no\s+projeto\s+\w+|exclusiv[oa]\s+d[eo]\s+projeto|only\s+in\s+(?:this\s+)?project|project[- ]specific|para\s+o\s+projeto)\b",
+    re.I,
+)
+
+
+def _sanitize_extracted_item(item: dict, *, in_project: bool = False) -> dict | None:
     """
-    Normalize extractor output so family attributes never land on identity.*.
+    Normalize extractor output so family attributes never land on identity.*
+    and resolve explicit capture scope ('global' | 'project').
     Returns None to drop the item.
     """
     if not isinstance(item, dict):
@@ -381,6 +392,7 @@ def _sanitize_extracted_item(item: dict) -> dict | None:
     fact_key = (item.get("fact_key") or "").strip().lower().replace(" ", "_")
     category = (item.get("category") or "preference").strip()
     fact = (item.get("fact") or "").strip()
+    raw_scope = (item.get("scope") or "").strip().lower()
 
     try:
         confidence = float(item.get("confidence", 0.8))
@@ -390,6 +402,23 @@ def _sanitize_extracted_item(item: dict) -> dict | None:
     if category not in MEMORY_CATEGORIES:
         category = "preference"
 
+    is_project_fact = (
+        category == "project"
+        or fact_key.startswith("project.")
+        or bool(_RE_PROJECT_LOCAL_SCOPE.search(fact))
+    )
+    if is_project_fact:
+        eff_scope = "project"
+    elif raw_scope == "global":
+        eff_scope = "global"
+    elif raw_scope == "project":
+        eff_scope = "project"
+    elif in_project:
+        # Captura conservadora dentro de projeto quando escopo global não foi explicitado
+        eff_scope = "project"
+    else:
+        eff_scope = "global"
+
     if action == "forget":
         if not fact_key:
             return None
@@ -398,6 +427,7 @@ def _sanitize_extracted_item(item: dict) -> dict | None:
             "fact_key": fact_key,
             "category": category,
             "fact": "",
+            "scope": eff_scope,
             "confidence": 0.0,
         }
 
@@ -468,6 +498,7 @@ def _sanitize_extracted_item(item: dict) -> dict | None:
         "fact_key": fact_key or None,
         "category": category,
         "fact": fact,
+        "scope": eff_scope,
         "confidence": confidence,
     }
 
@@ -775,9 +806,24 @@ async def extract_user_memory_background(
     """
     try:
         # 1. Fetch last 12 messages and resolve provider/model — open/close DB fast
+        conv_project_id = None
+        conv_project_tag = None
         async with aiosqlite.connect(DB_PATH) as db:
             if not await is_memory_extractor_enabled(db):
                 return
+            try:
+                async with db.execute(
+                    "SELECT project_id, project_tag FROM conversations WHERE id = ? AND user_id = ?",
+                    (conversation_id, user_id),
+                ) as cur:
+                    crow = await cur.fetchone()
+                if crow:
+                    conv_project_id = crow[0] or None
+                    conv_project_tag = crow[1] or None
+            except Exception:
+                conv_project_id = None
+                conv_project_tag = None
+
             async with db.execute(
                 """SELECT role, content FROM messages
                    WHERE conversation_id = ?
@@ -898,8 +944,9 @@ async def extract_user_memory_background(
 
             saved = 0
             forgotten = 0
+            in_project_conv = bool(conv_project_id or (conv_project_tag and str(conv_project_tag).strip()))
             for raw_item in items:
-                item = _sanitize_extracted_item(raw_item)
+                item = _sanitize_extracted_item(raw_item, in_project=in_project_conv)
                 if not item:
                     continue
 
@@ -907,10 +954,23 @@ async def extract_user_memory_background(
                 fact_key = item.get("fact_key") or None
                 category = item.get("category", "preference")
                 fact = item.get("fact", "")
+                item_scope = item.get("scope", "project" if in_project_conv else "global")
                 confidence = float(item.get("confidence", 0.8))
 
+                if item_scope == "project":
+                    target_scope = "project" if conv_project_id else "unknown"
+                    target_pid = conv_project_id
+                else:
+                    target_scope = "global"
+                    target_pid = None
+
                 if action == "forget" and fact_key:
-                    await deactivate_memory_by_key(user_id, fact_key)
+                    await deactivate_memory_by_key(
+                        user_id,
+                        fact_key,
+                        scope=target_scope,
+                        project_id=target_pid,
+                    )
                     forgotten += 1
                 elif action == "upsert" and fact:
                     await add_memory_fact(
@@ -920,6 +980,8 @@ async def extract_user_memory_background(
                         fact_key=fact_key,
                         source_conv_id=conversation_id,
                         confidence=confidence,
+                        scope=target_scope,
+                        project_id=target_pid,
                     )
                     saved += 1
 
@@ -964,8 +1026,10 @@ async def extract_user_memory_background(
                 pass
         except Exception as parse_err:
             logger.warning(
-                "[Memory Extractor] Aviso ao decodificar JSON do extrator: %s. Resposta: %s",
-                parse_err, full_response[:200],
+                "[Memory Extractor] error_code=memory_extract_parse_error phase=parse exc_type=%s response_len=%d conv_id=%s",
+                type(parse_err).__name__,
+                len(full_response or ""),
+                conversation_id,
             )
             # Still mark extracted to avoid hammering the same dead JSON forever
             try:
@@ -1259,7 +1323,9 @@ async def refresh_memory_summaries(
             logger.info("[Memory Summaries] clear empty: %s", e)
         return
 
-    global_md = _facts_to_summary_md(facts, title="Resumo do usuário")
+    # Somente fatos explicitamente globais entram no resumo global (nunca vazar fatos de projeto/ambíguos)
+    global_facts = [f for f in facts if (f.get("scope") or "global") == "global"]
+    global_md = _facts_to_summary_md(global_facts, title="Resumo do usuário")
     if global_md:
         refined = None
         if use_llm:
@@ -1275,40 +1341,27 @@ async def refresh_memory_summaries(
         except Exception:
             pass
 
-    project_names: set[str] = set()
-    if conversation_id:
-        project_tag = await get_conversation_project_tag(conversation_id)
-        if project_tag:
-            project_names.add(project_tag.strip().lower())
-
+    facts_by_project: dict[str, list[dict]] = {}
     for f in facts:
-        key = (f.get("fact_key") or "").lower()
-        if key.startswith("project.") and len(key) > 8:
-            slug = key.split(".", 1)[1].replace("_", "-").strip()
-            if slug:
-                project_names.add(slug)
+        if (f.get("scope") or "") == "project" and f.get("project_id"):
+            pid = str(f["project_id"])
+            facts_by_project.setdefault(pid, []).append(f)
 
-    for name_l in project_names:
-        proj_facts = [
-            f for f in facts
-            if name_l in ((f.get("fact_key") or "") + " " + (f.get("fact") or "")).lower()
-        ]
-        if not proj_facts:
-            proj_facts = [f for f in facts if f.get("category") == "project"][:8]
-        md = _facts_to_summary_md(proj_facts, title=f"Projeto: {name_l}")
+    for pid, proj_facts in facts_by_project.items():
+        md = _facts_to_summary_md(proj_facts, title=f"Projeto: {pid}")
         if md:
             refined = None
             if use_llm:
                 refined = await _llm_refine_summary(
-                    user_id, md, provider_id, model_id, f"Projeto: {name_l}"
+                    user_id, md, provider_id, model_id, f"Projeto: {pid}"
                 )
             await upsert_memory_summary(
-                user_id, "project", refined or md, scope_ref=name_l
+                user_id, "project", refined or md, scope_ref=pid
             )
 
     # Remove resumos de projeto que não têm mais fatos associados
     try:
-        await delete_orphaned_memory_summaries(user_id, project_names)
+        await delete_orphaned_memory_summaries(user_id, set(facts_by_project.keys()))
     except Exception as e:
         logger.info("[Memory Summaries] orphan cleanup: %s", e)
 
@@ -1427,32 +1480,33 @@ def sanitize_memory_for_external(
     return filtered_facts, sanitized_profile
 
 
-def build_memory_block(
+def build_memory_block_with_meta(
     facts: list[dict],
     profile: dict | None = None,
     global_summary: dict | None = None,
     project_summary: dict | None = None,
-) -> str:
+    max_chars: int = MEMORY_INJECT_MAX_CHARS,
+) -> tuple[str, list[dict]]:
     """
-    Builds the markdown block injected into the system prompt.
-    Order: profile → summaries → fact bullets (with hard char cap).
+    Builds the markdown block injected into the system prompt AND returns
+    the exact list of facts that were included within ``max_chars``.
     """
     profile_part = build_profile_block(profile) or ""
 
     if profile and not profile.get("memory_enabled", 1):
-        return profile_part
+        return profile_part, []
 
     summary_part = build_summary_block(global_summary, project_summary) or ""
 
     if not facts and not profile_part and not summary_part:
-        return ""
+        return "", []
 
     lines = []
     total_chars = len(profile_part or "") + len(summary_part or "")
 
-    identity_lines: list[str] = []
-    family_lines: list[str] = []
-    by_cat: dict[str, list[str]] = {}
+    identity_items: list[tuple[dict, str]] = []
+    family_items: list[tuple[dict, str]] = []
+    by_cat: dict[str, list[tuple[dict, str]]] = {}
 
     for f in facts or []:
         cat = f.get("category", "preference")
@@ -1461,15 +1515,15 @@ def build_memory_block(
         if not fact_text:
             continue
         if cat == "identity" and not _is_family_key(key) and not _looks_like_child_or_school_attr(fact_text):
-            identity_lines.append(fact_text)
+            identity_items.append((f, fact_text))
         elif _is_family_key(key) or has_family_word(fact_text) or (
             cat in ("identity", "personal") and _looks_like_child_or_school_attr(fact_text)
         ):
-            family_lines.append(
-                _enrich_family_fact(key if _is_family_key(key) else None, fact_text)
+            family_items.append(
+                (f, _enrich_family_fact(key if _is_family_key(key) else None, fact_text))
             )
         else:
-            by_cat.setdefault(cat, []).append(fact_text)
+            by_cat.setdefault(cat, []).append((f, fact_text))
 
     category_order = [
         ("identity", "Identidade do usuário (titular)"),
@@ -1482,8 +1536,8 @@ def build_memory_block(
     ]
 
     section_items = {
-        "identity": identity_lines,
-        "family": family_lines,
+        "identity": identity_items,
+        "family": family_items,
         "personal": by_cat.get("personal") or [],
         "professional": by_cat.get("professional") or [],
         "project": by_cat.get("project") or [],
@@ -1491,18 +1545,33 @@ def build_memory_block(
         "preference": by_cat.get("preference") or [],
     }
 
+    included_facts: list[dict] = []
     for cat_key, label in category_order:
         items = section_items.get(cat_key) or []
         if not items:
             continue
         header = f"\n**{label}:**"
-        lines.append(header)
-        for fact_text in items:
+        added_header = False
+        for src_fact, fact_text in items:
             line = f"- {fact_text}"
-            if total_chars + len(line) > MEMORY_INJECT_MAX_CHARS:
+            if total_chars + len(line) > max_chars:
                 break
+            if not added_header:
+                lines.append(header)
+                added_header = True
             lines.append(line)
             total_chars += len(line)
+            included_facts.append({
+                "id": src_fact.get("id"),
+                "fact": fact_text,
+                "category": src_fact.get("category") or cat_key,
+                "fact_key": src_fact.get("fact_key"),
+                "version": int(src_fact.get("version") or 1),
+                "scope": src_fact.get("scope") or "global",
+                "project_id": src_fact.get("project_id"),
+                "source_conv_id": src_fact.get("source_conv_id"),
+                "is_pinned": bool(src_fact.get("is_pinned")),
+            })
 
     facts_part = ""
     if any(l.startswith("-") for l in lines):
@@ -1520,7 +1589,26 @@ def build_memory_block(
             + "\n"
         )
 
-    return (profile_part or "") + (summary_part or "") + (facts_part or "")
+    return (profile_part or "") + (summary_part or "") + (facts_part or ""), included_facts
+
+
+def build_memory_block(
+    facts: list[dict],
+    profile: dict | None = None,
+    global_summary: dict | None = None,
+    project_summary: dict | None = None,
+) -> str:
+    """
+    Builds the markdown block injected into the system prompt.
+    Order: profile → summaries → fact bullets (with hard char cap).
+    """
+    block, _ = build_memory_block_with_meta(
+        facts,
+        profile=profile,
+        global_summary=global_summary,
+        project_summary=project_summary,
+    )
+    return block
 
 
 # --- Importar memória de outros provedores (Claude dated + markdown rico) ----

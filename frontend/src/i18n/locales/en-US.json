@@ -31,7 +31,8 @@
     "free": "Free",
     "score": "Score",
     "version": "Version {{version}}",
-    "views": "{{count}} views"
+    "views": "{{count}} views",
+    "retry": "Reload"
   },
   "time": {
     "justNow": "just now",
@@ -248,7 +249,41 @@
     "simpleFastDesc": "Get fast answers",
     "simpleThink": "Thinking",
     "simpleThinkDesc": "Handle complex tasks",
-    "modeSelect": "Model mode: {{label}}"
+    "modeSelect": "Model mode: {{label}}",
+    "checkTurnStatus": "Refresh status",
+    "configureKeysBtn": "My keys",
+    "configureProvidersBtn": "Configure providers",
+    "failoverServedBy": "Failover · {{served}}",
+    "imageNotAnalyzedNotice": "Attached image could not be visually read (native vision and Vision Relay unavailable).",
+    "noRouteAvailableToast": "No model route available. Configure a provider or key to send.",
+    "noRouteShort": "No model route configured",
+    "retry": "Try again",
+    "routeEmptyAdmin": "No model route available. Configure a provider or API key.",
+    "routeEmptyUser": "No routes available right now. Add your personal key or try again later.",
+    "routeErrorInline": "Could not load available models.",
+    "routeExhaustedInline": "All configured routes have reached their current quota.",
+    "routeLoadErrorToast": "Could not load the model catalog. Please try again.",
+    "routeLoading": "Loading AI routes…",
+    "skipToComposer": "Skip to message input (Ctrl+/)",
+    "supportsVision": "Native visual image reading",
+    "toolFailedDetail": "Could not query this tool",
+    "toolFamily": {
+      "weather": "Weather forecast",
+      "currency": "Exchange rates",
+      "brasil": "Public data (Brazil)",
+      "knowledge": "Wikipedia / Knowledge",
+      "news": "Recent news",
+      "translation": "Translation",
+      "geo": "Geolocation",
+      "fun": "Entertainment",
+      "code_exec": "Code execution",
+      "diagrams": "Diagrams"
+    },
+    "turnInProgressTitle": "Response running on server",
+    "turnIncompleteTitle": "Turn incomplete",
+    "turnStoppedTitle": "Response stopped",
+    "visionNativeHint": "Native visual reading on this model",
+    "visionRelayHint": "No native vision — will use Vision Relay if available"
   },
   "sidebar": {
     "newChat": "New conversation",
@@ -342,7 +377,8 @@
     "noOutput": "(No output generated)",
     "waitingResponse": "Waiting...",
     "editPlaceholder": "Describe what you want to change...",
-    "applyEdit": "Apply"
+    "applyEdit": "Apply",
+    "selectModelFirst": "Configure a provider or API key before attaching"
   },
   "pwa": {
     "installTitle": "Install NexusLocal on this device",
@@ -549,7 +585,9 @@
     "cacheSemanticTab": "Semantic",
     "cacheNoEntries": "No entries yet",
     "cacheHitsSuffix": "{{count}} hits",
-    "cacheTokensSuffix": "~{{count}} tokens"
+    "cacheTokensSuffix": "~{{count}} tokens",
+    "syncDeltaLine": "Active: {{active}} · Chat eligible: {{eligible}}/{{remote}}",
+    "syncSummaryToast": "Catalog updated: {{active}} active out of {{remote}} remote ({{excluded}} filtered/disabled)."
   },
   "tools": {
     "title": "Free APIs & Tools",
@@ -1057,7 +1095,21 @@
     "dreamBreakerResetBtn": "Reset breaker",
     "dreamBreakerResetting": "Resetting...",
     "dreamBreakerResetSuccess": "Breaker reset. Automatic consolidation is enabled again.",
-    "dreamBreakerResetError": "Could not reset the breaker right now."
+    "dreamBreakerResetError": "Could not reset the breaker right now.",
+    "deleteFactError": "Could not remove memory.",
+    "factDeletedToast": "Memory removed.",
+    "manageAll": "Manage all memories",
+    "noneRelevantHint": "No stored memory was relevant for this turn.",
+    "noneRelevantShort": "No relevant memory",
+    "promoteToGlobal": "Promote to global",
+    "promoteToGlobalError": "Could not promote memory.",
+    "promotedSuccess": "Memory promoted to global.",
+    "scopeGlobal": "Global",
+    "scopeProject": "Project: {{name}}",
+    "scopeProjectShort": "Project",
+    "scopeUnknown": "Uncertain origin",
+    "usedSummary": "Memory used ({{count}})",
+    "viewOriginConv": "View source"
   },
   "autoRouter": {
     "title": "Smart Router",

@@ -17,7 +17,11 @@ logger = get_logger(__name__)
 
 
 async def describe_or_placeholder(
-    img: dict, user_id: str, conversation_id: str | None
+    img: dict,
+    user_id: str,
+    conversation_id: str | None,
+    *,
+    meta_out: dict | None = None,
 ) -> str:
     """Chama o Vision Relay; em caso de falha, devolve placeholder."""
     from backend.vision_relay.relay import describe_image_via_relay, image_placeholder
@@ -29,9 +33,14 @@ async def describe_or_placeholder(
             user_id=user_id,
             conversation_id=conversation_id,
         )
+        if meta_out is not None and isinstance(res, dict):
+            meta_out["relay_model"] = res.get("relay_model")
+            meta_out["is_placeholder"] = False
         return res["description"]
     except Exception:
         logger.error("vision relay falhou para %s", img.get("filename"), exc_info=True)
+        if meta_out is not None:
+            meta_out["is_placeholder"] = True
         return image_placeholder(img["filename"])
 
 _DOC_INJECT_MIN_CHARS = 6000
@@ -227,6 +236,7 @@ async def load_history(
     provider_id: str | None = None,
     *,
     stop_at_user_message: bool = False,
+    request_context: Any | None = None,
 ) -> tuple[list[dict], int, str | None]:
     """Monta o histórico de mensagens com attachments, docs e imagens.
 
@@ -250,6 +260,7 @@ async def load_history(
 
     relay_used = 0
     relay_model_id: str | None = None
+    current_relay_status: str | None = None
     history: list[dict] = []
     max_doc_chars = await _doc_inject_cap(db, model_id, provider_id)
     question = user_query or ""
@@ -317,6 +328,8 @@ async def load_history(
         images = [a for a in msg_atts if a["file_type"] == "image"]
         if images:
             if model_supports_vision:
+                if msg["id"] == user_msg_id:
+                    current_relay_status = "direct"
                 parts: list[dict] = [{"type": "text", "text": text_content}]
                 for img in images:
                     try:
@@ -339,14 +352,25 @@ async def load_history(
             else:
                 # Vision Relay
                 image_descriptions: list[str] = []
+                any_placeholder = False
                 for img in images:
-                    desc = await describe_or_placeholder(img, user_id, conversation_id)
+                    meta_info: dict = {}
+                    try:
+                        desc = await describe_or_placeholder(img, user_id, conversation_id, meta_out=meta_info)
+                    except TypeError:
+                        desc = await describe_or_placeholder(img, user_id, conversation_id)
                     image_descriptions.append(
                         f"[Descrição da imagem {img['filename']}]: {desc}"
                     )
-                    if msg["id"] == user_msg_id and not desc.startswith("[Imagem"):
-                        relay_used = 1
-                        # relay_model_id não disponível via placeholder
+                    if msg["id"] == user_msg_id:
+                        if desc.startswith("[Imagem") or meta_info.get("is_placeholder"):
+                            any_placeholder = True
+                        else:
+                            relay_used = 1
+                            if meta_info.get("relay_model"):
+                                relay_model_id = str(meta_info["relay_model"])
+                if msg["id"] == user_msg_id:
+                    current_relay_status = "placeholder_only" if any_placeholder and not relay_used else "relay"
 
                 if image_descriptions:
                     descriptions_block = "\n\n".join(image_descriptions)
@@ -354,6 +378,11 @@ async def load_history(
                 history.append({"role": msg["role"], "content": text_content, **reflection_extra})
         else:
             history.append({"role": msg["role"], "content": text_content, **reflection_extra})
+
+    if request_context and hasattr(request_context, "set_memo") and current_relay_status:
+        request_context.set_memo("relay_status", current_relay_status)
+        if relay_model_id:
+            request_context.set_memo("relay_model_id", relay_model_id)
 
     return history, relay_used, relay_model_id
 

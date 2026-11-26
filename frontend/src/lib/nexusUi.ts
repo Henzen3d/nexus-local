@@ -1260,8 +1260,10 @@ export function parseUiEnvelope(raw: unknown): UiEnvelope | null {
     }
   }
 
-  // Se houver um clarification válido e um follow_up no mesmo envelope, exibir só o quadro.
+  // Regra de card único de continuidade: `clarification` > `options` > `follow_up`.
   if (cleanBlocks.some((b) => b.type === 'clarification')) {
+    cleanBlocks = cleanBlocks.filter((b) => b.type !== 'follow_up' && b.type !== 'options')
+  } else if (cleanBlocks.some((b) => b.type === 'options')) {
     cleanBlocks = cleanBlocks.filter((b) => b.type !== 'follow_up')
   }
 
@@ -1502,10 +1504,19 @@ export function diagnoseUiText(text: string, imageHosts: string[] = [], allowPri
 export function mergeUiEnvelopes(host: UiEnvelope | null | undefined, model?: UiEnvelope | null | undefined): UiEnvelope | null {
   if (!host?.blocks?.length) return model ?? null
   const seen = new Set<string>()
-  const blocks = [...host.blocks, ...(model?.blocks ?? [])].filter((b) => {
+  let blocks = [...host.blocks, ...(model?.blocks ?? [])].filter((b) => {
     if (seen.has(b.id)) return false
     seen.add(b.id)
     return true
   })
+  // Garante exclusividade mútua também ao mesclar envelope do host + stream do modelo
+  if (blocks.some((b) => b.type === 'clarification')) {
+    blocks = blocks.filter((b) => b.type !== 'follow_up' && b.type !== 'options')
+  } else if (blocks.some((b) => b.type === 'options')) {
+    blocks = blocks.filter((b) => b.type !== 'follow_up')
+  }
+  if (blocks.some((b) => b.type === 'follow_up') && blocks[blocks.length - 1]?.type !== 'follow_up') {
+    blocks = [...blocks.filter((b) => b.type !== 'follow_up'), ...blocks.filter((b) => b.type === 'follow_up')]
+  }
   return { v: 1, blocks: blocks.slice(0, MAX_BLOCKS) }
 }

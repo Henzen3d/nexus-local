@@ -52,6 +52,12 @@ _RE_DEGREES = re.compile(
     r"(?:quantos\s+graus|qual\s+(?:a\s+)?temperatura)\s+(?:faz|est[áa])\s+(?:em|in)\s+([a-zA-ZÀ-ÿ0-9\s\-]+?)(?:\?|\.|$)",
     re.IGNORECASE,
 )
+_PLACEHOLDER_CITIES = re.compile(
+    r"^(?:hoje|amanh[ãa]|agora|aqui|l[áa]|(?:a|da|na|essa|esta|aquela)\s+cidade(?:\s+encontrada)?|"
+    r"cidade(?:\s+encontrada)?|local(?:\s+encontrado)?|mesm[ao]\s+(?:cidade|local)|"
+    r"desse\s+local|deste\s+local|do\s+evento|the\s+city|that\s+city|there|city|location)$",
+    re.IGNORECASE,
+)
 
 # Currency
 _RE_CURRENCY_PAIR = re.compile(
@@ -197,8 +203,8 @@ def detect_intents(message: str, lang: str = "pt") -> list[ToolIntent]:
         raw_city = m_w.group(1)
         city = _WEATHER_CLAUSE_END.split(raw_city, maxsplit=1)[0].strip()
         weather_match = text[m_w.start():m_w.start(1) + len(city)]
-        # Filtra termos genéricos
-        if len(city) >= 2 and city.lower() not in ("hoje", "amanhã", "agora", "aqui", "lá"):
+        # Filtra termos genéricos e placeholders ("cidade encontrada", "esse local", etc.)
+        if len(city) >= 2 and not _PLACEHOLDER_CITIES.match(city):
             intents.append(ToolIntent(
                 family="weather",
                 action="current",
@@ -409,3 +415,90 @@ def plan_tool_requests(message: str) -> tuple[list[ToolIntent], bool, str | None
         if city.casefold() not in remaining.casefold() and not explicit_place:
             remaining = f"{remaining} {city}"
     return intents, False, remaining
+
+
+_RE_DEPENDENT_SEARCH_CUE = re.compile(
+    r"\b(busca|busque|pesquis[ae]|encontr[ae]|descubra|verifique|confira|onde\s+(?:ser[áa]|fica|ocorre|acontece)|"
+    r"em\s+que\s+cidade|qual\s+(?:a\s+)?cidade|find\s+out|search\s+where|where\s+is)\b",
+    re.IGNORECASE,
+)
+_RE_DEPENDENT_WEATHER_CUE = re.compile(
+    r"\b(clima|tempo|temperatura|previs[ãa]o\s+do\s+tempo|vai\s+chover|quantos\s+graus|weather|forecast)\b",
+    re.IGNORECASE,
+)
+
+
+def detect_dependent_weather_after_web(message: str) -> bool:
+    """Identifica pedidos em 2 estágios: buscar localização na web -> consultar clima da cidade encontrada."""
+    if not message or len(message.strip()) < 12:
+        return False
+    if not (_RE_DEPENDENT_SEARCH_CUE.search(message) and _RE_DEPENDENT_WEATHER_CUE.search(message)):
+        return False
+    # Só ativa encadeamento se ainda NÃO houver uma cidade literal resolvida diretamente no prompt
+    return not any(i.family == "weather" for i in detect_intents(message))
+
+
+_CITY_TOKEN_PAT = r"[A-ZÀ-Ú][a-zà-ú]+(?:\s+(?:d[aeo]s?\s+)?[A-ZÀ-Ú][a-zà-ú]+){0,3}"
+_RE_LOC_CONTEXTUAL = re.compile(
+    rf"(?:sedia(?:d[oa])?\s+em|realizado\s+em|acontece(?:r[áa])?\s+em|ocorre(?:r[áa])?\s+em|"
+    rf"localizad[oa]\s+em|ser[áa]\s+(?:realizado\s+)?em|fica\s+em|"
+    rf"takes?\s+place\s+in|held\s+in|located\s+in|cidade\s*:\s*|local\s*:\s*)"
+    rf"({_CITY_TOKEN_PAT})(?:\s*[,/\-]\s*[A-Z]{{2}}|\s*,\s*[A-ZÀ-Ú][a-zà-ú]+)?",
+    re.UNICODE,
+)
+_RE_LOC_CITY_UF = re.compile(
+    rf"\b({_CITY_TOKEN_PAT})\s*(?:,|-\s*)\s*(?:AC|AL|AP|AM|BA|CE|DF|ES|GO|MA|MT|MS|MG|PA|PB|PR|PE|PI|RJ|RN|RS|RO|RR|SC|SP|SE|TO|Brasil|Brazil|USA|UK)\b",
+    re.UNICODE,
+)
+_INVALID_EXTRACTED_PLACES = frozenset({
+    "brasil", "brazil", "eua", "usa", "janeiro", "fevereiro", "marco", "abril",
+    "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro",
+    "segunda", "terca", "quarta", "quinta", "sexta", "sabado", "domingo",
+    "site", "portal", "web", "online", "evento", "congresso", "cidade", "local",
+})
+
+
+def extract_validated_location_from_search(
+    search_results: list[Any] | None,
+    web_sources: list[dict] | None = None,
+    query: str = "",
+) -> str | None:
+    """Extrai e valida nome de cidade encontrado na etapa 1 de pesquisa web (sem chutar)."""
+    candidates: list[str] = []
+
+    for item in search_results or []:
+        if isinstance(item, dict):
+            candidates.extend(
+                str(item.get(k) or "")
+                for k in ("snippet", "content", "extracted_text", "title")
+            )
+        else:
+            for attr in ("snippet", "content", "extracted_text", "title"):
+                val = getattr(item, attr, None)
+                if val:
+                    candidates.append(str(val))
+
+    for src in web_sources or []:
+        if isinstance(src, dict):
+            for k in ("snippet", "title"):
+                if src.get(k):
+                    candidates.append(str(src[k]))
+
+    joined = "\n".join(c for c in candidates if c.strip())
+    if not joined:
+        return None
+
+    for pattern in (_RE_LOC_CONTEXTUAL, _RE_LOC_CITY_UF):
+        for match in pattern.finditer(joined):
+            place = re.sub(r"\s+", " ", match.group(1)).strip(" ,.;:!?()[]{}")
+            if not (2 <= len(place) <= 48):
+                continue
+            low = place.lower()
+            if low in _INVALID_EXTRACTED_PLACES or _PLACEHOLDER_CITIES.match(place):
+                continue
+            if query and low in query.lower():
+                # Não confunde palavra já digitada pelo usuário com cidade recém-descoberta se houver outra melhor,
+                # mas aceita caso tenha match contextual forte com UF/verbo de sede.
+                pass
+            return place
+    return None

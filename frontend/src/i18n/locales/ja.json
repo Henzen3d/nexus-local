@@ -31,7 +31,8 @@
     "free": "Free",
     "score": "Score",
     "version": "バージョン {{version}}",
-    "views": "{{count}} 回表示"
+    "views": "{{count}} 回表示",
+    "retry": "再読み込み"
   },
   "time": {
     "justNow": "たった今",
@@ -248,7 +249,41 @@
     "simpleFastDesc": "Get fast answers",
     "simpleThink": "Thinking",
     "simpleThinkDesc": "Handle complex tasks",
-    "modeSelect": "Model mode: {{label}}"
+    "modeSelect": "Model mode: {{label}}",
+    "checkTurnStatus": "ステータス更新",
+    "configureKeysBtn": "マイキー",
+    "configureProvidersBtn": "プロバイダー設定",
+    "failoverServedBy": "Failover · {{served}}",
+    "imageNotAnalyzedNotice": "添付画像を視覚的に読み取れませんでした（ネイティブVision・Vision Relay利用不可）。",
+    "noRouteAvailableToast": "利用可能なモデルルートがありません。送信するにはプロバイダーまたはキーを設定してください。",
+    "noRouteShort": "モデルルート未設定",
+    "retry": "再試行",
+    "routeEmptyAdmin": "利用可能なモデルルートがありません。プロバイダーまたはAPIキーを設定してください。",
+    "routeEmptyUser": "現在利用可能なルートがありません。個人キーを追加するか少し待ってください。",
+    "routeErrorInline": "利用可能なモデルを読み込めませんでした。",
+    "routeExhaustedInline": "設定済みの全ルートが現在の上限に達しました。",
+    "routeLoadErrorToast": "モデルカタログを読み込めませんでした。もう一度お試しください。",
+    "routeLoading": "AIルートを読み込み中…",
+    "skipToComposer": "メッセージ入力欄へ移動 (Ctrl+/)",
+    "supportsVision": "画像のネイティブ視覚読み取りに対応",
+    "toolFailedDetail": "このツールに照会できませんでした",
+    "toolFamily": {
+      "weather": "天気予報",
+      "currency": "為替・通貨レート",
+      "brasil": "公共データ（ブラジル）",
+      "knowledge": "Wikipedia / 知識",
+      "news": "最新ニュース",
+      "translation": "翻訳",
+      "geo": "位置情報",
+      "fun": "エンターテイメント",
+      "code_exec": "コード実行",
+      "diagrams": "ダイアグラム"
+    },
+    "turnInProgressTitle": "サーバーで応答を生成中",
+    "turnIncompleteTitle": "未完了のターン",
+    "turnStoppedTitle": "応答を停止しました",
+    "visionNativeHint": "このモデルはネイティブ視覚入力に対応",
+    "visionRelayHint": "ネイティブVisionなし — 利用可能時はVision Relayを使用"
   },
   "sidebar": {
     "newChat": "新しい会話",
@@ -316,7 +351,8 @@
     "noOutput": "(出力がありません)",
     "waitingResponse": "待機中...",
     "editPlaceholder": "変更内容を入力してください...",
-    "applyEdit": "適用"
+    "applyEdit": "適用",
+    "selectModelFirst": "添付する前にプロバイダーまたはAPIキーを設定してください"
   },
   "pwa": {
     "installTitle": "NexusLocal をアプリとしてインストール",
@@ -523,7 +559,9 @@
     "voiceStop": "Stop reading",
     "registerUser": "Register user",
     "registerUserTitle": "New family account",
-    "registerUserSaving": "Creating..."
+    "registerUserSaving": "Creating...",
+    "syncDeltaLine": "有効: {{active}} · チャット対象: {{eligible}}/{{remote}}",
+    "syncSummaryToast": "カタログ更新完了: リモート {{remote}} 件中 {{active}} 件有効（除外・無効 {{excluded}} 件）。"
   },
   "tools": {
     "saveConfig": "設定を保存",
@@ -1148,7 +1186,21 @@
     "dreamJournalFilterSuccess": "Success",
     "dreamJournalFilterRolledBack": "Rolled back",
     "dreamJournalFilterFailed": "Failed",
-    "dreamJournalShowingCount": "Showing {{shown}} of {{total}} consolidations"
+    "dreamJournalShowingCount": "Showing {{shown}} of {{total}} consolidations",
+    "deleteFactError": "メモリを削除できませんでした。",
+    "factDeletedToast": "メモリを削除しました。",
+    "manageAll": "すべてのメモリを管理",
+    "noneRelevantHint": "このターンに関連する保存済みメモリはありませんでした。",
+    "noneRelevantShort": "関連メモリなし",
+    "promoteToGlobal": "グローバルへ昇格",
+    "promoteToGlobalError": "メモリを昇格できませんでした。",
+    "promotedSuccess": "メモリをグローバルへ昇格しました。",
+    "scopeGlobal": "グローバル",
+    "scopeProject": "プロジェクト: {{name}}",
+    "scopeProjectShort": "プロジェクト",
+    "scopeUnknown": "由来不明",
+    "usedSummary": "使用したメモリ ({{count}})",
+    "viewOriginConv": "元の会話を表示"
   },
   "proactive": {
     "bubbleBadge": "プロアクティブアシスタント",
